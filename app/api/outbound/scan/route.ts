@@ -326,7 +326,7 @@ export async function POST(req: Request) {
         .in("imei", parsed.imeis)
         .eq("status", "IN");
       if (bErr) return NextResponse.json({ ok: false, error: bErr.message }, { status: 500 });
-      itemsOut = before?.count ?? 0;
+      itemsOut = Array.isArray(before) ? before.length : 0;
       const { error: updItemsErr } = await supabase
         .from("items")
         .update({ status: "OUT" })

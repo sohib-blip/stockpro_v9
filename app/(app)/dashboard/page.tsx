@@ -1,0 +1,437 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/ToastProvider";
+
+type SummaryResp = {
+  ok: boolean;
+  error?: string;
+  counts?: {
+    devices?: number;
+    items_in?: number;
+    items_out?: number;
+    boxes?: number;
+  };
+  per_device?: Array<{ device: string; in_stock: number; out_stock: number; total: number }>;
+};
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-slate-100">{value}</div>
+    </div>
+  );
+}
+
+export default function DashboardPage() {
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [summary, setSummary] = useState<SummaryResp | null>(null);
+  const [deviceQuery, setDeviceQuery] = useState<string>("");
+  const [sort, setSort] = useState<{ key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" }>(
+    { key: "device", dir: "asc" }
+  );
+  const [page, setPage] = useState(1);
+  const pageSize = 25;
+  const [canExport, setCanExport] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    setSummary(null);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      setSummary({ ok: false, error: "Please sign in first." });
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const res = await fetch("/api/dashboard/summary", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = (await res.json()) as SummaryResp;
+      setSummary(json);
+      // permissions (optional)
+      const { data: u } = await supabase.auth.getUser();
+      if (u.user?.id) {
+        const { data: p } = await supabase
+          .from("user_permissions")
+          .select("can_export")
+          .eq("user_id", u.user.id)
+          .maybeSingle();
+        setCanExport(!!p?.can_export);
+      }
+    } catch (e: any) {
+      setSummary({ ok: false, error: e?.message ?? "Dashboard error" });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const counts = summary?.counts || {};
+  const perDeviceAll = Array.isArray(summary?.per_device) ? summary!.per_device! : [];
+  const q = deviceQuery.trim().toLowerCase();
+  const filtered = perDeviceAll.filter((r) => (!q ? true : String(r.device ?? "").toLowerCase().includes(q)));
+  const sorted = [...filtered].sort((a, b) => {
+    const dir = sort.dir === "asc" ? 1 : -1;
+    const va =
+      sort.key === "device"
+        ? String(a.device ?? "")
+        : sort.key === "in"
+          ? a.in_stock ?? 0
+          : sort.key === "out"
+            ? a.out_stock ?? 0
+            : a.total ?? 0;
+    const vb =
+      sort.key === "device"
+        ? String(b.device ?? "")
+        : sort.key === "in"
+          ? b.in_stock ?? 0
+          : sort.key === "out"
+            ? b.out_stock ?? 0
+            : b.total ?? 0;
+    if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+    return String(va).localeCompare(String(vb)) * dir;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const perDevice = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  const devicesCount = counts.devices ?? 0;
+  const inStock = counts.items_in ?? 0;
+  const outStock = counts.items_out ?? 0;
+  const boxesTotal = counts.boxes ?? 0;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-xs text-slate-500">Overview</div>
+          <h2 className="text-xl font-semibold">Dashboard</h2>
+          <p className="text-sm text-slate-400 mt-1">Devices + stock in / out + total boxes.</p>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {canExport ? (
+            <>
+              
+              <button
+                onClick={() => exportFullInventory(supabase, toast)}
+                className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+              >
+                Export inventory CSV
+              </button>
+              <button
+                onClick={() => exportInStockByDevice(supabase, toast)}
+                className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+              >
+                Export IN stock (device/box/IMEI)
+              </button>
+              <button
+                onClick={() => exportDevicesCSV(perDeviceAll, toast)}
+                className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+              >
+                Export CSV
+              </button>
+              <button
+                onClick={() => exportDevicesPDF(perDeviceAll, counts, toast)}
+                className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+              >
+                Export PDF
+              </button>
+            </>
+          ) : null}
+          <button
+            onClick={load}
+            disabled={loading}
+            className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+      </div>
+
+      {!summary ? null : summary.ok ? (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat label="Devices" value={devicesCount} />
+            <Stat label="In stock" value={inStock} />
+            <Stat label="Out stock" value={outStock} />
+            <Stat label="Total boxes" value={boxesTotal} />
+          </div>
+
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
+              <div>
+                <div className="text-sm font-semibold">Devices</div>
+                <div className="text-xs text-slate-500">IN / OUT / total per device.</div>
+              </div>
+
+              <input
+                value={deviceQuery}
+                onChange={(e) => setDeviceQuery(e.target.value)}
+                placeholder="Filter by device name…"
+                className="w-full md:w-[280px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
+              />
+            </div>
+
+            <div className="overflow-auto">
+              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+                <thead className="bg-slate-950/50">
+                  <tr>
+                    <Th label="Device" active={sort.key === "device"} dir={sort.dir} onClick={() => toggleSort(sort, setSort, "device")} align="left" />
+                    <Th label="IN" active={sort.key === "in"} dir={sort.dir} onClick={() => toggleSort(sort, setSort, "in")} align="right" />
+                    <Th label="OUT" active={sort.key === "out"} dir={sort.dir} onClick={() => toggleSort(sort, setSort, "out")} align="right" />
+                    <Th label="Total" active={sort.key === "total"} dir={sort.dir} onClick={() => toggleSort(sort, setSort, "total")} align="right" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {perDevice.map((r) => (
+                    <tr key={r.device} className="hover:bg-slate-950/50">
+                      <td className="p-2 border-b border-slate-800">{r.device || "UNKNOWN"}</td>
+                      <td className="p-2 border-b border-slate-800 text-right">
+                        <Badge kind="in">{r.in_stock ?? 0}</Badge>
+                      </td>
+                      <td className="p-2 border-b border-slate-800 text-right">
+                        <Badge kind="out">{r.out_stock ?? 0}</Badge>
+                      </td>
+                      <td className="p-2 border-b border-slate-800 text-right text-slate-200">{r.total ?? 0}</td>
+                    </tr>
+                  ))}
+                  {perDevice.length === 0 && (
+                    <tr>
+                      <td className="p-3 text-sm text-slate-400" colSpan={4}>
+                        No devices found.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-2">
+              <div className="text-xs text-slate-500">
+                Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, sorted.length)} of {sorted.length}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
+                  disabled={safePage === 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                >
+                  Prev
+                </button>
+                <div className="text-xs text-slate-400">
+                  Page {safePage} / {totalPages}
+                </div>
+                <button
+                  className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
+                  disabled={safePage === totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      ) : (
+        <div className="rounded-2xl border border-rose-900/60 bg-rose-950/40 p-4 text-sm text-rose-200">
+          {summary.error || "Dashboard error"}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function toggleSort(
+  sort: { key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" },
+  setSort: React.Dispatch<React.SetStateAction<{ key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" }>>,
+  key: "device" | "in" | "out" | "total"
+) {
+  setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" }));
+}
+
+function Th({
+  label,
+  active,
+  dir,
+  onClick,
+  align,
+}: {
+  label: string;
+  active: boolean;
+  dir: "asc" | "desc";
+  onClick: () => void;
+  align: "left" | "right";
+}) {
+  return (
+    <th
+      className={`select-none cursor-pointer ${align === "left" ? "text-left" : "text-right"} p-2 border-b border-slate-800 hover:bg-slate-950/60`}
+      onClick={onClick}
+      title="Sort"
+    >
+      <span className="inline-flex items-center gap-1">
+        {label}
+        {active ? <span className="text-slate-500">{dir === "asc" ? "▲" : "▼"}</span> : null}
+      </span>
+    </th>
+  );
+}
+
+function Badge({ kind, children }: { kind: "in" | "out"; children: React.ReactNode }) {
+  const cls =
+    kind === "in"
+      ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-200"
+      : "border-rose-900/60 bg-rose-950/40 text-rose-200";
+  return <span className={`inline-flex min-w-[44px] justify-end rounded-lg border px-2 py-1 font-semibold ${cls}`}>{children}</span>;
+}
+
+function exportDevicesCSV(rows: NonNullable<SummaryResp["per_device"]>, toast: (t: any) => void) {
+  try {
+    const header = ["Device", "IN", "OUT", "Total"].join(",");
+    const body = rows
+      .map((r) => [csv(r.device), String(r.in_stock ?? 0), String(r.out_stock ?? 0), String(r.total ?? 0)].join(","))
+      .join("\n");
+    downloadText(`devices_${new Date().toISOString().slice(0, 10)}.csv`, `${header}\n${body}`);
+    toast({ kind: "success", title: "CSV exported" });
+  } catch (e: any) {
+    toast({ kind: "error", title: "Export failed", message: e?.message || "CSV export failed" });
+  }
+}
+
+async function exportDevicesPDF(
+  rows: NonNullable<SummaryResp["per_device"]>,
+  counts: any,
+  toast: (t: any) => void
+) {
+  try {
+    const { jsPDF } = await import("jspdf");
+    const doc = new jsPDF({ unit: "pt", format: "a4" });
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text("StockPro — Dashboard", 40, 45);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+    doc.text(
+      `Devices: ${counts.devices ?? 0}  |  In stock: ${counts.items_in ?? 0}  |  Out stock: ${counts.items_out ?? 0}  |  Boxes: ${counts.boxes ?? 0}`,
+      40,
+      65
+    );
+
+    const startY = 95;
+    let y = startY;
+    const line = (t: string, x: number, w?: number) => {
+      doc.text(t, x, y, w ? { maxWidth: w } : undefined);
+    };
+
+    doc.setFont("helvetica", "bold");
+    line("Device", 40);
+    line("IN", 320);
+    line("OUT", 390);
+    line("Total", 470);
+    doc.setFont("helvetica", "normal");
+    y += 14;
+    doc.setDrawColor(80);
+    doc.line(40, y, 555, y);
+    y += 14;
+
+    for (const r of rows) {
+      if (y > 770) {
+        doc.addPage();
+        y = 60;
+      }
+      line(String(r.device ?? ""), 40, 260);
+      line(String(r.in_stock ?? 0), 330);
+      line(String(r.out_stock ?? 0), 400);
+      line(String(r.total ?? 0), 480);
+      y += 14;
+    }
+
+    doc.save(`devices_${new Date().toISOString().slice(0, 10)}.pdf`);
+    toast({ kind: "success", title: "PDF exported" });
+  } catch (e: any) {
+    toast({ kind: "error", title: "Export failed", message: e?.message || "PDF export failed" });
+  }
+}
+
+function csv(v: any) {
+  const s = String(v ?? "");
+  if (s.includes(",") || s.includes("\n") || s.includes('"')) return `"${s.replaceAll('"', '""')}"`;
+  return s;
+}
+
+function downloadText(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function exportFullInventory(supabase: any, toast: (t: any) => void) {
+  try {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const token = sessionData.session?.access_token;
+    if (!token) {
+      toast({ kind: "error", title: "Export failed", message: "Please sign in first." });
+      return;
+    }
+
+    const res = await fetch("/api/export/inventory", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) {
+      let msg = "Export failed";
+      try {
+        const j = await res.json();
+        msg = j?.error || msg;
+      } catch {
+        // ignore
+      }
+      toast({ kind: "error", title: "Export failed", message: msg });
+      return;
+    }
+
+    const blob = await res.blob();
+    const filename = getFilenameFromDisposition(res.headers.get("content-disposition")) || `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadBlob(filename, blob);
+    toast({ kind: "success", title: "Inventory exported" });
+  } catch (e: any) {
+    toast({ kind: "error", title: "Export failed", message: e?.message || "Export failed" });
+  }
+}
+
+function downloadBlob(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function getFilenameFromDisposition(disposition: string | null) {
+  if (!disposition) return null;
+  const m = disposition.match(/filename\*?=(?:UTF-8''|\")?([^;\"\n]+)/i);
+  if (!m) return null;
+  return decodeURIComponent(m[1].replaceAll('"', '').trim());
+}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
+import { exportInStockByDevice } from "@/lib/exports";
 
 type SummaryResp = {
   ok: boolean;

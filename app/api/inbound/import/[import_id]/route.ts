@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 function adminClient() {
@@ -6,17 +6,18 @@ function adminClient() {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     // Service role bypasses RLS for server-side PDF/history flows.
     // If not set, we'll fall back to the authed client.
-    process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY ||
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     { auth: { persistSession: false } }
   );
 }
 
 function authedClient(token: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } }, auth: { persistSession: false } }
-  );
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { persistSession: false },
+  });
 }
 
 function buildQrData({
@@ -40,15 +41,20 @@ function buildQrData({
   return parts.join("|");
 }
 
-export async function GET(req: Request, ctx: { params?: { import_id?: string } }) {
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ import_id: string }> }
+) {
   try {
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
     if (!token) return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
 
-    // Be defensive: depending on Next.js runtime/bundling, `ctx.params` may be
-    // missing. Fall back to parsing the last path segment.
-    const importIdFromParams = (ctx as any)?.params?.import_id as string | undefined;
+    // ✅ Next.js (new types): params is a Promise
+    const { import_id } = await context.params;
+    const importIdFromParams = import_id as string | undefined;
+
+    // Fallback to parsing URL (defensive)
     const importIdFromPath = (() => {
       try {
         const u = new URL(req.url);
@@ -71,11 +77,11 @@ export async function GET(req: Request, ctx: { params?: { import_id?: string } }
       return NextResponse.json({ ok: false, error: "Invalid session" }, { status: 401 });
     }
 
-    const supabase = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY ? admin : authedClient(token);
+    const supabase =
+      process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY ? admin : authedClient(token);
 
     const { data: imp, error: impErr } = await supabase
       .from("inbound_imports")
-      // rows_count is not guaranteed to exist in every DB version.
       .select("import_id, created_at, created_by, file_name, boxes_count, devices_count, items_count")
       .eq("import_id", importId)
       .maybeSingle();
@@ -86,12 +92,7 @@ export async function GET(req: Request, ctx: { params?: { import_id?: string } }
     // Add creator identity (first part of email) when possible.
     const creatorId = String((imp as any).created_by || "").trim();
     if (creatorId) {
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("user_id", creatorId)
-        .maybeSingle();
-
+      const { data: prof } = await supabase.from("profiles").select("email").eq("user_id", creatorId).maybeSingle();
       const email = String((prof as any)?.email || "").trim();
       if (email) {
         (imp as any).created_by_email = email;
@@ -101,8 +102,6 @@ export async function GET(req: Request, ctx: { params?: { import_id?: string } }
 
     const { data: impBoxes, error: ibErr } = await supabase
       .from("inbound_import_boxes")
-      // NOTE: Some deployments don't store box_id in inbound_import_boxes.
-      // Import-history label downloads should not depend on box_id.
       .select("box_no, master_box_no, device, qty")
       .eq("import_id", importId);
 
@@ -114,7 +113,6 @@ export async function GET(req: Request, ctx: { params?: { import_id?: string } }
       const master_box_no = String(b.master_box_no ?? "");
       const qty = Number(b.qty ?? 0);
       return {
-        // box_id is optional here; history downloads only need printable fields.
         device,
         master_box_no,
         box_no,
@@ -123,8 +121,7 @@ export async function GET(req: Request, ctx: { params?: { import_id?: string } }
       };
     });
 
-    // Also build master carton labels (big boxes) by grouping inner boxes.
-    // If master_box_no is missing, we skip master labels.
+    // Build master carton labels by grouping inner boxes
     const masterMap = new Map<string, { device: string; master_box_no: string; qty: number }>();
     for (const l of labels) {
       const m = (l.master_box_no || "").trim();
@@ -146,11 +143,7 @@ export async function GET(req: Request, ctx: { params?: { import_id?: string } }
     let created_by_name: string | null = null;
     const createdBy = String((imp as any).created_by || "").trim();
     if (createdBy) {
-      const { data: prof } = await supabase
-        .from("profiles")
-        .select("email")
-        .eq("user_id", createdBy)
-        .maybeSingle();
+      const { data: prof } = await supabase.from("profiles").select("email").eq("user_id", createdBy).maybeSingle();
       const email = String((prof as any)?.email || "").trim();
       if (email) {
         created_by_email = email;

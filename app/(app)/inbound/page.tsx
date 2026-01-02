@@ -654,11 +654,6 @@ export default function InboundPage() {
     </div>
   );
 
-  // NOTE: downloadLabelsForImport is used in JSX above, keep it in scope:
-  async function downloadLabelsForImport(importId: string) {
-    await downloadLabelsForImport_impl(importId);
-  }
-
   async function downloadLabelsForImport_impl(importId: string) {
     // (Wrapped to keep TS happy with function hoist + closures)
     // This just calls the earlier defined function via closure. Kept for clarity.

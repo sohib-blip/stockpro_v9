@@ -10,6 +10,7 @@ type NavItem = { href: string; label: string; icon: string };
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
   { href: "/inbound", label: "Inbound Import", icon: "📦" },
+  { href:"/movements", label:"Mouvements", icon:"⬆️⬇️" },
   { href: "/labels", label: "Labels", icon: "🏷️" },
   { href: "/outbound", label: "Outbound", icon: "📤" },
   { href: "/alerts", label: "Stock Alerts", icon: "🚨" },

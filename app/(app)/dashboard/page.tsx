@@ -243,20 +243,6 @@ export default function DashboardPage() {
 
       {!summary ? null : summary.ok ? (
         <>
-          {/* 🔴 RED ALERT BANNER */}
-          {lowCount > 0 ? (
-            <div className="rounded-2xl border border-rose-900/60 bg-rose-950/40 p-4 text-sm text-rose-100">
-              <div className="font-semibold">⚠️ LOW STOCK</div>
-              <div className="text-rose-200/90 mt-1">
-                {lowCount} device{lowCount > 1 ? "s" : ""} {useFilteredStats ? "in this filter" : "in stock"} at or
-                below min stock.
-              </div>
-              <div className="text-xs text-rose-200/80 mt-2">
-                Tip: set min stock in <b>Alerts</b>.
-              </div>
-            </div>
-          ) : null}
-
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat label="Devices" value={devicesCount} />
             <Stat label="In stock" value={inStock} />

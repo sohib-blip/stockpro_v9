@@ -4,24 +4,41 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import {
+  LayoutDashboard,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Tag,
+  Bell,
+  Shield,
+  ArrowLeftRight,
+  Menu,
+  LogOut,
+  Package,
+} from "lucide-react";
 
-type NavItem = { href: string; label: string; icon: string };
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+};
 
 const NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: "📊" },
-  { href: "/inbound", label: "Inbound Import", icon: "📦" },
-  { href:"/movements", label:"Mouvements", icon:"⬆️⬇️" },
-  { href: "/labels", label: "Labels", icon: "🏷️" },
-  { href: "/outbound", label: "Outbound", icon: "📤" },
-  { href: "/alerts", label: "Stock Alerts", icon: "🚨" },
-  { href: "/admin", label: "Admin", icon: "🛡️" },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
+  { href: "/movements", label: "Mouvements", icon: ArrowLeftRight },
+  { href: "/labels", label: "Labels", icon: Tag },
+  { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
+  { href: "/alerts", label: "Stock Alerts", icon: Bell },
+  { href: "/admin", label: "Admin", icon: Shield },
 ];
 
 function pageTitle(pathname: string) {
   if (pathname === "/" || pathname.startsWith("/dashboard")) return "Dashboard";
   if (pathname.startsWith("/inbound")) return "Inbound Import";
+  if (pathname.startsWith("/movements")) return "Mouvements";
   if (pathname.startsWith("/labels")) return "QR Labels";
-  if (pathname.startsWith("/outbound")) return "Outbound (Scan)";
+  if (pathname.startsWith("/outbound")) return "Outbound";
   if (pathname.startsWith("/alerts")) return "Stock Alerts";
   if (pathname.startsWith("/admin")) return "Admin";
   return "StockPro";
@@ -120,6 +137,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen flex bg-slate-950 text-slate-100">
+      {/* SIDEBAR */}
       <aside
         className={[
           "h-screen sticky top-0 shrink-0",
@@ -128,10 +146,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
           collapsed ? "w-[72px]" : "w-[268px]",
         ].join(" ")}
       >
+        {/* LOGO */}
         <div className="h-14 flex items-center justify-between px-3 border-b border-slate-800/80">
           <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-xl bg-slate-900 border border-slate-800 grid place-items-center">
-              📦
+            <div className="h-9 w-9 rounded-xl bg-indigo-600 grid place-items-center">
+              <Package size={18} className="text-white" />
             </div>
             {!collapsed && (
               <div className="leading-tight">
@@ -145,10 +164,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
             onClick={() => setCollapsed((v) => !v)}
             className="h-9 w-9 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 grid place-items-center"
           >
-            ☰
+            <Menu size={16} />
           </button>
         </div>
 
+        {/* NAV */}
         <nav className="px-2 py-3 space-y-1 text-sm">
           {NAV.filter((item) => {
             if (item.href === "/admin") return perms.can_admin;
@@ -160,6 +180,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
               item.href === "/dashboard"
                 ? pathname === "/" || pathname.startsWith("/dashboard")
                 : pathname.startsWith(item.href);
+
+            const Icon = item.icon;
 
             return (
               <Link
@@ -173,7 +195,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 ].join(" ")}
               >
                 <div className="flex items-center gap-3">
-                  <span className="text-lg">{item.icon}</span>
+                  <Icon size={18} />
                   {!collapsed && <span className="font-medium">{item.label}</span>}
                 </div>
 
@@ -188,6 +210,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
+        {/* FOOTER */}
         <div className="absolute bottom-0 left-0 right-0 p-2 border-t border-slate-800/80">
           <div className="rounded-2xl bg-slate-900 border border-slate-800 p-2">
             {!collapsed ? (
@@ -196,23 +219,24 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 <div className="text-sm font-semibold truncate">{email || "—"}</div>
                 <button
                   onClick={logout}
-                  className="mt-2 w-full rounded-xl bg-rose-600 hover:bg-rose-700 px-3 py-2 text-sm font-semibold"
+                  className="mt-2 w-full rounded-xl bg-rose-600 hover:bg-rose-700 px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2"
                 >
-                  Sign out
+                  <LogOut size={16} /> Sign out
                 </button>
               </>
             ) : (
               <button
                 onClick={logout}
-                className="w-full rounded-xl bg-rose-600 hover:bg-rose-700 px-3 py-2 text-sm font-semibold"
+                className="w-full rounded-xl bg-rose-600 hover:bg-rose-700 px-3 py-2 text-sm font-semibold grid place-items-center"
               >
-                🚪
+                <LogOut size={16} />
               </button>
             )}
           </div>
         </div>
       </aside>
 
+      {/* CONTENT */}
       <section className="flex-1 min-w-0">
         <header className="h-14 border-b border-slate-800/80 flex items-center justify-between px-4">
           <h1 className="font-semibold truncate">{title}</h1>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import * as XLSX from "xlsx";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { useToast } from "@/components/ToastProvider";
@@ -30,36 +31,115 @@ async function safeJson(res: Response) {
   }
 }
 
+/** Extract IMEIs from an Excel file (all sheets, all cells) */
+async function extractImeisFromExcel(file: File): Promise<string[]> {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array" });
+
+  const found: string[] = [];
+  for (const name of wb.SheetNames) {
+    const ws = wb.Sheets[name];
+    // Convert to array of arrays
+    const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any;
+    for (const row of rows) {
+      for (const cell of row) {
+        if (cell === null || cell === undefined) continue;
+        const s = String(cell);
+        const matches = s.match(/\d{14,17}/g);
+        if (matches?.length) found.push(...matches);
+      }
+    }
+  }
+
+  // unique
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const i of found) {
+    if (!seen.has(i)) {
+      seen.add(i);
+      out.push(i);
+    }
+  }
+  return out;
+}
+
 export default function OutboundPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
   const inputRef = useRef<HTMLInputElement | null>(null);
 
-  const [tab, setTab] = useState<"scan" | "bulk" | "history">("scan");
+  const [tab, setTab] = useState<"manual" | "eod" | "history">("manual");
 
-  // Scan (single QR / box / imei)
+  // Manual scan
   const [raw, setRaw] = useState("");
   const [preview, setPreview] = useState<PreviewResp | null>(null);
   const [confirm, setConfirm] = useState<ConfirmResp | null>(null);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingConfirm, setLoadingConfirm] = useState(false);
-
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  // Camera
+  // Camera scan
   const [camOpen, setCamOpen] = useState(false);
-  const [camError, setCamError] = useState<string>("");
+  const [camError, setCamError] = useState("");
 
-  // Bulk/manual list
-  const [bulkText, setBulkText] = useState("");
-  const bulkImeis = useMemo(() => parseImeis(bulkText), [bulkText]);
-  const [bulkPreview, setBulkPreview] = useState<any | null>(null);
-  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  // EOD Import (Excel → bulk IMEIs)
+  const [eodFileName, setEodFileName] = useState("");
+  const [eodText, setEodText] = useState(""); // raw IMEI list as text
+  const eodImeis = useMemo(() => parseImeis(eodText), [eodText]);
+  const [eodPreview, setEodPreview] = useState<any | null>(null);
+  const [eodConfirmOpen, setEodConfirmOpen] = useState(false);
 
   // History
   const [events, setEvents] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+  const [boxLocationMap, setBoxLocationMap] = useState<Record<string, string | null>>({});
+
+  async function getToken() {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  }
+
+  async function refreshHistory() {
+    setLoadingHistory(true);
+    try {
+      const token = await getToken();
+      if (!token) return;
+
+      const res = await fetch("/api/outbound/history?limit=120", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const json = await safeJson(res);
+      if (json?.ok) {
+        const ev = json.events ?? [];
+        setEvents(ev);
+
+        // Try to enrich with box locations (optional)
+        const boxIds = Array.from(
+          new Set(
+            ev
+              .map((x: any) => x?.entity === "box" ? x?.entity_id : x?.payload?.box_id)
+              .filter(Boolean)
+          )
+        );
+
+        if (boxIds.length) {
+          const { data, error } = await supabase
+            .from("boxes")
+            .select("box_id, location")
+            .in("box_id", boxIds as string[]);
+
+          if (!error && data) {
+            const m: Record<string, string | null> = {};
+            for (const r of data as any[]) m[r.box_id] = r.location ?? null;
+            setBoxLocationMap(m);
+          }
+        }
+      }
+    } finally {
+      setLoadingHistory(false);
+    }
+  }
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -67,35 +147,7 @@ export default function OutboundPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function getToken() {
-    const { data } = await supabase.auth.getSession();
-    return data.session?.access_token ?? null;
-  }
-
-  async function getUserFirstName() {
-    const { data } = await supabase.auth.getUser();
-    const email = data.user?.email || "";
-    return email ? email.split("@")[0] : "";
-  }
-
-  async function refreshHistory() {
-    if (loadingHistory) return;
-    setLoadingHistory(true);
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      const res = await fetch("/api/outbound/history?limit=100", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = await safeJson(res);
-      if (json?.ok) setEvents(json.events ?? []);
-    } finally {
-      setLoadingHistory(false);
-    }
-  }
-
-  async function doPreview(payload?: string) {
+  async function doPreviewManual(payload?: string) {
     const value = (payload ?? raw).trim();
     if (!value || loadingPreview || loadingConfirm) return;
 
@@ -125,7 +177,7 @@ export default function OutboundPage() {
     }
   }
 
-  async function doConfirmNow() {
+  async function doConfirmManual() {
     const value = raw.trim();
     if (!value || loadingConfirm || loadingPreview) return;
 
@@ -135,16 +187,13 @@ export default function OutboundPage() {
     try {
       const token = await getToken();
       if (!token) {
-        setConfirm({ ok: false, error: "Not signed in. Go to Login." });
         toast({ kind: "error", title: "Not signed in", message: "Go to Login." });
         return;
       }
 
-      // ✅ On garde ton endpoint existant
       const res = await fetch("/api/outbound/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        // backend accepte raw/qr (on envoie les deux)
         body: JSON.stringify({ raw: value, qr: value }),
       });
 
@@ -158,19 +207,6 @@ export default function OutboundPage() {
           message: `${json.device ?? "-"} / ${json.box_no ?? "-"}`,
         });
 
-        // optimistic history
-        const who = await getUserFirstName();
-        setEvents((prev) => [
-          {
-            created_at: new Date().toISOString(),
-            entity: json.mode === "box" ? "box" : "item",
-            entity_id: json.mode === "imei" ? json.imei : json.box_id,
-            payload: { device: json.device, box_no: json.box_no, qty: json.items_out ?? 1 },
-            created_by_name: who || null,
-          },
-          ...(prev ?? []),
-        ]);
-
         setRaw("");
         setPreview(null);
         setTimeout(() => inputRef.current?.focus(), 50);
@@ -179,52 +215,46 @@ export default function OutboundPage() {
         toast({ kind: "error", title: "Outbound failed", message: json?.error || "Unknown error" });
       }
     } catch (e: any) {
-      setConfirm({ ok: false, error: e?.message ?? "Confirm error" });
       toast({ kind: "error", title: "Outbound failed", message: e?.message ?? "Confirm error" });
     } finally {
       setLoadingConfirm(false);
     }
   }
 
-  async function doBulkPreview() {
-    const value = bulkText.trim();
-    if (!value || loadingPreview || loadingConfirm) return;
-    if (bulkImeis.length === 0) {
-      toast({ kind: "error", title: "No IMEIs found", message: "Paste one IMEI per line (14–17 digits)." });
+  // EOD preview/confirm = same backend endpoints, just bulk text
+  async function doPreviewEod() {
+    if (eodImeis.length === 0) {
+      toast({ kind: "error", title: "No IMEIs found", message: "Your Excel must contain 14–17 digits IMEIs." });
       return;
     }
-
     setLoadingPreview(true);
-    setBulkPreview(null);
+    setEodPreview(null);
 
     try {
       const token = await getToken();
       if (!token) {
-        setBulkPreview({ ok: false, error: "You must be signed in." });
+        setEodPreview({ ok: false, error: "You must be signed in." });
         return;
       }
 
-      // On réutilise preview outbound avec qr = bulkText
       const res = await fetch("/api/outbound/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ qr: value }),
+        body: JSON.stringify({ qr: eodText.trim() }),
       });
 
       const json = await safeJson(res);
-      setBulkPreview(json);
+      setEodPreview(json);
     } catch (e: any) {
-      setBulkPreview({ ok: false, error: e?.message ?? "Preview error" });
+      setEodPreview({ ok: false, error: e?.message ?? "Preview error" });
     } finally {
       setLoadingPreview(false);
     }
   }
 
-  async function doConfirmBulkNow() {
-    const value = bulkText.trim();
-    if (!value || loadingConfirm || loadingPreview) return;
-    if (bulkImeis.length === 0) {
-      toast({ kind: "error", title: "No IMEIs found", message: "Paste one IMEI per line (14–17 digits)." });
+  async function doConfirmEod() {
+    if (eodImeis.length === 0) {
+      toast({ kind: "error", title: "No IMEIs found", message: "Import an EOD file first." });
       return;
     }
 
@@ -241,48 +271,51 @@ export default function OutboundPage() {
       const res = await fetch("/api/outbound/scan", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ raw: value, qr: value }),
+        body: JSON.stringify({ raw: eodText.trim(), qr: eodText.trim() }),
       });
 
       const json = await safeJson(res);
       setConfirm(json);
 
       if (json?.ok) {
-        const total = json?.total_out ?? json?.items_out ?? 0;
-        toast({ kind: "success", title: "Outbound completed", message: total ? `${total} IMEI removed` : "Done" });
-
-        const who = await getUserFirstName();
-        setEvents((prev) => [
-          {
-            created_at: new Date().toISOString(),
-            entity: "bulk",
-            entity_id: "bulk",
-            payload: { total_out: total, boxes: json?.boxes ?? [] },
-            created_by_name: who || null,
-          },
-          ...(prev ?? []),
-        ]);
-
-        setBulkText("");
-        setBulkPreview(null);
+        toast({
+          kind: "success",
+          title: "EOD dispatch applied",
+          message: `${json.items_out ?? json.total_out ?? eodImeis.length} IMEI processed`,
+        });
+        setEodFileName("");
+        setEodText("");
+        setEodPreview(null);
         void refreshHistory();
       } else {
-        toast({ kind: "error", title: "Outbound failed", message: json?.error || "Unknown error" });
+        toast({ kind: "error", title: "EOD failed", message: json?.error || "Unknown error" });
       }
     } catch (e: any) {
-      toast({ kind: "error", title: "Outbound failed", message: e?.message ?? "Confirm error" });
+      toast({ kind: "error", title: "EOD failed", message: e?.message ?? "Confirm error" });
     } finally {
       setLoadingConfirm(false);
-      setBulkConfirmOpen(false);
+      setEodConfirmOpen(false);
     }
   }
 
-  function resetScan() {
-    setRaw("");
-    setPreview(null);
-    setConfirm(null);
-    setCamError("");
-    setTimeout(() => inputRef.current?.focus(), 50);
+  async function onPickEodFile(file: File | null) {
+    if (!file) return;
+    try {
+      setEodFileName(file.name);
+      setEodPreview(null);
+
+      const imeis = await extractImeisFromExcel(file);
+      if (imeis.length === 0) {
+        toast({ kind: "error", title: "No IMEIs found", message: "Excel parsed but no IMEI detected." });
+        setEodText("");
+        return;
+      }
+
+      setEodText(imeis.join("\n"));
+      toast({ kind: "success", title: "Excel loaded", message: `${imeis.length} IMEI found` });
+    } catch (e: any) {
+      toast({ kind: "error", title: "Excel error", message: e?.message ?? "Failed to read Excel" });
+    }
   }
 
   return (
@@ -290,8 +323,10 @@ export default function OutboundPage() {
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-xs text-slate-500">Outbound</div>
-          <h2 className="text-xl font-semibold">Outbound Scan</h2>
-          <p className="text-sm text-slate-400 mt-1">Scan a QR (box / imei) to remove from stock.</p>
+          <h2 className="text-xl font-semibold">Dispatch & Outbound</h2>
+          <p className="text-sm text-slate-400 mt-1">
+            Manual outbound + End-of-day Excel import + full history (user/device/etage).
+          </p>
         </div>
 
         <button
@@ -303,28 +338,29 @@ export default function OutboundPage() {
         </button>
       </div>
 
-      {/* Tabs (same vibe as inbound) */}
-      <div className="flex gap-2">
-        <TabButton active={tab === "scan"} onClick={() => setTab("scan")}>
-          📷 Scan QR
+      {/* Tabs */}
+      <div className="flex gap-2 flex-wrap">
+        <TabButton active={tab === "manual"} onClick={() => setTab("manual")}>
+          🔎 Manual
         </TabButton>
-        <TabButton active={tab === "bulk"} onClick={() => setTab("bulk")}>
-          🧾 Manual list
+        <TabButton active={tab === "eod"} onClick={() => setTab("eod")}>
+          📄 EOD Import
         </TabButton>
         <TabButton active={tab === "history"} onClick={() => setTab("history")}>
           🕘 History
         </TabButton>
       </div>
 
-      {tab === "scan" && (
+      {/* MANUAL */}
+      {tab === "manual" && (
         <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold">Scanner</div>
-              <div className="text-xs text-slate-500">Use USB scanner, paste QR content, or camera.</div>
+              <div className="text-sm font-semibold">Manual outbound</div>
+              <div className="text-xs text-slate-500">Scan USB / paste QR / camera. Preview then confirm.</div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => {
                   setCamError("");
@@ -336,7 +372,7 @@ export default function OutboundPage() {
               </button>
 
               <button
-                onClick={() => doPreview()}
+                onClick={() => doPreviewManual()}
                 disabled={loadingPreview || loadingConfirm || !raw.trim()}
                 className="rounded-xl bg-slate-950 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
               >
@@ -352,7 +388,12 @@ export default function OutboundPage() {
               </button>
 
               <button
-                onClick={resetScan}
+                onClick={() => {
+                  setRaw("");
+                  setPreview(null);
+                  setConfirm(null);
+                  setTimeout(() => inputRef.current?.focus(), 50);
+                }}
                 className="rounded-xl bg-slate-950 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
               >
                 Clear
@@ -360,7 +401,6 @@ export default function OutboundPage() {
             </div>
           </div>
 
-          {/* Input (USB scanner like inbound) */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="md:col-span-1">
               <input
@@ -370,7 +410,7 @@ export default function OutboundPage() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    void doPreview();
+                    void doPreviewManual();
                   }
                 }}
                 placeholder="Scan/paste QR here…"
@@ -438,18 +478,17 @@ export default function OutboundPage() {
           </div>
 
           <ConfirmDialog
-  open={confirmOpen}
-  title="Confirm outbound"
-  message="This will remove the scanned box/items from stock."
-  confirmText={loadingConfirm ? "Working…" : "Confirm"}
-  cancelText="Cancel"
-  onCancel={() => setConfirmOpen(false)}
-  onConfirm={async () => {
-    setConfirmOpen(false);
-    await doConfirmNow();
-  }}
-/>
-
+            open={confirmOpen}
+            title="Confirm outbound"
+            message="This will remove the scanned box/items from stock."
+            confirmText={loadingConfirm ? "Working…" : "Confirm"}
+            cancelText="Cancel"
+            onCancel={() => setConfirmOpen(false)}
+            onConfirm={async () => {
+              setConfirmOpen(false);
+              await doConfirmManual();
+            }}
+          />
 
           {camOpen ? (
             <QrCameraModal
@@ -457,7 +496,7 @@ export default function OutboundPage() {
               onResult={(value) => {
                 setRaw(value);
                 setCamOpen(false);
-                setTimeout(() => void doPreview(value), 50);
+                setTimeout(() => void doPreviewManual(value), 50);
               }}
               setError={(msg) => setCamError(msg)}
             />
@@ -465,35 +504,39 @@ export default function OutboundPage() {
         </div>
       )}
 
-      {tab === "bulk" && (
+      {/* EOD IMPORT */}
+      {tab === "eod" && (
         <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div>
-              <div className="text-sm font-semibold">Manual list</div>
-              <div className="text-xs text-slate-500">Paste IMEIs (one per line). Preview then confirm.</div>
+              <div className="text-sm font-semibold">End of day dispatch (Excel)</div>
+              <div className="text-xs text-slate-500">
+                Import your EOD report and remove all dispatched IMEIs (daily/weekly).
+              </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
-                onClick={doBulkPreview}
-                disabled={loadingPreview || loadingConfirm || bulkImeis.length === 0}
+                onClick={doPreviewEod}
+                disabled={loadingPreview || loadingConfirm || eodImeis.length === 0}
                 className="rounded-xl bg-slate-950 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
               >
                 {loadingPreview ? "Previewing…" : "Preview"}
               </button>
 
               <button
-                onClick={() => setBulkConfirmOpen(true)}
-                disabled={loadingConfirm || loadingPreview || bulkImeis.length === 0}
+                onClick={() => setEodConfirmOpen(true)}
+                disabled={loadingConfirm || loadingPreview || eodImeis.length === 0}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold hover:bg-rose-700 disabled:opacity-50"
               >
-                Confirm
+                {loadingConfirm ? "Confirming…" : "Commit (remove stock)"}
               </button>
 
               <button
                 onClick={() => {
-                  setBulkText("");
-                  setBulkPreview(null);
+                  setEodFileName("");
+                  setEodText("");
+                  setEodPreview(null);
                 }}
                 className="rounded-xl bg-slate-950 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
               >
@@ -502,51 +545,97 @@ export default function OutboundPage() {
             </div>
           </div>
 
-          <textarea
-            value={bulkText}
-            onChange={(e) => setBulkText(e.target.value)}
-            placeholder="Paste IMEIs here (one per line)…"
-            className="w-full min-h-[160px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
-          />
-
-          <div className="text-xs text-slate-500">Detected IMEIs: {bulkImeis.length}</div>
-
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
-            <div className="text-xs text-slate-500 mb-2">Preview</div>
-
-            {!bulkPreview ? (
-              <div className="text-sm text-slate-400">No preview yet.</div>
-            ) : bulkPreview.ok ? (
-              <div className="text-sm text-slate-200">
-                Ready. Items to remove: <span className="font-semibold">{bulkPreview.items_out ?? bulkImeis.length}</span>
-              </div>
-            ) : (
-              <div className="text-sm text-rose-200">{bulkPreview.error || "Preview failed"}</div>
-            )}
+            <div className="text-xs text-slate-500 mb-2">Upload report</div>
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={(e) => onPickEodFile(e.target.files?.[0] ?? null)}
+              className="text-sm"
+            />
+            <div className="text-xs text-slate-500 mt-2">
+              File: <span className="text-slate-300">{eodFileName || "-"}</span> • IMEIs detected:{" "}
+              <span className="font-semibold text-slate-100">{eodImeis.length}</span>
+            </div>
           </div>
 
-<ConfirmDialog
-  open={bulkConfirmOpen}
-  title="Confirm bulk outbound"
-  message={`This will remove ${bulkImeis.length} IMEI(s) from stock.`}
-  confirmText={loadingConfirm ? "Working…" : "Confirm"}
-  cancelText="Cancel"
-  onCancel={() => setBulkConfirmOpen(false)}
-  onConfirm={async () => {
-    setBulkConfirmOpen(false);
-    await doConfirmBulkNow();
-  }}
-/>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <div className="text-xs text-slate-500 mb-2">IMEI list (auto from Excel)</div>
+              <textarea
+                value={eodText}
+                onChange={(e) => setEodText(e.target.value)}
+                placeholder="IMEIs will appear here…"
+                className="w-full min-h-[220px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
+              />
+              <div className="text-xs text-slate-500 mt-2">
+                You can paste extra IMEIs here too (one per line).
+              </div>
+            </div>
 
+            <div className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+              <div className="text-xs text-slate-500 mb-2">Preview</div>
+
+              {!eodPreview ? (
+                <div className="text-sm text-slate-400">No preview yet.</div>
+              ) : eodPreview.ok ? (
+                <div className="space-y-2 text-sm">
+                  <div>
+                    <span className="text-slate-400">Mode:</span>{" "}
+                    <span className="font-semibold">{eodPreview.mode ?? "bulk"}</span>
+                  </div>
+
+                  <div>
+                    <span className="text-slate-400">Will remove:</span>{" "}
+                    <span className="font-semibold">{eodPreview.items_out ?? eodImeis.length}</span>
+                  </div>
+
+                  {!!eodPreview.not_found?.length && (
+                    <div className="mt-2">
+                      <div className="text-xs text-rose-200 mb-1">
+                        Not found ({eodPreview.not_found.length})
+                      </div>
+                      <div className="max-h-40 overflow-auto rounded-lg border border-rose-900/40 p-2 text-xs text-rose-100">
+                        {eodPreview.not_found.slice(0, 50).map((i: string) => (
+                          <div key={i} className="border-b border-slate-900 py-0.5">
+                            {i}
+                          </div>
+                        ))}
+                        {eodPreview.not_found.length > 50 && (
+                          <div className="text-slate-400 mt-1">… +{eodPreview.not_found.length - 50}</div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="text-sm text-rose-200">{eodPreview.error || "Preview failed"}</div>
+              )}
+            </div>
+          </div>
+
+          <ConfirmDialog
+            open={eodConfirmOpen}
+            title="Confirm EOD dispatch"
+            message={`This will remove ${eodImeis.length} IMEI(s) from stock.`}
+            confirmText={loadingConfirm ? "Working…" : "Confirm"}
+            cancelText="Cancel"
+            onCancel={() => setEodConfirmOpen(false)}
+            onConfirm={async () => {
+              setEodConfirmOpen(false);
+              await doConfirmEod();
+            }}
+          />
         </div>
       )}
 
+      {/* HISTORY */}
       {tab === "history" && (
         <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-semibold">Outbound history</div>
-              <div className="text-xs text-slate-500">Last 100 events</div>
+              <div className="text-xs text-slate-500">Includes user + device + box + etage (if available)</div>
             </div>
             <button
               onClick={refreshHistory}
@@ -564,13 +653,17 @@ export default function OutboundPage() {
                   <th className="p-2 text-left">Date</th>
                   <th className="p-2 text-left">Device</th>
                   <th className="p-2 text-left">Box</th>
+                  <th className="p-2 text-left">Etage</th>
                   <th className="p-2 text-right">Qty</th>
                   <th className="p-2 text-left">By</th>
                 </tr>
               </thead>
               <tbody>
-                {events.map((e, idx) => {
+                {events.map((e: any, idx: number) => {
                   const p = e.payload || {};
+                  const boxId = (e.entity === "box" ? e.entity_id : p.box_id) as string | undefined;
+                  const loc = boxId ? boxLocationMap[boxId] : null;
+
                   return (
                     <tr key={idx} className="hover:bg-slate-950/50">
                       <td className="p-2 border-b border-slate-800 text-slate-300">
@@ -578,14 +671,17 @@ export default function OutboundPage() {
                       </td>
                       <td className="p-2 border-b border-slate-800">{p.device ?? "-"}</td>
                       <td className="p-2 border-b border-slate-800">{p.box_no ?? "-"}</td>
-                      <td className="p-2 border-b border-slate-800 text-right">{p.qty ?? p.total_out ?? "-"}</td>
-                      <td className="p-2 border-b border-slate-800 text-slate-400">{e.created_by_name ?? "-"}</td>
+                      <td className="p-2 border-b border-slate-800">{loc ?? "-"}</td>
+                      <td className="p-2 border-b border-slate-800 text-right">{p.qty ?? p.items_out ?? "-"}</td>
+                      <td className="p-2 border-b border-slate-800 text-slate-400">
+                        {e.created_by_email ?? e.created_by_name ?? "-"}
+                      </td>
                     </tr>
                   );
                 })}
                 {events.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-3 text-sm text-slate-400">
+                    <td colSpan={6} className="p-3 text-sm text-slate-400">
                       No events found.
                     </td>
                   </tr>
@@ -593,19 +689,33 @@ export default function OutboundPage() {
               </tbody>
             </table>
           </div>
+
+          <div className="text-xs text-slate-500 mt-2">
+            Note: “Etage” is the current box location (fetched from boxes.location).
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
     <button
       onClick={onClick}
       className={[
         "rounded-xl px-4 py-2 text-sm font-semibold border",
-        active ? "bg-slate-900 border-slate-700 text-white" : "bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-900",
+        active
+          ? "bg-slate-900 border-slate-700 text-white"
+          : "bg-slate-950 border-slate-800 text-slate-300 hover:bg-slate-900",
       ].join(" ")}
     >
       {children}
@@ -613,6 +723,7 @@ function TabButton({ active, onClick, children }: { active: boolean; onClick: ()
   );
 }
 
+/** Camera QR modal */
 function QrCameraModal({
   onClose,
   onResult,

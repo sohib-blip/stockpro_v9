@@ -9,9 +9,21 @@ type NavItem = { href: string; label: string; icon: string };
 
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: "📊" },
+
+  // inbound
   { href: "/inbound", label: "Inbound Import", icon: "📦" },
+  { href: "/inbound/scan", label: "Scan QR", icon: "📷" },
+
+  // labels
   { href: "/labels", label: "Labels", icon: "🏷️" },
+
+  // outbound
   { href: "/outbound", label: "Outbound", icon: "📤" },
+
+  // stock monitoring
+  { href: "/alerts", label: "Stock Alerts", icon: "🚨" },
+
+  // admin
   { href: "/admin", label: "Admin", icon: "🛡️" },
 ];
 

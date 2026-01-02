@@ -17,6 +17,8 @@ type SummaryResp = {
   per_device?: Array<{ device: string; in_stock: number; out_stock: number; total: number }>;
 };
 
+type ThresholdRow = { device: string; min_stock: number };
+
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
@@ -32,6 +34,9 @@ export default function DashboardPage() {
 
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<SummaryResp | null>(null);
+
+  // ✅ thresholds global min stock (device_thresholds)
+  const [thresholds, setThresholds] = useState<Record<string, number>>({});
 
   const [deviceQuery, setDeviceQuery] = useState<string>("");
   const [sort, setSort] = useState<{ key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" }>({
@@ -57,11 +62,33 @@ export default function DashboardPage() {
     }
 
     try {
+      // 1) dashboard summary
       const res = await fetch("/api/dashboard/summary", {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = (await res.json()) as SummaryResp;
       setSummary(json);
+
+      // 2) thresholds (global)
+      const { data: tData, error: tErr } = await supabase
+        .from("device_thresholds")
+        .select("device, min_stock");
+
+      if (tErr) {
+        // non-blocking (still show dashboard)
+        toast({
+          kind: "error",
+          title: "Thresholds not loaded",
+          message: tErr.message,
+        });
+        setThresholds({});
+      } else {
+        const map: Record<string, number> = {};
+        (tData || []).forEach((r: ThresholdRow) => {
+          map[r.device] = Number(r.min_stock ?? 0);
+        });
+        setThresholds(map);
+      }
 
       // permissions (optional)
       const { data: u } = await supabase.auth.getUser();
@@ -114,6 +141,20 @@ export default function DashboardPage() {
   const outStock = useFilteredStats ? filteredTotals.items_out : (counts.items_out ?? 0);
   const totalItems = useFilteredStats ? filteredTotals.total : ((counts.items_in ?? 0) + (counts.items_out ?? 0));
 
+  // ✅ compute LOW STOCK list (based on thresholds)
+  const lowStockDevices = useMemo(() => {
+    const rows = useFilteredStats ? filtered : perDeviceAll; // show alert based on what you're looking at
+    return rows
+      .filter((r) => {
+        const dev = String(r.device ?? "");
+        const min = thresholds[dev] ?? 0;
+        return Number(r.in_stock ?? 0) <= Number(min);
+      })
+      .map((r) => r.device);
+  }, [filtered, perDeviceAll, thresholds, useFilteredStats]);
+
+  const lowCount = lowStockDevices.length;
+
   const sorted = useMemo(() => {
     const rows = [...filtered];
     const dir = sort.dir === "asc" ? 1 : -1;
@@ -145,6 +186,11 @@ export default function DashboardPage() {
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const perDevice = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
+
+  function isLow(device: string, in_stock: number) {
+    const min = thresholds[device] ?? 0;
+    return Number(in_stock ?? 0) <= Number(min);
+  }
 
   return (
     <div className="space-y-6">
@@ -197,6 +243,20 @@ export default function DashboardPage() {
 
       {!summary ? null : summary.ok ? (
         <>
+          {/* 🔴 RED ALERT BANNER */}
+          {lowCount > 0 ? (
+            <div className="rounded-2xl border border-rose-900/60 bg-rose-950/40 p-4 text-sm text-rose-100">
+              <div className="font-semibold">⚠️ LOW STOCK</div>
+              <div className="text-rose-200/90 mt-1">
+                {lowCount} device{lowCount > 1 ? "s" : ""} {useFilteredStats ? "in this filter" : "in stock"} at or
+                below min stock.
+              </div>
+              <div className="text-xs text-rose-200/80 mt-2">
+                Tip: set min stock in <b>Alerts</b>.
+              </div>
+            </div>
+          ) : null}
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             <Stat label="Devices" value={devicesCount} />
             <Stat label="In stock" value={inStock} />
@@ -225,25 +285,64 @@ export default function DashboardPage() {
               <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
                 <thead className="bg-slate-950/50">
                   <tr>
-                    <Th label="Device" active={sort.key === "device"} dir={sort.dir} onClick={() => toggleSort(setSort, "device")} align="left" />
-                    <Th label="IN" active={sort.key === "in"} dir={sort.dir} onClick={() => toggleSort(setSort, "in")} align="right" />
-                    <Th label="OUT" active={sort.key === "out"} dir={sort.dir} onClick={() => toggleSort(setSort, "out")} align="right" />
-                    <Th label="Total" active={sort.key === "total"} dir={sort.dir} onClick={() => toggleSort(setSort, "total")} align="right" />
+                    <Th
+                      label="Device"
+                      active={sort.key === "device"}
+                      dir={sort.dir}
+                      onClick={() => toggleSort(setSort, "device")}
+                      align="left"
+                    />
+                    <Th
+                      label="IN"
+                      active={sort.key === "in"}
+                      dir={sort.dir}
+                      onClick={() => toggleSort(setSort, "in")}
+                      align="right"
+                    />
+                    <Th
+                      label="OUT"
+                      active={sort.key === "out"}
+                      dir={sort.dir}
+                      onClick={() => toggleSort(setSort, "out")}
+                      align="right"
+                    />
+                    <Th
+                      label="Total"
+                      active={sort.key === "total"}
+                      dir={sort.dir}
+                      onClick={() => toggleSort(setSort, "total")}
+                      align="right"
+                    />
                   </tr>
                 </thead>
                 <tbody>
-                  {perDevice.map((r) => (
-                    <tr key={r.device} className="hover:bg-slate-950/50">
-                      <td className="p-2 border-b border-slate-800">{r.device || "UNKNOWN"}</td>
-                      <td className="p-2 border-b border-slate-800 text-right">
-                        <Badge kind="in">{r.in_stock ?? 0}</Badge>
-                      </td>
-                      <td className="p-2 border-b border-slate-800 text-right">
-                        <Badge kind="out">{r.out_stock ?? 0}</Badge>
-                      </td>
-                      <td className="p-2 border-b border-slate-800 text-right text-slate-200">{r.total ?? 0}</td>
-                    </tr>
-                  ))}
+                  {perDevice.map((r) => {
+                    const dev = r.device || "UNKNOWN";
+                    const low = dev !== "UNKNOWN" ? isLow(dev, Number(r.in_stock ?? 0)) : false;
+
+                    return (
+                      <tr key={dev} className={low ? "bg-rose-950/20 hover:bg-rose-950/30" : "hover:bg-slate-950/50"}>
+                        <td className="p-2 border-b border-slate-800">
+                          <div className="flex items-center gap-2">
+                            <span className="text-slate-100">{dev}</span>
+                            {low ? <LowBadge /> : null}
+                          </div>
+                          {dev !== "UNKNOWN" ? (
+                            <div className="text-xs text-slate-500 mt-0.5">
+                              Min stock: <span className="text-slate-300 font-semibold">{thresholds[dev] ?? 0}</span>
+                            </div>
+                          ) : null}
+                        </td>
+                        <td className="p-2 border-b border-slate-800 text-right">
+                          <Badge kind="in">{r.in_stock ?? 0}</Badge>
+                        </td>
+                        <td className="p-2 border-b border-slate-800 text-right">
+                          <Badge kind="out">{r.out_stock ?? 0}</Badge>
+                        </td>
+                        <td className="p-2 border-b border-slate-800 text-right text-slate-200">{r.total ?? 0}</td>
+                      </tr>
+                    );
+                  })}
                   {perDevice.length === 0 && (
                     <tr>
                       <td className="p-3 text-sm text-slate-400" colSpan={4}>
@@ -330,6 +429,14 @@ function Badge({ kind, children }: { kind: "in" | "out"; children: React.ReactNo
       ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-200"
       : "border-rose-900/60 bg-rose-950/40 text-rose-200";
   return <span className={`inline-flex min-w-[44px] justify-end rounded-lg border px-2 py-1 font-semibold ${cls}`}>{children}</span>;
+}
+
+function LowBadge() {
+  return (
+    <span className="inline-flex items-center rounded-full border border-rose-900/60 bg-rose-950/40 px-2 py-0.5 text-[11px] font-bold text-rose-200">
+      LOW STOCK
+    </span>
+  );
 }
 
 function exportDevicesCSV(rows: NonNullable<SummaryResp["per_device"]>, toast: (t: any) => void) {

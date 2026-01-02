@@ -438,17 +438,18 @@ export default function OutboundPage() {
           </div>
 
           <ConfirmDialog
-            open={confirmOpen}
-            title="Confirm outbound"
-            description="This will remove the scanned box/items from stock."
-            confirmText={loadingConfirm ? "Working…" : "Confirm"}
-            cancelText="Cancel"
-            onCancel={() => setConfirmOpen(false)}
-            onConfirm={async () => {
-              setConfirmOpen(false);
-              await doConfirmNow();
-            }}
-          />
+  open={confirmOpen}
+  title="Confirm outbound"
+  message="This will remove the scanned box/items from stock."
+  confirmText={loadingConfirm ? "Working…" : "Confirm"}
+  cancelText="Cancel"
+  onCancel={() => setConfirmOpen(false)}
+  onConfirm={async () => {
+    setConfirmOpen(false);
+    await doConfirmNow();
+  }}
+/>
+
 
           {camOpen ? (
             <QrCameraModal
@@ -524,18 +525,19 @@ export default function OutboundPage() {
             )}
           </div>
 
-          <ConfirmDialog
-            open={bulkConfirmOpen}
-            title="Confirm bulk outbound"
-            description={`This will remove ${bulkImeis.length} IMEI(s) from stock.`}
-            confirmText={loadingConfirm ? "Working…" : "Confirm"}
-            cancelText="Cancel"
-            onCancel={() => setBulkConfirmOpen(false)}
-            onConfirm={async () => {
-              setBulkConfirmOpen(false);
-              await doConfirmBulkNow();
-            }}
-          />
+<ConfirmDialog
+  open={bulkConfirmOpen}
+  title="Confirm bulk outbound"
+  message={`This will remove ${bulkImeis.length} IMEI(s) from stock.`}
+  confirmText={loadingConfirm ? "Working…" : "Confirm"}
+  cancelText="Cancel"
+  onCancel={() => setBulkConfirmOpen(false)}
+  onConfirm={async () => {
+    setBulkConfirmOpen(false);
+    await doConfirmBulkNow();
+  }}
+/>
+
         </div>
       )}
 

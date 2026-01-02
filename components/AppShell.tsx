@@ -12,7 +12,6 @@ const NAV: NavItem[] = [
 
   // inbound
   { href: "/inbound", label: "Inbound Import", icon: "📦" },
-  { href: "/inbound/scan", label: "Scan QR", icon: "📷" },
 
   // labels
   { href: "/labels", label: "Labels", icon: "🏷️" },

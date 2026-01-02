@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import { exportInStockByDevice } from "@/lib/exports";
@@ -29,14 +29,18 @@ function Stat({ label, value }: { label: string; value: number }) {
 export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
+
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<SummaryResp | null>(null);
+
   const [deviceQuery, setDeviceQuery] = useState<string>("");
-  const [sort, setSort] = useState<{ key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" }>(
-    { key: "device", dir: "asc" }
-  );
+  const [sort, setSort] = useState<{ key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" }>({
+    key: "device",
+    dir: "asc",
+  });
   const [page, setPage] = useState(1);
   const pageSize = 25;
+
   const [canExport, setCanExport] = useState(false);
 
   async function load() {
@@ -45,6 +49,7 @@ export default function DashboardPage() {
 
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
+
     if (!token) {
       setSummary({ ok: false, error: "Please sign in first." });
       setLoading(false);
@@ -57,6 +62,7 @@ export default function DashboardPage() {
       });
       const json = (await res.json()) as SummaryResp;
       setSummary(json);
+
       // permissions (optional)
       const { data: u } = await supabase.auth.getUser();
       if (u.user?.id) {
@@ -79,40 +85,66 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reset pagination when filters/sort change
+  useEffect(() => {
+    setPage(1);
+  }, [deviceQuery, sort.key, sort.dir]);
+
   const counts = summary?.counts || {};
   const perDeviceAll = Array.isArray(summary?.per_device) ? summary!.per_device! : [];
+
   const q = deviceQuery.trim().toLowerCase();
-  const filtered = perDeviceAll.filter((r) => (!q ? true : String(r.device ?? "").toLowerCase().includes(q)));
-  const sorted = [...filtered].sort((a, b) => {
+  const filtered = useMemo(() => {
+    return perDeviceAll.filter((r) => (!q ? true : String(r.device ?? "").toLowerCase().includes(q)));
+  }, [perDeviceAll, q]);
+
+  // ✅ Stats that FOLLOW the filter
+  const filteredTotals = useMemo(() => {
+    const devices = filtered.length;
+    const items_in = filtered.reduce((acc, r) => acc + Number(r.in_stock ?? 0), 0);
+    const items_out = filtered.reduce((acc, r) => acc + Number(r.out_stock ?? 0), 0);
+    const total = filtered.reduce((acc, r) => acc + Number(r.total ?? 0), 0);
+    return { devices, items_in, items_out, total };
+  }, [filtered]);
+
+  const useFilteredStats = q.length > 0;
+
+  const devicesCount = useFilteredStats ? filteredTotals.devices : (counts.devices ?? 0);
+  const inStock = useFilteredStats ? filteredTotals.items_in : (counts.items_in ?? 0);
+  const outStock = useFilteredStats ? filteredTotals.items_out : (counts.items_out ?? 0);
+  const totalItems = useFilteredStats ? filteredTotals.total : ((counts.items_in ?? 0) + (counts.items_out ?? 0));
+
+  const sorted = useMemo(() => {
+    const rows = [...filtered];
     const dir = sort.dir === "asc" ? 1 : -1;
-    const va =
-      sort.key === "device"
-        ? String(a.device ?? "")
-        : sort.key === "in"
+    rows.sort((a, b) => {
+      const va =
+        sort.key === "device"
+          ? String(a.device ?? "")
+          : sort.key === "in"
           ? a.in_stock ?? 0
           : sort.key === "out"
-            ? a.out_stock ?? 0
-            : a.total ?? 0;
-    const vb =
-      sort.key === "device"
-        ? String(b.device ?? "")
-        : sort.key === "in"
+          ? a.out_stock ?? 0
+          : a.total ?? 0;
+
+      const vb =
+        sort.key === "device"
+          ? String(b.device ?? "")
+          : sort.key === "in"
           ? b.in_stock ?? 0
           : sort.key === "out"
-            ? b.out_stock ?? 0
-            : b.total ?? 0;
-    if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
-    return String(va).localeCompare(String(vb)) * dir;
-  });
+          ? b.out_stock ?? 0
+          : b.total ?? 0;
+
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb)) * dir;
+    });
+    return rows;
+  }, [filtered, sort.key, sort.dir]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const safePage = Math.min(Math.max(1, page), totalPages);
   const perDevice = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
-
-  const devicesCount = counts.devices ?? 0;
-  const inStock = counts.items_in ?? 0;
-  const outStock = counts.items_out ?? 0;
-  const boxesTotal = counts.boxes ?? 0;
 
   return (
     <div className="space-y-6">
@@ -120,13 +152,12 @@ export default function DashboardPage() {
         <div>
           <div className="text-xs text-slate-500">Overview</div>
           <h2 className="text-xl font-semibold">Dashboard</h2>
-          <p className="text-sm text-slate-400 mt-1">Devices + stock in / out + total boxes.</p>
+          <p className="text-sm text-slate-400 mt-1">Devices + stock in / out + totals.</p>
         </div>
 
         <div className="flex items-center gap-2">
           {canExport ? (
             <>
-              
               <button
                 onClick={() => exportFullInventory(supabase, toast)}
                 className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
@@ -153,6 +184,7 @@ export default function DashboardPage() {
               </button>
             </>
           ) : null}
+
           <button
             onClick={load}
             disabled={loading}
@@ -169,14 +201,16 @@ export default function DashboardPage() {
             <Stat label="Devices" value={devicesCount} />
             <Stat label="In stock" value={inStock} />
             <Stat label="Out stock" value={outStock} />
-            <Stat label="Total boxes" value={boxesTotal} />
+            <Stat label="Total items" value={totalItems} />
           </div>
 
           <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
               <div>
                 <div className="text-sm font-semibold">Devices</div>
-                <div className="text-xs text-slate-500">IN / OUT / total per device.</div>
+                <div className="text-xs text-slate-500">
+                  IN / OUT / total per device. {useFilteredStats ? " (filtered)" : ""}
+                </div>
               </div>
 
               <input
@@ -191,10 +225,10 @@ export default function DashboardPage() {
               <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
                 <thead className="bg-slate-950/50">
                   <tr>
-                    <Th label="Device" active={sort.key === "device"} dir={sort.dir} onClick={() => toggleSort(sort, setSort, "device")} align="left" />
-                    <Th label="IN" active={sort.key === "in"} dir={sort.dir} onClick={() => toggleSort(sort, setSort, "in")} align="right" />
-                    <Th label="OUT" active={sort.key === "out"} dir={sort.dir} onClick={() => toggleSort(sort, setSort, "out")} align="right" />
-                    <Th label="Total" active={sort.key === "total"} dir={sort.dir} onClick={() => toggleSort(sort, setSort, "total")} align="right" />
+                    <Th label="Device" active={sort.key === "device"} dir={sort.dir} onClick={() => toggleSort(setSort, "device")} align="left" />
+                    <Th label="IN" active={sort.key === "in"} dir={sort.dir} onClick={() => toggleSort(setSort, "in")} align="right" />
+                    <Th label="OUT" active={sort.key === "out"} dir={sort.dir} onClick={() => toggleSort(setSort, "out")} align="right" />
+                    <Th label="Total" active={sort.key === "total"} dir={sort.dir} onClick={() => toggleSort(setSort, "total")} align="right" />
                   </tr>
                 </thead>
                 <tbody>
@@ -257,7 +291,6 @@ export default function DashboardPage() {
 }
 
 function toggleSort(
-  sort: { key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" },
   setSort: React.Dispatch<React.SetStateAction<{ key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" }>>,
   key: "device" | "in" | "out" | "total"
 ) {
@@ -312,11 +345,7 @@ function exportDevicesCSV(rows: NonNullable<SummaryResp["per_device"]>, toast: (
   }
 }
 
-async function exportDevicesPDF(
-  rows: NonNullable<SummaryResp["per_device"]>,
-  counts: any,
-  toast: (t: any) => void
-) {
+async function exportDevicesPDF(rows: NonNullable<SummaryResp["per_device"]>, counts: any, toast: (t: any) => void) {
   try {
     const { jsPDF } = await import("jspdf");
     const doc = new jsPDF({ unit: "pt", format: "a4" });
@@ -333,9 +362,7 @@ async function exportDevicesPDF(
 
     const startY = 95;
     let y = startY;
-    const line = (t: string, x: number, w?: number) => {
-      doc.text(t, x, y, w ? { maxWidth: w } : undefined);
-    };
+    const line = (t: string, x: number, w?: number) => doc.text(t, x, y, w ? { maxWidth: w } : undefined);
 
     doc.setFont("helvetica", "bold");
     line("Device", 40);
@@ -403,15 +430,15 @@ async function exportFullInventory(supabase: any, toast: (t: any) => void) {
       try {
         const j = await res.json();
         msg = j?.error || msg;
-      } catch {
-        // ignore
-      }
+      } catch {}
       toast({ kind: "error", title: "Export failed", message: msg });
       return;
     }
 
     const blob = await res.blob();
-    const filename = getFilenameFromDisposition(res.headers.get("content-disposition")) || `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename =
+      getFilenameFromDisposition(res.headers.get("content-disposition")) ||
+      `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
     downloadBlob(filename, blob);
     toast({ kind: "success", title: "Inventory exported" });
   } catch (e: any) {
@@ -434,5 +461,5 @@ function getFilenameFromDisposition(disposition: string | null) {
   if (!disposition) return null;
   const m = disposition.match(/filename\*?=(?:UTF-8''|\")?([^;\"\n]+)/i);
   if (!m) return null;
-  return decodeURIComponent(m[1].replaceAll('"', '').trim());
+  return decodeURIComponent(m[1].replaceAll('"', "").trim());
 }

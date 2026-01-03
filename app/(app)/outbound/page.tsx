@@ -7,13 +7,14 @@ import { useToast } from "@/components/ToastProvider";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
 function parseImeis(text: string) {
-  const digits = (text || "").match(/\d{14,17}/g) ?? [];
+  // ✅ IMEI standard = 15 chiffres
+  const matches = (text || "").match(/\d{15}/g) ?? [];
   const seen = new Set<string>();
   const out: string[] = [];
-  for (const d of digits) {
-    if (!seen.has(d)) {
-      seen.add(d);
-      out.push(d);
+  for (const m of matches) {
+    if (!seen.has(m)) {
+      seen.add(m);
+      out.push(m);
     }
   }
   return out;
@@ -40,7 +41,7 @@ async function extractImeisFromExcel(file: File): Promise<string[]> {
       for (const cell of row) {
         if (cell === null || cell === undefined) continue;
         const s = String(cell);
-        const matches = s.match(/\d{14,17}/g);
+        const matches = s.match(/\d{15}/g);
         if (matches?.length) found.push(...matches);
       }
     }

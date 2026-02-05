@@ -29,7 +29,6 @@ const NAV: NavItem[] = [
   { href: "/movements", label: "Mouvements", icon: ArrowLeftRight },
   { href: "/labels", label: "Labels", icon: Tag },
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
-  { href: "/alerts", label: "Stock Alerts", icon: Bell },
   { href: "/admin", label: "Admin", icon: Shield },
   { href: "/admin/devices", label: "Devices", icon: Shield },
 ];

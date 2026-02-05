@@ -2,14 +2,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 
-function authedClient(token: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { global: { headers: { Authorization: `Bearer ${token}` } } }
-  );
-}
-
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key =
@@ -18,46 +10,33 @@ function adminClient() {
     process.env.SUPABASE_SERVICE_ROLE ||
     "";
   if (!key) return null;
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
 }
 
-function isUuid(v: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+function authedClient(token: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { Authorization: `Bearer ${token}` } } }
+  );
 }
 
-function parseBoxFromQr(raw: string) {
-  const cleaned = (raw || "").trim();
+function extractImeis(raw: string) {
+  const lines = String(raw ?? "")
+    .split(/\r?\n/)
+    .map((x) => x.trim())
+    .filter(Boolean);
 
-  // 1) BOXID: uuid
-  const m1 = cleaned.match(/BOXID\s*:\s*([0-9a-f-]{36})/i);
-  if (m1 && isUuid(m1[1])) {
-    return { box_id: m1[1], box_code: "", master: "" };
-  }
-
-  // 2) key/value style: BOX:xxx|DEV:yyy|MASTER:zzz
-  const parts = cleaned.split("|");
-  const map: Record<string, string> = {};
-  for (const p of parts) {
-    const idx = p.indexOf(":");
-    if (idx > -1) {
-      const k = p.slice(0, idx).trim().toUpperCase();
-      const v = p.slice(idx + 1).trim();
-      map[k] = v;
+  const imeis: string[] = [];
+  const seen = new Set<string>();
+  for (const l of lines) {
+    const digits = l.replace(/\D/g, "");
+    if (/^\d{14,17}$/.test(digits) && !seen.has(digits)) {
+      seen.add(digits);
+      imeis.push(digits);
     }
   }
-
-  const box_code = map["BOX"] || "";
-  const master = map["MASTER"] || "";
-
-  // 3) fallback: if there is any uuid in the string
-  const m2 = cleaned.match(/[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i);
-  if (m2 && isUuid(m2[0])) {
-    return { box_id: m2[0], box_code: "", master: "" };
-  }
-
-  return { box_id: "", box_code, master };
+  return imeis;
 }
 
 const BodySchema = z.object({
@@ -81,75 +60,72 @@ export async function POST(req: Request) {
     const admin = adminClient();
     if (!admin) return NextResponse.json({ ok: false, error: "Missing service role key" }, { status: 500 });
 
-    const parsed = parseBoxFromQr(body.qr);
-
-    // Find box
-    let boxRow: any = null;
-
-    if (parsed.box_id) {
-      const r = await admin
-        .from("boxes")
-        .select("box_id, box_no, master_box_no, device, location, status")
-        .eq("box_id", parsed.box_id)
-        .maybeSingle();
-      if (r.error) return NextResponse.json({ ok: false, error: r.error.message }, { status: 400 });
-      boxRow = r.data;
-    } else {
-      const candidates = [parsed.master, parsed.box_code].filter(Boolean);
-      if (candidates.length === 0) {
-        return NextResponse.json({ ok: false, error: "Could not parse box from QR" }, { status: 400 });
-      }
-
-      // Try match on master_box_no or box_no
-      const r = await admin
-        .from("boxes")
-        .select("box_id, box_no, master_box_no, device, location, status")
-        .or(candidates.map((c) => `master_box_no.eq.${c},box_no.eq.${c}`).join(","))
-        .limit(1)
-        .maybeSingle();
-
-      if (r.error) return NextResponse.json({ ok: false, error: r.error.message }, { status: 400 });
-      boxRow = r.data;
+    const imeis = extractImeis(body.qr);
+    if (imeis.length === 0) {
+      return NextResponse.json({ ok: false, error: "Invalid scan. Expected IMEI list (one per line)." }, { status: 400 });
     }
 
-    if (!boxRow) return NextResponse.json({ ok: false, error: "Box not found" }, { status: 404 });
+    // find items -> box_ids
+    const { data: items, error: itErr } = await admin
+      .from("items")
+      .select("imei, box_id")
+      .in("imei", imeis);
 
-    const fromLoc = boxRow.location || null;
+    if (itErr) return NextResponse.json({ ok: false, error: itErr.message }, { status: 500 });
+
+    const boxIds = Array.from(new Set((items || []).map((x: any) => String(x.box_id)).filter(Boolean)));
+    if (boxIds.length === 0) {
+      return NextResponse.json({ ok: false, error: "No boxes found for these IMEIs" }, { status: 404 });
+    }
+
+    // fetch boxes meta
+    const { data: boxes, error: bxErr } = await admin
+      .from("boxes")
+      .select("box_id, box_no, master_box_no, device, location, status")
+      .in("box_id", boxIds);
+
+    if (bxErr) return NextResponse.json({ ok: false, error: bxErr.message }, { status: 500 });
+
     const toLoc = body.to_location;
 
-    // Update box location
-    const up = await admin
-      .from("boxes")
-      .update({ location: toLoc, updated_at: new Date().toISOString() })
-      .eq("box_id", boxRow.box_id);
-    if (up.error) return NextResponse.json({ ok: false, error: up.error.message }, { status: 400 });
+    // update + log
+    const moved: any[] = [];
+    for (const b of boxes || []) {
+      const fromLoc = (b as any).location ?? null;
 
-    // Insert movement log (minimal columns to avoid schema mismatch)
-    const ins = await admin.from("box_movements").insert({
-      box_id: boxRow.box_id,
-      from_location: fromLoc,
-      to_location: toLoc,
-      note: body.note || null,
-      created_by: userId,
-      created_by_email: userEmail,
-    });
+      const up = await admin
+        .from("boxes")
+        .update({ location: toLoc, updated_at: new Date().toISOString() })
+        .eq("box_id", (b as any).box_id);
 
-    if (ins.error) {
-      // if your table uses different column names, tell me and I’ll adapt.
-      return NextResponse.json({ ok: false, error: ins.error.message }, { status: 400 });
+      if (up.error) return NextResponse.json({ ok: false, error: up.error.message }, { status: 400 });
+
+      const ins = await admin.from("box_movements").insert({
+        box_id: (b as any).box_id,
+        from_location: fromLoc,
+        to_location: toLoc,
+        note: body.note || null,
+        created_by: userId,
+        created_by_email: userEmail,
+      });
+
+      if (ins.error) return NextResponse.json({ ok: false, error: ins.error.message }, { status: 400 });
+
+      moved.push({
+        box_id: (b as any).box_id,
+        device: (b as any).device,
+        box_no: (b as any).box_no,
+        master_box_no: (b as any).master_box_no,
+        from_location: fromLoc,
+        to_location: toLoc,
+      });
     }
 
     return NextResponse.json({
       ok: true,
-      box: {
-        box_id: boxRow.box_id,
-        box_no: boxRow.box_no,
-        master_box_no: boxRow.master_box_no,
-        device: boxRow.device,
-        status: boxRow.status,
-        from_location: fromLoc,
-        to_location: toLoc,
-      },
+      imeis_scanned: imeis.length,
+      boxes_moved: moved.length,
+      moved,
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });

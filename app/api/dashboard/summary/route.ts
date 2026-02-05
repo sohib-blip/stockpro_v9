@@ -1,113 +1,116 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-function supabaseAuthed(token: string) {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-  return createClient(url, anon, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-  });
+function authedClient(token: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { Authorization: `Bearer ${token}` } } }
+  );
 }
 
-function getBearerToken(req: Request) {
-  const auth = req.headers.get("authorization") || "";
-  if (!auth.toLowerCase().startsWith("bearer ")) return "";
-  return auth.slice(7).trim();
-}
-
-async function buildSummary(token: string) {
-  const supabase = supabaseAuthed(token);
-
-  // counts (best-effort for audit tables)
-  const boxesCount = await supabase.from("boxes").select("*", { count: "exact", head: true });
-  const itemsCount = await supabase.from("items").select("*", { count: "exact", head: true });
-
-  let audits = 0;
-  const auditsCount1 = await supabase.from("audit_log").select("*", { count: "exact", head: true });
-  if (!auditsCount1.error) audits = auditsCount1.count ?? 0;
-  const auditsCount2 = await supabase.from("audit_events").select("*", { count: "exact", head: true });
-  if (!auditsCount2.error) audits = Math.max(audits, auditsCount2.count ?? 0);
-
-  const counts: any = {
-    boxes: boxesCount.count ?? 0,
-    items: itemsCount.count ?? 0,
-    audits,
-  };
-
-  // per device IN/OUT stock using boxes.device via box_id
-  const boxesRes = await supabase.from("boxes").select("box_id, device").limit(50000);
-  if (boxesRes.error) {
-    return { ok: false, error: boxesRes.error.message };
-  }
-
-  const boxIdToDevice = new Map<string, string>();
-  for (const b of boxesRes.data ?? []) {
-    if (b?.box_id) boxIdToDevice.set(String(b.box_id), String((b as any).device ?? ""));
-  }
-
-  const itemsRes = await supabase.from("items").select("box_id, status").limit(50000);
-  if (itemsRes.error) {
-    return { ok: false, error: itemsRes.error.message };
-  }
-
-  let items_in = 0;
-  let items_out = 0;
-  const per = new Map<string, { in_stock: number; out_stock: number }>();
-
-  for (const it of itemsRes.data ?? []) {
-    const status = String((it as any).status ?? "").toUpperCase();
-    const boxId = String((it as any).box_id ?? "");
-    const dev = boxIdToDevice.get(boxId) || "";
-    const key = dev || "UNKNOWN";
-
-    const curr = per.get(key) ?? { in_stock: 0, out_stock: 0 };
-    if (status === "IN") {
-      curr.in_stock++;
-      items_in++;
-    } else if (status === "OUT") {
-      curr.out_stock++;
-      items_out++;
-    }
-    per.set(key, curr);
-  }
-
-  // Boxes IN/OUT (best-effort: only if status column exists)
-  let boxes_in = 0;
-  let boxes_out = 0;
-  const boxesStatus = await supabase.from("boxes").select("status", { count: "exact" }).limit(50000);
-  if (!boxesStatus.error) {
-    for (const b of (boxesStatus.data as any[]) ?? []) {
-      const s = String(b?.status ?? "").toUpperCase();
-      if (s === "IN") boxes_in++;
-      else if (s === "OUT") boxes_out++;
-    }
-  }
-
-  counts.items_in = items_in;
-  counts.items_out = items_out;
-  counts.boxes_in = boxes_in;
-  counts.boxes_out = boxes_out;
-  counts.devices = new Set(Array.from(boxIdToDevice.values()).filter(Boolean)).size;
-
-  const per_device = Array.from(per.entries())
-    .map(([device, v]) => ({ device, in_stock: v.in_stock, out_stock: v.out_stock, total: v.in_stock + v.out_stock }))
-    .sort((a, b) => b.total - a.total);
-
-  return { ok: true, counts, per_device };
-}
+const LOCS = ["00", "1", "6", "Cabinet", "UNKNOWN"] as const;
 
 export async function GET(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return NextResponse.json({ ok: false, error: "Missing bearer token" }, { status: 401 });
+  try {
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!token) return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
 
-  const summary = await buildSummary(token);
-  return NextResponse.json(summary, { status: summary.ok ? 200 : 500 });
-}
+    const supabase = authedClient(token);
 
-export async function POST(req: Request) {
-  const token = getBearerToken(req);
-  if (!token) return NextResponse.json({ ok: false, error: "Missing bearer token" }, { status: 401 });
+    // boxes: need location + device
+    const boxesRes = await supabase.from("boxes").select("box_id, device, location, status");
+    if (boxesRes.error) return NextResponse.json({ ok: false, error: boxesRes.error.message }, { status: 500 });
 
-  const summary = await buildSummary(token);
-  return NextResponse.json(summary, { status: summary.ok ? 200 : 500 });
+    // items: count IN/OUT and per device
+    const itemsRes = await supabase.from("items").select("imei, status, box_id");
+    if (itemsRes.error) return NextResponse.json({ ok: false, error: itemsRes.error.message }, { status: 500 });
+
+    const boxes = boxesRes.data || [];
+    const items = itemsRes.data || [];
+
+    const boxMeta = new Map<string, { device: string; location: string }>();
+    for (const b of boxes as any[]) {
+      const id = String(b.box_id || "");
+      if (!id) continue;
+      boxMeta.set(id, {
+        device: String(b.device ?? "UNKNOWN"),
+        location: String(b.location ?? "UNKNOWN"),
+      });
+    }
+
+    let items_in = 0;
+    let items_out = 0;
+
+    const perDevice = new Map<string, { in_stock: number; out_stock: number }>();
+    const perLocationTotal = new Map<string, number>();
+    const perDeviceLocation = new Map<string, Record<string, number>>();
+
+    for (const it of items as any[]) {
+      const st = String(it.status ?? "").toUpperCase();
+      const boxId = String(it.box_id || "");
+      const meta = boxMeta.get(boxId);
+
+      const dev = meta?.device || "UNKNOWN";
+      const loc = meta?.location || "UNKNOWN";
+
+      const row = perDevice.get(dev) || { in_stock: 0, out_stock: 0 };
+
+      if (st === "IN") {
+        items_in++;
+        row.in_stock++;
+
+        perLocationTotal.set(loc, (perLocationTotal.get(loc) ?? 0) + 1);
+
+        const m = perDeviceLocation.get(dev) || {};
+        m[loc] = (m[loc] ?? 0) + 1;
+        perDeviceLocation.set(dev, m);
+      } else {
+        items_out++;
+        row.out_stock++;
+      }
+
+      perDevice.set(dev, row);
+    }
+
+    const per_device = Array.from(perDevice.entries())
+      .map(([device, v]) => ({
+        device,
+        in_stock: v.in_stock,
+        out_stock: v.out_stock,
+        total: v.in_stock + v.out_stock,
+      }))
+      .sort((a, b) => b.in_stock - a.in_stock);
+
+    const per_location = LOCS.map((l) => ({
+      location: l,
+      in_stock: perLocationTotal.get(l) ?? 0,
+    })).sort((a, b) => b.in_stock - a.in_stock);
+
+    const per_device_location = Array.from(perDeviceLocation.entries())
+      .map(([device, locMap]) => ({
+        device,
+        total_in: Object.values(locMap).reduce((acc, n) => acc + (n ?? 0), 0),
+        locations: LOCS.map((l) => ({ location: l, in_stock: locMap[l] ?? 0 })),
+      }))
+      .sort((a, b) => b.total_in - a.total_in);
+
+    const counts = {
+      devices: per_device.length,
+      items_in,
+      items_out,
+      boxes: boxes.length,
+    };
+
+    return NextResponse.json({
+      ok: true,
+      counts,
+      per_device,
+      per_location,
+      per_device_location,
+    });
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
+  }
 }

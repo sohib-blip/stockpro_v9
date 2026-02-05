@@ -5,16 +5,23 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import { exportInStockByDevice } from "@/lib/exports";
 
+type PerDeviceRow = { device: string; in_stock: number; out_stock: number; total: number };
+type PerLocationRow = { location: "00" | "1" | "6" | "Cabinet" | "UNKNOWN"; in_stock: number };
+type PerDeviceLocationRow = {
+  device: string;
+  total_in: number;
+  locations: Array<{ location: "00" | "1" | "6" | "Cabinet" | "UNKNOWN"; in_stock: number }>;
+};
+
 type SummaryResp = {
   ok: boolean;
   error?: string;
-  counts?: {
-    devices?: number;
-    items_in?: number;
-    items_out?: number;
-    boxes?: number;
-  };
-  per_device?: Array<{ device: string; in_stock: number; out_stock: number; total: number }>;
+  counts?: { devices?: number; items_in?: number; items_out?: number; boxes?: number };
+  per_device?: PerDeviceRow[];
+
+  // ✅ new
+  per_location?: PerLocationRow[];
+  per_device_location?: PerDeviceLocationRow[];
 };
 
 type ThresholdRow = { device: string; min_stock: number };
@@ -35,17 +42,16 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<SummaryResp | null>(null);
 
-  // ✅ thresholds global min stock (device_thresholds)
   const [thresholds, setThresholds] = useState<Record<string, number>>({});
-
   const [deviceQuery, setDeviceQuery] = useState<string>("");
+
   const [sort, setSort] = useState<{ key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" }>({
     key: "device",
     dir: "asc",
   });
+
   const [page, setPage] = useState(1);
   const pageSize = 25;
-
   const [canExport, setCanExport] = useState(false);
 
   async function load() {
@@ -62,35 +68,24 @@ export default function DashboardPage() {
     }
 
     try {
-      // 1) dashboard summary
       const res = await fetch("/api/dashboard/summary", {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = (await res.json()) as SummaryResp;
       setSummary(json);
 
-      // 2) thresholds (global)
-      const { data: tData, error: tErr } = await supabase
-        .from("device_thresholds")
-        .select("device, min_stock");
-
+      const { data: tData, error: tErr } = await supabase.from("device_thresholds").select("device, min_stock");
       if (tErr) {
-        // non-blocking (still show dashboard)
-        toast({
-          kind: "error",
-          title: "Thresholds not loaded",
-          message: tErr.message,
-        });
+        toast({ kind: "error", title: "Thresholds not loaded", message: tErr.message });
         setThresholds({});
       } else {
         const map: Record<string, number> = {};
         (tData || []).forEach((r: ThresholdRow) => {
-          map[r.device] = Number(r.min_stock ?? 0);
+          map[String(r.device)] = Number(r.min_stock ?? 0);
         });
         setThresholds(map);
       }
 
-      // permissions (optional)
       const { data: u } = await supabase.auth.getUser();
       if (u.user?.id) {
         const { data: p } = await supabase
@@ -112,20 +107,19 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reset pagination when filters/sort change
-  useEffect(() => {
-    setPage(1);
-  }, [deviceQuery, sort.key, sort.dir]);
+  useEffect(() => setPage(1), [deviceQuery, sort.key, sort.dir]);
 
   const counts = summary?.counts || {};
   const perDeviceAll = Array.isArray(summary?.per_device) ? summary!.per_device! : [];
+  const perLocation = Array.isArray(summary?.per_location) ? summary!.per_location! : [];
+  const perDeviceLoc = Array.isArray(summary?.per_device_location) ? summary!.per_device_location! : [];
 
   const q = deviceQuery.trim().toLowerCase();
+
   const filtered = useMemo(() => {
     return perDeviceAll.filter((r) => (!q ? true : String(r.device ?? "").toLowerCase().includes(q)));
   }, [perDeviceAll, q]);
 
-  // ✅ Stats that FOLLOW the filter
   const filteredTotals = useMemo(() => {
     const devices = filtered.length;
     const items_in = filtered.reduce((acc, r) => acc + Number(r.in_stock ?? 0), 0);
@@ -141,19 +135,10 @@ export default function DashboardPage() {
   const outStock = useFilteredStats ? filteredTotals.items_out : (counts.items_out ?? 0);
   const totalItems = useFilteredStats ? filteredTotals.total : ((counts.items_in ?? 0) + (counts.items_out ?? 0));
 
-  // ✅ compute LOW STOCK list (based on thresholds)
-  const lowStockDevices = useMemo(() => {
-    const rows = useFilteredStats ? filtered : perDeviceAll; // show alert based on what you're looking at
-    return rows
-      .filter((r) => {
-        const dev = String(r.device ?? "");
-        const min = thresholds[dev] ?? 0;
-        return Number(r.in_stock ?? 0) <= Number(min);
-      })
-      .map((r) => r.device);
-  }, [filtered, perDeviceAll, thresholds, useFilteredStats]);
-
-  const lowCount = lowStockDevices.length;
+  function isLow(device: string, in_stock: number) {
+    const min = thresholds[device] ?? 0;
+    return Number(in_stock ?? 0) <= Number(min);
+  }
 
   const sorted = useMemo(() => {
     const rows = [...filtered];
@@ -187,10 +172,11 @@ export default function DashboardPage() {
   const safePage = Math.min(Math.max(1, page), totalPages);
   const perDevice = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  function isLow(device: string, in_stock: number) {
-    const min = thresholds[device] ?? 0;
-    return Number(in_stock ?? 0) <= Number(min);
-  }
+  // ✅ Devices x locations table (filter too)
+  const perDeviceLocFiltered = useMemo(() => {
+    if (!q) return perDeviceLoc;
+    return perDeviceLoc.filter((r) => String(r.device ?? "").toLowerCase().includes(q));
+  }, [perDeviceLoc, q]);
 
   return (
     <div className="space-y-6">
@@ -198,7 +184,7 @@ export default function DashboardPage() {
         <div>
           <div className="text-xs text-slate-500">Overview</div>
           <h2 className="text-xl font-semibold">Dashboard</h2>
-          <p className="text-sm text-slate-400 mt-1">Devices + stock in / out + totals.</p>
+          <p className="text-sm text-slate-400 mt-1">Devices + stock in / out + totals + locations.</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -215,18 +201,6 @@ export default function DashboardPage() {
                 className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
               >
                 Export IN stock (device/box/IMEI)
-              </button>
-              <button
-                onClick={() => exportDevicesCSV(perDeviceAll, toast)}
-                className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-              >
-                Export CSV
-              </button>
-              <button
-                onClick={() => exportDevicesPDF(perDeviceAll, counts, toast)}
-                className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-              >
-                Export PDF
               </button>
             </>
           ) : null}
@@ -250,13 +224,44 @@ export default function DashboardPage() {
             <Stat label="Total items" value={totalItems} />
           </div>
 
+          {/* ✅ Stock par étage */}
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
+            <div className="text-sm font-semibold">In stock par étage</div>
+            <div className="text-xs text-slate-500 mt-1">00 / 1 / 6 / Cabinet.</div>
+
+            <div className="overflow-auto mt-3">
+              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+                <thead className="bg-slate-950/50">
+                  <tr>
+                    <th className="p-2 text-left border-b border-slate-800">Étage</th>
+                    <th className="p-2 text-right border-b border-slate-800">IN</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {perLocation.map((r) => (
+                    <tr key={r.location} className="hover:bg-slate-950/50">
+                      <td className="p-2 border-b border-slate-800">{r.location}</td>
+                      <td className="p-2 border-b border-slate-800 text-right font-semibold">{r.in_stock}</td>
+                    </tr>
+                  ))}
+                  {perLocation.length === 0 && (
+                    <tr>
+                      <td className="p-3 text-slate-400" colSpan={2}>
+                        No location data yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Devices list */}
           <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
               <div>
                 <div className="text-sm font-semibold">Devices</div>
-                <div className="text-xs text-slate-500">
-                  IN / OUT / total per device. {useFilteredStats ? " (filtered)" : ""}
-                </div>
+                <div className="text-xs text-slate-500">IN / OUT / total per device.</div>
               </div>
 
               <input
@@ -271,34 +276,10 @@ export default function DashboardPage() {
               <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
                 <thead className="bg-slate-950/50">
                   <tr>
-                    <Th
-                      label="Device"
-                      active={sort.key === "device"}
-                      dir={sort.dir}
-                      onClick={() => toggleSort(setSort, "device")}
-                      align="left"
-                    />
-                    <Th
-                      label="IN"
-                      active={sort.key === "in"}
-                      dir={sort.dir}
-                      onClick={() => toggleSort(setSort, "in")}
-                      align="right"
-                    />
-                    <Th
-                      label="OUT"
-                      active={sort.key === "out"}
-                      dir={sort.dir}
-                      onClick={() => toggleSort(setSort, "out")}
-                      align="right"
-                    />
-                    <Th
-                      label="Total"
-                      active={sort.key === "total"}
-                      dir={sort.dir}
-                      onClick={() => toggleSort(setSort, "total")}
-                      align="right"
-                    />
+                    <Th label="Device" active={sort.key === "device"} dir={sort.dir} onClick={() => toggleSort(setSort, "device")} align="left" />
+                    <Th label="IN" active={sort.key === "in"} dir={sort.dir} onClick={() => toggleSort(setSort, "in")} align="right" />
+                    <Th label="OUT" active={sort.key === "out"} dir={sort.dir} onClick={() => toggleSort(setSort, "out")} align="right" />
+                    <Th label="Total" active={sort.key === "total"} dir={sort.dir} onClick={() => toggleSort(setSort, "total")} align="right" />
                   </tr>
                 </thead>
                 <tbody>
@@ -365,10 +346,57 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
+
+          {/* ✅ Device x étage */}
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
+            <div className="text-sm font-semibold">Devices par étage</div>
+            <div className="text-xs text-slate-500 mt-1">IN stock (00 / 1 / 6 / Cabinet).</div>
+
+            <div className="overflow-auto mt-3">
+              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+                <thead className="bg-slate-950/50">
+                  <tr>
+                    <th className="p-2 text-left border-b border-slate-800">Device</th>
+                    <th className="p-2 text-right border-b border-slate-800">00</th>
+                    <th className="p-2 text-right border-b border-slate-800">1</th>
+                    <th className="p-2 text-right border-b border-slate-800">6</th>
+                    <th className="p-2 text-right border-b border-slate-800">Cabinet</th>
+                    <th className="p-2 text-right border-b border-slate-800">Total IN</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {perDeviceLocFiltered.slice(0, 200).map((r) => {
+                    const get = (loc: string) => r.locations.find((x) => x.location === loc)?.in_stock ?? 0;
+                    return (
+                      <tr key={r.device} className="hover:bg-slate-950/50">
+                        <td className="p-2 border-b border-slate-800">{r.device}</td>
+                        <td className="p-2 border-b border-slate-800 text-right">{get("00")}</td>
+                        <td className="p-2 border-b border-slate-800 text-right">{get("1")}</td>
+                        <td className="p-2 border-b border-slate-800 text-right">{get("6")}</td>
+                        <td className="p-2 border-b border-slate-800 text-right">{get("Cabinet")}</td>
+                        <td className="p-2 border-b border-slate-800 text-right font-semibold">{r.total_in}</td>
+                      </tr>
+                    );
+                  })}
+                  {perDeviceLocFiltered.length === 0 && (
+                    <tr>
+                      <td className="p-3 text-slate-400" colSpan={6}>
+                        No data yet.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="text-xs text-slate-500 mt-2">
+              (Affichage limité à 200 lignes pour éviter lag.)
+            </div>
+          </div>
         </>
       ) : (
         <div className="rounded-2xl border border-rose-900/60 bg-rose-950/40 p-4 text-sm text-rose-200">
-          {summary.error || "Dashboard error"}
+          {summary?.error || "Dashboard error"}
         </div>
       )}
     </div>
@@ -411,9 +439,7 @@ function Th({
 
 function Badge({ kind, children }: { kind: "in" | "out"; children: React.ReactNode }) {
   const cls =
-    kind === "in"
-      ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-200"
-      : "border-rose-900/60 bg-rose-950/40 text-rose-200";
+    kind === "in" ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-200" : "border-rose-900/60 bg-rose-950/40 text-rose-200";
   return <span className={`inline-flex min-w-[44px] justify-end rounded-lg border px-2 py-1 font-semibold ${cls}`}>{children}</span>;
 }
 
@@ -425,86 +451,6 @@ function LowBadge() {
   );
 }
 
-function exportDevicesCSV(rows: NonNullable<SummaryResp["per_device"]>, toast: (t: any) => void) {
-  try {
-    const header = ["Device", "IN", "OUT", "Total"].join(",");
-    const body = rows
-      .map((r) => [csv(r.device), String(r.in_stock ?? 0), String(r.out_stock ?? 0), String(r.total ?? 0)].join(","))
-      .join("\n");
-    downloadText(`devices_${new Date().toISOString().slice(0, 10)}.csv`, `${header}\n${body}`);
-    toast({ kind: "success", title: "CSV exported" });
-  } catch (e: any) {
-    toast({ kind: "error", title: "Export failed", message: e?.message || "CSV export failed" });
-  }
-}
-
-async function exportDevicesPDF(rows: NonNullable<SummaryResp["per_device"]>, counts: any, toast: (t: any) => void) {
-  try {
-    const { jsPDF } = await import("jspdf");
-    const doc = new jsPDF({ unit: "pt", format: "a4" });
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(16);
-    doc.text("StockPro — Dashboard", 40, 45);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(11);
-    doc.text(
-      `Devices: ${counts.devices ?? 0}  |  In stock: ${counts.items_in ?? 0}  |  Out stock: ${counts.items_out ?? 0}  |  Boxes: ${counts.boxes ?? 0}`,
-      40,
-      65
-    );
-
-    const startY = 95;
-    let y = startY;
-    const line = (t: string, x: number, w?: number) => doc.text(t, x, y, w ? { maxWidth: w } : undefined);
-
-    doc.setFont("helvetica", "bold");
-    line("Device", 40);
-    line("IN", 320);
-    line("OUT", 390);
-    line("Total", 470);
-    doc.setFont("helvetica", "normal");
-    y += 14;
-    doc.setDrawColor(80);
-    doc.line(40, y, 555, y);
-    y += 14;
-
-    for (const r of rows) {
-      if (y > 770) {
-        doc.addPage();
-        y = 60;
-      }
-      line(String(r.device ?? ""), 40, 260);
-      line(String(r.in_stock ?? 0), 330);
-      line(String(r.out_stock ?? 0), 400);
-      line(String(r.total ?? 0), 480);
-      y += 14;
-    }
-
-    doc.save(`devices_${new Date().toISOString().slice(0, 10)}.pdf`);
-    toast({ kind: "success", title: "PDF exported" });
-  } catch (e: any) {
-    toast({ kind: "error", title: "Export failed", message: e?.message || "PDF export failed" });
-  }
-}
-
-function csv(v: any) {
-  const s = String(v ?? "");
-  if (s.includes(",") || s.includes("\n") || s.includes('"')) return `"${s.replaceAll('"', '""')}"`;
-  return s;
-}
-
-function downloadText(filename: string, content: string) {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
 async function exportFullInventory(supabase: any, toast: (t: any) => void) {
   try {
     const { data: sessionData } = await supabase.auth.getSession();
@@ -514,10 +460,7 @@ async function exportFullInventory(supabase: any, toast: (t: any) => void) {
       return;
     }
 
-    const res = await fetch("/api/export/inventory", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
+    const res = await fetch("/api/export/inventory", { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
       let msg = "Export failed";
       try {
@@ -529,9 +472,7 @@ async function exportFullInventory(supabase: any, toast: (t: any) => void) {
     }
 
     const blob = await res.blob();
-    const filename =
-      getFilenameFromDisposition(res.headers.get("content-disposition")) ||
-      `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename = getFilenameFromDisposition(res.headers.get("content-disposition")) || `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
     downloadBlob(filename, blob);
     toast({ kind: "success", title: "Inventory exported" });
   } catch (e: any) {

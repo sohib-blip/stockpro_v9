@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@supabase/supabase-js"
 import * as XLSX from "xlsx";
 
 function authedClient(token: string) {
@@ -23,24 +23,23 @@ async function ensureProfileEmail(supabase: any, user: any) {
   }
 }
 
-function buildQrData({
-  device,
-  boxNo,
-  masterBoxNo,
-  qty,
-}: {
-  device: string;
-  boxNo: string;
-  masterBoxNo?: string | null;
-  qty?: number;
-}) {
-  const parts: string[] = [];
-  parts.push(`BOX:${String(boxNo || "").trim()}`);
-  parts.push(`DEV:${String(device || "").trim()}`);
-  const m = String(masterBoxNo || "").trim();
-  if (m) parts.push(`MASTER:${m}`);
-  if (typeof qty === "number" && Number.isFinite(qty)) parts.push(`QTY:${qty}`);
-  return parts.join("|");
+function buildQrDataFromImeis(imeis: string[]) {
+  // QR = IMEIs only, 1 per line
+  const clean = (imeis || [])
+    .map((x) => String(x ?? "").trim().replace(/\D/g, ""))
+    .filter((x) => /^\d{14,17}$/.test(x));
+
+  // remove duplicates
+  const unique: string[] = [];
+  const seen = new Set<string>();
+  for (const i of clean) {
+    if (!seen.has(i)) {
+      seen.add(i);
+      unique.push(i);
+    }
+  }
+
+  return unique.join("\n");
 }
 
 function buildZpl({
@@ -490,7 +489,7 @@ export async function POST(req: Request) {
       const box_no = String(b.box_no || "").trim();
       const master_box_no = String(b.master_box_no || "").trim();
       const qty = Array.isArray(b.imeis) ? b.imeis.length : 0;
-      const qr_data = buildQrData({ device, boxNo: box_no, masterBoxNo: master_box_no, qty });
+      const qr_data = buildQrDataFromImeis(b.imeis || []);
       return {
         box_id: existingMap.get(`${device}__${box_no}`)?.box_id ?? "",
         device,

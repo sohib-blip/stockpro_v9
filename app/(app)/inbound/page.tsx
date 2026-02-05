@@ -1,81 +1,86 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import { LOCATIONS } from "@/lib/device";
 
-type HistoryRow = {
-  import_id: string;
-  created_at: string;
+type InboundResp = {
+  ok: boolean;
+  error?: string;
 
-  created_by_email?: string | null;
-  file_name?: string | null;
+  import_id?: string;
+  file_name?: string;
+  location?: string;
 
-  location?: string | null;
+  boxes?: number;
+  devices?: number;
+  parsed_items?: number;
+  inserted_items?: number;
 
-  devices_count?: number | null;
-  boxes_count?: number | null;
-  items_count?: number | null;
+  labels?: Array<{
+    box_id: string;
+    device: string;
+    box_no: string; // ✅ BIG CARTON
+    qty: number;
+    qr_data: string; // ✅ IMEI-only, one per line
+    imeis?: string[];
+  }>;
 
-  devices?: any; // jsonb array
+  zpl_all?: string;
 };
+
+function Stat({ label, value }: { label: string; value: any }) {
+  return (
+    <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
+      <div className="text-xs text-slate-500">{label}</div>
+      <div className="mt-2 text-2xl font-semibold text-slate-100">{value}</div>
+    </div>
+  );
+}
+
+function downloadText(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+async function copyToClipboard(text: string) {
+  await navigator.clipboard.writeText(text);
+}
 
 export default function InboundPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
-  const [file, setFile] = useState<File | null>(null);
   const [location, setLocation] = useState<(typeof LOCATIONS)[number]>("00");
+  const [file, setFile] = useState<File | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<InboundResp | null>(null);
 
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [filter, setFilter] = useState("");
 
   async function getToken() {
     const { data } = await supabase.auth.getSession();
     return data.session?.access_token ?? null;
   }
 
-  async function loadHistory() {
-    setHistoryLoading(true);
-    try {
-      const token = await getToken();
-      if (!token) return;
-
-      const res = await fetch("/api/inbound/history", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const json = await res.json();
-      if (!json.ok) {
-        // non-blocking
-        setHistory([]);
-        setHistoryLoading(false);
-        return;
-      }
-
-      setHistory(Array.isArray(json.rows) ? json.rows : []);
-    } catch {
-      setHistory([]);
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function submit() {
+  async function runImport() {
     if (!file) {
       toast({ kind: "error", title: "Choisis un fichier Excel" });
       return;
     }
 
     setLoading(true);
+    setResult(null);
+
     try {
       const token = await getToken();
       if (!token) {
@@ -93,132 +98,260 @@ export default function InboundPage() {
         body: fd,
       });
 
-      const json = await res.json();
+      const json = (await res.json()) as InboundResp;
 
       if (!res.ok || !json.ok) {
-        toast({
-          kind: "error",
-          title: "Import failed",
-          message: json?.error || "Import error",
-        });
+        toast({ kind: "error", title: "Import failed", message: json.error || "Error" });
+        setResult(json);
         return;
       }
 
-      toast({
-        kind: "success",
-        title: "Import réussi",
-        message: `Étage: ${json.location} • Boxes: ${json.boxes} • Items: ${json.inserted_items}`,
-      });
-
-      setFile(null);
-      await loadHistory();
+      setResult(json);
+      toast({ kind: "success", title: "Import OK" });
     } catch (e: any) {
-      toast({ kind: "error", title: "Import failed", message: e?.message || "Import error" });
+      toast({ kind: "error", title: "Import failed", message: e?.message || "Error" });
     } finally {
       setLoading(false);
     }
   }
 
-  const formatDevices = (devices: any) => {
-    if (!devices) return "";
-    if (Array.isArray(devices)) return devices.slice(0, 12).join(", ") + (devices.length > 12 ? "…" : "");
-    // sometimes jsonb arrives as string
-    try {
-      const parsed = typeof devices === "string" ? JSON.parse(devices) : devices;
-      if (Array.isArray(parsed)) return parsed.slice(0, 12).join(", ") + (parsed.length > 12 ? "…" : "");
-    } catch {}
-    return "";
-  };
+  const labelsAll = Array.isArray(result?.labels) ? result!.labels! : [];
+  const q = filter.trim().toLowerCase();
+  const labels = labelsAll.filter((l) => {
+    if (!q) return true;
+    return (
+      String(l.device ?? "").toLowerCase().includes(q) ||
+      String(l.box_no ?? "").toLowerCase().includes(q)
+    );
+  });
+
+  const zplAll = String(result?.zpl_all ?? "");
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="text-xs text-slate-500">Inbound</div>
-        <h1 className="text-xl font-semibold">Import</h1>
-        <p className="text-sm text-slate-400 mt-1">
-          Choisis l’étage, importe ton Excel. QR = IMEIs only (1 par ligne). Label affiche Device + Box.
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs text-slate-500">Inbound</div>
+          <h1 className="text-xl font-semibold">Import fournisseur</h1>
+          <p className="text-sm text-slate-400 mt-1">
+            Support multi-devices dans 1 seul Excel. Grouping + labels = <b>gros carton</b>.
+          </p>
+        </div>
       </div>
 
+      {/* Import card */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center gap-3">
-          <select
-            value={location}
-            onChange={(e) => setLocation(e.target.value as any)}
-            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm"
-          >
-            {LOCATIONS.map((l) => (
-              <option key={l} value={l}>
-                {l}
-              </option>
-            ))}
-          </select>
+        <div className="text-sm font-semibold">Import</div>
 
-          <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+        <div className="flex flex-col md:flex-row gap-3 md:items-center">
+          <div className="flex items-center gap-2">
+            <div className="text-xs text-slate-500">Étage</div>
+            <select
+              value={location}
+              onChange={(e) => setLocation(e.target.value as any)}
+              className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm"
+            >
+              {LOCATIONS.map((l) => (
+                <option key={l} value={l}>
+                  {l}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <input
+            type="file"
+            onChange={(e) => setFile(e.target.files?.[0] || null)}
+            className="w-full md:w-auto"
+          />
 
           <button
-            onClick={submit}
-            disabled={!file || loading}
+            onClick={runImport}
+            disabled={loading || !file}
             className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
-            {loading ? "Import..." : "Importer"}
+            {loading ? "Importing…" : "Import"}
           </button>
+        </div>
 
-          <button
-            onClick={loadHistory}
-            disabled={historyLoading}
-            className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
-          >
-            {historyLoading ? "Refreshing…" : "Refresh history"}
-          </button>
+        <div className="text-xs text-slate-500">
+          Après import : preview par carton + ZPL prêt pour ZD220 (QR = IMEI-only, 1 par ligne).
         </div>
       </div>
 
-      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
-        <div className="text-sm font-semibold">Historique imports</div>
-        <div className="text-xs text-slate-500 mt-1">Derniers imports (max 50).</div>
+      {/* Result summary */}
+      {result?.ok ? (
+        <>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <Stat label="Devices détectés" value={result.devices ?? 0} />
+            <Stat label="Cartons (labels)" value={result.boxes ?? 0} />
+            <Stat label="IMEI parsés" value={result.parsed_items ?? 0} />
+            <Stat label="IMEI insérés" value={result.inserted_items ?? 0} />
+          </div>
 
-        <div className="overflow-auto mt-3">
-          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="p-2 text-left border-b border-slate-800">Date</th>
-                <th className="p-2 text-left border-b border-slate-800">Par</th>
-                <th className="p-2 text-left border-b border-slate-800">Fichier</th>
-                <th className="p-2 text-left border-b border-slate-800">Étage</th>
-                <th className="p-2 text-right border-b border-slate-800">Boxes</th>
-                <th className="p-2 text-right border-b border-slate-800">Items</th>
-                <th className="p-2 text-right border-b border-slate-800">Devices</th>
-                <th className="p-2 text-left border-b border-slate-800">Liste devices</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((r) => (
-                <tr key={r.import_id} className="hover:bg-slate-950/50">
-                  <td className="p-2 border-b border-slate-800">{new Date(r.created_at).toLocaleString()}</td>
-                  <td className="p-2 border-b border-slate-800">{r.created_by_email || "-"}</td>
-                  <td className="p-2 border-b border-slate-800">{r.file_name || "-"}</td>
-                  <td className="p-2 border-b border-slate-800">{r.location || "-"}</td>
-                  <td className="p-2 border-b border-slate-800 text-right font-semibold">{Number(r.boxes_count ?? 0)}</td>
-                  <td className="p-2 border-b border-slate-800 text-right font-semibold">{Number(r.items_count ?? 0)}</td>
-                  <td className="p-2 border-b border-slate-800 text-right">{Number(r.devices_count ?? 0)}</td>
-                  <td className="p-2 border-b border-slate-800">
-                    <div className="text-xs text-slate-300 break-words">{formatDevices(r.devices)}</div>
-                  </td>
-                </tr>
-              ))}
+          {/* Actions */}
+          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
+            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold">Labels par gros carton</div>
+                <div className="text-xs text-slate-500">
+                  Device + BoxNR (gros carton) + qty. QR contient uniquement les IMEI.
+                </div>
+              </div>
 
-              {history.length === 0 && (
-                <tr>
-                  <td className="p-3 text-slate-400" colSpan={8}>
-                    {historyLoading ? "Chargement…" : "Aucun import (ou étape 3 pas encore faite)."}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+              <div className="flex flex-col md:flex-row gap-2 md:items-center">
+                <input
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  placeholder="Filtrer device / carton…"
+                  className="w-full md:w-[280px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm"
+                />
+
+                <button
+                  onClick={async () => {
+                    if (!zplAll) {
+                      toast({ kind: "error", title: "No ZPL found" });
+                      return;
+                    }
+                    await copyToClipboard(zplAll);
+                    toast({ kind: "success", title: "ZPL copied (ALL)" });
+                  }}
+                  className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+                >
+                  Copy ZPL (ALL)
+                </button>
+
+                <button
+                  onClick={() => {
+                    if (!zplAll) {
+                      toast({ kind: "error", title: "No ZPL found" });
+                      return;
+                    }
+                    downloadText(`labels_${result.import_id || "import"}.zpl`, zplAll);
+                    toast({ kind: "success", title: "ZPL downloaded" });
+                  }}
+                  className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+                >
+                  Download .ZPL
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-auto">
+              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+                <thead className="bg-slate-950/50">
+                  <tr>
+                    <th className="p-2 text-left border-b border-slate-800">Device</th>
+                    <th className="p-2 text-left border-b border-slate-800">Gros carton (BoxNR)</th>
+                    <th className="p-2 text-right border-b border-slate-800">Qty IMEI</th>
+                    <th className="p-2 text-right border-b border-slate-800">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {labels.map((l) => (
+                    <tr key={l.box_id || `${l.device}__${l.box_no}`} className="hover:bg-slate-950/50">
+                      <td className="p-2 border-b border-slate-800 font-semibold">{l.device}</td>
+                      <td className="p-2 border-b border-slate-800">{l.box_no}</td>
+                      <td className="p-2 border-b border-slate-800 text-right font-semibold">{l.qty}</td>
+                      <td className="p-2 border-b border-slate-800 text-right">
+                        <div className="inline-flex gap-2">
+                          <button
+                            onClick={async () => {
+                              // Build per-label ZPL directly from payload if needed
+                              // Here: easiest is to slice from qr_data + keep same layout as your API ZPL
+                              const zpl = buildZplClient(l.qr_data, l.device, l.box_no);
+                              await copyToClipboard(zpl);
+                              toast({ kind: "success", title: "ZPL copied", message: `${l.device} — ${l.box_no}` });
+                            }}
+                            className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                          >
+                            Copy ZPL
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const zpl = buildZplClient(l.qr_data, l.device, l.box_no);
+                              downloadText(`label_${l.device}_${sanitizeFile(l.box_no)}.zpl`, zpl);
+                              toast({ kind: "success", title: "ZPL downloaded" });
+                            }}
+                            className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                          >
+                            Download
+                          </button>
+
+                          <button
+                            onClick={async () => {
+                              await copyToClipboard(String(l.qr_data || ""));
+                              toast({ kind: "success", title: "QR data copied (IMEIs only)" });
+                            }}
+                            className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                          >
+                            Copy QR data
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+
+                  {labels.length === 0 ? (
+                    <tr>
+                      <td colSpan={4} className="p-3 text-slate-400">
+                        Aucun label trouvé.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="text-xs text-slate-500">
+              Pour imprimer ZD220 : tu peux coller le ZPL dans ton outil Zebra (ou envoyer le fichier .zpl à l’imprimante).
+            </div>
+          </div>
+        </>
+      ) : result && !result.ok ? (
+        <div className="rounded-2xl border border-rose-900/60 bg-rose-950/40 p-4 text-sm text-rose-200">
+          {result.error || "Import error"}
         </div>
-      </div>
+      ) : null}
     </div>
   );
+}
+
+function sanitizeFile(s: string) {
+  return String(s || "")
+    .replaceAll("/", "-")
+    .replaceAll("\\", "-")
+    .replaceAll(":", "-")
+    .replaceAll("*", "-")
+    .replaceAll("?", "-")
+    .replaceAll('"', "-")
+    .replaceAll("<", "-")
+    .replaceAll(">", "-")
+    .replaceAll("|", "-")
+    .trim();
+}
+
+function buildZplClient(qrData: string, device: string, boxNo: string) {
+  // Must match your server ZPL format (ZD220)
+  return `
+^XA
+^PW600
+^LL400
+^CI28
+
+^FO30,30
+^BQN,2,8
+^FDLA,${String(qrData || "")}^FS
+
+^FO320,70
+^A0N,35,35
+^FD${String(device || "")}^FS
+
+^FO320,120
+^A0N,30,30
+^FDBox: ${String(boxNo || "")}^FS
+
+^XZ
+`.trim();
 }

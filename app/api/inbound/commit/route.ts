@@ -47,8 +47,7 @@ function buildQrDataFromImeis(imeis: string[]) {
     }
   }
 
-  // QR = IMEIs only, one per line
-  return unique.join("\n");
+  return unique.join("\n"); // ✅ IMEI only, one per line
 }
 
 function buildZpl({ qrData, device, boxNo }: { qrData: string; device: string; boxNo: string }) {
@@ -86,9 +85,9 @@ type Group = {
   startCol: number;
   endCol: number;
   device: string;
-  masterBoxCol: number; // first "Box No." = BIG CARTON
-  innerBoxCol: number;  // second "Box No." = small box
-  imeiCol: number;      // IMEI column
+  masterBoxCol: number; // BIG CARTON
+  innerBoxCol: number;  // small box (ignored)
+  imeiCol: number;
 };
 
 function detectGroups(rows: any[][]): { headerRowIdx: number; groups: Group[] } {
@@ -124,7 +123,7 @@ function detectGroups(rows: any[][]): { headerRowIdx: number; groups: Group[] } 
     }
     if (boxCandidates.length < 2) continue;
 
-    const masterBoxCol = boxCandidates[0]; // BIG CARTON
+    const masterBoxCol = boxCandidates[0];
     const innerBoxCol = boxCandidates[1];
 
     let startCol = masterBoxCol;
@@ -139,9 +138,7 @@ function detectGroups(rows: any[][]): { headerRowIdx: number; groups: Group[] } 
     }
 
     const deviceTop = headerRowIdx > 0 ? normalizeDevice(rows[headerRowIdx - 1]?.[startCol]) : "";
-    const device = deviceTop;
-
-    groups.push({ startCol, endCol, device, masterBoxCol, innerBoxCol, imeiCol });
+    groups.push({ startCol, endCol, device: deviceTop, masterBoxCol, innerBoxCol, imeiCol });
   }
 
   const uniq: Group[] = [];
@@ -154,7 +151,6 @@ function detectGroups(rows: any[][]): { headerRowIdx: number; groups: Group[] } 
     }
   }
 
-  // fill device if missing
   for (const g of uniq) {
     if (g.device) continue;
     for (let r = headerRowIdx + 1; r < Math.min(rows.length, headerRowIdx + 50); r++) {
@@ -185,7 +181,10 @@ export async function POST(req: Request) {
     const file = form.get("file") as File | null;
 
     const locationRaw = String(form.get("location") || "00").trim();
-    const location = locationRaw === "00" || locationRaw === "1" || locationRaw === "6" || locationRaw === "Cabinet" ? locationRaw : "00";
+    const location =
+      locationRaw === "00" || locationRaw === "1" || locationRaw === "6" || locationRaw === "Cabinet"
+        ? locationRaw
+        : "00";
 
     if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
 
@@ -197,15 +196,11 @@ export async function POST(req: Request) {
     if (!rows || rows.length < 2) return NextResponse.json({ ok: false, error: "Empty Excel file" }, { status: 400 });
 
     const { headerRowIdx, groups } = detectGroups(rows);
-
     if (headerRowIdx < 0 || groups.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "Could not detect groups (multi-device blocks). Check the file format." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "Could not detect device groups in file." }, { status: 400 });
     }
 
-    // Parse items (BIG CARTON as box_no)
+    // Parse IMEIs grouped by BIG CARTON
     const itemsParsed: Array<{ device: string; box_no: string; imei: string }> = [];
     const state = new Map<number, { master: string }>();
     for (const g of groups) state.set(g.startCol, { master: "" });
@@ -215,7 +210,7 @@ export async function POST(req: Request) {
       for (const g of groups) {
         const st = state.get(g.startCol)!;
 
-        const masterRaw = row[g.masterBoxCol]; // BIG CARTON
+        const masterRaw = row[g.masterBoxCol];
         const imeiRaw = row[g.imeiCol];
 
         const master = normalizeBox(masterRaw);
@@ -228,7 +223,6 @@ export async function POST(req: Request) {
         const bigBox = st.master;
 
         if (!device || device === "UNKNOWN" || !bigBox) continue;
-
         itemsParsed.push({ device, box_no: bigBox, imei });
       }
     }
@@ -237,7 +231,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No valid IMEI rows found." }, { status: 400 });
     }
 
-    // Duplicate check inside file
+    // Duplicate IMEI in file
     const seenImeis = new Map<string, number>();
     for (const it of itemsParsed) seenImeis.set(it.imei, (seenImeis.get(it.imei) ?? 0) + 1);
 
@@ -247,23 +241,17 @@ export async function POST(req: Request) {
 
     if (duplicatesInFile.length > 0) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "Duplicate IMEI detected in uploaded file. Import aborted.",
-          duplicates_in_file: duplicatesInFile.slice(0, 50),
-          duplicates_in_file_total: duplicatesInFile.length,
-        },
+        { ok: false, error: "Duplicate IMEI in file. Import aborted.", duplicates_in_file: duplicatesInFile.slice(0, 50) },
         { status: 400 }
       );
     }
 
-    // Existing IMEI check in DB
+    // Existing IMEI in DB
     const uniqueImeis = Array.from(seenImeis.keys());
     const existingImeis = new Set<string>();
-    const chunkSize = 500;
 
-    for (let i = 0; i < uniqueImeis.length; i += chunkSize) {
-      const chunk = uniqueImeis.slice(i, i + chunkSize);
+    for (let i = 0; i < uniqueImeis.length; i += 500) {
+      const chunk = uniqueImeis.slice(i, i + 500);
       const { data: exItems, error: exItemErr } = await supabase.from("items").select("imei").in("imei", chunk);
       if (exItemErr) return NextResponse.json({ ok: false, error: exItemErr.message }, { status: 500 });
       for (const it of exItems ?? []) existingImeis.add(String(it.imei));
@@ -271,17 +259,12 @@ export async function POST(req: Request) {
 
     if (existingImeis.size > 0) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "One or more IMEIs already exist in the database. Import aborted.",
-          existing_imeis: Array.from(existingImeis).slice(0, 50),
-          existing_imeis_total: existingImeis.size,
-        },
+        { ok: false, error: "Some IMEIs already exist. Import aborted.", existing_imeis: Array.from(existingImeis).slice(0, 50) },
         { status: 409 }
       );
     }
 
-    // Group by (device + big carton)
+    // Group by device + big carton
     const byBox = new Map<string, { device: string; box_no: string; imeis: string[] }>();
     for (const it of itemsParsed) {
       const key = `${it.device}__${it.box_no}`;
@@ -299,12 +282,11 @@ export async function POST(req: Request) {
       if (upsertDevices.length > 0) await supabase.from("devices").upsert(upsertDevices, { onConflict: "device" });
     } catch {}
 
-    // Identify user
+    // user
     const { data: userRes } = await supabase.auth.getUser();
     const userId = userRes?.user?.id ?? null;
-    const userEmail = userRes?.user?.email ?? null;
 
-    // History inbound_imports
+    // inbound_imports (NO created_by_email)
     const { data: importRow, error: importErr } = await supabase
       .from("inbound_imports")
       .insert({
@@ -313,7 +295,6 @@ export async function POST(req: Request) {
         boxes_count: boxesArr.length,
         items_count: itemsParsed.length,
         location,
-        created_by_email: userEmail,
         ...(userId ? { created_by: userId } : {}),
         devices: Array.from(devicesSet),
       })
@@ -323,13 +304,9 @@ export async function POST(req: Request) {
     if (importErr) return NextResponse.json({ ok: false, error: importErr.message }, { status: 500 });
     const import_id = importRow.import_id as string;
 
-    // Boxes
+    // boxes table
     const allBoxNos = Array.from(new Set(boxesArr.map((b) => b.box_no)));
-    const { data: existingBoxes, error: exErr } = await supabase
-      .from("boxes")
-      .select("box_id, box_no, device")
-      .in("box_no", allBoxNos);
-
+    const { data: existingBoxes, error: exErr } = await supabase.from("boxes").select("box_id, box_no, device").in("box_no", allBoxNos);
     if (exErr) return NextResponse.json({ ok: false, error: exErr.message }, { status: 500 });
 
     const existingMap = new Map<string, any>();
@@ -337,12 +314,7 @@ export async function POST(req: Request) {
 
     const toInsertBoxes = boxesArr
       .filter((b) => !existingMap.has(`${b.device}__${b.box_no}`))
-      .map((b) => ({
-        device: b.device,
-        box_no: b.box_no,
-        status: "IN",
-        location,
-      }));
+      .map((b) => ({ device: b.device, box_no: b.box_no, status: "IN", location }));
 
     if (toInsertBoxes.length > 0) {
       const { data: ins, error: insErr } = await supabase.from("boxes").insert(toInsertBoxes).select("box_id, box_no, device");
@@ -352,7 +324,7 @@ export async function POST(req: Request) {
 
     await supabase.from("boxes").update({ location }).in("box_no", allBoxNos);
 
-    // Insert items
+    // items insert
     const itemsToInsert = itemsParsed.map((x) => {
       const box = existingMap.get(`${x.device}__${x.box_no}`);
       if (!box?.box_id) throw new Error(`Missing box_id for device=${x.device} box_no=${x.box_no}`);
@@ -371,19 +343,13 @@ export async function POST(req: Request) {
     const importBoxesRows = boxesArr.map((b) => {
       const box = existingMap.get(`${b.device}__${b.box_no}`);
       if (!box?.box_id) throw new Error(`Missing box_id for import device=${b.device} box_no=${b.box_no}`);
-      return {
-        import_id,
-        box_id: box.box_id,
-        device: b.device,
-        box_no: b.box_no,
-        qty: b.imeis.length,
-      };
+      return { import_id, box_id: box.box_id, device: b.device, box_no: b.box_no, qty: b.imeis.length };
     });
 
     const { error: impBoxErr } = await supabase.from("inbound_import_boxes").insert(importBoxesRows);
     if (impBoxErr) return NextResponse.json({ ok: false, error: impBoxErr.message }, { status: 500 });
 
-    // Labels payload
+    // labels
     const labels = boxesArr.map((b) => {
       const device = String(b.device || "").trim();
       const box_no = String(b.box_no || "").trim();
@@ -399,9 +365,7 @@ export async function POST(req: Request) {
       };
     });
 
-    const zpl_all = labels
-      .map((l) => buildZpl({ qrData: String(l.qr_data || ""), device: String(l.device), boxNo: String(l.box_no) }))
-      .join("\n\n");
+    const zpl_all = labels.map((l) => buildZpl({ qrData: String(l.qr_data || ""), device: String(l.device), boxNo: String(l.box_no) })).join("\n\n");
 
     return NextResponse.json({
       ok: true,

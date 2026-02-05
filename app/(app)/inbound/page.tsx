@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { useToast } from "@/components/ToastProvider";"
+import { useToast } from "@/components/ToastProvider";
 
 type CommitResponse = {
   ok: boolean;

@@ -6,8 +6,8 @@
 \pard\tx720\tx1440\tx2160\tx2880\tx3600\tx4320\tx5040\tx5760\tx6480\tx7200\tx7920\tx8640\pardirnatural\partightenfactor0
 
 \f0\fs24 \cf0 import \{ NextResponse \} from "next/server";\
-import \{ getPermissions, requireUserFromBearer, supabaseService \} from "@/lib/auth";\
 import \{ z \} from "zod";\
+import \{ getPermissions, requireUserFromBearer, supabaseService \} from "@/lib/auth";\
 \
 const CreateSchema = z.object(\{\
   device: z.string().min(1),\
@@ -55,9 +55,7 @@ export async function POST(req: Request) \{\
   const min_stock = Math.max(0, Number(parsed.data.min_stock ?? 0));\
 \
   const sb = supabaseService();\
-  const \{ error \} = await sb\
-    .from("device_thresholds")\
-    .upsert(\{ device, min_stock \}, \{ onConflict: "device" \});\
+  const \{ error \} = await sb.from("device_thresholds").upsert(\{ device, min_stock \}, \{ onConflict: "device" \});\
 \
   if (error) return NextResponse.json(\{ ok: false, error: error.message \}, \{ status: 500 \});\
   return NextResponse.json(\{ ok: true \});\
@@ -96,10 +94,7 @@ export async function DELETE(req: Request) \{\
   if (!parsed.success) return NextResponse.json(\{ ok: false, error: "Invalid payload" \}, \{ status: 400 \});\
 \
   const sb = supabaseService();\
-  const \{ error \} = await sb\
-    .from("device_thresholds")\
-    .delete()\
-    .eq("device", parsed.data.device.trim());\
+  const \{ error \} = await sb.from("device_thresholds").delete().eq("device", parsed.data.device.trim());\
 \
   if (error) return NextResponse.json(\{ ok: false, error: error.message \}, \{ status: 500 \});\
   return NextResponse.json(\{ ok: true \});\

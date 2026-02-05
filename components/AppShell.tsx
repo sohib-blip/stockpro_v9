@@ -26,7 +26,6 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
-  { href: "/movements", label: "Mouvements", icon: ArrowLeftRight },
   { href: "/labels", label: "Labels", icon: Tag },
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
   { href: "/admin", label: "Admin", icon: Shield },

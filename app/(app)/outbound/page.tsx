@@ -5,24 +5,9 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import { LOCATIONS } from "@/lib/device";
 
-type ScanResp = {
-  ok: boolean;
-  error?: string;
-  // keep flexible: backend may return details
-  box?: any;
-  items?: any[];
-  moved?: any;
-};
+type ApiResp = { ok: boolean; error?: string; [k: string]: any };
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
@@ -39,13 +24,9 @@ function TabButton({
 
 function cleanImeisFromText(text: string) {
   const raw = String(text || "");
-  // Split by newline, spaces, commas, tabs, etc.
   const parts = raw.split(/[\s,;]+/g).map((x) => x.trim()).filter(Boolean);
-  const imeis = parts
-    .map((x) => x.replace(/\D/g, ""))
-    .filter((x) => /^\d{14,17}$/.test(x));
+  const imeis = parts.map((x) => x.replace(/\D/g, "")).filter((x) => /^\d{14,17}$/.test(x));
 
-  // unique
   const out: string[] = [];
   const seen = new Set<string>();
   for (const i of imeis) {
@@ -57,23 +38,32 @@ function cleanImeisFromText(text: string) {
   return out;
 }
 
+function downloadBlob(filename: string, blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function OutboundUnifiedPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
   const [tab, setTab] = useState<"outbound" | "movements">("outbound");
-
-  // shared scan input
   const [scanText, setScanText] = useState("");
 
-  // outbound state
   const [outLoading, setOutLoading] = useState(false);
   const [outResult, setOutResult] = useState<any>(null);
 
-  // movements state
   const [moveLoading, setMoveLoading] = useState(false);
   const [moveResult, setMoveResult] = useState<any>(null);
   const [toLocation, setToLocation] = useState<(typeof LOCATIONS)[number]>("00");
+
+  const [eodLoading, setEodLoading] = useState(false);
 
   async function getToken() {
     const { data } = await supabase.auth.getSession();
@@ -82,7 +72,6 @@ export default function OutboundUnifiedPage() {
 
   async function runOutbound() {
     const imeis = cleanImeisFromText(scanText);
-
     if (imeis.length === 0) {
       toast({ kind: "error", title: "Scan un IMEI (ou colle plusieurs IMEIs)" });
       return;
@@ -98,21 +87,13 @@ export default function OutboundUnifiedPage() {
         return;
       }
 
-      // IMPORTANT: many backends expect one scan at a time.
-      // We'll send the first IMEI as "imei" and also send all as "imeis".
       const res = await fetch("/api/outbound/scan", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          imei: imeis[0],
-          imeis,
-        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ imei: imeis[0], imeis }),
       });
 
-      const json = (await res.json()) as ScanResp;
+      const json = (await res.json()) as ApiResp;
 
       if (!res.ok || !json.ok) {
         toast({ kind: "error", title: "Outbound failed", message: json.error || "Error" });
@@ -130,7 +111,6 @@ export default function OutboundUnifiedPage() {
 
   async function runMovement() {
     const imeis = cleanImeisFromText(scanText);
-
     if (imeis.length === 0) {
       toast({ kind: "error", title: "Scan un IMEI (ou colle plusieurs IMEIs)" });
       return;
@@ -148,18 +128,11 @@ export default function OutboundUnifiedPage() {
 
       const res = await fetch("/api/movements/box", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          imei: imeis[0],
-          imeis,
-          to_location: toLocation,
-        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ imei: imeis[0], imeis, to_location: toLocation }),
       });
 
-      const json = (await res.json()) as ScanResp;
+      const json = (await res.json()) as ApiResp;
 
       if (!res.ok || !json.ok) {
         toast({ kind: "error", title: "Movement failed", message: json.error || "Error" });
@@ -175,16 +148,59 @@ export default function OutboundUnifiedPage() {
     }
   }
 
+  // ✅ End of day report (download)
+  async function downloadEndOfDay() {
+    setEodLoading(true);
+    try {
+      const token = await getToken();
+      if (!token) {
+        toast({ kind: "error", title: "Please sign in first." });
+        return;
+      }
+
+      // IMPORTANT: this endpoint must exist in your project.
+      // If it doesn't, you'll get 404 — tell me and I'll give you the full backend file too.
+      const res = await fetch("/api/reports/end-of-day", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        let msg = "Report failed";
+        try {
+          const j = await res.json();
+          msg = j?.error || msg;
+        } catch {}
+        toast({ kind: "error", title: "End of day report", message: msg });
+        return;
+      }
+
+      const blob = await res.blob();
+      const filename = `end_of_day_${new Date().toISOString().slice(0, 10)}.csv`;
+      downloadBlob(filename, blob);
+      toast({ kind: "success", title: "Report downloaded" });
+    } finally {
+      setEodLoading(false);
+    }
+  }
+
   const imeiCount = cleanImeisFromText(scanText).length;
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="text-xs text-slate-500">Outbound</div>
-        <h1 className="text-xl font-semibold">Scan</h1>
-        <p className="text-sm text-slate-400 mt-1">
-          QR = IMEIs only. Tu peux scanner 1 IMEI ou coller plusieurs IMEIs (1 par ligne).
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="text-xs text-slate-500">Outbound</div>
+          <h1 className="text-xl font-semibold">Outbound + Movements</h1>
+          <p className="text-sm text-slate-400 mt-1">QR = IMEIs only. Tu peux scanner 1 IMEI ou coller plusieurs IMEIs.</p>
+        </div>
+
+        <button
+          onClick={downloadEndOfDay}
+          disabled={eodLoading}
+          className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+        >
+          {eodLoading ? "Generating…" : "End of day report"}
+        </button>
       </div>
 
       <div className="flex gap-2">
@@ -197,9 +213,7 @@ export default function OutboundUnifiedPage() {
       </div>
 
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-        <div className="text-sm font-semibold">
-          {tab === "outbound" ? "Outbound scan" : "Déplacer une boîte"}
-        </div>
+        <div className="text-sm font-semibold">{tab === "outbound" ? "Outbound scan" : "Déplacer une boîte"}</div>
 
         <textarea
           value={scanText}
@@ -208,8 +222,7 @@ export default function OutboundUnifiedPage() {
           placeholder={`Scanne ou colle ici…
 Ex:
 355123456789012
-355123456789013
-355123456789014`}
+355123456789013`}
           className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
         />
 
@@ -252,12 +265,7 @@ Ex:
         </div>
       </div>
 
-      {/* Results */}
-      {tab === "outbound" ? (
-        <ResultPanel title="Outbound result" data={outResult} />
-      ) : (
-        <ResultPanel title="Movement result" data={moveResult} />
-      )}
+      <ResultPanel title={tab === "outbound" ? "Outbound result" : "Movement result"} data={tab === "outbound" ? outResult : moveResult} />
     </div>
   );
 }
@@ -266,7 +274,7 @@ function ResultPanel({ title, data }: { title: string; data: any }) {
   return (
     <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
       <div className="text-sm font-semibold">{title}</div>
-      <div className="text-xs text-slate-500 mt-1">Détails JSON (debug friendly)</div>
+      <div className="text-xs text-slate-500 mt-1">Détails JSON (debug)</div>
 
       <pre className="mt-3 whitespace-pre-wrap break-words text-xs text-slate-200 bg-slate-950 border border-slate-800 rounded-xl p-3">
         {data ? JSON.stringify(data, null, 2) : "—"}

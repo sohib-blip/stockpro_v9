@@ -10,6 +10,10 @@ function authedClient(token: string) {
   );
 }
 
+function safeIncludes(v: any, needle: string) {
+  return String(v ?? "").includes(needle);
+}
+
 function normalizeDevice(raw: any) {
   const s = String(raw ?? "").trim();
   if (!s) return "";
@@ -22,8 +26,7 @@ function normalizeBox(v: any) {
 
 function normalizeImei(v: any) {
   const s = String(v ?? "").trim();
-  const digits = s.replace(/\D/g, "");
-  return digits;
+  return s.replace(/\D/g, "");
 }
 
 function isLikelyImei(s: string) {
@@ -49,7 +52,6 @@ function buildQrDataFromImeis(imeis: string[]) {
 }
 
 function buildZpl({ qrData, device, boxNo }: { qrData: string; device: string; boxNo: string }) {
-  // Zebra ZD220
   return `
 ^XA
 ^PW600
@@ -85,8 +87,8 @@ type Group = {
   endCol: number;
   device: string;
   masterBoxCol: number; // first "Box No." = BIG CARTON
-  innerBoxCol: number;  // second "Box No." = small boxes
-  imeiCol: number;      // "IMEI"
+  innerBoxCol: number;  // second "Box No." = small box
+  imeiCol: number;      // IMEI column
 };
 
 function detectGroups(rows: any[][]): { headerRowIdx: number; groups: Group[] } {
@@ -95,7 +97,7 @@ function detectGroups(rows: any[][]): { headerRowIdx: number; groups: Group[] } 
   for (let r = 0; r < Math.min(rows.length, 25); r++) {
     const row = rows[r] || [];
     const headers = row.map(normHeader);
-    if (headers.some((h) => h === "imei" || h.includes("imei"))) {
+    if (headers.some((h) => h === "imei" || safeIncludes(h, "imei"))) {
       headerRowIdx = r;
       break;
     }
@@ -108,7 +110,7 @@ function detectGroups(rows: any[][]): { headerRowIdx: number; groups: Group[] } 
 
   const imeiCols: number[] = [];
   for (let c = 0; c < h.length; c++) {
-    if (h[c] === "imei" || h[c].includes("imei")) imeiCols.push(c);
+    if (h[c] === "imei" || safeIncludes(h[c], "imei")) imeiCols.push(c);
   }
 
   const groups: Group[] = [];
@@ -116,12 +118,14 @@ function detectGroups(rows: any[][]): { headerRowIdx: number; groups: Group[] } 
   for (const imeiCol of imeiCols) {
     const boxCandidates: number[] = [];
     for (let c = Math.max(0, imeiCol - 12); c <= imeiCol; c++) {
-      if (h[c] === "box no." || h[c] === "box no" || h[c].includes("box no")) boxCandidates.push(c);
+      if (h[c] === "box no." || h[c] === "box no" || safeIncludes(h[c], "box no")) {
+        boxCandidates.push(c);
+      }
     }
     if (boxCandidates.length < 2) continue;
 
-    const masterBoxCol = boxCandidates[0]; // ✅ BIG CARTON
-    const innerBoxCol = boxCandidates[1];  // small box
+    const masterBoxCol = boxCandidates[0]; // BIG CARTON
+    const innerBoxCol = boxCandidates[1];
 
     let startCol = masterBoxCol;
     let endCol = imeiCol;
@@ -150,6 +154,7 @@ function detectGroups(rows: any[][]): { headerRowIdx: number; groups: Group[] } 
     }
   }
 
+  // fill device if missing
   for (const g of uniq) {
     if (g.device) continue;
     for (let r = headerRowIdx + 1; r < Math.min(rows.length, headerRowIdx + 50); r++) {
@@ -200,12 +205,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Now we parse using BIG CARTON as box_no
-    // We still capture small box as "inner_box_no" (stored only in response + optional history string)
-    const itemsParsed: Array<{ device: string; box_no: string; inner_box_no: string; imei: string }> = [];
-
-    const state = new Map<number, { master: string; inner: string }>();
-    for (const g of groups) state.set(g.startCol, { master: "", inner: "" });
+    // Parse items (BIG CARTON as box_no)
+    const itemsParsed: Array<{ device: string; box_no: string; imei: string }> = [];
+    const state = new Map<number, { master: string }>();
+    for (const g of groups) state.set(g.startCol, { master: "" });
 
     for (let r = headerRowIdx + 1; r < rows.length; r++) {
       const row = rows[r] || [];
@@ -213,40 +216,32 @@ export async function POST(req: Request) {
         const st = state.get(g.startCol)!;
 
         const masterRaw = row[g.masterBoxCol]; // BIG CARTON
-        const innerRaw = row[g.innerBoxCol];   // small
         const imeiRaw = row[g.imeiCol];
 
         const master = normalizeBox(masterRaw);
-        const inner = normalizeBox(innerRaw);
         const imei = normalizeImei(imeiRaw);
 
         if (master) st.master = master;
-        if (inner) st.inner = inner;
-
         if (!imei || !isLikelyImei(imei)) continue;
 
         const device = g.device || normalizeDevice(st.master) || "UNKNOWN";
-        const bigBox = st.master;           // ✅ BIG CARTON is the primary box_no
-        const smallBox = st.inner || "";    // optional
+        const bigBox = st.master;
 
         if (!device || device === "UNKNOWN" || !bigBox) continue;
 
-        itemsParsed.push({ device, box_no: bigBox, inner_box_no: smallBox, imei });
+        itemsParsed.push({ device, box_no: bigBox, imei });
       }
     }
 
     if (itemsParsed.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "No valid IMEI rows found across detected device blocks." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "No valid IMEI rows found." }, { status: 400 });
     }
 
     // Duplicate check inside file
-    const seen = new Map<string, number>();
-    for (const it of itemsParsed) seen.set(it.imei, (seen.get(it.imei) ?? 0) + 1);
+    const seenImeis = new Map<string, number>();
+    for (const it of itemsParsed) seenImeis.set(it.imei, (seenImeis.get(it.imei) ?? 0) + 1);
 
-    const duplicatesInFile = Array.from(seen.entries())
+    const duplicatesInFile = Array.from(seenImeis.entries())
       .filter(([, n]) => n > 1)
       .map(([imei, count]) => ({ imei, count }));
 
@@ -254,7 +249,7 @@ export async function POST(req: Request) {
       return NextResponse.json(
         {
           ok: false,
-          error: "Duplicate IMEI detected in the uploaded file. Import aborted.",
+          error: "Duplicate IMEI detected in uploaded file. Import aborted.",
           duplicates_in_file: duplicatesInFile.slice(0, 50),
           duplicates_in_file_total: duplicatesInFile.length,
         },
@@ -263,7 +258,7 @@ export async function POST(req: Request) {
     }
 
     // Existing IMEI check in DB
-    const uniqueImeis = Array.from(seen.keys());
+    const uniqueImeis = Array.from(seenImeis.keys());
     const existingImeis = new Set<string>();
     const chunkSize = 500;
 
@@ -286,22 +281,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // ✅ Group by BIG CARTON only: (device + box_no)
-    const byBox = new Map<string, { device: string; box_no: string; imeis: string[]; small_boxes: Set<string> }>();
+    // Group by (device + big carton)
+    const byBox = new Map<string, { device: string; box_no: string; imeis: string[] }>();
     for (const it of itemsParsed) {
       const key = `${it.device}__${it.box_no}`;
-      const g = byBox.get(key) ?? { device: it.device, box_no: it.box_no, imeis: [], small_boxes: new Set<string>() };
+      const g = byBox.get(key) ?? { device: it.device, box_no: it.box_no, imeis: [] };
       g.imeis.push(it.imei);
-      if (it.inner_box_no) g.small_boxes.add(it.inner_box_no);
       byBox.set(key, g);
     }
 
     const boxesArr = Array.from(byBox.values());
-
     const devicesSet = new Set<string>(boxesArr.map((b) => b.device));
-    const devicesCount = devicesSet.size;
-    const boxesCount = boxesArr.length;
-    const itemsCount = itemsParsed.length;
 
     // Ensure devices exist
     try {
@@ -314,14 +304,14 @@ export async function POST(req: Request) {
     const userId = userRes?.user?.id ?? null;
     const userEmail = userRes?.user?.email ?? null;
 
-    // History
+    // History inbound_imports
     const { data: importRow, error: importErr } = await supabase
       .from("inbound_imports")
       .insert({
         file_name: file.name,
-        devices_count: devicesCount,
-        boxes_count: boxesCount,
-        items_count: itemsCount,
+        devices_count: devicesSet.size,
+        boxes_count: boxesArr.length,
+        items_count: itemsParsed.length,
         location,
         created_by_email: userEmail,
         ...(userId ? { created_by: userId } : {}),
@@ -331,12 +321,10 @@ export async function POST(req: Request) {
       .single();
 
     if (importErr) return NextResponse.json({ ok: false, error: importErr.message }, { status: 500 });
-
     const import_id = importRow.import_id as string;
 
-    // boxes table uses (device, box_no) where box_no = BIG CARTON
+    // Boxes
     const allBoxNos = Array.from(new Set(boxesArr.map((b) => b.box_no)));
-
     const { data: existingBoxes, error: exErr } = await supabase
       .from("boxes")
       .select("box_id, box_no, device")
@@ -351,8 +339,7 @@ export async function POST(req: Request) {
       .filter((b) => !existingMap.has(`${b.device}__${b.box_no}`))
       .map((b) => ({
         device: b.device,
-        box_no: b.box_no, // ✅ BIG CARTON
-        master_box_no: null, // not used (we keep big carton in box_no)
+        box_no: b.box_no,
         status: "IN",
         location,
       }));
@@ -363,10 +350,9 @@ export async function POST(req: Request) {
       for (const b of ins ?? []) existingMap.set(`${b.device}__${b.box_no}`, b);
     }
 
-    // Update location for those box_nos
     await supabase.from("boxes").update({ location }).in("box_no", allBoxNos);
 
-    // Insert items linked to BIG CARTON box_id
+    // Insert items
     const itemsToInsert = itemsParsed.map((x) => {
       const box = existingMap.get(`${x.device}__${x.box_no}`);
       if (!box?.box_id) throw new Error(`Missing box_id for device=${x.device} box_no=${x.box_no}`);
@@ -381,21 +367,15 @@ export async function POST(req: Request) {
       insertedItems += chunk.length;
     }
 
-    // inbound_import_boxes detail
-    // NOTE: we store a compact string of small boxes in master_box_no field (since you asked BIG carton as box_no)
+    // inbound_import_boxes
     const importBoxesRows = boxesArr.map((b) => {
       const box = existingMap.get(`${b.device}__${b.box_no}`);
       if (!box?.box_id) throw new Error(`Missing box_id for import device=${b.device} box_no=${b.box_no}`);
-
-      const smallBoxes = Array.from(b.small_boxes);
-      const smallInfo = smallBoxes.length === 0 ? null : smallBoxes.length === 1 ? smallBoxes[0] : `MULTI(${smallBoxes.length})`;
-
       return {
         import_id,
         box_id: box.box_id,
         device: b.device,
-        master_box_no: smallInfo, // repurposed: info about small boxes
-        box_no: b.box_no,         // ✅ BIG CARTON
+        box_no: b.box_no,
         qty: b.imeis.length,
       };
     });
@@ -403,17 +383,16 @@ export async function POST(req: Request) {
     const { error: impBoxErr } = await supabase.from("inbound_import_boxes").insert(importBoxesRows);
     if (impBoxErr) return NextResponse.json({ ok: false, error: impBoxErr.message }, { status: 500 });
 
-    // Labels payload (1 label per BIG CARTON)
+    // Labels payload
     const labels = boxesArr.map((b) => {
       const device = String(b.device || "").trim();
       const box_no = String(b.box_no || "").trim();
-
       const qr_data = buildQrDataFromImeis(b.imeis);
 
       return {
         box_id: existingMap.get(`${device}__${box_no}`)?.box_id ?? "",
         device,
-        box_no, // ✅ BIG CARTON on label
+        box_no,
         qty: b.imeis.length,
         qr_data,
         imeis: b.imeis,
@@ -429,9 +408,8 @@ export async function POST(req: Request) {
       import_id,
       file_name: file.name,
       location,
-      detected_groups: groups.map((g) => ({ device: g.device, startCol: g.startCol, imeiCol: g.imeiCol })),
-      boxes: boxesCount,
-      devices: devicesCount,
+      boxes: boxesArr.length,
+      devices: devicesSet.size,
       parsed_items: itemsParsed.length,
       inserted_items: insertedItems,
       labels,

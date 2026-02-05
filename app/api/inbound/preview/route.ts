@@ -1,194 +1,105 @@
 import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 
-function cellToString(v: any): string {
-  if (v === null || v === undefined) return "";
-  return String(v).trim();
+function authedClient(token: string) {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { global: { headers: { Authorization: `Bearer ${token}` } } }
+  );
 }
 
-function isValidImei(imei: string) {
-  return /^\d{15}$/.test(imei);
+function norm(v: any) {
+  return String(v ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
-function normalizeDevice(raw: string) {
-  const s = cellToString(raw);
-  if (!s) return "";
-  return s.split("-")[0] || s;
-}
-
-function normalizeBox(raw: string) {
-  return cellToString(raw);
-}
-
-function looksLikeBoxNo(v: any) {
-  const s = cellToString(v);
-  return /^\d{2,4}-\d{1,4}$/.test(s);
-}
-
-function detectCols(rows: any[][]) {
-  const maxScan = Math.min(rows.length, 25);
-  let deviceCol = 0;
-  let boxCol = 1;
-  let imeiCol = 3;
-
-  const norm = (v: any) => cellToString(v).toLowerCase();
-
-  for (let r = 0; r < maxScan; r++) {
-    const row = rows[r] || [];
-    const cells = row.map(norm);
-    const hasImei = cells.some((c) => c.includes("imei"));
-    const hasBox = cells.some((c) => c.includes("box"));
-    if (!hasImei || !hasBox) continue;
-
-    const iIdx = cells.findIndex((c) => c.includes("imei"));
-    if (iIdx >= 0) imeiCol = iIdx;
-
-    // if there are multiple box columns, prefer the one whose first data row looks like "025-36"
-    const candidates: number[] = [];
-    cells.forEach((c, idx) => {
-      if (c.includes("box")) candidates.push(idx);
-    });
-    const firstData = rows[r + 1] || [];
-    const preferred = candidates.find((idx) => looksLikeBoxNo(firstData[idx]));
-    if (preferred !== undefined) boxCol = preferred;
-    else if (candidates.length) boxCol = candidates[candidates.length - 1];
-
-    // device sometimes isn't in headers; keep default 0
-    const dIdx = cells.findIndex((c) => c.includes("device") || c.includes("model") || c.includes("type"));
-    if (dIdx >= 0) deviceCol = dIdx;
-
-    break;
-  }
-
-  return { deviceCol, boxCol, imeiCol };
-}
-
-export async function GET() {
-  return NextResponse.json({
-    ok: true,
-    message: "Preview route OK (use POST with FormData[file])",
-  });
+function safeIncludes(v: any, needle: string) {
+  return String(v ?? "").includes(needle);
 }
 
 export async function POST(req: Request) {
   try {
-    const auth = req.headers.get("authorization") || "";
-    if (!auth.toLowerCase().startsWith("bearer ")) {
-      return NextResponse.json({ ok: false, error: "Missing bearer token" }, { status: 401 });
-    }
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!token) return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
+
+    // keep auth consistent (even if not used)
+    authedClient(token);
 
     const form = await req.formData();
     const file = form.get("file") as File | null;
+    if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
 
-    if (!file) {
-      return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const wb = XLSX.read(bytes, { type: "array" });
+    const ws = wb.Sheets[wb.SheetNames[0]];
+
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any[][];
+    if (!rows || rows.length === 0) {
+      return NextResponse.json({ ok: false, error: "Empty excel file" }, { status: 400 });
     }
 
-    // Columns can be provided either as individual fields or as JSON in "columns"
-    const columnsRaw = form.get("columns");
-    let parsedCols: any = null;
-    if (typeof columnsRaw === "string" && columnsRaw.trim()) {
-      try {
-        parsedCols = JSON.parse(columnsRaw);
-      } catch {
-        parsedCols = null;
+    // Find likely header row
+    let headerRowIdx = -1;
+    for (let r = 0; r < Math.min(rows.length, 30); r++) {
+      const row = rows[r] || [];
+      const cells = row.map((x) => norm(x));
+      const hasImei = cells.some((c) => safeIncludes(c, "imei"));
+      const hasBox = cells.some((c) => safeIncludes(c, "box"));
+      if (hasImei && hasBox) {
+        headerRowIdx = r;
+        break;
       }
     }
 
-
-    const buf = Buffer.from(await file.arrayBuffer());
-    const wb = XLSX.read(buf, { type: "buffer" });
-
-    const sheetName = wb.SheetNames[0];
-    if (!sheetName) {
-      return NextResponse.json({ ok: false, error: "No sheet found in Excel" }, { status: 400 });
+    if (headerRowIdx < 0) {
+      return NextResponse.json(
+        { ok: false, error: "Could not detect header row (no IMEI/BOX headers found)" },
+        { status: 400 }
+      );
     }
 
-    const ws = wb.Sheets[sheetName];
-    const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any[][];
+    const header = (rows[headerRowIdx] || []).map((x) => norm(x));
 
-    const detected = parsedCols
-      ? {
-          deviceCol: Number(parsedCols.deviceCol ?? 0),
-          boxCol: Number(parsedCols.boxCol ?? 1),
-          imeiCol: Number(parsedCols.imeiCol ?? 3),
-        }
-      : detectCols(rows);
-
-    const deviceCol = detected.deviceCol;
-    const boxCol = detected.boxCol;
-    const imeiCol = detected.imeiCol;
-
-    const defaultDeviceTop = normalizeDevice(rows?.[0]?.[0]);
-
-    const issues: { row: number; field: string; message: string }[] = [];
-    const sample: any[] = [];
-    const boxesMap = new Map<string, { box_no: string; device: string; qty: number }>();
-
-    let detectedRows = 0;
-
-    let currentDevice = "";
-    let currentBox = "";
-
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i] || [];
-
-      const device_raw = cellToString(row[deviceCol]);
-      const box_raw = cellToString(row[boxCol]);
-      const imei_raw = cellToString(row[imeiCol]);
-
-      if (!device_raw && !box_raw && !imei_raw) continue;
-
-      const maybeDevice = normalizeDevice(device_raw);
-      const maybeBox = normalizeBox(box_raw);
-      if (maybeDevice) currentDevice = maybeDevice;
-      if (!currentDevice && defaultDeviceTop) currentDevice = defaultDeviceTop;
-      if (maybeBox) currentBox = maybeBox;
-
-      const device = currentDevice;
-      const box_no = currentBox;
-      const imei = imei_raw;
-
-      if (!device && !box_no && !imei) continue;
-
-      detectedRows++;
-
-      if (imei && !isValidImei(imei)) {
-        issues.push({ row: i + 1, field: "imei", message: `Invalid IMEI: ${imei}` });
-      }
-      if (!box_no) issues.push({ row: i + 1, field: "box_no", message: "Missing box_no" });
-      if (!device) issues.push({ row: i + 1, field: "device", message: "Missing device" });
-
-      if (sample.length < 20) {
-        sample.push({ rowNumber: i + 1, device_raw, device, box_no, imei });
-      }
-
-      if (box_no && device && isValidImei(imei)) {
-        const key = `${device}__${box_no}`;
-        const current = boxesMap.get(key);
-        if (current) current.qty += 1;
-        else boxesMap.set(key, { box_no, device, qty: 1 });
-      }
+    // Find IMEI columns
+    const imeiCols: number[] = [];
+    for (let i = 0; i < header.length; i++) {
+      if (safeIncludes(header[i], "imei")) imeiCols.push(i);
     }
 
-    const boxes = Array.from(boxesMap.values());
-    const ok = boxes.length > 0;
+    if (imeiCols.length === 0) {
+      return NextResponse.json({ ok: false, error: "No IMEI column detected" }, { status: 400 });
+    }
+
+    // For each IMEI col, find nearby BOX columns to the left
+    const groups = imeiCols.map((iIdx) => {
+      const candidates: number[] = [];
+      for (let c = Math.max(0, iIdx - 12); c <= iIdx; c++) {
+        if (safeIncludes(header[c], "box")) candidates.push(c);
+      }
+      return {
+        imeiCol: iIdx,
+        boxCols: candidates.slice(0, 2), // in your file: 2x "Box No."
+      };
+    });
+
+    // Try detect device/model/type column (optional)
+    const deviceCol = header.findIndex((c) => safeIncludes(c, "device") || safeIncludes(c, "model") || safeIncludes(c, "type"));
 
     return NextResponse.json({
-      ok,
-      meta: {
-        headerRowIdx: 1,
-        columns: { deviceCol, boxCol, imeiCol },
-        rows: detectedRows,
-        boxes: boxes.length,
+      ok: true,
+      file_name: file.name,
+      header_row_index: headerRowIdx,
+      detected: {
+        imei_cols: imeiCols,
+        device_col: deviceCol >= 0 ? deviceCol : null,
+        groups,
       },
-      boxes,
-      sample,
-      issues,
+      note: "Preview endpoint safe-fixed (no undefined.includes crash).",
     });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Preview error" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
   }
 }
-
 

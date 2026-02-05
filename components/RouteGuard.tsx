@@ -1,78 +1,60 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
+import { ReactNode, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-type Permissions = { can_inbound: boolean; can_outbound: boolean; can_export: boolean; can_admin: boolean };
+type Props = { children: ReactNode };
 
-const DEFAULT_PERMS: Permissions = { can_inbound: true, can_outbound: true, can_export: false, can_admin: false };
-
-function isAllowed(pathname: string, perms: Permissions) {
-  if (pathname === "/denied") return true;
-  if (pathname.startsWith("/admin")) return perms.can_admin;
-  if (pathname.startsWith("/inbound")) return perms.can_inbound;
-  if (pathname.startsWith("/outbound")) return perms.can_outbound;
-  // dashboard, labels always allowed (labels are useful even if outbound/inbound disabled)
-  return true;
+function safeStartsWith(a: any, b: any) {
+  return String(a ?? "").startsWith(String(b ?? ""));
 }
 
-export default function RouteGuard({ children }: { children: ReactNode }) {
-  const pathname = usePathname() || "/";
+export default function RouteGuard({ children }: Props) {
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const pathnameRaw = usePathname();
+  const pathname = String(pathnameRaw ?? "");
   const router = useRouter();
+
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    let alive = true;
+    let mounted = true;
 
-    async function run() {
+    async function check() {
       try {
-        const supabase = createSupabaseBrowserClient();
-        const { data: sess } = await supabase.auth.getSession();
-        const token = sess.session?.access_token;
-        if (!token) {
-          if (alive) router.replace("/login");
+        const { data } = await supabase.auth.getSession();
+        const logged = !!data.session;
+
+        // Public routes
+        const isLogin = safeStartsWith(pathname, "/login");
+        const isPublic =
+          pathname === "/" || isLogin || safeStartsWith(pathname, "/auth") || safeStartsWith(pathname, "/api");
+
+        if (isPublic) {
+          if (mounted) setReady(true);
           return;
         }
 
-        // Fetch permissions (RLS-protected)
-        const { data, error } = await supabase
-          .from("user_permissions")
-          .select("can_inbound, can_outbound, can_export, can_admin")
-          .eq("user_id", sess.session?.user?.id)
-          .maybeSingle();
-
-        const perms: Permissions = error || !data ? DEFAULT_PERMS : {
-          can_inbound: !!data.can_inbound,
-          can_outbound: !!data.can_outbound,
-          can_export: !!data.can_export,
-          can_admin: !!data.can_admin,
-        };
-
-        if (!isAllowed(pathname, perms)) {
-          if (alive) router.replace("/denied");
+        if (!logged) {
+          router.push("/login");
+          router.refresh();
           return;
         }
 
-        if (alive) setReady(true);
+        if (mounted) setReady(true);
       } catch {
-        // Fail closed-ish: show content only if path is safe
-        if (alive) setReady(true);
+        // If guard fails, don’t crash the app
+        if (mounted) setReady(true);
       }
     }
 
-    setReady(false);
-    run();
-    return () => { alive = false; };
-  }, [pathname, router]);
+    check();
+    return () => {
+      mounted = false;
+    };
+  }, [pathname, router, supabase]);
 
-  if (!ready) {
-    return (
-      <div className="p-6 text-sm text-slate-300">
-        Checking access…
-      </div>
-    );
-  }
-
+  if (!ready) return null;
   return <>{children}</>;
 }

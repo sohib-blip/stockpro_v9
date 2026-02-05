@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { useToast } from "@/components/ToastProvider";
+import { useToast } from "@/components/ToastProvider";"
 
 type CommitResponse = {
   ok: boolean;
@@ -12,6 +12,10 @@ type CommitResponse = {
   rows?: number;
   labels?: Array<{ box_id: string; device: string; box_no: string; qty: number; qr_data?: string; imeis?: string[] }>;
   error?: string;
+
+  // ✅ STRICT MODE
+  missing_devices?: string[];
+  missing_devices_total?: number;
 };
 
 type ImportDetailsResponse = {
@@ -304,8 +308,16 @@ export default function InboundPage() {
       const json = (await safeJson(res)) as CommitResponse;
 
       if (!json.ok) {
-        setUiError(json.error || "Import error");
-      }
+  if (Array.isArray(json.missing_devices) && json.missing_devices.length > 0) {
+    const list = json.missing_devices.slice(0, 20).join(", ");
+    const more = json.missing_devices.length > 20 ? ` (+${json.missing_devices.length - 20} autres)` : "";
+    setUiError(
+      `${json.error || "Import blocked."}\n\nMissing devices: ${list}${more}`
+    );
+  } else {
+    setUiError(json.error || "Import error");
+  }
+}
       setCommit(json);
       if (json.ok && json.import_id) {
         await loadImportDetails(String(json.import_id));

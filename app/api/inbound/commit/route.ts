@@ -15,7 +15,6 @@ async function ensureProfileEmail(supabase: any, user: any) {
     const user_id = String(user?.id || "");
     const email = String(user?.email || "").trim();
     if (!user_id || !email) return;
-    // Best-effort: keep profiles.email in sync so history can show the creator.
     await supabase
       .from("profiles")
       .upsert({ user_id, email }, { onConflict: "user_id" });
@@ -35,10 +34,6 @@ function buildQrData({
   masterBoxNo?: string | null;
   qty?: number;
 }) {
-  // IMPORTANT: Do not embed full IMEI lists in the QR.
-  // With 50–100 IMEIs, QR generation often fails (too much data) and PDF download breaks.
-  // Keep it short and stable for scanners.
-  // Example: BOX:025-36|DEV:FMC234WC3XWU|MASTER:FMC234WC3XWU-025-007|QTY:36
   const parts: string[] = [];
   parts.push(`BOX:${String(boxNo || "").trim()}`);
   parts.push(`DEV:${String(device || "").trim()}`);
@@ -48,8 +43,15 @@ function buildQrData({
   return parts.join("|");
 }
 
-function buildZpl({ qrData, device, boxNo }: { qrData: string; device: string; boxNo: string }) {
-  // Zebra ZD220 (203dpi) – basic label.
+function buildZpl({
+  qrData,
+  device,
+  boxNo,
+}: {
+  qrData: string;
+  device: string;
+  boxNo: string;
+}) {
   return `
 ^XA
 ^PW600
@@ -85,31 +87,25 @@ function normalizeBox(boxRaw: string) {
 
 function normalizeImei(v: any) {
   const s = String(v ?? "").trim();
-  // garde uniquement chiffres
   const digits = s.replace(/\D/g, "");
   return digits;
 }
 
 function isLikelyImei(s: string) {
-  // tes IMEI sont 15 chiffres
   return /^\d{14,17}$/.test(s);
 }
 
 function looksLikeInnerBoxNo(v: any) {
   const s = String(v ?? "").trim();
-  // Typical inner/small box format: 025-36 / 025-305
   return /^\d{2,4}-\d{1,4}$/.test(s);
 }
 
 function looksLikeMasterBoxNo(v: any) {
   const s = String(v ?? "").trim();
-  // Typical master/big carton format: DEVICE-025-060 (contains letters)
   return /[A-Z]/i.test(s) && /-\d{2,4}-\d{1,4}$/.test(s);
 }
 
 function detectColumns(rows: any[][]) {
-  // Try to find header row and columns by name (supplier files may vary).
-  // We look in the first 25 rows for a row that contains "imei" and either "box" or "device".
   const maxScan = Math.min(rows.length, 25);
   let headerRowIdx = -1;
   let deviceCol = 0;
@@ -133,12 +129,10 @@ function detectColumns(rows: any[][]) {
       const imeiIdx = cells.findIndex((c) => c.includes("imei"));
       if (imeiIdx >= 0) imeiCol = imeiIdx;
 
-      // Prefer explicit "device"
       let devIdx = cells.findIndex((c) => c.includes("device"));
       if (devIdx < 0) devIdx = cells.findIndex((c) => c.includes("model") || c.includes("type"));
       if (devIdx >= 0) deviceCol = devIdx;
 
-      // Box can appear multiple times (supplier files often have 2x "Box No.")
       const boxCandidates: number[] = [];
       cells.forEach((c, idx) => {
         if (c.includes("boxnr") || c.includes("box nr") || c.includes("box no") || c === "box" || c.includes("box")) {
@@ -146,8 +140,6 @@ function detectColumns(rows: any[][]) {
         }
       });
 
-      // Heuristic: decide which candidate is master (big carton) vs inner (small box)
-      // by looking at the first few data rows.
       const scanRows = rows.slice(r + 1, Math.min(rows.length, r + 31));
       const score = (idx: number) => {
         let masterScore = 0;
@@ -177,7 +169,6 @@ function detectColumns(rows: any[][]) {
         }
       }
 
-      // If we only found one meaningful box column, use it as inner.
       if (bestInner != null && bestInnerScore > 0) {
         innerBoxCol = bestInner;
       }
@@ -185,11 +176,9 @@ function detectColumns(rows: any[][]) {
         masterBoxCol = bestMaster;
       }
 
-      // Fallbacks
       if (innerBoxCol == null && boxCandidates.length > 0) innerBoxCol = boxCandidates[boxCandidates.length - 1];
       if (masterBoxCol == null && boxCandidates.length > 0) masterBoxCol = boxCandidates[0];
 
-      // If master and inner are the same column, treat it as a single box column.
       if (masterBoxCol === innerBoxCol) {
         masterBoxCol = null;
       }
@@ -217,14 +206,11 @@ export async function POST(req: Request) {
 
     const cols = columnsRaw ? JSON.parse(columnsRaw) : null;
     let deviceCol = Number((cols as any)?.deviceCol ?? 0);
-    // Support supplier files that have BOTH master (big carton) and inner (small box) numbers.
     let masterBoxCol: number | null = (cols as any)?.masterBoxCol != null ? Number((cols as any)?.masterBoxCol) : null;
     let innerBoxCol: number | null = (cols as any)?.innerBoxCol != null ? Number((cols as any)?.innerBoxCol) : null;
-    // Back-compat: if older UI sends boxCol, treat it as inner box.
     if (innerBoxCol == null && (cols as any)?.boxCol != null) innerBoxCol = Number((cols as any)?.boxCol);
     let imeiCol = Number((cols as any)?.imeiCol ?? 3);
 
-    // If the UI provides a master carton box column, ignore any inner box column.
     if (masterBoxCol != null) innerBoxCol = null;
 
     const bytes = new Uint8Array(await file.arrayBuffer());
@@ -242,20 +228,14 @@ export async function POST(req: Request) {
       masterBoxCol = detected.masterBoxCol;
       innerBoxCol = detected.innerBoxCol;
       imeiCol = detected.imeiCol;
-      // If we have a master carton box column, ignore the inner box column for primary box numbers.
       if (masterBoxCol != null) innerBoxCol = null;
     }
 
-    // Hard fallbacks
     if (innerBoxCol == null) innerBoxCol = 1;
 
-    // Some supplier files put the device name alone in A1 (row 1, col 1)
-    // and do not repeat it in the table headers.
     const topLeft = rows?.[0]?.[0];
     const defaultDeviceTop = normalizeDevice(String(topLeft ?? ""));
 
-    // Trouver le début des vraies lignes (skip headers)
-    // On cherche la 1ère ligne où imei ressemble à un IMEI
     let startIdx = 0;
     for (let i = 0; i < rows.length; i++) {
       const imei = normalizeImei(rows[i]?.[imeiCol]);
@@ -267,8 +247,6 @@ export async function POST(req: Request) {
 
     const itemsParsed: Array<{ device: string; master_box_no: string; box_no: string; imei: string }> = [];
 
-    // Supplier files often repeat device/box only on the first row of each box.
-    // Keep the last seen values for subsequent rows.
     let currentDevice = "";
     let currentMasterBoxNo = "";
     let currentInnerBoxNo = "";
@@ -285,20 +263,15 @@ export async function POST(req: Request) {
       const maybeDevice = normalizeDevice(deviceRaw);
       const maybeMaster = normalizeBox(masterRaw as any);
       const maybeInner = normalizeBox(innerRaw as any);
+
       if (maybeDevice) currentDevice = maybeDevice;
       if (!currentDevice && defaultDeviceTop) currentDevice = defaultDeviceTop;
+
       if (maybeMaster) currentMasterBoxNo = maybeMaster;
       if (maybeInner) currentInnerBoxNo = maybeInner;
 
       const device = currentDevice;
 
-      // ✅ Supplier file expectation (per your example):
-      // Use the MASTER carton "Box No." (same column as the device prefix) as the primary box number.
-      // Do NOT base the primary box on the second "Box No." column.
-      //
-      // - box_no = master carton (e.g. FMC234WC3XWU-025-007)
-      // - master_box_no = same value (kept for compatibility)
-      // If for some reason master isn't present, we fall back to the inner value.
       const box_no = currentMasterBoxNo || currentInnerBoxNo;
       const master_box_no = currentMasterBoxNo || box_no;
 
@@ -311,16 +284,15 @@ export async function POST(req: Request) {
     }
 
     if (itemsParsed.length === 0) {
-      return NextResponse.json({
-        ok: false,
-        error: "No valid rows found. Check the supplier file format.",
-      }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No valid rows found. Check the supplier file format." },
+        { status: 400 }
+      );
     }
 
     // ------------------------------
     // Duplicate protection (hard fail)
     // ------------------------------
-    // 1) Duplicates inside the uploaded file
     const seen = new Map<string, number>();
     for (const it of itemsParsed) {
       seen.set(it.imei, (seen.get(it.imei) ?? 0) + 1);
@@ -341,7 +313,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2) Duplicates already existing in DB (any status) => abort import
     const uniqueImeis = Array.from(seen.keys());
     const existingImeis = new Set<string>();
     const chunkSize = 500;
@@ -368,7 +339,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Group by *inner* box (but keep master_box_no)
+    // Group by box
     const byBox = new Map<string, { device: string; master_box_no: string; box_no: string; imeis: string[] }>();
     for (const it of itemsParsed) {
       const key = `${it.device}__${it.master_box_no}__${it.box_no}`;
@@ -383,13 +354,39 @@ export async function POST(req: Request) {
     const boxesCount = boxesArr.length;
     const itemsCount = itemsParsed.length;
 
+    // ✅ STRICT MODE: device must exist in device_thresholds
+    const devicesList = Array.from(devicesSet);
+    const { data: known, error: knownErr } = await supabase
+      .from("device_thresholds")
+      .select("device")
+      .in("device", devicesList);
+
+    if (knownErr) {
+      return NextResponse.json({ ok: false, error: knownErr.message }, { status: 500 });
+    }
+
+    const knownSet = new Set((known || []).map((r: any) => String(r.device)));
+    const missingDevices = devicesList.filter((d) => !knownSet.has(d)).sort((a, b) => a.localeCompare(b));
+
+    if (missingDevices.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "Unknown device(s). Import blocked (STRICT mode). Add them first in Admin → Devices.",
+          missing_devices: missingDevices,
+          missing_devices_total: missingDevices.length,
+        },
+        { status: 400 }
+      );
+    }
+
     // Identify user (for audit trail)
     const { data: userRes } = await supabase.auth.getUser();
     const userId = userRes?.user?.id ?? null;
-    // Make sure profiles has the email so history/details can display the creator.
     if (userRes?.user) await ensureProfileEmail(supabase, userRes.user);
 
-    // 1) créer un historique inbound_imports
+    // 1) inbound_imports
     const { data: importRow, error: importErr } = await supabase
       .from("inbound_imports")
       .insert({
@@ -408,9 +405,7 @@ export async function POST(req: Request) {
 
     const import_id = importRow.import_id as string;
 
-    // 2) créer/upsert boxes (on ne touche pas à ton système existant)
-    // On fait: si box_no existe déjà avec même device => reuse. Sinon insert.
-    // Pour être safe sans constraint: on lookup d’abord.
+    // 2) boxes
     const allBoxNos = boxesArr.map((b) => b.box_no);
 
     const { data: existingBoxes, error: exErr } = await supabase
@@ -430,7 +425,6 @@ export async function POST(req: Request) {
       .map((b) => ({
         device: b.device,
         box_no: b.box_no,
-        // Optional for supplier files: store the big/master carton box number.
         master_box_no: b.master_box_no,
         status: "IN",
       }));
@@ -447,21 +441,18 @@ export async function POST(req: Request) {
       for (const b of insertedBoxes) existingMap.set(`${b.device}__${b.box_no}`, b);
     }
 
-    // 3) insert items (duplicates already blocked above)
+    // 3) items
     const itemsToInsert = itemsParsed.map((x) => {
-        const box = existingMap.get(`${x.device}__${x.box_no}`);
-        if (!box?.box_id) {
-          // Avoid inserting "undefined" UUIDs (which causes: invalid input syntax for type uuid: "undefined")
-          throw new Error(`Missing box_id for device=${x.device} box_no=${x.box_no}. Box must exist before inserting items.`);
-        }
-        return {
-          imei: x.imei,
-          box_id: box.box_id,
-          status: "IN",
-        };
-      });
-
-    // insert items par chunks
+      const box = existingMap.get(`${x.device}__${x.box_no}`);
+      if (!box?.box_id) {
+        throw new Error(`Missing box_id for device=${x.device} box_no=${x.box_no}. Box must exist before inserting items.`);
+      }
+      return {
+        imei: x.imei,
+        box_id: box.box_id,
+        status: "IN",
+      };
+    });
 
     let insertedItems = 0;
     for (let i = 0; i < itemsToInsert.length; i += 1000) {
@@ -471,7 +462,7 @@ export async function POST(req: Request) {
       insertedItems += chunk.length;
     }
 
-    // 4) inbound_import_boxes (détail par box)
+    // 4) inbound_import_boxes
     const importBoxesRows = boxesArr.map((b) => {
       const box = existingMap.get(`${b.device}__${b.box_no}`);
       if (!box?.box_id) {
@@ -493,9 +484,7 @@ export async function POST(req: Request) {
 
     if (impBoxErr) return NextResponse.json({ ok: false, error: impBoxErr.message }, { status: 500 });
 
-    // 5) Build labels payload
-    // Generate labels for INNER boxes (supplier "Box No." column 2).
-    // This matches the physical label on each small box and avoids confusing master carton numbers.
+    // 5) labels payload + ZPL
     const labels = boxesArr.map((b) => {
       const device = String(b.device || "").trim();
       const box_no = String(b.box_no || "").trim();
@@ -509,34 +498,26 @@ export async function POST(req: Request) {
         box_no,
         qty,
         qr_data,
-        // Keep imeis for API consumers if needed, but QR stays short.
         imeis: b.imeis ?? [],
       };
     });
 
-    // Generate one combined ZPL file (one label per box).
-    // This keeps the UI fast and lets you print in one shot.
     const zplParts: string[] = [];
     for (const l of labels) {
-      const qrData = String(l.qr_data || `BOX:${l.box_no}|DEV:${l.device}`);
-      zplParts.push(buildZpl({ qrData, device: String(l.device), boxNo: String(l.box_no) }));
+      zplParts.push(buildZpl({ qrData: l.qr_data, device: l.device, boxNo: l.box_no }));
     }
-    const zpl_all = zplParts.join("\n\n");
+    const zpl = zplParts.join("\n\n");
 
     return NextResponse.json({
       ok: true,
       import_id,
-      file_name: file.name,
-      rows: rows.length,
-      boxes: boxesCount,
-      devices: devicesCount,
-      parsed_items: itemsParsed.length,
       inserted_items: insertedItems,
-      skipped_existing_imei: 0,
+      boxes: boxesCount,
+      rows: itemsCount,
       labels,
-      zpl_all,
+      zpl,
     });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Unknown error" }, { status: 500 });
+    return NextResponse.json({ ok: false, error: e?.message ?? "Server error" }, { status: 500 });
   }
 }

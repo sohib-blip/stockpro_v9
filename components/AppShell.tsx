@@ -31,6 +31,7 @@ const NAV: NavItem[] = [
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
   { href: "/alerts", label: "Stock Alerts", icon: Bell },
   { href: "/admin", label: "Admin", icon: Shield },
+  { href: "/admin/devices", label: "Devices", icon: Shield },
 ];
 
 function pageTitle(pathname: string) {

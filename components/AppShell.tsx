@@ -4,18 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import {
-  LayoutDashboard,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Tag,
-  Bell,
-  Shield,
-  ArrowLeftRight,
-  Menu,
-  LogOut,
-  Package,
-} from "lucide-react";
+import { LayoutDashboard, ArrowDownToLine, ArrowUpFromLine, Tag, Shield, Menu, LogOut, Package } from "lucide-react";
 
 type NavItem = {
   href: string;
@@ -35,17 +24,25 @@ const NAV: NavItem[] = [
 function pageTitle(pathname: string) {
   if (pathname === "/" || pathname.startsWith("/dashboard")) return "Dashboard";
   if (pathname.startsWith("/inbound")) return "Inbound Import";
-  if (pathname.startsWith("/movements")) return "Mouvements";
   if (pathname.startsWith("/labels")) return "QR Labels";
   if (pathname.startsWith("/outbound")) return "Outbound";
-  if (pathname.startsWith("/alerts")) return "Stock Alerts";
   if (pathname.startsWith("/admin")) return "Admin";
   return "StockPro";
 }
 
+function isActivePath(pathname: string, href: string) {
+  const path = typeof pathname === "string" ? pathname : "";
+  const h = typeof href === "string" ? href : "";
+  if (!h) return false;
+
+  if (h === "/dashboard") return path === "/" || path.startsWith("/dashboard");
+  return path === h || path.startsWith(h + "/") || path.startsWith(h);
+}
+
 export default function AppShell({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const pathname = usePathname();
+  const pathnameRaw = usePathname();
+  const pathname = typeof pathnameRaw === "string" ? pathnameRaw : "";
   const router = useRouter();
 
   const [collapsed, setCollapsed] = useState(false);
@@ -57,9 +54,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
     can_export: false,
     can_admin: false,
   });
-
-  // 🔴 compteur low stock
-  const [lowCount, setLowCount] = useState<number>(0);
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
@@ -89,40 +83,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
     });
 
     return () => sub.subscription.unsubscribe();
-  }, [supabase]);
-
-  // 🔴 load low stock counter
-  useEffect(() => {
-    async function loadLowStock() {
-      try {
-        const { data: session } = await supabase.auth.getSession();
-        const token = session.session?.access_token;
-        if (!token) return;
-
-        const summaryRes = await fetch("/api/dashboard/summary", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const summary = await summaryRes.json();
-
-        const { data: thresholds } = await supabase
-          .from("device_thresholds")
-          .select("device,min_stock");
-
-        const map = new Map(
-          (thresholds || []).map((t: any) => [t.device, Number(t.min_stock || 0)])
-        );
-
-        const low = (summary.per_device || []).filter(
-          (d: any) => d.in_stock <= (map.get(d.device) ?? 0)
-        );
-
-        setLowCount(low.length);
-      } catch {
-        setLowCount(0);
-      }
-    }
-
-    loadLowStock();
   }, [supabase]);
 
   async function logout() {
@@ -175,11 +135,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             if (item.href === "/outbound") return perms.can_outbound;
             return true;
           }).map((item) => {
-            const active =
-              item.href === "/dashboard"
-                ? pathname === "/" || pathname.startsWith("/dashboard")
-                : pathname.startsWith(item.href);
-
+            const active = isActivePath(pathname, item.href);
             const Icon = item.icon;
 
             return (
@@ -197,13 +153,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   <Icon size={18} />
                   {!collapsed && <span className="font-medium">{item.label}</span>}
                 </div>
-
-                {/* 🔴 badge low stock */}
-                {!collapsed && item.href === "/alerts" && lowCount > 0 && (
-                  <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-bold text-white">
-                    {lowCount}
-                  </span>
-                )}
               </Link>
             );
           })}

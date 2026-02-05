@@ -5,26 +5,27 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 import { exportInStockByDevice } from "@/lib/exports";
 
-type PerDeviceRow = { device: string; in_stock: number; out_stock: number; total: number };
-type PerLocationRow = { location: "00" | "1" | "6" | "Cabinet" | "UNKNOWN"; in_stock: number };
-type PerDeviceLocationRow = {
-  device: string;
-  total_in: number;
-  locations: Array<{ location: "00" | "1" | "6" | "Cabinet" | "UNKNOWN"; in_stock: number }>;
-};
-
 type SummaryResp = {
   ok: boolean;
   error?: string;
-  counts?: { devices?: number; items_in?: number; items_out?: number; boxes?: number };
-  per_device?: PerDeviceRow[];
+  counts?: {
+    devices?: number;
+    items_in?: number;
+    items_out?: number;
+    boxes?: number;
+  };
+  per_device?: Array<{ device: string; in_stock: number; out_stock: number; total: number }>;
 
-  // ✅ new
-  per_location?: PerLocationRow[];
-  per_device_location?: PerDeviceLocationRow[];
+  // optional if your summary API supports it
+  per_location?: Array<{ location: "00" | "1" | "6" | "Cabinet" | "UNKNOWN"; in_stock: number }>;
+  per_device_location?: Array<{
+    device: string;
+    total_in: number;
+    locations: Array<{ location: "00" | "1" | "6" | "Cabinet" | "UNKNOWN"; in_stock: number }>;
+  }>;
 };
 
-type ThresholdRow = { device: string; min_stock: number };
+type DeviceRow = { device: string; min_stock: number };
 
 function Stat({ label, value }: { label: string; value: number }) {
   return (
@@ -42,16 +43,17 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<SummaryResp | null>(null);
 
+  // ✅ thresholds from devices table
   const [thresholds, setThresholds] = useState<Record<string, number>>({});
-  const [deviceQuery, setDeviceQuery] = useState<string>("");
 
+  const [deviceQuery, setDeviceQuery] = useState<string>("");
   const [sort, setSort] = useState<{ key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" }>({
     key: "device",
     dir: "asc",
   });
-
   const [page, setPage] = useState(1);
   const pageSize = 25;
+
   const [canExport, setCanExport] = useState(false);
 
   async function load() {
@@ -68,24 +70,33 @@ export default function DashboardPage() {
     }
 
     try {
+      // 1) dashboard summary
       const res = await fetch("/api/dashboard/summary", {
         headers: { Authorization: `Bearer ${token}` },
       });
       const json = (await res.json()) as SummaryResp;
       setSummary(json);
 
-      const { data: tData, error: tErr } = await supabase.from("device_thresholds").select("device, min_stock");
-      if (tErr) {
-        toast({ kind: "error", title: "Thresholds not loaded", message: tErr.message });
+      // 2) thresholds from devices (min_stock)
+      //    if table doesn't exist, we fallback silently
+      const { data: dData, error: dErr } = await supabase.from("devices").select("device, min_stock");
+
+      if (dErr) {
+        toast({
+          kind: "error",
+          title: "Devices min stock not loaded",
+          message: dErr.message,
+        });
         setThresholds({});
       } else {
         const map: Record<string, number> = {};
-        (tData || []).forEach((r: ThresholdRow) => {
+        (dData || []).forEach((r: DeviceRow) => {
           map[String(r.device)] = Number(r.min_stock ?? 0);
         });
         setThresholds(map);
       }
 
+      // 3) permissions (optional)
       const { data: u } = await supabase.auth.getUser();
       if (u.user?.id) {
         const { data: p } = await supabase
@@ -107,19 +118,20 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => setPage(1), [deviceQuery, sort.key, sort.dir]);
+  // Reset pagination when filters/sort change
+  useEffect(() => {
+    setPage(1);
+  }, [deviceQuery, sort.key, sort.dir]);
 
   const counts = summary?.counts || {};
   const perDeviceAll = Array.isArray(summary?.per_device) ? summary!.per_device! : [];
-  const perLocation = Array.isArray(summary?.per_location) ? summary!.per_location! : [];
-  const perDeviceLoc = Array.isArray(summary?.per_device_location) ? summary!.per_device_location! : [];
 
   const q = deviceQuery.trim().toLowerCase();
-
   const filtered = useMemo(() => {
     return perDeviceAll.filter((r) => (!q ? true : String(r.device ?? "").toLowerCase().includes(q)));
   }, [perDeviceAll, q]);
 
+  // ✅ Stats follow filter
   const filteredTotals = useMemo(() => {
     const devices = filtered.length;
     const items_in = filtered.reduce((acc, r) => acc + Number(r.in_stock ?? 0), 0);
@@ -135,9 +147,10 @@ export default function DashboardPage() {
   const outStock = useFilteredStats ? filteredTotals.items_out : (counts.items_out ?? 0);
   const totalItems = useFilteredStats ? filteredTotals.total : ((counts.items_in ?? 0) + (counts.items_out ?? 0));
 
+  // ✅ RED ONLY if strictly BELOW min_stock
   function isLow(device: string, in_stock: number) {
     const min = thresholds[device] ?? 0;
-    return Number(in_stock ?? 0) <= Number(min);
+    return Number(in_stock ?? 0) < Number(min);
   }
 
   const sorted = useMemo(() => {
@@ -172,11 +185,14 @@ export default function DashboardPage() {
   const safePage = Math.min(Math.max(1, page), totalPages);
   const perDevice = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
 
-  // ✅ Devices x locations table (filter too)
-  const perDeviceLocFiltered = useMemo(() => {
-    if (!q) return perDeviceLoc;
-    return perDeviceLoc.filter((r) => String(r.device ?? "").toLowerCase().includes(q));
-  }, [perDeviceLoc, q]);
+  // optional sections (only if API returns them)
+  const perLocation = Array.isArray(summary?.per_location) ? summary!.per_location! : [];
+  const perDeviceLocation = Array.isArray(summary?.per_device_location) ? summary!.per_device_location! : [];
+
+  const perDeviceLocationFiltered = useMemo(() => {
+    if (!q) return perDeviceLocation;
+    return perDeviceLocation.filter((r) => String(r.device ?? "").toLowerCase().includes(q));
+  }, [perDeviceLocation, q]);
 
   return (
     <div className="space-y-6">
@@ -184,7 +200,7 @@ export default function DashboardPage() {
         <div>
           <div className="text-xs text-slate-500">Overview</div>
           <h2 className="text-xl font-semibold">Dashboard</h2>
-          <p className="text-sm text-slate-400 mt-1">Devices + stock in / out + totals + locations.</p>
+          <p className="text-sm text-slate-400 mt-1">Devices + stock in / out + totals. Low stock is red.</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -224,39 +240,34 @@ export default function DashboardPage() {
             <Stat label="Total items" value={totalItems} />
           </div>
 
-          {/* ✅ Stock par étage */}
-          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
-            <div className="text-sm font-semibold">In stock par étage</div>
-            <div className="text-xs text-slate-500 mt-1">00 / 1 / 6 / Cabinet.</div>
+          {/* ✅ Stock par étage (optional) */}
+          {perLocation.length > 0 ? (
+            <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
+              <div className="text-sm font-semibold">In stock par étage</div>
+              <div className="text-xs text-slate-500 mt-1">00 / 1 / 6 / Cabinet</div>
 
-            <div className="overflow-auto mt-3">
-              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-                <thead className="bg-slate-950/50">
-                  <tr>
-                    <th className="p-2 text-left border-b border-slate-800">Étage</th>
-                    <th className="p-2 text-right border-b border-slate-800">IN</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {perLocation.map((r) => (
-                    <tr key={r.location} className="hover:bg-slate-950/50">
-                      <td className="p-2 border-b border-slate-800">{r.location}</td>
-                      <td className="p-2 border-b border-slate-800 text-right font-semibold">{r.in_stock}</td>
-                    </tr>
-                  ))}
-                  {perLocation.length === 0 && (
+              <div className="overflow-auto mt-3">
+                <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+                  <thead className="bg-slate-950/50">
                     <tr>
-                      <td className="p-3 text-slate-400" colSpan={2}>
-                        No location data yet.
-                      </td>
+                      <th className="p-2 text-left border-b border-slate-800">Étage</th>
+                      <th className="p-2 text-right border-b border-slate-800">IN</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {perLocation.map((r) => (
+                      <tr key={r.location} className="hover:bg-slate-950/50">
+                        <td className="p-2 border-b border-slate-800">{r.location}</td>
+                        <td className="p-2 border-b border-slate-800 text-right font-semibold">{r.in_stock}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
-          </div>
+          ) : null}
 
-          {/* Devices list */}
+          {/* Devices table */}
           <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
             <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
               <div>
@@ -286,6 +297,7 @@ export default function DashboardPage() {
                   {perDevice.map((r) => {
                     const dev = r.device || "UNKNOWN";
                     const low = dev !== "UNKNOWN" ? isLow(dev, Number(r.in_stock ?? 0)) : false;
+                    const min = thresholds[dev] ?? 0;
 
                     return (
                       <tr key={dev} className={low ? "bg-rose-950/20 hover:bg-rose-950/30" : "hover:bg-slate-950/50"}>
@@ -296,7 +308,7 @@ export default function DashboardPage() {
                           </div>
                           {dev !== "UNKNOWN" ? (
                             <div className="text-xs text-slate-500 mt-0.5">
-                              Min stock: <span className="text-slate-300 font-semibold">{thresholds[dev] ?? 0}</span>
+                              Min stock: <span className="text-slate-300 font-semibold">{min}</span>
                             </div>
                           ) : null}
                         </td>
@@ -347,56 +359,56 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* ✅ Device x étage */}
-          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
-            <div className="text-sm font-semibold">Devices par étage</div>
-            <div className="text-xs text-slate-500 mt-1">IN stock (00 / 1 / 6 / Cabinet).</div>
+          {/* ✅ Devices x étages (optional) */}
+          {perDeviceLocationFiltered.length > 0 ? (
+            <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
+              <div className="text-sm font-semibold">Devices par étage</div>
+              <div className="text-xs text-slate-500 mt-1">IN stock (00 / 1 / 6 / Cabinet)</div>
 
-            <div className="overflow-auto mt-3">
-              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-                <thead className="bg-slate-950/50">
-                  <tr>
-                    <th className="p-2 text-left border-b border-slate-800">Device</th>
-                    <th className="p-2 text-right border-b border-slate-800">00</th>
-                    <th className="p-2 text-right border-b border-slate-800">1</th>
-                    <th className="p-2 text-right border-b border-slate-800">6</th>
-                    <th className="p-2 text-right border-b border-slate-800">Cabinet</th>
-                    <th className="p-2 text-right border-b border-slate-800">Total IN</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {perDeviceLocFiltered.slice(0, 200).map((r) => {
-                    const get = (loc: string) => r.locations.find((x) => x.location === loc)?.in_stock ?? 0;
-                    return (
-                      <tr key={r.device} className="hover:bg-slate-950/50">
-                        <td className="p-2 border-b border-slate-800">{r.device}</td>
-                        <td className="p-2 border-b border-slate-800 text-right">{get("00")}</td>
-                        <td className="p-2 border-b border-slate-800 text-right">{get("1")}</td>
-                        <td className="p-2 border-b border-slate-800 text-right">{get("6")}</td>
-                        <td className="p-2 border-b border-slate-800 text-right">{get("Cabinet")}</td>
-                        <td className="p-2 border-b border-slate-800 text-right font-semibold">{r.total_in}</td>
-                      </tr>
-                    );
-                  })}
-                  {perDeviceLocFiltered.length === 0 && (
+              <div className="overflow-auto mt-3">
+                <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+                  <thead className="bg-slate-950/50">
                     <tr>
-                      <td className="p-3 text-slate-400" colSpan={6}>
-                        No data yet.
-                      </td>
+                      <th className="p-2 text-left border-b border-slate-800">Device</th>
+                      <th className="p-2 text-right border-b border-slate-800">00</th>
+                      <th className="p-2 text-right border-b border-slate-800">1</th>
+                      <th className="p-2 text-right border-b border-slate-800">6</th>
+                      <th className="p-2 text-right border-b border-slate-800">Cabinet</th>
+                      <th className="p-2 text-right border-b border-slate-800">Total IN</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                  </thead>
+                  <tbody>
+                    {perDeviceLocationFiltered.slice(0, 200).map((r) => {
+                      const get = (loc: string) => r.locations.find((x) => x.location === loc)?.in_stock ?? 0;
+                      return (
+                        <tr key={r.device} className="hover:bg-slate-950/50">
+                          <td className="p-2 border-b border-slate-800">{r.device}</td>
+                          <td className="p-2 border-b border-slate-800 text-right">{get("00")}</td>
+                          <td className="p-2 border-b border-slate-800 text-right">{get("1")}</td>
+                          <td className="p-2 border-b border-slate-800 text-right">{get("6")}</td>
+                          <td className="p-2 border-b border-slate-800 text-right">{get("Cabinet")}</td>
+                          <td className="p-2 border-b border-slate-800 text-right font-semibold">{r.total_in}</td>
+                        </tr>
+                      );
+                    })}
+                    {perDeviceLocationFiltered.length === 0 ? (
+                      <tr>
+                        <td className="p-3 text-slate-400" colSpan={6}>
+                          No data.
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
 
-            <div className="text-xs text-slate-500 mt-2">
-              (Affichage limité à 200 lignes pour éviter lag.)
+              <div className="text-xs text-slate-500 mt-2">(Affichage limité à 200 lignes pour éviter lag.)</div>
             </div>
-          </div>
+          ) : null}
         </>
       ) : (
         <div className="rounded-2xl border border-rose-900/60 bg-rose-950/40 p-4 text-sm text-rose-200">
-          {summary?.error || "Dashboard error"}
+          {summary.error || "Dashboard error"}
         </div>
       )}
     </div>
@@ -439,7 +451,9 @@ function Th({
 
 function Badge({ kind, children }: { kind: "in" | "out"; children: React.ReactNode }) {
   const cls =
-    kind === "in" ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-200" : "border-rose-900/60 bg-rose-950/40 text-rose-200";
+    kind === "in"
+      ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-200"
+      : "border-rose-900/60 bg-rose-950/40 text-rose-200";
   return <span className={`inline-flex min-w-[44px] justify-end rounded-lg border px-2 py-1 font-semibold ${cls}`}>{children}</span>;
 }
 
@@ -460,7 +474,10 @@ async function exportFullInventory(supabase: any, toast: (t: any) => void) {
       return;
     }
 
-    const res = await fetch("/api/export/inventory", { headers: { Authorization: `Bearer ${token}` } });
+    const res = await fetch("/api/export/inventory", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
     if (!res.ok) {
       let msg = "Export failed";
       try {
@@ -472,7 +489,9 @@ async function exportFullInventory(supabase: any, toast: (t: any) => void) {
     }
 
     const blob = await res.blob();
-    const filename = getFilenameFromDisposition(res.headers.get("content-disposition")) || `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
+    const filename =
+      getFilenameFromDisposition(res.headers.get("content-disposition")) ||
+      `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
     downloadBlob(filename, blob);
     toast({ kind: "success", title: "Inventory exported" });
   } catch (e: any) {

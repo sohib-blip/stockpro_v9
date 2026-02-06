@@ -10,37 +10,20 @@ function authedClient(token: string) {
   );
 }
 
-function safeIncludes(v: any, needle: string) {
-  return String(v ?? "").includes(needle);
-}
+const norm = (v: any) => String(v ?? "").toLowerCase().trim();
 
-function normalizeDevice(raw: any) {
-  const s = String(raw ?? "").trim();
-  if (!s) return "";
-  return s.split("-")[0].trim().toUpperCase();
-}
+const normalizeImei = (v: any) => String(v ?? "").replace(/\D/g, "");
+const isImei = (s: string) => /^\d{14,17}$/.test(s);
 
-function normalizeBox(v: any) {
-  return String(v ?? "").trim();
-}
-
-function normalizeImei(v: any) {
-  return String(v ?? "").replace(/\D/g, "");
-}
-
-function isLikelyImei(s: string) {
-  return /^\d{14,17}$/.test(s);
-}
+const normalizeBox = (v: any) => String(v ?? "").trim();
+const normalizeDevice = (v: any) =>
+  String(v ?? "")
+    .replace(/[^a-zA-Z0-9\- ]/g, "")
+    .trim()
+    .toUpperCase();
 
 function buildQrDataFromImeis(imeis: string[]) {
-  const unique = Array.from(
-    new Set(
-      imeis
-        .map((x) => normalizeImei(x))
-        .filter((x) => isLikelyImei(x))
-    )
-  );
-  return unique.join("\n"); // ✅ QR = IMEI only, one per line
+  return Array.from(new Set(imeis)).join("\n"); // ✅ 1 IMEI par ligne
 }
 
 function buildZpl({ qrData, device, boxNo }: { qrData: string; device: string; boxNo: string }) {
@@ -66,18 +49,10 @@ function buildZpl({ qrData, device, boxNo }: { qrData: string; device: string; b
 `.trim();
 }
 
-function to2dArray(ws: XLSX.WorkSheet) {
-  return XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any[][];
-}
-
-function normHeader(v: any) {
-  return String(v ?? "").toLowerCase().replace(/\s+/g, " ").trim();
-}
-
 export async function POST(req: Request) {
   try {
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    const auth = req.headers.get("authorization") || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     if (!token) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const supabase = authedClient(token);
@@ -86,56 +61,67 @@ export async function POST(req: Request) {
     const file = form.get("file") as File | null;
     const location = String(form.get("location") || "00");
 
-    if (!file) {
-      return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
-    }
+    if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
 
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const wb = XLSX.read(bytes, { type: "array" });
+    const buffer = new Uint8Array(await file.arrayBuffer());
+    const wb = XLSX.read(buffer, { type: "array" });
     const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = to2dArray(ws);
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any[][];
 
     if (rows.length < 2) {
-      return NextResponse.json({ ok: false, error: "Empty Excel file" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Empty Excel" }, { status: 400 });
     }
 
-    const headerRow = rows.findIndex((r) =>
-      r.some((c: any) => safeIncludes(normHeader(c), "imei"))
+    const headerRowIndex = rows.findIndex((r) =>
+      r.some((c) => norm(c).includes("imei"))
     );
-
-    if (headerRow < 0) {
+    if (headerRowIndex < 0) {
       return NextResponse.json({ ok: false, error: "IMEI column not found" }, { status: 400 });
     }
 
-    const header = rows[headerRow].map(normHeader);
+    const header = rows[headerRowIndex].map(norm);
 
-    const imeiCol = header.findIndex((h) => h === "imei" || safeIncludes(h, "imei"));
-    const boxCol = header.findIndex((h) => safeIncludes(h, "box"));
-    const deviceCol = header.findIndex((h) => safeIncludes(h, "device"));
+    const imeiCol = header.findIndex((h) => h === "imei" || h.includes("imei"));
+    const boxCol = header.findIndex((h) => h.includes("box"));
 
-    if (imeiCol < 0 || boxCol < 0 || deviceCol < 0) {
+    // ✅ device facultatif
+    const deviceCol = header.findIndex(
+      (h) =>
+        h === "device" ||
+        h.includes("model") ||
+        h.includes("product") ||
+        h.includes("type")
+    );
+
+    if (imeiCol < 0 || boxCol < 0) {
       return NextResponse.json({ ok: false, error: "Missing required columns" }, { status: 400 });
     }
 
+    // 👉 fallback device = nom du fichier
+    const fallbackDevice = normalizeDevice(file.name.split(".")[0]);
+
     const parsed: { device: string; box: string; imei: string }[] = [];
 
-    for (let r = headerRow + 1; r < rows.length; r++) {
+    for (let r = headerRowIndex + 1; r < rows.length; r++) {
       const row = rows[r];
       const imei = normalizeImei(row[imeiCol]);
-      if (!isLikelyImei(imei)) continue;
+      if (!isImei(imei)) continue;
 
-      const device = normalizeDevice(row[deviceCol]);
       const box = normalizeBox(row[boxCol]);
-      if (!device || !box) continue;
+      if (!box) continue;
+
+      const device =
+        deviceCol >= 0 ? normalizeDevice(row[deviceCol]) : fallbackDevice;
+
+      if (!device) continue;
 
       parsed.push({ device, box, imei });
     }
 
     if (!parsed.length) {
-      return NextResponse.json({ ok: false, error: "No IMEIs detected" }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "No IMEIs found" }, { status: 400 });
     }
 
-    // Group by device + box
     const grouped = new Map<string, { device: string; box: string; imeis: string[] }>();
     for (const p of parsed) {
       const key = `${p.device}__${p.box}`;
@@ -145,14 +131,12 @@ export async function POST(req: Request) {
 
     const boxes = Array.from(grouped.values());
 
-    // Ensure devices exist
     await supabase.from("devices").upsert(
       boxes.map((b) => ({ device: b.device })),
       { onConflict: "device" }
     );
 
-    // Insert import history (NO devices column)
-    const { data: importRow, error: importErr } = await supabase
+    const { data: imp, error: impErr } = await supabase
       .from("inbound_imports")
       .insert({
         file_name: file.name,
@@ -164,13 +148,10 @@ export async function POST(req: Request) {
       .select("import_id")
       .single();
 
-    if (importErr) {
-      return NextResponse.json({ ok: false, error: importErr.message }, { status: 500 });
+    if (impErr) {
+      return NextResponse.json({ ok: false, error: impErr.message }, { status: 500 });
     }
 
-    const import_id = importRow.import_id;
-
-    // Labels + ZPL
     const labels = boxes.map((b) => ({
       device: b.device,
       box_no: b.box,
@@ -184,10 +165,10 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      import_id,
+      import_id: imp.import_id,
       boxes: boxes.length,
       devices: new Set(boxes.map((b) => b.device)).size,
-      parsed_items: parsed.length,
+      items: parsed.length,
       labels,
       zpl_all,
     });

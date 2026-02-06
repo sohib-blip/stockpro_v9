@@ -12,7 +12,6 @@ type DeviceRow = {
 };
 
 function canonicalize(input: string) {
-  // "FMB 140" -> "FMB140"
   return input
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
@@ -30,29 +29,44 @@ export default function AdminDevicesPage() {
   const [newName, setNewName] = useState("");
   const [newMin, setNewMin] = useState<number>(0);
 
+  // ✅ DEBUG
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "MISSING_ENV";
+  const [debug, setDebug] = useState<{ step: string; error?: string; count?: number }>({
+    step: "idle",
+  });
+
   async function load() {
     setLoading(true);
+    setDebug({ step: "loading" });
+
     try {
-      // ✅ try to read with both columns (device + canonical_name)
-      // If "device" column does not exist, we fallback.
+      // 1) try with device column
       const first = await supabase
         .from("devices")
         .select("id, canonical_name, device, min_stock")
         .order("canonical_name", { ascending: true });
 
       if (!first.error) {
-        setRows((first.data as any) || []);
+        const data = (first.data as any[]) || [];
+        setRows(data);
+        setDebug({ step: "select_with_device_ok", count: data.length });
         return;
       }
 
-      // fallback: table has no "device" column
+      // 2) fallback without device column
       const second = await supabase
         .from("devices")
         .select("id, canonical_name, min_stock")
         .order("canonical_name", { ascending: true });
 
-      if (second.error) throw second.error;
-      setRows((second.data as any) || []);
+      if (second.error) {
+        setDebug({ step: "select_fallback_failed", error: second.error.message });
+        throw second.error;
+      }
+
+      const data2 = (second.data as any[]) || [];
+      setRows(data2);
+      setDebug({ step: "select_fallback_ok", count: data2.length });
     } catch (e: any) {
       toast({ kind: "error", title: "Devices load failed", message: e?.message || "Error" });
     } finally {
@@ -77,31 +91,26 @@ export default function AdminDevicesPage() {
 
   async function addDevice() {
     const display = newName.trim();
-    if (!display) {
-      toast({ kind: "error", title: "Missing device name" });
-      return;
-    }
+    if (!display) return toast({ kind: "error", title: "Missing device name" });
 
     const canonical_name = canonicalize(display);
     if (!canonical_name) {
-      toast({ kind: "error", title: "Invalid name", message: "Device name must contain letters/numbers." });
-      return;
+      return toast({ kind: "error", title: "Invalid name", message: "Device name must contain letters/numbers." });
     }
 
     setLoading(true);
     try {
-      // ✅ Secure insert: always includes canonical_name (NOT NULL)
-      // Try insert with device column, if not present fallback to canonical_name only.
+      // Insert with canonical_name always (NOT NULL)
       let res = await supabase.from("devices").insert({
         canonical_name,
         device: display,
         min_stock: Number.isFinite(newMin) ? Number(newMin) : 0,
       } as any);
 
+      // If "device" column doesn't exist, fallback
       if (res.error) {
-        const msg = String(res.error.message || "");
-        // fallback if column "device" doesn't exist
-        if (msg.toLowerCase().includes("could not find the 'device' column") || msg.toLowerCase().includes("column") && msg.toLowerCase().includes("device")) {
+        const msg = String(res.error.message || "").toLowerCase();
+        if (msg.includes("could not find the 'device' column") || (msg.includes("column") && msg.includes("device"))) {
           res = await supabase.from("devices").insert({
             canonical_name,
             min_stock: Number.isFinite(newMin) ? Number(newMin) : 0,
@@ -114,6 +123,7 @@ export default function AdminDevicesPage() {
       toast({ kind: "success", title: "Device added", message: `${display} (${canonical_name})` });
       setNewName("");
       setNewMin(0);
+
       await load();
     } catch (e: any) {
       toast({ kind: "error", title: "Add failed", message: e?.message || "Error" });
@@ -128,7 +138,7 @@ export default function AdminDevicesPage() {
     try {
       const { error } = await supabase.from("devices").update({ min_stock }).eq("id", r.id);
       if (error) throw error;
-      toast({ kind: "success", title: "Saved", message: `Min stock updated` });
+      toast({ kind: "success", title: "Saved", message: "Min stock updated" });
       await load();
     } catch (e: any) {
       toast({ kind: "error", title: "Save failed", message: e?.message || "Error" });
@@ -139,6 +149,31 @@ export default function AdminDevicesPage() {
 
   return (
     <div className="space-y-6">
+      {/* ✅ DEBUG BANNER */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm">
+        <div className="font-semibold text-slate-100">Debug (pour trouver le vrai bug)</div>
+        <div className="mt-2 text-slate-300">
+          <div>
+            <span className="text-slate-500">NEXT_PUBLIC_SUPABASE_URL: </span>
+            <span className="font-mono break-all">{supabaseUrl}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">Load step: </span>
+            <span className="font-mono">{debug.step}</span>
+          </div>
+          <div>
+            <span className="text-slate-500">Rows loaded: </span>
+            <span className="font-mono">{typeof debug.count === "number" ? debug.count : "—"}</span>
+          </div>
+          {debug.error ? (
+            <div className="mt-2 rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-rose-200">
+              <div className="font-semibold">Select error</div>
+              <div className="font-mono text-xs mt-1 break-all">{debug.error}</div>
+            </div>
+          ) : null}
+        </div>
+      </div>
+
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-xs text-slate-500">Admin</div>
@@ -188,9 +223,7 @@ export default function AdminDevicesPage() {
 
         <div className="text-xs text-slate-500">
           Canonical preview:{" "}
-          <span className="text-slate-200 font-semibold">
-            {newName.trim() ? canonicalize(newName) : "—"}
-          </span>
+          <span className="text-slate-200 font-semibold">{newName.trim() ? canonicalize(newName) : "—"}</span>
         </div>
       </div>
 
@@ -221,7 +254,26 @@ export default function AdminDevicesPage() {
             </thead>
             <tbody>
               {filtered.map((r) => (
-                <DeviceRowItem key={r.id || r.canonical_name} row={r} onSave={saveMinStock} loading={loading} />
+                <tr key={r.id || r.canonical_name} className="hover:bg-slate-950/50">
+                  <td className="p-2 border-b border-slate-800">
+                    <div className="text-slate-100 font-semibold">{r.device || "—"}</div>
+                  </td>
+                  <td className="p-2 border-b border-slate-800">
+                    <div className="text-slate-200">{r.canonical_name}</div>
+                  </td>
+                  <td className="p-2 border-b border-slate-800 text-right">
+                    <input
+                      type="number"
+                      min={0}
+                      defaultValue={String(Number(r.min_stock ?? 0))}
+                      onBlur={(e) => saveMinStock(r, Number(e.target.value || 0))}
+                      className="w-[120px] text-right border border-slate-800 bg-slate-950 text-slate-100 rounded-lg px-2 py-1"
+                    />
+                  </td>
+                  <td className="p-2 border-b border-slate-800 text-right">
+                    <span className="text-xs text-slate-500">auto-save on blur</span>
+                  </td>
+                </tr>
               ))}
 
               {filtered.length === 0 && (
@@ -236,50 +288,5 @@ export default function AdminDevicesPage() {
         </div>
       </div>
     </div>
-  );
-}
-
-function DeviceRowItem({
-  row,
-  onSave,
-  loading,
-}: {
-  row: DeviceRow;
-  onSave: (row: DeviceRow, min: number) => Promise<void>;
-  loading: boolean;
-}) {
-  const [val, setVal] = useState<number>(Number(row.min_stock ?? 0));
-
-  useEffect(() => {
-    setVal(Number(row.min_stock ?? 0));
-  }, [row.min_stock]);
-
-  return (
-    <tr className="hover:bg-slate-950/50">
-      <td className="p-2 border-b border-slate-800">
-        <div className="text-slate-100 font-semibold">{row.device || "—"}</div>
-      </td>
-      <td className="p-2 border-b border-slate-800">
-        <div className="text-slate-200">{row.canonical_name}</div>
-      </td>
-      <td className="p-2 border-b border-slate-800 text-right">
-        <input
-          type="number"
-          min={0}
-          value={String(val)}
-          onChange={(e) => setVal(Number(e.target.value || 0))}
-          className="w-[120px] text-right border border-slate-800 bg-slate-950 text-slate-100 rounded-lg px-2 py-1"
-        />
-      </td>
-      <td className="p-2 border-b border-slate-800 text-right">
-        <button
-          disabled={loading}
-          onClick={() => onSave(row, Number.isFinite(val) ? Number(val) : 0)}
-          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
-        >
-          Save
-        </button>
-      </td>
-    </tr>
   );
 }

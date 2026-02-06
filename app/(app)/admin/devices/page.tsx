@@ -1,16 +1,25 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 
 type DeviceRow = {
-  device: string;
-  min_stock: number | null;
-  created_at?: string | null;
+  id?: string;
+  canonical_name: string;
+  device?: string | null;
+  min_stock?: number | null;
 };
 
-export default function DevicesPage() {
+function canonicalize(input: string) {
+  // "FMB 140" -> "FMB140"
+  return input
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .trim();
+}
+
+export default function AdminDevicesPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
@@ -18,22 +27,34 @@ export default function DevicesPage() {
   const [rows, setRows] = useState<DeviceRow[]>([]);
   const [q, setQ] = useState("");
 
-  const [newDevice, setNewDevice] = useState("");
-  const [newMinStock, setNewMinStock] = useState<number>(0);
+  const [newName, setNewName] = useState("");
+  const [newMin, setNewMin] = useState<number>(0);
 
   async function load() {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // ✅ try to read with both columns (device + canonical_name)
+      // If "device" column does not exist, we fallback.
+      const first = await supabase
         .from("devices")
-        .select("device, min_stock, created_at")
-        .order("device", { ascending: true });
+        .select("id, canonical_name, device, min_stock")
+        .order("canonical_name", { ascending: true });
 
-      if (error) throw error;
-      setRows((data || []) as DeviceRow[]);
+      if (!first.error) {
+        setRows((first.data as any) || []);
+        return;
+      }
+
+      // fallback: table has no "device" column
+      const second = await supabase
+        .from("devices")
+        .select("id, canonical_name, min_stock")
+        .order("canonical_name", { ascending: true });
+
+      if (second.error) throw second.error;
+      setRows((second.data as any) || []);
     } catch (e: any) {
       toast({ kind: "error", title: "Devices load failed", message: e?.message || "Error" });
-      setRows([]);
     } finally {
       setLoading(false);
     }
@@ -44,50 +65,87 @@ export default function DevicesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = rows.filter((r) => String(r.device).toLowerCase().includes(q.trim().toLowerCase()));
+  const filtered = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return rows;
+    return rows.filter((r) => {
+      const disp = String(r.device ?? "").toLowerCase();
+      const can = String(r.canonical_name ?? "").toLowerCase();
+      return disp.includes(qq) || can.includes(qq);
+    });
+  }, [rows, q]);
 
   async function addDevice() {
-    const device = newDevice.trim().toUpperCase();
-    if (!device) {
-      toast({ kind: "error", title: "Device name required" });
+    const display = newName.trim();
+    if (!display) {
+      toast({ kind: "error", title: "Missing device name" });
       return;
     }
 
+    const canonical_name = canonicalize(display);
+    if (!canonical_name) {
+      toast({ kind: "error", title: "Invalid name", message: "Device name must contain letters/numbers." });
+      return;
+    }
+
+    setLoading(true);
     try {
-      const { error } = await supabase.from("devices").upsert(
-        { device, min_stock: Number(newMinStock || 0) },
-        { onConflict: "device" }
-      );
+      // ✅ Secure insert: always includes canonical_name (NOT NULL)
+      // Try insert with device column, if not present fallback to canonical_name only.
+      let res = await supabase.from("devices").insert({
+        canonical_name,
+        device: display,
+        min_stock: Number.isFinite(newMin) ? Number(newMin) : 0,
+      } as any);
 
-      if (error) throw error;
+      if (res.error) {
+        const msg = String(res.error.message || "");
+        // fallback if column "device" doesn't exist
+        if (msg.toLowerCase().includes("could not find the 'device' column") || msg.toLowerCase().includes("column") && msg.toLowerCase().includes("device")) {
+          res = await supabase.from("devices").insert({
+            canonical_name,
+            min_stock: Number.isFinite(newMin) ? Number(newMin) : 0,
+          } as any);
+        }
+      }
 
-      toast({ kind: "success", title: "Device saved" });
-      setNewDevice("");
-      setNewMinStock(0);
+      if (res.error) throw res.error;
+
+      toast({ kind: "success", title: "Device added", message: `${display} (${canonical_name})` });
+      setNewName("");
+      setNewMin(0);
       await load();
     } catch (e: any) {
-      toast({ kind: "error", title: "Save failed", message: e?.message || "Error" });
+      toast({ kind: "error", title: "Add failed", message: e?.message || "Error" });
+    } finally {
+      setLoading(false);
     }
   }
 
-  async function updateMinStock(device: string, min_stock: number) {
+  async function saveMinStock(r: DeviceRow, min_stock: number) {
+    if (!r.id) return;
+    setLoading(true);
     try {
-      const { error } = await supabase.from("devices").update({ min_stock }).eq("device", device);
+      const { error } = await supabase.from("devices").update({ min_stock }).eq("id", r.id);
       if (error) throw error;
-      toast({ kind: "success", title: "Min stock updated" });
-      setRows((prev) => prev.map((r) => (r.device === device ? { ...r, min_stock } : r)));
+      toast({ kind: "success", title: "Saved", message: `Min stock updated` });
+      await load();
     } catch (e: any) {
-      toast({ kind: "error", title: "Update failed", message: e?.message || "Error" });
+      toast({ kind: "error", title: "Save failed", message: e?.message || "Error" });
+    } finally {
+      setLoading(false);
     }
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-xs text-slate-500">Admin</div>
-          <h1 className="text-xl font-semibold">Devices</h1>
-          <p className="text-sm text-slate-400 mt-1">Crée tes devices manuellement et choisis le min stock.</p>
+          <h2 className="text-xl font-semibold">Devices</h2>
+          <p className="text-sm text-slate-400 mt-1">
+            Add devices + set min stock. Import uses <span className="text-slate-200 font-semibold">canonical_name</span>.
+          </p>
         </div>
 
         <button
@@ -100,62 +158,75 @@ export default function DevicesPage() {
       </div>
 
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-        <div className="text-sm font-semibold">Add / Update device</div>
-        <div className="flex flex-col md:flex-row gap-3 md:items-center">
+        <div className="text-sm font-semibold">Add device</div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <input
-            value={newDevice}
-            onChange={(e) => setNewDevice(e.target.value)}
-            placeholder="Device name (ex: FMC234WC3XWU)"
-            className="w-full md:w-[320px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder='Ex: "FMB 140"'
+            className="border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
           />
 
           <input
+            value={String(newMin)}
+            onChange={(e) => setNewMin(Number(e.target.value || 0))}
             type="number"
-            value={newMinStock}
-            onChange={(e) => setNewMinStock(Number(e.target.value))}
-            className="w-full md:w-[160px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm"
             min={0}
+            placeholder="Min stock"
+            className="border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
           />
 
-          <button onClick={addDevice} className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold">
-            Save
+          <button
+            onClick={addDevice}
+            disabled={loading}
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            Add
           </button>
         </div>
 
-        <div className="text-xs text-slate-500">Si le device existe déjà, ça met juste à jour le min stock.</div>
+        <div className="text-xs text-slate-500">
+          Canonical preview:{" "}
+          <span className="text-slate-200 font-semibold">
+            {newName.trim() ? canonicalize(newName) : "—"}
+          </span>
+        </div>
       </div>
 
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
           <div>
             <div className="text-sm font-semibold">All devices</div>
-            <div className="text-xs text-slate-500">Min stock utilisé par le dashboard.</div>
+            <div className="text-xs text-slate-500">Search by display name or canonical.</div>
           </div>
 
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search device…"
-            className="w-full md:w-[280px] bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm"
+            placeholder="Search…"
+            className="w-full md:w-[280px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
           />
         </div>
 
-        <div className="overflow-auto mt-3">
+        <div className="overflow-auto">
           <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
             <thead className="bg-slate-950/50">
               <tr>
-                <th className="p-2 text-left border-b border-slate-800">Device</th>
-                <th className="p-2 text-right border-b border-slate-800">Min stock</th>
-                <th className="p-2 text-right border-b border-slate-800">Action</th>
+                <th className="text-left p-2 border-b border-slate-800">Display</th>
+                <th className="text-left p-2 border-b border-slate-800">Canonical</th>
+                <th className="text-right p-2 border-b border-slate-800">Min stock</th>
+                <th className="text-right p-2 border-b border-slate-800">Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => (
-                <DeviceRowItem key={r.device} row={r} onSave={updateMinStock} />
+                <DeviceRowItem key={r.id || r.canonical_name} row={r} onSave={saveMinStock} loading={loading} />
               ))}
+
               {filtered.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="p-3 text-slate-400">
+                  <td className="p-3 text-sm text-slate-400" colSpan={4}>
                     No devices.
                   </td>
                 </tr>
@@ -168,42 +239,45 @@ export default function DevicesPage() {
   );
 }
 
-function DeviceRowItem({ row, onSave }: { row: DeviceRow; onSave: (device: string, min: number) => Promise<void> }) {
+function DeviceRowItem({
+  row,
+  onSave,
+  loading,
+}: {
+  row: DeviceRow;
+  onSave: (row: DeviceRow, min: number) => Promise<void>;
+  loading: boolean;
+}) {
   const [val, setVal] = useState<number>(Number(row.min_stock ?? 0));
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     setVal(Number(row.min_stock ?? 0));
   }, [row.min_stock]);
 
-  async function save() {
-    setSaving(true);
-    try {
-      await onSave(row.device, Number(val || 0));
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <tr className="hover:bg-slate-950/50">
-      <td className="p-2 border-b border-slate-800 font-semibold">{row.device}</td>
+      <td className="p-2 border-b border-slate-800">
+        <div className="text-slate-100 font-semibold">{row.device || "—"}</div>
+      </td>
+      <td className="p-2 border-b border-slate-800">
+        <div className="text-slate-200">{row.canonical_name}</div>
+      </td>
       <td className="p-2 border-b border-slate-800 text-right">
         <input
           type="number"
-          value={val}
-          onChange={(e) => setVal(Number(e.target.value))}
-          className="w-[120px] text-right bg-slate-950 border border-slate-800 rounded-lg px-2 py-1 text-sm"
           min={0}
+          value={String(val)}
+          onChange={(e) => setVal(Number(e.target.value || 0))}
+          className="w-[120px] text-right border border-slate-800 bg-slate-950 text-slate-100 rounded-lg px-2 py-1"
         />
       </td>
       <td className="p-2 border-b border-slate-800 text-right">
         <button
-          onClick={save}
-          disabled={saving}
-          className="rounded-lg bg-slate-900 border border-slate-800 px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
+          disabled={loading}
+          onClick={() => onSave(row, Number.isFinite(val) ? Number(val) : 0)}
+          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
         >
-          {saving ? "Saving…" : "Save"}
+          Save
         </button>
       </td>
     </tr>

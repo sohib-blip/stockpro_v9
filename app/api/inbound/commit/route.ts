@@ -63,17 +63,26 @@ async function loadDevices(supabase: any): Promise<string[]> {
  * - boxNo = "076-004" (last two hyphen parts)
  */
 function parseBoxCell(boxCellRaw: string, devicesSorted: string[]) {
-  const raw = s(boxCellRaw);
+  const raw = String(boxCellRaw ?? "").trim();
   if (!raw) return { device: null as string | null, boxNo: "" };
 
   const upper = raw.toUpperCase();
 
-  // ✅ match device by prefix with existing devices
+  // ✅ normalize cell: remove spaces + separators
+  const normalizedCell = upper.replace(/[\s\-_\/]+/g, "");
+
   let device: string | null = null;
+
   for (const d of devicesSorted) {
-    const du = d.toUpperCase();
-    if (du && upper.startsWith(du)) {
-      device = d;
+    const du = String(d ?? "").trim().toUpperCase();
+    if (!du) continue;
+
+    // ✅ normalize device too (removes the space in "FMB 140")
+    const normalizedDevice = du.replace(/[\s\-_\/]+/g, "");
+
+    // Match by prefix on normalized strings
+    if (normalizedCell.startsWith(normalizedDevice)) {
+      device = d; // keep original as stored in DB ("FMB 140")
       break;
     }
   }
@@ -81,16 +90,11 @@ function parseBoxCell(boxCellRaw: string, devicesSorted: string[]) {
   // ✅ boxNo = last 2 parts after "-"
   const parts = raw.split("-").map((p) => p.trim()).filter(Boolean);
 
-  // If we have at least 3 parts, example: [FMB140BTZ9FD, 076, 004] -> "076-004"
   let boxNo = "";
   if (parts.length >= 3) {
-    boxNo = `${parts[parts.length - 2]}-${parts[parts.length - 1]}`;
+    boxNo = `${parts[parts.length - 2]}-${parts[parts.length - 1]}`; // "076-004"
   } else if (parts.length === 2) {
-    // fallback: [something, 076] -> "076"
     boxNo = parts[1];
-  } else {
-    // no "-" found, no boxno
-    boxNo = "";
   }
 
   return { device, boxNo };

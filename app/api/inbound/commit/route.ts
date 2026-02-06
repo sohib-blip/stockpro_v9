@@ -11,10 +11,18 @@ function authedClient(token: string) {
 }
 
 const S = (v: any) => String(v ?? "");
-const norm = (v: any) => S(v).toLowerCase().trim();
+const T = (v: any) => String(v ?? "").trim();
+
+/**
+ * ✅ Never call .includes directly on unknown values.
+ * This avoids: "Cannot read properties of undefined (reading 'includes')"
+ */
+function safeIncludes(value: any, search: string) {
+  return String(value ?? "").toLowerCase().includes(search.toLowerCase());
+}
 
 function normalizeImei(v: any) {
-  return S(v).trim().replace(/\D/g, "");
+  return T(v).replace(/\D/g, "");
 }
 function isLikelyImei(x: string) {
   return /^\d{14,17}$/.test(x);
@@ -22,40 +30,47 @@ function isLikelyImei(x: string) {
 
 // normalize for matching: remove non-alnum (so "FMB 140" => "FMB140")
 function normKey(v: any) {
-  return S(v).toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return T(v).toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 async function loadDevices(supabase: any): Promise<string[]> {
   const { data, error } = await supabase.from("devices").select("device");
   if (error) return [];
   return (data || [])
-    .map((r: any) => String(r.device ?? "").trim())
+    .map((r: any) => T(r.device))
     .filter(Boolean)
     .sort((a: string, b: string) => b.length - a.length); // longest first
 }
 
+/**
+ * Match a DB device (ex: "FMB 140") to supplier text (ex: "FMB140BTZ9FD-076-004")
+ * by normalizing both: remove spaces/symbols => "FMB140"
+ */
 function matchDeviceFromText(text: string, devicesSorted: string[]) {
   const cell = normKey(text);
   for (const d of devicesSorted) {
     const dk = normKey(d);
     if (!dk) continue;
-    // allow start match, or near-start match (sometimes there is a prefix)
     const idx = cell.indexOf(dk);
-    if (idx === 0 || idx === 1 || idx === 2) return d; // keep DB original (ex: "FMB 140")
+    if (idx === 0 || idx === 1 || idx === 2) return d; // keep DB original
   }
   return null;
 }
 
+/**
+ * Extract BoxNR from master box string:
+ * Example: "FMB140BTZ9FD-076-004" => "076-004"
+ * Also supports different separators.
+ */
 function extractBoxNo(masterBoxCell: string) {
-  // wants last two numeric blocks at end -> "076-004"
-  const raw = S(masterBoxCell).trim();
+  const raw = T(masterBoxCell);
   if (!raw) return "";
 
-  // support hyphen OR en-dash at end: 076-004 / 076–004
+  // at end: 076-004 or 076–004
   const m1 = raw.match(/(\d{2,4})\s*[-–]\s*(\d{2,4})\s*$/);
   if (m1) return `${m1[1]}-${m1[2]}`;
 
-  // fallback: last two numeric blocks anywhere
+  // fallback: last two numeric blocks
   const nums = raw.match(/\d{2,4}/g) || [];
   if (nums.length >= 2) return `${nums[nums.length - 2]}-${nums[nums.length - 1]}`;
 
@@ -64,11 +79,18 @@ function extractBoxNo(masterBoxCell: string) {
 
 function buildQrDataFromImeis(imeis: string[]) {
   const clean = imeis.map(normalizeImei).filter((x) => isLikelyImei(x));
-  const uniq = Array.from(new Set(clean));
-  return uniq.join("\n"); // ✅ IMEI only, one per line
+  return Array.from(new Set(clean)).join("\n"); // ✅ IMEI only, one per line
 }
 
-function buildZpl({ qrData, device, boxNo }: { qrData: string; device: string; boxNo: string }) {
+function buildZpl({
+  qrData,
+  device,
+  boxNo,
+}: {
+  qrData: string;
+  device: string;
+  boxNo: string;
+}) {
   return `
 ^XA
 ^PW600
@@ -96,53 +118,53 @@ type Group = {
   masterBoxCol: number; // first "Box No."
   innerBoxCol: number;  // second "Box No." (ignored)
   imeiCol: number;
-  deviceHint: string;   // comes from row above header
+  deviceHint: string;   // from row above header
 };
 
-function detectGroups(rows: any[][]) {
-  // In your file:
-  // Row 1 = device hints (FMB140BTZ9FD, FMC234WC5XWU, ...)
-  // Row 2 = header repeated blocks
-  // We'll find the row that contains "IMEI" and "Box No."
+/**
+ * Detect repeated blocks placed side-by-side:
+ * Each block contains headers like "Box No." and "IMEI"
+ * There are multiple IMEI columns (one per block/device)
+ */
+function detectGroups(rows: any[][]): { headerRowIdx: number; groups: Group[] } {
   let headerRowIdx = -1;
 
-  for (let r = 0; r < Math.min(30, rows.length); r++) {
+  for (let r = 0; r < Math.min(40, rows.length); r++) {
     const row = rows[r] || [];
-    const cells = row.map((c) => norm(c));
-    const hasImei = cells.some((c) => c.includes("imei"));
-    const hasBox = cells.some((c) => c.includes("box"));
+    const hasImei = row.some((c: any) => safeIncludes(c, "imei") || safeIncludes(c, "serial"));
+    const hasBox = row.some((c: any) => safeIncludes(c, "box"));
     if (hasImei && hasBox) {
       headerRowIdx = r;
       break;
     }
   }
 
-  if (headerRowIdx < 0) return { headerRowIdx: -1, groups: [] as Group[] };
+  if (headerRowIdx < 0) return { headerRowIdx: -1, groups: [] };
 
-  const header = (rows[headerRowIdx] || []).map((c) => norm(c));
+  const headerRow = rows[headerRowIdx] || [];
+  const header = headerRow.map((c: any) => String(c ?? "").toLowerCase().replace(/\s+/g, " ").trim());
   const deviceRow = headerRowIdx > 0 ? rows[headerRowIdx - 1] || [] : [];
 
-  // find all IMEI columns
   const imeiCols: number[] = [];
   for (let c = 0; c < header.length; c++) {
-    if (header[c] === "imei" || header[c].includes("imei")) imeiCols.push(c);
+    if (safeIncludes(header[c], "imei")) imeiCols.push(c);
   }
 
   const groups: Group[] = [];
 
   for (const imeiCol of imeiCols) {
-    // find 2 "box no" to the left within a window
+    // find two "box no" columns to the left (master + inner)
     const boxCols: number[] = [];
-    for (let c = Math.max(0, imeiCol - 12); c <= imeiCol; c++) {
-      const h = header[c];
-      if (h === "box no." || h === "box no" || h.includes("box no")) boxCols.push(c);
+    for (let c = Math.max(0, imeiCol - 15); c <= imeiCol; c++) {
+      if (safeIncludes(header[c], "box no")) boxCols.push(c);
     }
-    if (boxCols.length < 2) continue;
+    if (boxCols.length < 1) continue;
 
+    // Some files have only one Box No; we treat it as master
     const masterBoxCol = boxCols[0];
-    const innerBoxCol = boxCols[1];
+    const innerBoxCol = boxCols.length >= 2 ? boxCols[1] : boxCols[0];
 
-    const deviceHint = String(deviceRow[masterBoxCol] ?? "").trim();
+    const deviceHint = T(deviceRow[masterBoxCol]);
 
     groups.push({
       startCol: masterBoxCol,
@@ -153,7 +175,7 @@ function detectGroups(rows: any[][]) {
     });
   }
 
-  // de-dupe groups
+  // de-dupe
   const seen = new Set<string>();
   const uniq: Group[] = [];
   for (const g of groups) {
@@ -178,7 +200,7 @@ export async function POST(req: Request) {
     const form = await req.formData();
     const file = form.get("file") as File | null;
 
-    const locationRaw = String(form.get("location") || "00").trim();
+    const locationRaw = T(form.get("location") || "00");
     const location =
       locationRaw === "00" || locationRaw === "1" || locationRaw === "6" || locationRaw === "Cabinet"
         ? locationRaw
@@ -188,7 +210,9 @@ export async function POST(req: Request) {
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     const wb = XLSX.read(bytes, { type: "array" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
+
+    const sheetName = wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any[][];
 
     if (!rows || rows.length < 3) {
@@ -198,17 +222,17 @@ export async function POST(req: Request) {
     const { headerRowIdx, groups } = detectGroups(rows);
     if (headerRowIdx < 0 || groups.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "Could not detect repeated device blocks (need IMEI + Box No headers)." },
+        { ok: false, error: "Could not detect blocks (need headers containing IMEI and Box No)" },
         { status: 400 }
       );
     }
 
     const devicesSorted = await loadDevices(supabase);
     if (devicesSorted.length === 0) {
-      return NextResponse.json({ ok: false, error: "No devices found in DB (devices table empty)." }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "Devices table is empty" }, { status: 400 });
     }
 
-    // carry master box per group (because in your file, master box only appears once, then blanks)
+    // Carry master box per group (because master box often appears once, then blank)
     const state = new Map<number, { masterBoxCell: string }>();
     for (const g of groups) state.set(g.startCol, { masterBoxCell: "" });
 
@@ -220,18 +244,20 @@ export async function POST(req: Request) {
       for (const g of groups) {
         const st = state.get(g.startCol)!;
 
-        const masterCell = String(row[g.masterBoxCol] ?? "").trim();
+        const masterCell = T(row[g.masterBoxCol]);
         if (masterCell) st.masterBoxCell = masterCell;
 
         const imei = normalizeImei(row[g.imeiCol]);
         if (!isLikelyImei(imei)) continue;
 
-        const master = st.masterBoxCell; // last known master
+        const master = st.masterBoxCell;
         if (!master) continue;
 
-        // device match: prefer device hint from top row if present, else master cell
         const hint = g.deviceHint || master;
-        const device = matchDeviceFromText(hint, devicesSorted) || matchDeviceFromText(master, devicesSorted);
+        const device =
+          matchDeviceFromText(hint, devicesSorted) ||
+          matchDeviceFromText(master, devicesSorted);
+
         if (!device) continue;
 
         const box_no = extractBoxNo(master);
@@ -243,12 +269,16 @@ export async function POST(req: Request) {
 
     if (parsed.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "No valid rows parsed. Your Excel is multi-block; ensure master Box No like FMB...-076-004 exists and IMEI cells are valid." },
+        {
+          ok: false,
+          error:
+            "No valid rows parsed. Check that master Box No looks like FMB...-076-004 and that IMEI cells contain 14-17 digits.",
+        },
         { status: 400 }
       );
     }
 
-    // group by device + box_no
+    // Group by device + box_no
     const byBox = new Map<string, { device: string; box_no: string; imeis: string[] }>();
     for (const p of parsed) {
       const key = `${p.device}__${p.box_no}`;
@@ -258,7 +288,7 @@ export async function POST(req: Request) {
     }
     const boxesArr = Array.from(byBox.values());
 
-    // history insert (only safe cols)
+    // Insert inbound import history (only safe columns)
     const { error: histErr } = await supabase.from("inbound_imports").insert({
       file_name: file.name,
       location,
@@ -268,7 +298,7 @@ export async function POST(req: Request) {
     });
     if (histErr) return NextResponse.json({ ok: false, error: histErr.message }, { status: 500 });
 
-    // check IMEI duplicates in DB
+    // Check duplicates in DB
     const imeisAll = Array.from(new Set(parsed.map((p) => p.imei)));
     const { data: existingItems, error: exItemErr } = await supabase.from("items").select("imei").in("imei", imeisAll);
     if (exItemErr) return NextResponse.json({ ok: false, error: exItemErr.message }, { status: 500 });
@@ -281,9 +311,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // upsert boxes (by device+box_no)
-    // NOTE: your table likely doesn't have unique constraint on (device, box_no).
-    // We'll fetch by box_no then map by device+box_no.
+    // Upsert boxes (device + box_no)
     const uniqueBoxNos = Array.from(new Set(boxesArr.map((b) => b.box_no)));
 
     const { data: existingBoxes, error: exBoxErr } = await supabase
@@ -294,7 +322,9 @@ export async function POST(req: Request) {
     if (exBoxErr) return NextResponse.json({ ok: false, error: exBoxErr.message }, { status: 500 });
 
     const boxMap = new Map<string, any>();
-    for (const b of existingBoxes || []) boxMap.set(`${String(b.device)}__${String(b.box_no)}`, b);
+    for (const b of existingBoxes || []) {
+      boxMap.set(`${String(b.device)}__${String(b.box_no)}`, b);
+    }
 
     const toInsertBoxes = boxesArr
       .filter((b) => !boxMap.has(`${b.device}__${b.box_no}`))
@@ -305,14 +335,15 @@ export async function POST(req: Request) {
         .from("boxes")
         .insert(toInsertBoxes)
         .select("box_id, box_no, device");
-
       if (insErr) return NextResponse.json({ ok: false, error: insErr.message }, { status: 500 });
-      for (const b of ins || []) boxMap.set(`${String(b.device)}__${String(b.box_no)}`, b);
+      for (const b of ins || []) {
+        boxMap.set(`${String(b.device)}__${String(b.box_no)}`, b);
+      }
     }
 
     await supabase.from("boxes").update({ location }).in("box_no", uniqueBoxNos);
 
-    // insert items
+    // Insert items
     const itemsToInsert = parsed.map((p) => {
       const box = boxMap.get(`${p.device}__${p.box_no}`);
       if (!box?.box_id) throw new Error(`Missing box_id for ${p.device} ${p.box_no}`);
@@ -325,7 +356,7 @@ export async function POST(req: Request) {
       if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     }
 
-    // labels + zpl
+    // Labels + ZPL
     const labels = boxesArr.map((b) => {
       const qr_data = buildQrDataFromImeis(b.imeis);
       return { device: b.device, box_no: b.box_no, qty: b.imeis.length, qr_data };

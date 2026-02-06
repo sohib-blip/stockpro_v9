@@ -5,9 +5,11 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 
 type DeviceRow = {
+  device_id: string;
   canonical_name: string;
-  device?: string | null;
-  min_stock?: number | null;
+  device: string | null;
+  min_stock: number | null;
+  active: boolean | null;
 };
 
 function canonicalize(input: string) {
@@ -30,29 +32,17 @@ export default function AdminDevicesPage() {
 
   async function load() {
     setLoading(true);
-
     try {
-      // try with device column
-      const first = await supabase
+      const { data, error } = await supabase
         .from("devices")
-        .select("canonical_name, device, min_stock")
+        .select("device_id, device, canonical_name, min_stock, active")
         .order("canonical_name", { ascending: true });
 
-      if (!first.error) {
-        setRows((first.data as any) || []);
-        return;
-      }
-
-      // fallback if no "device"
-      const second = await supabase
-        .from("devices")
-        .select("canonical_name, min_stock")
-        .order("canonical_name", { ascending: true });
-
-      if (second.error) throw second.error;
-      setRows((second.data as any) || []);
+      if (error) throw error;
+      setRows((data as any) || []);
     } catch (e: any) {
       toast({ kind: "error", title: "Devices load failed", message: e?.message || "Error" });
+      setRows([]);
     } finally {
       setLoading(false);
     }
@@ -79,28 +69,24 @@ export default function AdminDevicesPage() {
 
     const canonical_name = canonicalize(display);
     if (!canonical_name) {
-      return toast({ kind: "error", title: "Invalid name", message: "Device name must contain letters/numbers." });
+      return toast({
+        kind: "error",
+        title: "Invalid name",
+        message: "Device name must contain letters/numbers.",
+      });
     }
 
     setLoading(true);
     try {
-      let res = await supabase.from("devices").insert({
-        canonical_name,
+      const payload = {
         device: display,
+        canonical_name,
         min_stock: Number.isFinite(newMin) ? Number(newMin) : 0,
-      } as any);
+        active: true,
+      };
 
-      if (res.error) {
-        const msg = String(res.error.message || "").toLowerCase();
-        if (msg.includes("could not find the 'device' column") || (msg.includes("column") && msg.includes("device"))) {
-          res = await supabase.from("devices").insert({
-            canonical_name,
-            min_stock: Number.isFinite(newMin) ? Number(newMin) : 0,
-          } as any);
-        }
-      }
-
-      if (res.error) throw res.error;
+      const { error } = await supabase.from("devices").insert(payload as any);
+      if (error) throw error;
 
       toast({ kind: "success", title: "Device added", message: `${display} (${canonical_name})` });
       setNewName("");
@@ -116,11 +102,10 @@ export default function AdminDevicesPage() {
   async function saveMinStock(row: DeviceRow, min_stock: number) {
     setLoading(true);
     try {
-      // ✅ update by canonical_name (since there is no id column)
       const { error } = await supabase
         .from("devices")
-        .update({ min_stock })
-        .eq("canonical_name", row.canonical_name);
+        .update({ min_stock: Number.isFinite(min_stock) ? Number(min_stock) : 0 })
+        .eq("device_id", row.device_id);
 
       if (error) throw error;
 
@@ -140,7 +125,8 @@ export default function AdminDevicesPage() {
           <div className="text-xs text-slate-500">Admin</div>
           <h2 className="text-xl font-semibold">Devices</h2>
           <p className="text-sm text-slate-400 mt-1">
-            Add devices + set min stock. Import uses <span className="text-slate-200 font-semibold">canonical_name</span>.
+            Add devices + set min stock. Import uses{" "}
+            <span className="text-slate-200 font-semibold">canonical_name</span>.
           </p>
         </div>
 
@@ -184,7 +170,9 @@ export default function AdminDevicesPage() {
 
         <div className="text-xs text-slate-500">
           Canonical preview:{" "}
-          <span className="text-slate-200 font-semibold">{newName.trim() ? canonicalize(newName) : "—"}</span>
+          <span className="text-slate-200 font-semibold">
+            {newName.trim() ? canonicalize(newName) : "—"}
+          </span>
         </div>
       </div>
 
@@ -215,7 +203,7 @@ export default function AdminDevicesPage() {
             </thead>
             <tbody>
               {filtered.map((r) => (
-                <DeviceRowItem key={r.canonical_name} row={r} onSave={saveMinStock} loading={loading} />
+                <DeviceRowItem key={r.device_id} row={r} onSave={saveMinStock} loading={loading} />
               ))}
 
               {filtered.length === 0 && (

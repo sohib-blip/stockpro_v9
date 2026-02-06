@@ -8,43 +8,77 @@ function adminClient() {
     process.env.SUPABASE_SERVICE_KEY ||
     process.env.SUPABASE_SERVICE_ROLE ||
     "";
+
+  if (!url) return null;
   if (!key) return null;
+
   return createClient(url, key, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 }
 
-export async function GET(req: Request) {
-  try {
-    const admin = adminClient();
-    if (!admin) return NextResponse.json({ ok: false, error: "Missing service role key" }, { status: 500 });
+async function fetchMovements(admin: any, limit: number) {
+  // ✅ try the most likely PK first: movement_id
+  const a = await admin
+    .from("box_movements")
+    .select("movement_id, box_id, from_location, to_location, note, created_by_email, created_at")
+    .order("created_at", { ascending: false })
+    .limit(limit);
 
-    const url = new URL(req.url);
-    const limit = Math.min(Number(url.searchParams.get("limit") || "100"), 500);
+  if (!a.error) {
+    // normalize for UI that expects "id"
+    const data = (a.data || []).map((m: any) => ({ ...m, id: m.movement_id }));
+    return { data, error: null };
+  }
 
-    // Fetch last moves
-    const r = await admin
+  // fallback: maybe your column is actually "id"
+  const msg = String(a.error?.message || "").toLowerCase();
+  if (msg.includes("movement_id") && msg.includes("does not exist")) {
+    const b = await admin
       .from("box_movements")
       .select("id, box_id, from_location, to_location, note, created_by_email, created_at")
       .order("created_at", { ascending: false })
       .limit(limit);
 
+    if (!b.error) return { data: b.data || [], error: null };
+    return { data: null, error: b.error };
+  }
+
+  return { data: null, error: a.error };
+}
+
+export async function GET(req: Request) {
+  try {
+    const admin = adminClient();
+    if (!admin) {
+      return NextResponse.json({ ok: false, error: "Missing service role key or URL" }, { status: 500 });
+    }
+
+    const url = new URL(req.url);
+    const limit = Math.min(Number(url.searchParams.get("limit") || "100"), 500);
+
+    // ✅ Fetch last moves
+    const r = await fetchMovements(admin, limit);
     if (r.error) return NextResponse.json({ ok: false, error: r.error.message }, { status: 400 });
 
-    // Fetch related boxes (to show device + master_box_no + current location)
-    const boxIds = Array.from(new Set((r.data || []).map((x: any) => x.box_id))).filter(Boolean);
+    const rows = r.data || [];
+
+    // ✅ Fetch related boxes (to show device + master_box_no + current location)
+    const boxIds = Array.from(new Set(rows.map((x: any) => x.box_id))).filter(Boolean);
+
     let boxMap: Record<string, any> = {};
     if (boxIds.length) {
       const b = await admin
         .from("boxes")
         .select("box_id, device, master_box_no, box_no, location, status")
         .in("box_id", boxIds);
+
       if (!b.error && b.data) {
         boxMap = Object.fromEntries(b.data.map((row: any) => [row.box_id, row]));
       }
     }
 
-    const events = (r.data || []).map((m: any) => ({
+    const events = rows.map((m: any) => ({
       ...m,
       box: boxMap[m.box_id] || null,
     }));

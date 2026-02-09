@@ -4,9 +4,11 @@ import React, { useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 
+const LOCS = ["00", "1", "6", "cabinet"] as const;
+type Location = (typeof LOCS)[number];
+
 type LabelRow = {
   device: string;
-  canonical_name?: string;
   box_no: string;
   qty: number;
   qr_data: string;
@@ -41,7 +43,7 @@ export default function InboundPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
-  const [location, setLocation] = useState("00");
+  const [location, setLocation] = useState<Location>("00");
   const [file, setFile] = useState<File | null>(null);
 
   const [loading, setLoading] = useState(false);
@@ -50,6 +52,7 @@ export default function InboundPage() {
   async function callEndpoint(path: string) {
     const { data: sessionData } = await supabase.auth.getSession();
     const token = sessionData.session?.access_token;
+
     if (!token) {
       toast({ kind: "error", title: "Please sign in first" });
       return null;
@@ -96,7 +99,7 @@ export default function InboundPage() {
     try {
       const json = await callEndpoint("/api/inbound/commit");
       if (json) {
-        setPreview(json); // show final result
+        setPreview(json);
         toast({ kind: "success", title: "Imported ✅" });
       }
     } finally {
@@ -112,7 +115,7 @@ export default function InboundPage() {
         <div className="text-xs text-slate-500">Inbound</div>
         <h2 className="text-xl font-semibold">Import fournisseur</h2>
         <p className="text-sm text-slate-400 mt-1">
-          Multi-devices dans 1 seul Excel (blocs côte à côte). Preview d'abord, puis confirmation.
+          Preview d'abord, puis confirmation. Multi-devices (blocs côte à côte) supportés.
         </p>
       </div>
 
@@ -122,12 +125,12 @@ export default function InboundPage() {
             <div className="text-sm text-slate-400">Étage</div>
             <select
               value={location}
-              onChange={(e) => setLocation(e.target.value)}
+              onChange={(e) => setLocation(e.target.value as Location)}
               className="border border-slate-800 bg-slate-950 text-slate-100 rounded-xl px-3 py-2 text-sm"
             >
-              {["00", "01", "02", "03", "04", "05"].map((v) => (
+              {LOCS.map((v) => (
                 <option key={v} value={v}>
-                  {v}
+                  {v === "cabinet" ? "Cabinet" : v}
                 </option>
               ))}
             </select>
@@ -175,8 +178,8 @@ export default function InboundPage() {
               <div className="mt-2 text-2xl font-semibold">{preview.items ?? 0}</div>
             </div>
             <div className="bg-slate-950/40 rounded-2xl border border-slate-800 p-4">
-              <div className="text-xs text-slate-500">Mode</div>
-              <div className="mt-2 text-2xl font-semibold">{preview.mode || "—"}</div>
+              <div className="text-xs text-slate-500">Étage</div>
+              <div className="mt-2 text-2xl font-semibold">{preview.location ?? location}</div>
             </div>
           </div>
         ) : null}
@@ -188,7 +191,7 @@ export default function InboundPage() {
             <div>
               <div className="text-sm font-semibold">Labels par gros carton</div>
               <div className="text-xs text-slate-500">
-                QR contient uniquement les IMEI (1 par ligne). Device + BoxNR sur le label.
+                QR = IMEI uniquement (1 par ligne). Device + BoxNR sur le label.
               </div>
             </div>
 
@@ -202,7 +205,10 @@ export default function InboundPage() {
               </button>
 
               <button
-                onClick={() => preview.zpl_all && downloadText(`labels_${new Date().toISOString().slice(0, 10)}.zpl`, preview.zpl_all)}
+                onClick={() =>
+                  preview.zpl_all &&
+                  downloadText(`labels_${new Date().toISOString().slice(0, 10)}.zpl`, preview.zpl_all)
+                }
                 disabled={!preview.zpl_all}
                 className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
               >
@@ -228,14 +234,12 @@ export default function InboundPage() {
                     <td className="p-2 border-b border-slate-800">{l.box_no}</td>
                     <td className="p-2 border-b border-slate-800 text-right font-semibold">{l.qty}</td>
                     <td className="p-2 border-b border-slate-800 text-right">
-                      <div className="inline-flex gap-2">
-                        <button
-                          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
-                          onClick={() => navigator.clipboard.writeText(l.qr_data)}
-                        >
-                          Copy QR data
-                        </button>
-                      </div>
+                      <button
+                        className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                        onClick={() => navigator.clipboard.writeText(l.qr_data)}
+                      >
+                        Copy QR data
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -249,10 +253,6 @@ export default function InboundPage() {
                 ) : null}
               </tbody>
             </table>
-          </div>
-
-          <div className="mt-3 text-xs text-slate-500">
-            Pour imprimer ZD220 : colle le ZPL dans ton outil Zebra (ou envoie le .zpl à l’imprimante).
           </div>
         </div>
       ) : null}

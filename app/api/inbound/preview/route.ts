@@ -30,27 +30,29 @@ function normalizeImei(v: any): string | null {
   let t = String(v).trim();
   if (!t) return null;
 
-  // Excel number like 862272085150474 -> sometimes becomes 8.62272085150474e+14 or "12345.0"
   if (/^\d+\.0$/.test(t)) t = t.split(".")[0];
 
   const d = digitsOnly(t);
-  // IMEI = 15 digits
   if (d.length !== 15) return null;
   return d;
 }
 
-// Box cell example: "FMB 140BTZ9FD-076-004" OR "FMB140BTZ9FD-076-004"
+// Box cell example: "FMC9202MAUWU-041-053"
 function parseBoxCell(v: any): { deviceRaw: string; box_no: string } | null {
   const s = String(v ?? "").trim();
   if (!s) return null;
 
   const compact = s.replace(/\s+/g, "");
+  // must end with -ddd-ddd
   const m = compact.match(/^(.*)-(\d{3})-(\d{3})$/);
   if (!m) return null;
 
   const deviceRaw = String(m[1] ?? "").trim();
   const box_no = `${m[2]}-${m[3]}`;
-  if (!deviceRaw || !box_no) return null;
+
+  // IMPORTANT: deviceRaw must contain at least one letter (to avoid pure "041-240")
+  if (!/[A-Z]/i.test(deviceRaw)) return null;
+
   return { deviceRaw, box_no };
 }
 
@@ -61,18 +63,17 @@ function canonicalize(input: string) {
     .trim();
 }
 
-// Try to extract canonical like FMB140 from "FMB140BTZ9FD" or "FMB 140BTZ9FD"
+// Extract canonical like FMC920 or FMB140 from "FMC9202MAUWU" or "FMB 140BTZ9FD"
 function canonicalFromDeviceRaw(deviceRaw: string) {
   const up = String(deviceRaw ?? "").toUpperCase().trim();
   const m = up.match(/^([A-Z]+)\s*([0-9]+)/);
   if (m) return `${m[1]}${m[2]}`;
-  // fallback: take first letters+digits chunk
   const c = canonicalize(up);
   return c.slice(0, 8);
 }
 
 function findHeaderRow(rows: any[][]) {
-  for (let r = 0; r < Math.min(rows.length, 60); r++) {
+  for (let r = 0; r < Math.min(rows.length, 80); r++) {
     const cells = (rows[r] || []).map((x) => norm(x));
     const hasBox = cells.some((c) => c.includes("box") && c.includes("no"));
     const hasImei = cells.some((c) => c.includes("imei"));
@@ -85,7 +86,7 @@ function pickBestDevice(
   devices: Array<{ canonical_name: string; device?: string | null }>,
   deviceRaw: string
 ) {
-  const rawCan = canonicalize(deviceRaw); // e.g. FMB140BTZ9FD
+  const rawCan = canonicalize(deviceRaw);
   if (!rawCan) return null;
 
   let best: { canonical_name: string; device?: string | null } | null = null;
@@ -144,7 +145,7 @@ export async function POST(req: Request) {
 
     if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
 
-    // Load devices from DB (secure)
+    // Devices from DB
     const devRes = await admin.from("devices").select("canonical_name, device, active").eq("active", true);
     if (devRes.error) return NextResponse.json({ ok: false, error: devRes.error.message }, { status: 400 });
     const devices = (devRes.data || []) as Array<{ canonical_name: string; device?: string | null }>;
@@ -168,28 +169,51 @@ export async function POST(req: Request) {
     const header = (rows[headerRowIdx] || []).map((x) => norm(x));
     const maxCols = header.length;
 
-    // Find all "Box No" columns (this is the key for 3+ devices!)
-    const boxCols: number[] = [];
+    // 1) Find all columns that are "Box No" by header
+    const boxHeaderCols: number[] = [];
     for (let c = 0; c < maxCols; c++) {
       const h = header[c] || "";
-      if (h.includes("box") && h.includes("no")) boxCols.push(c);
+      if (h.includes("box") && h.includes("no")) boxHeaderCols.push(c);
     }
-    if (boxCols.length === 0) {
+    if (boxHeaderCols.length === 0) {
       return NextResponse.json({ ok: false, error: "No 'Box No' column found in header." }, { status: 400 });
     }
 
-    // For each boxCol, compute IMEI columns inside the block = columns to the right until next boxCol
-    const blocks = boxCols.map((boxCol, idx) => {
-      const next = idx < boxCols.length - 1 ? boxCols[idx + 1] : maxCols;
+    // 2) Keep ONLY "primary box columns" that actually contain device+box like "FMC920...-041-053"
+    const startRow = headerRowIdx + 1;
+    const primaryBoxCols: number[] = [];
+    for (const c of boxHeaderCols) {
+      let hits = 0;
+      for (let r = startRow; r < Math.min(rows.length, startRow + 400); r++) {
+        const parsed = parseBoxCell(rows[r]?.[c]);
+        if (parsed) {
+          hits++;
+          if (hits >= 1) break; // 1 hit is enough to confirm it's a primary box col
+        }
+      }
+      if (hits >= 1) primaryBoxCols.push(c);
+    }
+
+    if (primaryBoxCols.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No primary Box column detected. Expected cells like 'FMC920...-041-053'." },
+        { status: 400 }
+      );
+    }
+
+    primaryBoxCols.sort((a, b) => a - b);
+
+    // 3) Build blocks using ONLY primaryBoxCols
+    const blocks = primaryBoxCols.map((boxCol, idx) => {
+      const next = idx < primaryBoxCols.length - 1 ? primaryBoxCols[idx + 1] : maxCols;
+
       const imeiCols: number[] = [];
       for (let c = boxCol + 1; c < next; c++) {
         if ((header[c] || "").includes("imei")) imeiCols.push(c);
       }
+
       return { boxCol, next, imeiCols };
     });
-
-    // Parse line by line, but separately per block
-    const startRow = headerRowIdx + 1;
 
     const lastBoxByBlock: Record<string, { deviceRaw: string; box_no: string } | null> = {};
     const imeisByKey = new Map<string, Set<string>>(); // key = canonical|box_no
@@ -201,15 +225,12 @@ export async function POST(req: Request) {
         const b = blocks[bi];
         const boxCell = row[b.boxCol];
 
-        if (boxCell !== undefined && String(boxCell ?? "").trim() !== "") {
-          const parsed = parseBoxCell(boxCell);
-          if (parsed) lastBoxByBlock[String(bi)] = parsed;
-        }
+        const parsed = parseBoxCell(boxCell);
+        if (parsed) lastBoxByBlock[String(bi)] = parsed;
 
         const current = lastBoxByBlock[String(bi)];
         if (!current) continue;
 
-        // read IMEIs for this block
         const foundImeis: string[] = [];
 
         if (b.imeiCols.length > 0) {
@@ -218,7 +239,7 @@ export async function POST(req: Request) {
             if (imei) foundImeis.push(imei);
           }
         } else {
-          // fallback: scan until next block if header is weird
+          // fallback: scan all columns until next block
           for (let c = b.boxCol + 1; c < b.next; c++) {
             const imei = normalizeImei(row[c]);
             if (imei) foundImeis.push(imei);
@@ -229,16 +250,11 @@ export async function POST(req: Request) {
 
         const best = pickBestDevice(devices, current.deviceRaw);
         const canonical = best?.canonical_name || canonicalFromDeviceRaw(current.deviceRaw);
-        const display = (best?.device || best?.canonical_name || canonical).trim();
 
         const key = `${canonical}|${current.box_no}`;
         if (!imeisByKey.has(key)) imeisByKey.set(key, new Set<string>());
-
         const set = imeisByKey.get(key)!;
         for (const imei of foundImeis) set.add(imei);
-
-        // store display mapping in a parallel map (simple)
-        // (we’ll reconstruct from devices again below, but display is stable)
       }
     }
 
@@ -256,8 +272,8 @@ export async function POST(req: Request) {
 
       const imeis = Array.from(set);
       imeis.sort();
-
       const qr_data = imeis.join("\n");
+
       return { device, box_no, qty: imeis.length, qr_data, canonical_name };
     });
 

@@ -1,11 +1,33 @@
+// app/api/inbound/commit/route.ts
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import { createClient } from "@supabase/supabase-js";
 
-type Vendor = "teltonika" | "quicklink" | "truster" | "digitalmatter";
+// parsers fournisseurs
+import {
+  parseTeltonikaExcel,
+  parseQuicklinkExcel,
+  parseTrusterExcel,
+  parseDigitalMatterExcel,
+} from "@/lib/inbound";
 
+// helpers types from vendorParser
+import { toDeviceMatchList } from "@/lib/inbound/vendorParser";
+
+/* =========================
+   Supabase helpers
+========================= */
 function adminClient() {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+  const key =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    process.env.SUPABASE_SERVICE_KEY ||
+    process.env.SUPABASE_SERVICE_ROLE ||
+    "";
+
+  if (!url || !key) return null;
+
+  return createClient(url, key, {
     auth: { autoRefreshToken: false, detectSessionInUrl: false },
   });
 }
@@ -13,324 +35,345 @@ function adminClient() {
 function authedClient(token: string) {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
     global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { detectSessionInUrl: false },
+    auth: { autoRefreshToken: false, detectSessionInUrl: false },
   });
 }
 
-const s = (v: any) => String(v ?? "");
-const lower = (v: any) => s(v).toLowerCase();
-const trim = (v: any) => s(v).trim();
+/* =========================
+   Types
+========================= */
+type Vendor = "teltonika" | "quicklink" | "truster" | "digitalmatter";
 
-function canonicalize(v: any) {
-  return s(v).toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
-}
+type ParsedLabel = {
+  vendor: Vendor;
+  device: string; // display device
+  box_no: string; // master boxnr
+  qty: number;
+  imeis: string[];
+  qr_data: string; // imei only (one per line)
+};
 
-function isImei(v: any) {
-  const digits = s(v).replace(/\D/g, "");
-  return digits.length === 15 ? digits : null;
-}
+type ParserOk = {
+  ok: true;
+  labels: ParsedLabel[];
+  counts: { devices: number; boxes: number; items: number };
+  debug?: any;
+};
 
-function extractBoxNr(boxCell: any) {
-  const t = trim(boxCell);
-  if (!t) return null;
+type ParserFail = {
+  ok: false;
+  error: string;
+  unknown_devices?: string[];
+  debug?: any;
+};
 
-  const txt = t.replace(/\s+/g, "");
+type ParserResult = ParserOk | ParserFail;
 
-  if (/^\d{1,4}-\d{1,4}$/.test(txt)) return txt;
+/* =========================
+   Schema-safe insert inbound_imports
+========================= */
+async function safeInsertInboundImport(admin: any, payload: Record<string, any>) {
+  const tries: Record<string, any>[] = [];
 
-  const mAny = txt.match(/(\d{1,4}-\d{1,4})/);
-  if (mAny) return mAny[1];
-
-  const idx = txt.indexOf("-");
-  if (idx < 0) return null;
-  const after = txt.slice(idx + 1).trim();
-  if (!after) return null;
-
-  if (/^\d{1,4}-\d{1,4}$/.test(after)) return after;
-  if (/^\d{1,4}$/.test(after)) return after;
-
-  return null;
-}
-
-function resolveDeviceDisplay(
-  rawDevice: string,
-  devices: { canonical_name: string; device: string | null; active?: boolean | null }[]
-) {
-  const rawCanon = canonicalize(rawDevice);
-  if (!rawCanon) return null;
-
-  const active = (devices || []).filter((d) => d.active !== false);
-  const byCanon = new Map(active.map((d) => [String(d.canonical_name || ""), d]));
-
-  if (byCanon.has(rawCanon)) {
-    const d = byCanon.get(rawCanon)!;
-    return String(d.device || d.canonical_name);
-  }
-
-  let best: any = null;
-  for (const d of active) {
-    const dbCanon = String(d.canonical_name || "");
-    if (!dbCanon) continue;
-    if (rawCanon.startsWith(dbCanon)) {
-      if (!best || dbCanon.length > String(best.canonical_name).length) best = d;
-    }
-  }
-  if (best) return String(best.device || best.canonical_name);
-
-  const m = rawCanon.match(/^([A-Z]+)(\d{3})/);
-  if (m) {
-    const short = m[1] + m[2];
-    if (byCanon.has(short)) {
-      const d = byCanon.get(short)!;
-      return String(d.device || d.canonical_name);
-    }
-  }
-
-  const m2 = rawCanon.match(/^([A-Z]+)(\d{1,2})$/);
-  if (m2) {
-    const padded = m2[1] + m2[2].padStart(3, "0");
-    if (byCanon.has(padded)) {
-      const d = byCanon.get(padded)!;
-      return String(d.device || d.canonical_name);
-    }
-  }
-
-  return null;
-}
-
-function detectHeaderRow(rows: any[][]) {
-  for (let r = 0; r < Math.min(rows.length, 60); r++) {
-    const row = rows[r] || [];
-    const hasBox = row.some((c) => lower(c).includes("box"));
-    const hasImei = row.some((c) => lower(c).includes("imei"));
-    if (hasBox && hasImei) return r;
-  }
-  return -1;
-}
-
-function detectBlocks(headerRow: any[]) {
-  const header = (headerRow || []).map((c) => lower(c).replace(/\s+/g, " ").trim());
-  const blocks: { boxCol: number; imeiCol: number }[] = [];
-
-  for (let c = 0; c < header.length; c++) {
-    const h = header[c] || "";
-    const isBox = h.includes("box") && h.includes("no");
-    if (!isBox) continue;
-
-    let imeiCol = -1;
-    for (let k = c; k <= Math.min(header.length - 1, c + 20); k++) {
-      if ((header[k] || "").includes("imei")) {
-        imeiCol = k;
-        break;
-      }
-    }
-    if (imeiCol < 0) continue;
-
-    const dup = blocks.some((b) => Math.abs(b.boxCol - c) <= 2);
-    if (dup) continue;
-
-    blocks.push({ boxCol: c, imeiCol });
-    c = imeiCol;
-  }
-
-  return blocks;
-}
-
-function getDeviceNameFromTopRow(rowAboveHeader: any[], boxCol: number, imeiCol: number) {
-  const row = rowAboveHeader || [];
-  for (let c = boxCol; c <= imeiCol; c++) {
-    const v = trim(row[c]);
-    if (v) return v;
-  }
-  const v2 = trim(row[boxCol]);
-  return v2 || null;
-}
-
-function readBoxNrFromRow(row: any[], boxCol: number) {
-  const primary = extractBoxNr(row?.[boxCol]);
-  if (primary) return primary;
-
-  const fallback = extractBoxNr(row?.[boxCol + 1]);
-  if (fallback) return fallback;
-
-  return null;
-}
-
-function isSeparatorRow(row: any[], boxCol: number, imeiCol: number) {
-  for (let c = boxCol; c <= imeiCol; c++) {
-    if (trim(row?.[c])) return false;
-  }
-  return true;
-}
-
-type ParsedLabel = { device: string; box_no: string; qty: number; qr_data: string; imeis: string[] };
-
-async function parseTeltonikaCommit(file: File, devicesDb: any[]) {
-  const buf = new Uint8Array(await file.arrayBuffer());
-  const wb = XLSX.read(buf, { type: "array" });
-  const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any[][];
-
-  if (!rows?.length) throw new Error("Empty excel file");
-
-  const headerRowIdx = detectHeaderRow(rows);
-  if (headerRowIdx < 0) throw new Error("Could not detect header row (need BOX + IMEI headers)");
-
-  const blocks = detectBlocks(rows[headerRowIdx] || []);
-  if (!blocks.length) throw new Error("No blocks detected (Box No + IMEI)");
-
-  const rowAbove = rows[headerRowIdx - 1] || [];
-  const unknown = new Set<string>();
-  const map = new Map<string, { device: string; box_no: string; imeis: string[] }>();
-
-  for (const b of blocks) {
-    const rawTopDevice = getDeviceNameFromTopRow(rowAbove, b.boxCol, b.imeiCol);
-    if (!rawTopDevice) continue;
-
-    const deviceDisplay = resolveDeviceDisplay(rawTopDevice, devicesDb || []);
-    if (!deviceDisplay) {
-      unknown.add(rawTopDevice);
-      continue;
-    }
-
-    let currentBoxNr: string | null = null;
-
-    for (let r = headerRowIdx + 1; r < rows.length; r++) {
-      const row = rows[r] || [];
-
-      if (isSeparatorRow(row, b.boxCol, b.imeiCol)) {
-        currentBoxNr = null;
-        continue;
-      }
-
-      const bn = readBoxNrFromRow(row, b.boxCol);
-      if (bn) currentBoxNr = bn;
-
-      const imei = isImei(row[b.imeiCol]);
-      if (!imei || !currentBoxNr) continue;
-
-      const key = `${deviceDisplay}__${currentBoxNr}`;
-      if (!map.has(key)) map.set(key, { device: deviceDisplay, box_no: currentBoxNr, imeis: [] });
-      map.get(key)!.imeis.push(imei);
-    }
-  }
-
-  if (unknown.size) {
-    return {
-      ok: false as const,
-      error: "device(s) not found in Admin > Devices",
-      unknown_devices: Array.from(unknown).sort(),
-    };
-  }
-
-  const labels: ParsedLabel[] = Array.from(map.values())
-    .map((x) => {
-      const uniq = Array.from(new Set(x.imeis));
-      return { device: x.device, box_no: x.box_no, qty: uniq.length, imeis: uniq, qr_data: uniq.join("\n") };
-    })
-    .filter((l) => l.qty > 0)
-    .sort((a, b) => (a.device + a.box_no).localeCompare(b.device + b.box_no));
-
-  if (!labels.length) {
-    return { ok: false as const, error: "No valid rows parsed. Check that IMEI cells contain 15 digits." };
-  }
-
-  return {
-    ok: true as const,
-    labels,
-    devices: new Set(labels.map((l) => l.device)).size,
-    boxes: labels.length,
-    items: labels.reduce((acc, l) => acc + l.qty, 0),
-    debug: { header_row_index: headerRowIdx, blocks: blocks.map((b) => ({ boxCol: b.boxCol, imeiCol: b.imeiCol })) },
+  const drop = (obj: any, keys: string[]) => {
+    const o = { ...obj };
+    for (const k of keys) delete o[k];
+    return o;
   };
+
+  // from most complete → minimal
+  tries.push({ ...payload });
+  tries.push(drop(payload, ["created_by_email"]));
+  tries.push(drop(payload, ["created_by_email", "devices"]));
+  tries.push(drop(payload, ["created_by_email", "devices", "location"]));
+  tries.push(drop(payload, ["created_by_email", "devices", "location", "vendor"]));
+  tries.push(drop(payload, ["created_by_email", "devices", "location", "vendor", "format"]));
+  tries.push(drop(payload, ["created_by_email", "devices", "location", "vendor", "format", "file_name"]));
+  tries.push({}); // last resort
+
+  for (const t of tries) {
+    const res = await admin.from("inbound_imports").insert(t as any).select("*").maybeSingle();
+    if (!res.error) return res.data;
+  }
+
+  return null;
 }
 
-async function ensureBoxes(admin: any, labels: ParsedLabel[], location: string) {
-  const dedup = new Map<string, any>();
+/* =========================
+   Boxes upsert + map box_id
+========================= */
+async function upsertBoxesAndMap(admin: any, labels: ParsedLabel[], location: string) {
+  // Create unique rows per (device, box_no)
+  const uniqMap = new Map<string, any>();
   for (const l of labels) {
-    dedup.set(`${l.device}__${l.box_no}`, {
-      device: l.device,
-      master_box_no: l.box_no,
-      box_no: l.box_no,
-      location,
-      status: "IN_STOCK",
-    });
-  }
-  const rows = Array.from(dedup.values());
-
-  const up = await admin.from("boxes").upsert(rows, { onConflict: "device,master_box_no" }).select("box_id,device,master_box_no");
-  if (up.error) {
-    for (const r of rows) {
-      const ins = await admin.from("boxes").insert(r);
-      if (ins.error) continue;
+    const k = `${l.device}__${l.box_no}`;
+    if (!uniqMap.has(k)) {
+      uniqMap.set(k, {
+        device: l.device,
+        box_no: l.box_no,
+        master_box_no: l.box_no, // if your schema has it
+        location,
+        status: "IN_STOCK",
+      });
     }
   }
 
-  const devices = Array.from(new Set(rows.map((r) => r.device)));
-  const master = Array.from(new Set(rows.map((r) => r.master_box_no)));
+  const rows = Array.from(uniqMap.values());
 
-  const fetched = await admin.from("boxes").select("box_id,device,master_box_no,box_no").in("device", devices).in("master_box_no", master);
-
-  const map = new Map<string, string>();
-  for (const b of fetched.data || []) {
-    map.set(`${b.device}__${b.master_box_no}`, String(b.box_id));
+  // Try upsert strategies
+  // 1) conflict on device,master_box_no
+  {
+    const res = await admin
+      .from("boxes")
+      .upsert(rows as any, { onConflict: "device,master_box_no" })
+      .select("box_id, device, box_no, master_box_no");
+    if (!res.error) {
+      const map = new Map<string, string>();
+      for (const r of res.data || []) {
+        const dev = String(r.device ?? "");
+        const b = String(r.master_box_no ?? r.box_no ?? "");
+        map.set(`${dev}__${b}`, String(r.box_id));
+      }
+      return map;
+    }
   }
-  return map;
+
+  // 2) conflict on device,box_no
+  {
+    const res = await admin
+      .from("boxes")
+      .upsert(
+        rows.map((x: any) => {
+          const y = { ...x };
+          delete y.master_box_no; // in case it doesn't exist
+          return y;
+        }) as any,
+        { onConflict: "device,box_no" }
+      )
+      .select("box_id, device, box_no");
+    if (!res.error) {
+      const map = new Map<string, string>();
+      for (const r of res.data || []) {
+        const dev = String(r.device ?? "");
+        const b = String(r.box_no ?? "");
+        map.set(`${dev}__${b}`, String(r.box_id));
+      }
+      return map;
+    }
+  }
+
+  // 3) fallback: insert row by row (ignore duplicates), then fetch
+  for (const r of rows) {
+    // try insert with master_box_no first
+    let ins = await admin.from("boxes").insert(r as any);
+    if (ins.error) {
+      // retry without master_box_no
+      const rr = { ...r };
+      delete (rr as any).master_box_no;
+      ins = await admin.from("boxes").insert(rr as any);
+      // ignore duplicate errors
+    }
+  }
+
+  // Fetch to build map (try with master_box_no, else box_no)
+  const devices = Array.from(new Set(rows.map((r) => r.device)));
+  const boxNos = Array.from(new Set(rows.map((r) => r.box_no)));
+
+  // try fetch master_box_no
+  {
+    const f = await admin
+      .from("boxes")
+      .select("box_id, device, master_box_no, box_no")
+      .in("device", devices)
+      .in("box_no", boxNos);
+
+    if (!f.error) {
+      const map = new Map<string, string>();
+      for (const r of f.data || []) {
+        const dev = String(r.device ?? "");
+        const b = String(r.master_box_no ?? r.box_no ?? "");
+        map.set(`${dev}__${b}`, String(r.box_id));
+      }
+      return map;
+    }
+  }
+
+  return new Map<string, string>();
 }
 
-async function insertImeis(admin: any, boxIdMap: Map<string, string>, labels: ParsedLabel[]) {
+/* =========================
+   Insert IMEIs into items
+========================= */
+async function insertImeis(admin: any, labels: ParsedLabel[], boxIdMap: Map<string, string>) {
+  // Build rows for items table
   const rows: any[] = [];
   for (const l of labels) {
     const box_id = boxIdMap.get(`${l.device}__${l.box_no}`);
     if (!box_id) continue;
-    for (const imei of Array.from(new Set(l.imeis))) {
-      rows.push({ box_id, imei, status: "IN_STOCK" });
+
+    // dedup imeis already
+    const seen = new Set<string>();
+    for (const imei of l.imeis || []) {
+      if (!imei) continue;
+      if (seen.has(imei)) continue;
+      seen.add(imei);
+
+      rows.push({
+        box_id,
+        imei,
+        status: "IN_STOCK",
+      });
     }
   }
 
-  const r = await admin.from("items").insert(rows);
-  if (!r.error) return { table: "items", inserted: rows.length };
+  if (!rows.length) return { inserted: 0, table: "items" };
 
-  const r2 = await admin.from("box_items").insert(rows.map(({ status, ...x }) => x));
-  if (!r2.error) return { table: "box_items", inserted: rows.length };
+  // Try bulk insert items
+  {
+    const res = await admin.from("items").insert(rows as any);
+    if (!res.error) return { inserted: rows.length, table: "items" };
+  }
 
-  return { table: null, inserted: 0 };
+  // fallback: try box_items
+  {
+    const rows2 = rows.map((r) => ({ box_id: r.box_id, imei: r.imei }));
+    const res = await admin.from("box_items").insert(rows2 as any);
+    if (!res.error) return { inserted: rows2.length, table: "box_items" };
+  }
+
+  // last fallback: insert one by one into items ignoring duplicates
+  let inserted = 0;
+  for (const r of rows) {
+    const ins = await admin.from("items").insert(r as any);
+    if (!ins.error) inserted++;
+  }
+  return { inserted, table: "items" };
 }
 
+/* =========================
+   POST /api/inbound/commit
+========================= */
 export async function POST(req: Request) {
   try {
-    const admin = adminClient();
+    /* ---------- Auth ---------- */
+    const authHeader = req.headers.get("authorization") || "";
+    const token = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7) : "";
 
-    const auth = req.headers.get("authorization") || "";
-    const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : "";
-    if (!token) return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
-
-    const userClient = authedClient(token);
-    const { data: uData, error: uErr } = await userClient.auth.getUser();
-    if (uErr) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    const created_by_email = uData.user?.email || null;
-
-    const form = await req.formData();
-    const file = form.get("file") as File | null;
-    const location = trim(form.get("location"));
-    const vendor = (trim(form.get("vendor")) || "teltonika") as Vendor;
-
-    if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
-
-    const { data: devicesDb, error: dErr } = await admin.from("devices").select("canonical_name, device, active");
-    if (dErr) return NextResponse.json({ ok: false, error: dErr.message }, { status: 500 });
-
-    if (vendor !== "teltonika") {
-      return NextResponse.json({ ok: false, error: `Parser not implemented yet for vendor: ${vendor}` }, { status: 400 });
+    if (!token) {
+      return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
     }
 
-    const parsed = await parseTeltonikaCommit(file, devicesDb || []);
-    if (!parsed.ok) return NextResponse.json(parsed, { status: 400 });
+    const userClient = authedClient(token);
+    const { data: userData, error: authErr } = await userClient.auth.getUser();
+    if (authErr) {
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    }
+    const created_by_email = userData.user?.email || null;
 
-    const boxIdMap = await ensureBoxes(admin, parsed.labels, location);
-    const ins = await insertImeis(admin, boxIdMap, parsed.labels);
+    /* ---------- FormData ---------- */
+    const form = await req.formData();
+    const file = form.get("file") as File | null;
+    const vendor = form.get("vendor") as Vendor | null;
+    const format = String(form.get("format") || "");
+    const location = String(form.get("location") || "").trim();
 
-    const labelsOut = parsed.labels.map((l) => ({
+    if (!file || !vendor) {
+      return NextResponse.json({ ok: false, error: "Missing file or vendor" }, { status: 400 });
+    }
+
+    /* ---------- Read Excel ---------- */
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const workbook = XLSX.read(bytes, { type: "array" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true }) as any[][];
+
+    if (!rows.length) {
+      return NextResponse.json({ ok: false, error: "Empty Excel file" }, { status: 400 });
+    }
+
+    /* ---------- Load devices DB ---------- */
+    const admin = adminClient();
+    if (!admin) {
+      return NextResponse.json({ ok: false, error: "Server misconfiguration (missing service key)" }, { status: 500 });
+    }
+
+    const { data: devicesDbRows, error: devErr } = await admin
+      .from("devices")
+      .select("canonical_name, device, active");
+
+    if (devErr) {
+      return NextResponse.json({ ok: false, error: devErr.message }, { status: 500 });
+    }
+
+    const devicesDb = toDeviceMatchList((devicesDbRows || []) as any);
+
+    /* ---------- Dispatch parser ---------- */
+    let result: ParserResult;
+
+    switch (vendor) {
+      case "teltonika":
+        result = parseTeltonikaExcel({
+          rows,
+          devicesDb,
+          format,
+          location,
+        });
+        break;
+
+      case "quicklink":
+        result = parseQuicklinkExcel({
+          rows,
+          devicesDb,
+          location,
+        });
+        break;
+
+      case "truster":
+        result = parseTrusterExcel({
+          rows,
+          devicesDb,
+          location,
+        });
+        break;
+
+      case "digitalmatter":
+        result = parseDigitalMatterExcel({
+          rows,
+          devicesDb,
+          location,
+        });
+        break;
+
+      default:
+        return NextResponse.json({ ok: false, error: "Unsupported vendor" }, { status: 400 });
+    }
+
+    /* ---------- Parser error ---------- */
+    if (!result.ok) {
+      return NextResponse.json(result, { status: 400 });
+    }
+
+    const labels = result.labels || [];
+
+    /* ---------- Upsert boxes + insert IMEIs ---------- */
+    const boxIdMap = await upsertBoxesAndMap(admin, labels, location);
+
+    const insertRes = await insertImeis(admin, labels, boxIdMap);
+
+    /* ---------- Save inbound_imports history (schema-safe) ---------- */
+    const importRow = await safeInsertInboundImport(admin, {
+      file_name: file.name,
+      vendor,
+      format,
+      location,
+      devices: result.counts.devices,
+      boxes: result.counts.boxes,
+      items: result.counts.items,
+      created_by_email,
+    });
+
+    /* ---------- Return labels with box_id ---------- */
+    const labelsWithBoxId = labels.map((l) => ({
       device: l.device,
       box_no: l.box_no,
       qty: l.qty,
@@ -338,66 +381,23 @@ export async function POST(req: Request) {
       box_id: boxIdMap.get(`${l.device}__${l.box_no}`) || null,
     }));
 
-    // ✅ Write import history
-    const logInsert = await admin
-      .from("inbound_import_logs")
-      .insert({
-        vendor,
-        location,
-        file_name: file.name,
-        created_by_email,
-        devices: parsed.devices,
-        boxes: parsed.boxes,
-        items: parsed.items,
-      })
-      .select("*")
-      .single();
-
-    if (logInsert.error) {
-      // non-blocking, mais je te le renvoie
-      return NextResponse.json({
-        ok: true,
-        warning: `Import ok, but history log failed: ${logInsert.error.message}`,
-        vendor,
-        file_name: file.name,
-        location,
-        devices: parsed.devices,
-        boxes: parsed.boxes,
-        items: parsed.items,
-        inserted_into: ins.table,
-        inserted_items: ins.inserted,
-        labels: labelsOut,
-      });
-    }
-
-    const importId = logInsert.data.id;
-
-    const boxHistoryRows = labelsOut.map((l) => ({
-      import_id: importId,
-      box_id: l.box_id,
-      device: l.device,
-      box_no: l.box_no,
-      qty: l.qty,
-    }));
-
-    const hist = await admin.from("inbound_import_log_boxes").insert(boxHistoryRows);
-    const histWarn = hist.error ? `History boxes failed: ${hist.error.message}` : null;
-
     return NextResponse.json({
       ok: true,
       vendor,
-      import_id: importId,
-      file_name: file.name,
+      format,
       location,
-      devices: parsed.devices,
-      boxes: parsed.boxes,
-      items: parsed.items,
-      inserted_into: ins.table,
-      inserted_items: ins.inserted,
-      labels: labelsOut,
-      history_warning: histWarn,
+      file_name: file.name,
+      import: importRow ?? null,
+      devices: result.counts.devices,
+      boxes: result.counts.boxes,
+      items: result.counts.items,
+      inserted_into: insertRes.table,
+      inserted_items: insertRes.inserted,
+      labels: labelsWithBoxId,
+      debug: result.debug ?? null,
     });
   } catch (e: any) {
+    console.error("Inbound commit error:", e);
     return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
   }
 }

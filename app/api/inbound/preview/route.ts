@@ -4,9 +4,9 @@ import * as XLSX from "xlsx";
 
 /**
  * PREVIEW:
- * - lit les blocs
  * - device name = cellule au-dessus du header dans chaque bloc
- * - boxnr = tout après le 1er "-"
+ * - boxnr = après le 1er "-" dans Box No (col boxCol)
+ * - SI boxCol vide => prendre boxnr depuis boxCol+1
  * - qr_data = IMEI only, 1 par ligne
  * - BLOQUE si device du fichier n'existe pas dans Admin > Devices
  */
@@ -56,7 +56,6 @@ function extractBoxNr(boxCell: any) {
   const after = t.slice(idx + 1).trim();
   if (!after) return null;
 
-  // remove weird spaces like "023 - 09"
   return after.replace(/\s+/g, "");
 }
 
@@ -64,20 +63,26 @@ function extractBoxNr(boxCell: any) {
  * Device resolver:
  * raw device from top cell like "FMC9202MAUWU" => match a device in DB.
  * Strategy:
- * - canonical raw
- * - match by prefix with DB canonical_name (longest wins)
- * - special: take first letters + first 3 digits => FMC920
+ * - exact canonical
+ * - longest prefix match raw startsWith db canonical
+ * - heuristic letters+first3digits (FMC9202MAUWU -> FMC920)
+ * - pad (FMC03 -> FMC003)
  */
-function resolveDeviceDisplay(rawDevice: string, devices: { canonical_name: string; device: string | null; active?: boolean | null }[]) {
+function resolveDeviceDisplay(
+  rawDevice: string,
+  devices: { canonical_name: string; device: string | null; active?: boolean | null }[]
+) {
   const rawCanon = canonicalize(rawDevice);
   if (!rawCanon) return null;
 
   const active = (devices || []).filter((d) => d.active !== false);
-
   const byCanon = new Map(active.map((d) => [String(d.canonical_name || ""), d]));
-  if (byCanon.has(rawCanon)) return String(byCanon.get(rawCanon)!.device || byCanon.get(rawCanon)!.canonical_name);
 
-  // longest prefix match: raw startsWith dbCanon
+  if (byCanon.has(rawCanon)) {
+    const d = byCanon.get(rawCanon)!;
+    return String(d.device || d.canonical_name);
+  }
+
   let best: any = null;
   for (const d of active) {
     const dbCanon = String(d.canonical_name || "");
@@ -88,7 +93,6 @@ function resolveDeviceDisplay(rawDevice: string, devices: { canonical_name: stri
   }
   if (best) return String(best.device || best.canonical_name);
 
-  // heuristic: letters + first 3 digits (FMC9202MAUWU -> FMC920)
   const m = rawCanon.match(/^([A-Z]+)(\d{3})/);
   if (m) {
     const short = m[1] + m[2];
@@ -98,7 +102,6 @@ function resolveDeviceDisplay(rawDevice: string, devices: { canonical_name: stri
     }
   }
 
-  // heuristic: pad digits (FMC03 -> FMC003)
   const m2 = rawCanon.match(/^([A-Z]+)(\d{1,2})$/);
   if (m2) {
     const padded = m2[1] + m2[2].padStart(3, "0");
@@ -113,7 +116,6 @@ function resolveDeviceDisplay(rawDevice: string, devices: { canonical_name: stri
 
 /* ========= detect layout ========= */
 
-// detect header row containing "box" and "imei"
 function detectHeaderRow(rows: any[][]) {
   for (let r = 0; r < Math.min(rows.length, 60); r++) {
     const row = rows[r] || [];
@@ -126,8 +128,7 @@ function detectHeaderRow(rows: any[][]) {
 
 /**
  * Detect blocks:
- * We look for columns where header cell has "box" and within the next 20 cols we find "imei".
- * Each block = { boxCol, imeiCol }
+ * header contains "box no" and within next 20 cols find "imei".
  */
 function detectBlocks(headerRow: any[]) {
   const header = (headerRow || []).map((c) => lower(c).replace(/\s+/g, " ").trim());
@@ -147,7 +148,6 @@ function detectBlocks(headerRow: any[]) {
     }
     if (imeiCol < 0) continue;
 
-    // avoid duplicates close to each other
     const dup = blocks.some((b) => Math.abs(b.boxCol - c) <= 2);
     if (dup) continue;
 
@@ -159,9 +159,7 @@ function detectBlocks(headerRow: any[]) {
 }
 
 /**
- * device name cell is ABOVE each block:
- * We take rowAboveHeader = rows[headerRowIdx - 1]
- * and find the first non-empty cell between boxCol..imeiCol
+ * device name = first non-empty cell in rowAboveHeader between boxCol..imeiCol
  */
 function getDeviceNameFromTopRow(rowAboveHeader: any[], boxCol: number, imeiCol: number) {
   const row = rowAboveHeader || [];
@@ -169,9 +167,21 @@ function getDeviceNameFromTopRow(rowAboveHeader: any[], boxCol: number, imeiCol:
     const v = trim(row[c]);
     if (v) return v;
   }
-  // fallback: sometimes it's exactly at boxCol
   const v2 = trim(row[boxCol]);
   return v2 || null;
+}
+
+/**
+ * ✅ New: read boxnr from primary col, else fallback to next col
+ */
+function readBoxNrFromRow(row: any[], boxCol: number) {
+  const primary = extractBoxNr(row?.[boxCol]);
+  if (primary) return primary;
+
+  const fallback = extractBoxNr(row?.[boxCol + 1]);
+  if (fallback) return fallback;
+
+  return null;
 }
 
 /* ========= handler ========= */
@@ -186,7 +196,6 @@ export async function POST(req: Request) {
     const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : "";
     if (!token) return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
 
-    // auth gate
     const userClient = authedClient(token);
     const { error: uErr } = await userClient.auth.getUser();
     if (uErr) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -197,7 +206,6 @@ export async function POST(req: Request) {
 
     if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
 
-    // load devices db
     const { data: devicesDb, error: dErr } = await admin.from("devices").select("canonical_name, device, active");
     if (dErr) return NextResponse.json({ ok: false, error: dErr.message }, { status: 500 });
 
@@ -221,7 +229,6 @@ export async function POST(req: Request) {
     const rowAbove = rows[headerRowIdx - 1] || [];
     const unknown = new Set<string>();
 
-    // Map key = deviceDisplay__boxNr => imeis
     const map = new Map<string, { device: string; box_no: string; imeis: string[] }>();
 
     for (const b of blocks) {
@@ -239,11 +246,8 @@ export async function POST(req: Request) {
       for (let r = headerRowIdx + 1; r < rows.length; r++) {
         const row = rows[r] || [];
 
-        const boxCell = row[b.boxCol];
-        if (trim(boxCell)) {
-          const bn = extractBoxNr(boxCell);
-          if (bn) currentBoxNr = bn;
-        }
+        const bn = readBoxNrFromRow(row, b.boxCol);
+        if (bn) currentBoxNr = bn;
 
         const imei = isImei(row[b.imeiCol]);
         if (!imei) continue;
@@ -269,21 +273,13 @@ export async function POST(req: Request) {
     const labels: LabelRow[] = Array.from(map.values())
       .map((x) => {
         const uniq = Array.from(new Set(x.imeis));
-        return {
-          device: x.device,
-          box_no: x.box_no,
-          qty: uniq.length,
-          qr_data: uniq.join("\n"), // ✅ IMEI only, one per line
-        };
+        return { device: x.device, box_no: x.box_no, qty: uniq.length, qr_data: uniq.join("\n") };
       })
       .filter((l) => l.qty > 0)
       .sort((a, b) => (a.device + a.box_no).localeCompare(b.device + b.box_no));
 
     if (!labels.length) {
-      return NextResponse.json(
-        { ok: false, error: "No valid rows parsed. Check that IMEI cells contain 15 digits." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "No valid rows parsed. Check that IMEI cells contain 15 digits." }, { status: 400 });
     }
 
     return NextResponse.json({
@@ -296,7 +292,7 @@ export async function POST(req: Request) {
       labels,
       debug: {
         header_row_index: headerRowIdx,
-        blocks: blocks.map((b) => ({ boxCol: b.boxCol, imeiCol: b.imeiCol })),
+        blocks: blocks.map((b) => ({ boxCol: b.boxCol, imeiCol: b.imeiCol, fallbackBoxCol: b.boxCol + 1 })),
       },
     });
   } catch (e: any) {

@@ -5,9 +5,10 @@ import * as XLSX from "xlsx";
 /**
  * COMMIT:
  * - même parsing que preview
+ * - boxnr = boxCol, si vide => boxCol+1
  * - crée / upsert boxes
- * - ajoute les imei en items
- * - renvoie labels avec box_id
+ * - ajoute imei dans items
+ * - renvoie labels: [{device, box_no, qty, qr_data, box_id}]
  */
 
 function adminClient() {
@@ -28,8 +29,6 @@ function authedClient(token: string) {
     }
   );
 }
-
-/* ========= safe utils ========= */
 
 const s = (v: any) => String(v ?? "");
 const lower = (v: any) => s(v).toLowerCase();
@@ -57,14 +56,20 @@ function extractBoxNr(boxCell: any) {
   return after.replace(/\s+/g, "");
 }
 
-function resolveDeviceDisplay(rawDevice: string, devices: { canonical_name: string; device: string | null; active?: boolean | null }[]) {
+function resolveDeviceDisplay(
+  rawDevice: string,
+  devices: { canonical_name: string; device: string | null; active?: boolean | null }[]
+) {
   const rawCanon = canonicalize(rawDevice);
   if (!rawCanon) return null;
 
   const active = (devices || []).filter((d) => d.active !== false);
   const byCanon = new Map(active.map((d) => [String(d.canonical_name || ""), d]));
 
-  if (byCanon.has(rawCanon)) return String(byCanon.get(rawCanon)!.device || byCanon.get(rawCanon)!.canonical_name);
+  if (byCanon.has(rawCanon)) {
+    const d = byCanon.get(rawCanon)!;
+    return String(d.device || d.canonical_name);
+  }
 
   let best: any = null;
   for (const d of active) {
@@ -96,8 +101,6 @@ function resolveDeviceDisplay(rawDevice: string, devices: { canonical_name: stri
 
   return null;
 }
-
-/* ========= detect layout ========= */
 
 function detectHeaderRow(rows: any[][]) {
   for (let r = 0; r < Math.min(rows.length, 60); r++) {
@@ -147,18 +150,19 @@ function getDeviceNameFromTopRow(rowAboveHeader: any[], boxCol: number, imeiCol:
   return v2 || null;
 }
 
-/* ========= db helpers ========= */
+function readBoxNrFromRow(row: any[], boxCol: number) {
+  const primary = extractBoxNr(row?.[boxCol]);
+  if (primary) return primary;
 
-type ParsedLabel = {
-  device: string;
-  box_no: string;
-  qty: number;
-  qr_data: string;
-  imeis: string[];
-};
+  const fallback = extractBoxNr(row?.[boxCol + 1]);
+  if (fallback) return fallback;
+
+  return null;
+}
+
+type ParsedLabel = { device: string; box_no: string; qty: number; qr_data: string; imeis: string[] };
 
 async function safeInsertInboundImport(admin: any, payload: Record<string, any>) {
-  // schema-safe insert, drop columns if not existing
   const tries: Record<string, any>[] = [];
   tries.push({ ...payload });
 
@@ -193,13 +197,10 @@ async function ensureBoxes(admin: any, labels: ParsedLabel[], location: string) 
   }
   const rows = Array.from(dedup.values());
 
-  // try upsert with onConflict
   const up = await admin.from("boxes").upsert(rows, { onConflict: "device,master_box_no" }).select("box_id,device,master_box_no");
   if (up.error) {
-    // fallback insert
     for (const r of rows) {
       const ins = await admin.from("boxes").insert(r);
-      // ignore dup errors
       if (ins.error) continue;
     }
   }
@@ -208,6 +209,7 @@ async function ensureBoxes(admin: any, labels: ParsedLabel[], location: string) 
   const master = Array.from(new Set(rows.map((r) => r.master_box_no)));
 
   const fetched = await admin.from("boxes").select("box_id,device,master_box_no,box_no").in("device", devices).in("master_box_no", master);
+
   const map = new Map<string, string>();
   for (const b of fetched.data || []) {
     map.set(`${b.device}__${b.master_box_no}`, String(b.box_id));
@@ -228,14 +230,11 @@ async function insertImeis(admin: any, boxIdMap: Map<string, string>, labels: Pa
   const r = await admin.from("items").insert(rows);
   if (!r.error) return { table: "items", inserted: rows.length };
 
-  // fallback table name
   const r2 = await admin.from("box_items").insert(rows.map(({ status, ...x }) => x));
   if (!r2.error) return { table: "box_items", inserted: rows.length };
 
   return { table: null, inserted: 0 };
 }
-
-/* ========= handler ========= */
 
 export async function POST(req: Request) {
   try {
@@ -295,10 +294,8 @@ export async function POST(req: Request) {
       for (let r = headerRowIdx + 1; r < rows.length; r++) {
         const row = rows[r] || [];
 
-        if (trim(row[b.boxCol])) {
-          const bn = extractBoxNr(row[b.boxCol]);
-          if (bn) currentBoxNr = bn;
-        }
+        const bn = readBoxNrFromRow(row, b.boxCol);
+        if (bn) currentBoxNr = bn;
 
         const imei = isImei(row[b.imeiCol]);
         if (!imei || !currentBoxNr) continue;
@@ -323,27 +320,17 @@ export async function POST(req: Request) {
     const labels: ParsedLabel[] = Array.from(map.values())
       .map((x) => {
         const uniq = Array.from(new Set(x.imeis));
-        return {
-          device: x.device,
-          box_no: x.box_no,
-          qty: uniq.length,
-          imeis: uniq,
-          qr_data: uniq.join("\n"),
-        };
+        return { device: x.device, box_no: x.box_no, qty: uniq.length, imeis: uniq, qr_data: uniq.join("\n") };
       })
       .filter((l) => l.qty > 0)
       .sort((a, b) => (a.device + a.box_no).localeCompare(b.device + b.box_no));
 
     if (!labels.length) {
-      return NextResponse.json(
-        { ok: false, error: "No valid rows parsed. Check that IMEI cells contain 15 digits." },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "No valid rows parsed. Check that IMEI cells contain 15 digits." }, { status: 400 });
     }
 
     const devicesDetected = new Set(labels.map((l) => l.device)).size;
 
-    // history row (schema-safe)
     const importRow = await safeInsertInboundImport(admin, {
       file_name: file.name,
       location,
@@ -351,13 +338,9 @@ export async function POST(req: Request) {
       created_by_email,
     });
 
-    // upsert boxes + map ids
     const boxIdMap = await ensureBoxes(admin, labels, location);
-
-    // insert imeis
     const ins = await insertImeis(admin, boxIdMap, labels);
 
-    // return labels WITH box_id for PDF download
     const labelsOut = labels.map((l) => ({
       device: l.device,
       box_no: l.box_no,
@@ -379,7 +362,7 @@ export async function POST(req: Request) {
       labels: labelsOut,
       debug: {
         header_row_index: headerRowIdx,
-        blocks: blocks.map((b) => ({ boxCol: b.boxCol, imeiCol: b.imeiCol })),
+        blocks: blocks.map((b) => ({ boxCol: b.boxCol, imeiCol: b.imeiCol, fallbackBoxCol: b.boxCol + 1 })),
       },
     });
   } catch (e: any) {

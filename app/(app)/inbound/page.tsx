@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 
@@ -10,6 +10,17 @@ type LabelRow = {
   qty: number;
   qr_data: string;
   box_id?: string | null;
+};
+
+type ImportEvent = {
+  id: any;
+  created_at: string | null;
+  created_by_email: string | null;
+  file_name: string | null;
+  location: string | null;
+  devices: number | null;
+  boxes: number | null;
+  items: number | null;
 };
 
 export default function InboundImportPage() {
@@ -28,10 +39,42 @@ export default function InboundImportPage() {
 
   const [q, setQ] = useState("");
 
+  // ✅ history
+  const [history, setHistory] = useState<ImportEvent[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyQ, setHistoryQ] = useState("");
+
   async function getAccessToken() {
     const { data } = await supabase.auth.getSession();
     return data.session?.access_token || "";
   }
+
+  async function loadHistory() {
+    try {
+      setHistoryLoading(true);
+
+      const token = await getAccessToken();
+      if (!token) return;
+
+      const res = await fetch("/api/inbound/history?limit=80", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "History load failed");
+
+      setHistory((json.events || []) as ImportEvent[]);
+    } catch (e: any) {
+      toast({ kind: "error", title: "History failed", message: e?.message || "Error" });
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    loadHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function onPreview() {
     try {
@@ -63,6 +106,14 @@ export default function InboundImportPage() {
 
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
+        // ✅ unknown devices returned by API
+        if (json?.unknown_devices?.length) {
+          toast({
+            kind: "error",
+            title: "Unknown devices",
+            message: `Ajoute d’abord dans Admin > Devices: ${json.unknown_devices.join(", ")}`,
+          });
+        }
         throw new Error(json?.error || "Preview failed");
       }
 
@@ -101,7 +152,16 @@ export default function InboundImportPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Import failed");
+      if (!res.ok || !json?.ok) {
+        if (json?.unknown_devices?.length) {
+          toast({
+            kind: "error",
+            title: "Unknown devices",
+            message: `Ajoute d’abord dans Admin > Devices: ${json.unknown_devices.join(", ")}`,
+          });
+        }
+        throw new Error(json?.error || "Import failed");
+      }
 
       setCommitted(true);
       setPreview(json);
@@ -112,6 +172,9 @@ export default function InboundImportPage() {
         title: "Import OK",
         message: `${json.devices} devices · ${json.boxes} cartons · ${json.items} IMEI`,
       });
+
+      // ✅ refresh history after commit
+      await loadHistory();
     } catch (e: any) {
       toast({ kind: "error", title: "Import failed", message: e?.message || "Error" });
     } finally {
@@ -199,6 +262,18 @@ export default function InboundImportPage() {
     return { devices, boxes, items };
   }, [labels]);
 
+  const historyFiltered = useMemo(() => {
+    const qq = historyQ.trim().toLowerCase();
+    if (!qq) return history;
+
+    return history.filter((h) => {
+      const fileName = String(h.file_name ?? "").toLowerCase();
+      const email = String(h.created_by_email ?? "").toLowerCase();
+      const loc = String(h.location ?? "").toLowerCase();
+      return fileName.includes(qq) || email.includes(qq) || loc.includes(qq);
+    });
+  }, [history, historyQ]);
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-4">
@@ -206,11 +281,12 @@ export default function InboundImportPage() {
           <div className="text-xs text-slate-500">Inbound</div>
           <h2 className="text-xl font-semibold">Import fournisseur</h2>
           <p className="text-sm text-slate-400 mt-1">
-            Multi-devices dans 1 seul Excel. Après confirm: PDF labels téléchargeable direct.
+            Multi-devices dans 1 seul Excel. Preview → Confirm import → PDF labels.
           </p>
         </div>
       </div>
 
+      {/* IMPORT CARD */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
           <div className="flex items-center gap-3">
@@ -261,6 +337,7 @@ export default function InboundImportPage() {
         </div>
       </div>
 
+      {/* LABELS CARD */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
@@ -354,6 +431,75 @@ export default function InboundImportPage() {
             {String(preview.error)}
           </div>
         )}
+      </div>
+
+      {/* ✅ HISTORY (Option A) */}
+      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Historique des imports</div>
+            <div className="text-xs text-slate-500">Qui, quand, fichier, étage, stats.</div>
+          </div>
+
+          <div className="flex gap-2">
+            <input
+              value={historyQ}
+              onChange={(e) => setHistoryQ(e.target.value)}
+              placeholder="Search file / email / étage…"
+              className="w-full md:w-[280px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
+            />
+            <button
+              onClick={loadHistory}
+              disabled={historyLoading}
+              className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+            >
+              {historyLoading ? "Refreshing…" : "Refresh"}
+            </button>
+          </div>
+        </div>
+
+        <div className="overflow-auto">
+          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+            <thead className="bg-slate-950/50">
+              <tr>
+                <th className="text-left p-2 border-b border-slate-800">Date</th>
+                <th className="text-left p-2 border-b border-slate-800">User</th>
+                <th className="text-left p-2 border-b border-slate-800">Fichier</th>
+                <th className="text-left p-2 border-b border-slate-800">Étage</th>
+                <th className="text-right p-2 border-b border-slate-800">Devices</th>
+                <th className="text-right p-2 border-b border-slate-800">Cartons</th>
+                <th className="text-right p-2 border-b border-slate-800">IMEI</th>
+              </tr>
+            </thead>
+            <tbody>
+              {historyFiltered.map((h, idx) => (
+                <tr key={String(h.id ?? idx)} className="hover:bg-slate-950/50">
+                  <td className="p-2 border-b border-slate-800 text-slate-200">
+                    {h.created_at ? new Date(h.created_at).toLocaleString() : "—"}
+                  </td>
+                  <td className="p-2 border-b border-slate-800 text-slate-200">{h.created_by_email || "—"}</td>
+                  <td className="p-2 border-b border-slate-800 text-slate-200">{h.file_name || "—"}</td>
+                  <td className="p-2 border-b border-slate-800 text-slate-200">{h.location || "—"}</td>
+                  <td className="p-2 border-b border-slate-800 text-right text-slate-200">{Number(h.devices ?? 0)}</td>
+                  <td className="p-2 border-b border-slate-800 text-right text-slate-200">{Number(h.boxes ?? 0)}</td>
+                  <td className="p-2 border-b border-slate-800 text-right text-slate-200">{Number(h.items ?? 0)}</td>
+                </tr>
+              ))}
+
+              {historyFiltered.length === 0 && (
+                <tr>
+                  <td className="p-3 text-sm text-slate-400" colSpan={7}>
+                    {historyLoading ? "Loading…" : "No history."}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="text-xs text-slate-500">
+          Tip: après un import, l’historique se refresh automatiquement. Sinon clique Refresh.
+        </div>
       </div>
     </div>
   );

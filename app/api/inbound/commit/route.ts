@@ -2,84 +2,124 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 
+/**
+ * COMMIT:
+ * - même parsing que preview
+ * - crée / upsert boxes
+ * - ajoute les imei en items
+ * - renvoie labels avec box_id
+ */
+
 function adminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE ||
-    "";
-
-  if (!url || !key) return null;
-
-  return createClient(url, key, {
-    auth: { autoRefreshToken: false, detectSessionInUrl: false },
-  });
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, detectSessionInUrl: false } }
+  );
 }
 
 function authedClient(token: string) {
-  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { detectSessionInUrl: false },
-  });
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      global: { headers: { Authorization: `Bearer ${token}` } },
+      auth: { detectSessionInUrl: false },
+    }
+  );
 }
 
-function norm(v: any) {
-  return String(v ?? "")
-    .toLowerCase()
-    .replace(/\s+/g, " ")
-    .trim();
+/* ========= safe utils ========= */
+
+const s = (v: any) => String(v ?? "");
+const lower = (v: any) => s(v).toLowerCase();
+const trim = (v: any) => s(v).trim();
+
+function canonicalize(v: any) {
+  return s(v).toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
 }
 
 function isImei(v: any) {
-  const s = String(v ?? "").replace(/\D/g, "");
-  return s.length === 15 ? s : null;
+  const digits = s(v).replace(/\D/g, "");
+  return digits.length === 15 ? digits : null;
 }
 
-function canonicalize(s: string) {
-  return String(s ?? "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .trim();
+function extractBoxNr(boxCell: any) {
+  const t = trim(boxCell);
+  if (!t) return null;
+
+  const idx = t.indexOf("-");
+  if (idx < 0) return null;
+
+  const after = t.slice(idx + 1).trim();
+  if (!after) return null;
+
+  return after.replace(/\s+/g, "");
 }
 
-function extractMasterBoxNo(boxCell: any): string | null {
-  const s = String(boxCell ?? "").trim();
-  if (!s) return null;
-  const m = s.match(/(\d{3}-\d{3})\s*$/);
-  if (m) return m[1];
-  const m2 = s.match(/(\d{3}-\d{3})/);
-  return m2 ? m2[1] : null;
+function resolveDeviceDisplay(rawDevice: string, devices: { canonical_name: string; device: string | null; active?: boolean | null }[]) {
+  const rawCanon = canonicalize(rawDevice);
+  if (!rawCanon) return null;
+
+  const active = (devices || []).filter((d) => d.active !== false);
+  const byCanon = new Map(active.map((d) => [String(d.canonical_name || ""), d]));
+
+  if (byCanon.has(rawCanon)) return String(byCanon.get(rawCanon)!.device || byCanon.get(rawCanon)!.canonical_name);
+
+  let best: any = null;
+  for (const d of active) {
+    const dbCanon = String(d.canonical_name || "");
+    if (!dbCanon) continue;
+    if (rawCanon.startsWith(dbCanon)) {
+      if (!best || dbCanon.length > String(best.canonical_name).length) best = d;
+    }
+  }
+  if (best) return String(best.device || best.canonical_name);
+
+  const m = rawCanon.match(/^([A-Z]+)(\d{3})/);
+  if (m) {
+    const short = m[1] + m[2];
+    if (byCanon.has(short)) {
+      const d = byCanon.get(short)!;
+      return String(d.device || d.canonical_name);
+    }
+  }
+
+  const m2 = rawCanon.match(/^([A-Z]+)(\d{1,2})$/);
+  if (m2) {
+    const padded = m2[1] + m2[2].padStart(3, "0");
+    if (byCanon.has(padded)) {
+      const d = byCanon.get(padded)!;
+      return String(d.device || d.canonical_name);
+    }
+  }
+
+  return null;
 }
 
-function extractRawDeviceFromBoxCell(boxCell: any): string | null {
-  const s = String(boxCell ?? "").trim();
-  if (!s) return null;
-  const p = s.split("-")[0]?.trim();
-  return p || null;
-}
+/* ========= detect layout ========= */
 
 function detectHeaderRow(rows: any[][]) {
-  for (let r = 0; r < Math.min(rows.length, 50); r++) {
+  for (let r = 0; r < Math.min(rows.length, 60); r++) {
     const row = rows[r] || [];
-    const cells = row.map(norm);
-    const hasImei = cells.some((c) => c.includes("imei"));
-    const hasBox = cells.some((c) => c.includes("box"));
-    if (hasImei && hasBox) return r;
+    const hasBox = row.some((c) => lower(c).includes("box"));
+    const hasImei = row.some((c) => lower(c).includes("imei"));
+    if (hasBox && hasImei) return r;
   }
   return -1;
 }
 
-function detectBlocks(header: string[]) {
-  const blocks: { start: number; boxCol: number; imeiCol: number; deviceHintCol: number }[] = [];
+function detectBlocks(headerRow: any[]) {
+  const header = (headerRow || []).map((c) => lower(c).replace(/\s+/g, " ").trim());
+  const blocks: { boxCol: number; imeiCol: number }[] = [];
 
   for (let c = 0; c < header.length; c++) {
     const h = header[c] || "";
-    const isBox = h === "box no." || (h.includes("box") && h.includes("no"));
+    const isBox = h.includes("box") && h.includes("no");
     if (!isBox) continue;
 
     let imeiCol = -1;
-    for (let k = c; k <= Math.min(header.length - 1, c + 14); k++) {
+    for (let k = c; k <= Math.min(header.length - 1, c + 20); k++) {
       if ((header[k] || "").includes("imei")) {
         imeiCol = k;
         break;
@@ -87,72 +127,27 @@ function detectBlocks(header: string[]) {
     }
     if (imeiCol < 0) continue;
 
-    const already = blocks.some((b) => Math.abs(b.start - c) <= 2);
-    if (already) continue;
+    const dup = blocks.some((b) => Math.abs(b.boxCol - c) <= 2);
+    if (dup) continue;
 
-    blocks.push({ start: c, boxCol: c, imeiCol, deviceHintCol: c });
+    blocks.push({ boxCol: c, imeiCol });
+    c = imeiCol;
   }
 
-  blocks.sort((a, b) => a.start - b.start);
   return blocks;
 }
 
-type DeviceDbRow = { canonical_name: string; device: string | null; active?: boolean | null };
-
-async function loadDevices(admin: ReturnType<typeof adminClient>) {
-  const { data, error } = await admin!.from("devices").select("canonical_name, device, active");
-  if (error) return [];
-  return (data || []).map((d: DeviceDbRow) => ({
-    canonical: String(d.canonical_name || ""),
-    display: String(d.device || d.canonical_name || ""),
-    active: d.active !== false,
-  }));
-}
-
-function resolveDeviceDisplay(rawDevice: string, deviceList: { canonical: string; display: string; active: boolean }[]) {
-  const rawCanon = canonicalize(rawDevice);
-  if (!rawCanon) return null;
-
-  const activeList = deviceList.filter((d) => d.active);
-
-  const score = (dbCanon: string) => {
-    if (!dbCanon) return -1;
-    if (rawCanon === dbCanon) return 1000;
-    if (rawCanon.startsWith(dbCanon)) return 900 + dbCanon.length;
-    if (dbCanon.startsWith(rawCanon)) return 700 + rawCanon.length;
-
-    const m = rawCanon.match(/^([A-Z]+)(\d+)$/);
-    if (m) {
-      const prefix = m[1];
-      const num = m[2];
-      const n = parseInt(num, 10);
-
-      const pad3 = prefix + String(n).padStart(3, "0");
-      if (pad3 === dbCanon) return 850;
-
-      const trim3 = prefix + String(num).slice(0, 3);
-      if (trim3 === dbCanon) return 840;
-
-      const pad4 = prefix + String(n).padStart(4, "0");
-      if (pad4 === dbCanon) return 830;
-    }
-
-    return -1;
-  };
-
-  let best: { canonical: string; display: string } | null = null;
-  let bestScore = -1;
-
-  for (const d of activeList) {
-    const s = score(d.canonical);
-    if (s > bestScore) {
-      bestScore = s;
-      best = { canonical: d.canonical, display: d.display };
-    }
+function getDeviceNameFromTopRow(rowAboveHeader: any[], boxCol: number, imeiCol: number) {
+  const row = rowAboveHeader || [];
+  for (let c = boxCol; c <= imeiCol; c++) {
+    const v = trim(row[c]);
+    if (v) return v;
   }
-
-  return best ? best.display : null;
+  const v2 = trim(row[boxCol]);
+  return v2 || null;
 }
+
+/* ========= db helpers ========= */
 
 type ParsedLabel = {
   device: string;
@@ -160,10 +155,10 @@ type ParsedLabel = {
   qty: number;
   qr_data: string;
   imeis: string[];
-  box_id?: string | null;
 };
 
 async function safeInsertInboundImport(admin: any, payload: Record<string, any>) {
+  // schema-safe insert, drop columns if not existing
   const tries: Record<string, any>[] = [];
   tries.push({ ...payload });
 
@@ -177,56 +172,42 @@ async function safeInsertInboundImport(admin: any, payload: Record<string, any>)
   tries.push(drop(payload, ["created_by_email", "devices"]));
   tries.push(drop(payload, ["created_by_email", "devices", "location"]));
   tries.push(drop(payload, ["created_by_email", "devices", "location", "file_name"]));
-  tries.push({});
 
   for (const t of tries) {
-    const res = await admin.from("inbound_imports").insert(t as any).select("*").maybeSingle();
+    const res = await admin.from("inbound_imports").insert(t).select("*").maybeSingle();
     if (!res.error) return res.data;
-    const msg = String(res.error.message || "");
-    if (msg.toLowerCase().includes("relation") && msg.toLowerCase().includes("does not exist")) break;
   }
   return null;
 }
 
 async function ensureBoxes(admin: any, labels: ParsedLabel[], location: string) {
-  const uniquePairs = labels.map((l) => ({
-    device: l.device,
-    master_box_no: l.box_no,
-    box_no: l.box_no,
-    location,
-    status: "IN_STOCK",
-  }));
-
-  const dedupMap = new Map<string, any>();
-  for (const r of uniquePairs) dedupMap.set(`${r.device}__${r.master_box_no}`, r);
-  const rows = Array.from(dedupMap.values());
-
-  let upsertOk = false;
-  {
-    const res = await admin
-      .from("boxes")
-      .upsert(rows as any, { onConflict: "device,master_box_no" })
-      .select("box_id, device, master_box_no, box_no, location");
-
-    if (!res.error) upsertOk = true;
+  const dedup = new Map<string, any>();
+  for (const l of labels) {
+    dedup.set(`${l.device}__${l.box_no}`, {
+      device: l.device,
+      master_box_no: l.box_no,
+      box_no: l.box_no,
+      location,
+      status: "IN_STOCK",
+    });
   }
+  const rows = Array.from(dedup.values());
 
-  if (!upsertOk) {
+  // try upsert with onConflict
+  const up = await admin.from("boxes").upsert(rows, { onConflict: "device,master_box_no" }).select("box_id,device,master_box_no");
+  if (up.error) {
+    // fallback insert
     for (const r of rows) {
-      const ins = await admin.from("boxes").insert(r as any);
-      if (ins.error) {
-        const msg = String(ins.error.message || "").toLowerCase();
-        if (msg.includes("duplicate") || msg.includes("already exists") || msg.includes("unique")) continue;
-        continue;
-      }
+      const ins = await admin.from("boxes").insert(r);
+      // ignore dup errors
+      if (ins.error) continue;
     }
   }
 
   const devices = Array.from(new Set(rows.map((r) => r.device)));
-  const masterBoxNos = Array.from(new Set(rows.map((r) => r.master_box_no)));
+  const master = Array.from(new Set(rows.map((r) => r.master_box_no)));
 
-  const fetched = await admin.from("boxes").select("box_id, device, master_box_no, box_no, location").in("device", devices).in("master_box_no", masterBoxNos);
-
+  const fetched = await admin.from("boxes").select("box_id,device,master_box_no,box_no").in("device", devices).in("master_box_no", master);
   const map = new Map<string, string>();
   for (const b of fetched.data || []) {
     map.set(`${b.device}__${b.master_box_no}`, String(b.box_id));
@@ -239,41 +220,47 @@ async function insertImeis(admin: any, boxIdMap: Map<string, string>, labels: Pa
   for (const l of labels) {
     const box_id = boxIdMap.get(`${l.device}__${l.box_no}`);
     if (!box_id) continue;
-    const uniq = Array.from(new Set(l.imeis));
-    for (const imei of uniq) rows.push({ box_id, imei, status: "IN_STOCK" });
+    for (const imei of Array.from(new Set(l.imeis))) {
+      rows.push({ box_id, imei, status: "IN_STOCK" });
+    }
   }
 
-  const res = await admin.from("items").insert(rows as any);
-  if (!res.error) return { table: "items", inserted: rows.length };
+  const r = await admin.from("items").insert(rows);
+  if (!r.error) return { table: "items", inserted: rows.length };
 
-  const res2 = await admin.from("box_items").insert(rows.map((r) => ({ box_id: r.box_id, imei: r.imei })) as any);
-  if (!res2.error) return { table: "box_items", inserted: rows.length };
+  // fallback table name
+  const r2 = await admin.from("box_items").insert(rows.map(({ status, ...x }) => x));
+  if (!r2.error) return { table: "box_items", inserted: rows.length };
 
   return { table: null, inserted: 0 };
 }
 
+/* ========= handler ========= */
+
 export async function POST(req: Request) {
   try {
     const admin = adminClient();
-    if (!admin) return NextResponse.json({ ok: false, error: "Missing service role key on server" }, { status: 500 });
 
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7) : "";
+    const auth = req.headers.get("authorization") || "";
+    const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : "";
     if (!token) return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
 
     const userClient = authedClient(token);
-    const { data: userData, error: userErr } = await userClient.auth.getUser();
-    if (userErr) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    const created_by_email = userData.user?.email || null;
+    const { data: uData, error: uErr } = await userClient.auth.getUser();
+    if (uErr) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    const created_by_email = uData.user?.email || null;
 
     const form = await req.formData();
     const file = form.get("file") as File | null;
-    const location = String(form.get("location") ?? "").trim();
+    const location = trim(form.get("location"));
 
     if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
 
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    const wb = XLSX.read(bytes, { type: "array" });
+    const { data: devicesDb, error: dErr } = await admin.from("devices").select("canonical_name, device, active");
+    if (dErr) return NextResponse.json({ ok: false, error: dErr.message }, { status: 500 });
+
+    const buf = new Uint8Array(await file.arrayBuffer());
+    const wb = XLSX.read(buf, { type: "array" });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any[][];
 
@@ -284,68 +271,56 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Could not detect header row (need BOX + IMEI headers)" }, { status: 400 });
     }
 
-    const header = (rows[headerRowIdx] || []).map(norm);
-    const blocks = detectBlocks(header);
+    const blocks = detectBlocks(rows[headerRowIdx] || []);
     if (!blocks.length) {
-      return NextResponse.json({ ok: false, error: "No blocks detected. Expected repeated 'Box No.' + 'IMEI' sections." }, { status: 400 });
+      return NextResponse.json({ ok: false, error: "No blocks detected (Box No + IMEI)" }, { status: 400 });
     }
 
-    const devicesDb = await loadDevices(admin);
-
-    const byKey = new Map<string, { device: string; box_no: string; imeis: string[] }>();
+    const rowAbove = rows[headerRowIdx - 1] || [];
     const unknown = new Set<string>();
+    const map = new Map<string, { device: string; box_no: string; imeis: string[] }>();
 
-    for (const block of blocks) {
-      const row1 = rows[0] || [];
-      const deviceHintRaw = String(row1[block.deviceHintCol] ?? "").trim();
+    for (const b of blocks) {
+      const rawTopDevice = getDeviceNameFromTopRow(rowAbove, b.boxCol, b.imeiCol);
+      if (!rawTopDevice) continue;
 
-      let currentDeviceRaw: string | null = deviceHintRaw || null;
-      let currentDeviceDisplay: string | null = currentDeviceRaw ? resolveDeviceDisplay(currentDeviceRaw, devicesDb) : null;
+      const deviceDisplay = resolveDeviceDisplay(rawTopDevice, devicesDb || []);
+      if (!deviceDisplay) {
+        unknown.add(rawTopDevice);
+        continue;
+      }
 
-      if (currentDeviceRaw && !currentDeviceDisplay) unknown.add(currentDeviceRaw);
-
-      let currentMasterBox: string | null = null;
+      let currentBoxNr: string | null = null;
 
       for (let r = headerRowIdx + 1; r < rows.length; r++) {
         const row = rows[r] || [];
-        const boxCell = row[block.boxCol];
-        const imeiCell = row[block.imeiCol];
 
-        if (boxCell !== null && boxCell !== undefined && String(boxCell).trim() !== "") {
-          const rawDev = extractRawDeviceFromBoxCell(boxCell);
-          const mb = extractMasterBoxNo(boxCell);
-
-          if (rawDev) {
-            currentDeviceRaw = rawDev;
-            const resolved = resolveDeviceDisplay(rawDev, devicesDb);
-            if (!resolved) unknown.add(rawDev);
-            currentDeviceDisplay = resolved || currentDeviceDisplay;
-          }
-
-          if (mb) currentMasterBox = mb;
+        if (trim(row[b.boxCol])) {
+          const bn = extractBoxNr(row[b.boxCol]);
+          if (bn) currentBoxNr = bn;
         }
 
-        const imei = isImei(imeiCell);
-        if (!imei) continue;
+        const imei = isImei(row[b.imeiCol]);
+        if (!imei || !currentBoxNr) continue;
 
-        if (!currentDeviceDisplay || !currentMasterBox) continue;
-
-        const key = `${currentDeviceDisplay}__${currentMasterBox}`;
-        if (!byKey.has(key)) byKey.set(key, { device: currentDeviceDisplay, box_no: currentMasterBox, imeis: [] });
-        byKey.get(key)!.imeis.push(imei);
+        const key = `${deviceDisplay}__${currentBoxNr}`;
+        if (!map.has(key)) map.set(key, { device: deviceDisplay, box_no: currentBoxNr, imeis: [] });
+        map.get(key)!.imeis.push(imei);
       }
     }
 
-    // ✅ block commit if unknown devices
-    if (unknown.size > 0) {
-      const list = Array.from(unknown).sort();
+    if (unknown.size) {
       return NextResponse.json(
-        { ok: false, error: "Unknown devices found in Excel. Add them in Admin > Devices, then retry.", unknown_devices: list },
+        {
+          ok: false,
+          error: "device(s) not found in Admin > Devices",
+          unknown_devices: Array.from(unknown).sort(),
+        },
         { status: 400 }
       );
     }
 
-    const labels: ParsedLabel[] = Array.from(byKey.values())
+    const labels: ParsedLabel[] = Array.from(map.values())
       .map((x) => {
         const uniq = Array.from(new Set(x.imeis));
         return {
@@ -360,35 +335,40 @@ export async function POST(req: Request) {
       .sort((a, b) => (a.device + a.box_no).localeCompare(b.device + b.box_no));
 
     if (!labels.length) {
-      return NextResponse.json({ ok: false, error: "No valid rows parsed. Check that IMEI cells contain 15 digits." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No valid rows parsed. Check that IMEI cells contain 15 digits." },
+        { status: 400 }
+      );
     }
 
     const devicesDetected = new Set(labels.map((l) => l.device)).size;
 
-    // ✅ history log (schema-safe)
-    await safeInsertInboundImport(admin, {
+    // history row (schema-safe)
+    const importRow = await safeInsertInboundImport(admin, {
       file_name: file.name,
       location,
       devices: devicesDetected,
-      boxes: labels.length,
-      items: labels.reduce((acc, l) => acc + l.qty, 0),
       created_by_email,
     });
 
-    // ✅ ensure boxes
+    // upsert boxes + map ids
     const boxIdMap = await ensureBoxes(admin, labels, location);
 
-    // ✅ insert IMEIs
+    // insert imeis
     const ins = await insertImeis(admin, boxIdMap, labels);
 
-    // ✅ OPTION 1: attach box_id in response labels
-    const labelsWithIds = labels.map((l) => ({
-      ...l,
+    // return labels WITH box_id for PDF download
+    const labelsOut = labels.map((l) => ({
+      device: l.device,
+      box_no: l.box_no,
+      qty: l.qty,
+      qr_data: l.qr_data,
       box_id: boxIdMap.get(`${l.device}__${l.box_no}`) || null,
     }));
 
     return NextResponse.json({
       ok: true,
+      import: importRow ? { ...importRow } : null,
       file_name: file.name,
       location,
       devices: devicesDetected,
@@ -396,13 +376,11 @@ export async function POST(req: Request) {
       items: labels.reduce((acc, l) => acc + l.qty, 0),
       inserted_into: ins.table,
       inserted_items: ins.inserted,
-      labels: labelsWithIds.map((l) => ({
-        device: l.device,
-        box_no: l.box_no,
-        qty: l.qty,
-        qr_data: l.qr_data,
-        box_id: l.box_id,
-      })),
+      labels: labelsOut,
+      debug: {
+        header_row_index: headerRowIdx,
+        blocks: blocks.map((b) => ({ boxCol: b.boxCol, imeiCol: b.imeiCol })),
+      },
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });

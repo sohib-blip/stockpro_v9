@@ -430,7 +430,7 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
   for (let i = 0; i < allImeis.length; i += chunkSize) {
     const chunk = allImeis.slice(i, i + chunkSize);
     labels.push({
-      vendor: "trusted",
+      vendor: "truster",
       device: deviceDisplay,
       box_no: String(boxCounter), // 1,2,3...
       imeis: uniq(chunk),
@@ -458,7 +458,7 @@ export function parseVendorExcel(
       return parseQuicklinkExcel(bytes, devices);
     case "digitalmatter":
       return parseDigitalmatterExcel(bytes, devices);
-    case "trusted":
+    case "truster":
       return parseTrustedExcel(bytes, devices);
     default:
       return makeFail("Unknown vendor", [], { vendor });

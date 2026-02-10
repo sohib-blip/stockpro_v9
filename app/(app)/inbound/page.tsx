@@ -37,30 +37,41 @@ export default function InboundImportPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
+  // Upload + preview/commit
   const [file, setFile] = useState<File | null>(null);
   const [location, setLocation] = useState<string>("00");
-
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingCommit, setLoadingCommit] = useState(false);
 
+  // Response (keep for toast + optional future)
   const [preview, setPreview] = useState<any | null>(null);
   const [labels, setLabels] = useState<LabelRow[]>([]);
   const [committed, setCommitted] = useState(false);
 
-  const [q, setQ] = useState("");
+  // History states (two blocks)
+  const [loadingHistImport, setLoadingHistImport] = useState(false);
+  const [imports, setImports] = useState<ImportLogRow[]>([]);
 
-  // ✅ history from Labels (bottom block)
-  const [loadingHist, setLoadingHist] = useState(false);
+  const [loadingHistLabels, setLoadingHistLabels] = useState(false);
   const [importsFromLabels, setImportsFromLabels] = useState<ImportLogRow[]>([]);
-  const [openImportId, setOpenImportId] = useState<string | null>(null);
+
+  // Details (shared)
+  const [openKey, setOpenKey] = useState<string | null>(null); // e.g. "import:<id>" or "labels:<id>"
   const [openBoxes, setOpenBoxes] = useState<ImportLogBoxRow[]>([]);
   const [loadingBoxes, setLoadingBoxes] = useState(false);
+
+  // Filter
+  const [qImport, setQImport] = useState("");
+  const [qLabels, setQLabels] = useState("");
 
   async function getAccessToken() {
     const { data } = await supabase.auth.getSession();
     return data.session?.access_token || "";
   }
 
+  // ---------------------------
+  // Preview + Commit
+  // ---------------------------
   async function onPreview() {
     try {
       setCommitted(false);
@@ -91,9 +102,7 @@ export default function InboundImportPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.ok) {
-        throw new Error(json?.error || "Preview failed");
-      }
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Preview failed");
 
       setPreview(json);
       setLabels((json.labels || []) as LabelRow[]);
@@ -142,6 +151,10 @@ export default function InboundImportPage() {
         title: "Import OK",
         message: `${json.devices} devices · ${json.boxes} cartons · ${json.items} IMEI`,
       });
+
+      // refresh import history right away
+      await loadImportHistory();
+      await loadLabelsHistory();
     } catch (e: any) {
       toast({ kind: "error", title: "Import failed", message: e?.message || "Error" });
     } finally {
@@ -149,16 +162,88 @@ export default function InboundImportPage() {
     }
   }
 
-  async function downloadPdfAllAfterConfirm() {
-    const box_ids = (labels || [])
-      .map((l) => l.box_id)
-      .filter((x): x is string => Boolean(x));
+  // ---------------------------
+  // Histories
+  // ---------------------------
+  async function loadImportHistory() {
+    try {
+      setLoadingHistImport(true);
+      const token = await getAccessToken();
+      if (!token) return;
 
-    if (!box_ids.length) {
-      toast({ kind: "error", title: "PDF", message: "Aucun box_id trouvé. Confirme l’import d’abord." });
+      const res = await fetch("/api/inbound/history?limit=80", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Import history load failed");
+
+      setImports((json.imports || []) as ImportLogRow[]);
+    } catch (e: any) {
+      toast({ kind: "error", title: "History failed", message: e?.message || "Error" });
+      setImports([]);
+    } finally {
+      setLoadingHistImport(false);
+    }
+  }
+
+  async function loadLabelsHistory() {
+    try {
+      setLoadingHistLabels(true);
+      const token = await getAccessToken();
+      if (!token) return;
+
+      const res = await fetch("/api/inbound/history-from-labels?limit=80", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Labels history load failed");
+
+      setImportsFromLabels((json.imports || []) as ImportLogRow[]);
+    } catch (e: any) {
+      toast({ kind: "error", title: "History failed", message: e?.message || "Error" });
+      setImportsFromLabels([]);
+    } finally {
+      setLoadingHistLabels(false);
+    }
+  }
+
+  async function loadBoxesForImport(scope: "import" | "labels", importId: string) {
+    setLoadingBoxes(true);
+    try {
+      const token = await getAccessToken();
+      if (!token) return;
+
+      const res = await fetch(`/api/inbound/${scope === "labels" ? "history-from-labels" : "history"}/${importId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Details load failed");
+
+      setOpenBoxes((json.boxes || []) as ImportLogBoxRow[]);
+    } finally {
+      setLoadingBoxes(false);
+    }
+  }
+
+  async function toggleDetails(scope: "import" | "labels", importId: string) {
+    const key = `${scope}:${importId}`;
+    if (openKey === key) {
+      setOpenKey(null);
+      setOpenBoxes([]);
       return;
     }
+    setOpenKey(key);
+    setOpenBoxes([]);
+    await loadBoxesForImport(scope, importId);
+  }
 
+  // ---------------------------
+  // PDF for an import (all boxes)
+  // ---------------------------
+  async function downloadPdfForBoxIds(box_ids: string[], filename: string) {
     const token = await getAccessToken();
     const res = await fetch("/api/labels/pdf/boxes", {
       method: "POST",
@@ -178,101 +263,86 @@ export default function InboundImportPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `labels-${new Date().toISOString().slice(0, 10)}.pdf`;
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
   }
 
-  const filtered = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return labels;
-    return labels.filter((l) => {
-      const d = String(l.device ?? "").toLowerCase();
-      const b = String(l.box_no ?? "").toLowerCase();
-      return d.includes(qq) || b.includes(qq);
-    });
-  }, [labels, q]);
+  async function downloadPdfForImport(scope: "import" | "labels", importId: string) {
+    try {
+      // ensure boxes loaded
+      if (!(openKey === `${scope}:${importId}`) || openBoxes.length === 0) {
+        await toggleDetails(scope, importId);
+      }
 
-  const stats = useMemo(() => {
+      const ids = (openBoxes || [])
+        .map((b) => b.box_id)
+        .filter((x): x is string => Boolean(x));
+
+      if (!ids.length) {
+        toast({ kind: "error", title: "PDF", message: "Aucun box_id trouvé pour cet import." });
+        return;
+      }
+
+      const fn = `${scope}-import-${importId}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      await downloadPdfForBoxIds(ids, fn);
+    } catch (e: any) {
+      toast({ kind: "error", title: "PDF failed", message: e?.message || "Error" });
+    }
+  }
+
+  // ---------------------------
+  // Filters (both histories)
+  // ---------------------------
+  const filteredImports = useMemo(() => {
+    const qq = qImport.trim().toLowerCase();
+    if (!qq) return imports;
+    return imports.filter((im) => {
+      const v = String(im.vendor ?? "").toLowerCase();
+      const u = String(im.created_by_email ?? "").toLowerCase();
+      const f = String(im.file_name ?? "").toLowerCase();
+      const loc = String(im.location ?? "").toLowerCase();
+      return v.includes(qq) || u.includes(qq) || f.includes(qq) || loc.includes(qq);
+    });
+  }, [imports, qImport]);
+
+  const filteredLabelsImports = useMemo(() => {
+    const qq = qLabels.trim().toLowerCase();
+    if (!qq) return importsFromLabels;
+    return importsFromLabels.filter((im) => {
+      const u = String(im.created_by_email ?? "").toLowerCase();
+      const loc = String(im.location ?? "").toLowerCase();
+      return u.includes(qq) || loc.includes(qq);
+    });
+  }, [importsFromLabels, qLabels]);
+
+  useEffect(() => {
+    loadImportHistory();
+    loadLabelsHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const previewStats = useMemo(() => {
     const devices = new Set(labels.map((l) => l.device)).size;
     const boxes = labels.length;
     const items = labels.reduce((acc, l) => acc + (Number(l.qty) || 0), 0);
     return { devices, boxes, items };
   }, [labels]);
 
-  async function loadImportsFromLabels() {
-    try {
-      setLoadingHist(true);
-      const token = await getAccessToken();
-      if (!token) return;
-
-      const res = await fetch("/api/inbound/history-from-labels?limit=50", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "History load failed");
-
-      setImportsFromLabels((json.imports || []) as ImportLogRow[]);
-    } catch (e: any) {
-      toast({ kind: "error", title: "History failed", message: e?.message || "Error" });
-      setImportsFromLabels([]);
-    } finally {
-      setLoadingHist(false);
-    }
-  }
-
-  async function toggleOpenImport(importId: string) {
-    try {
-      if (openImportId === importId) {
-        setOpenImportId(null);
-        setOpenBoxes([]);
-        return;
-      }
-
-      setOpenImportId(importId);
-      setOpenBoxes([]);
-      setLoadingBoxes(true);
-
-      const token = await getAccessToken();
-      if (!token) return;
-
-      const res = await fetch(`/api/inbound/history-from-labels/${importId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "History details failed");
-
-      setOpenBoxes((json.boxes || []) as ImportLogBoxRow[]);
-    } catch (e: any) {
-      toast({ kind: "error", title: "History details failed", message: e?.message || "Error" });
-      setOpenBoxes([]);
-      setOpenImportId(null);
-    } finally {
-      setLoadingBoxes(false);
-    }
-  }
-
-  useEffect(() => {
-    loadImportsFromLabels();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <div className="space-y-6">
+      {/* HEADER */}
       <div className="flex items-start justify-between gap-4">
         <div>
           <div className="text-xs text-slate-500">Inbound</div>
           <h2 className="text-xl font-semibold">Import fournisseur</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Multi-devices dans 1 seul Excel. Après confirm: PDF labels téléchargeable direct.
-          </p>
+          <p className="text-sm text-slate-400 mt-1">Preview + Confirm, et après tu as l’historique en bas.</p>
         </div>
       </div>
 
+      {/* UPLOAD */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
           <div className="flex items-center gap-3">
@@ -315,76 +385,12 @@ export default function InboundImportPage() {
           </div>
         </div>
 
+        {/* Preview stats only */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
-          <StatCard title="Devices détectés" value={stats.devices} />
-          <StatCard title="Cartons (labels)" value={stats.boxes} />
-          <StatCard title="IMEI parsés" value={stats.items} />
+          <StatCard title="Preview Devices" value={previewStats.devices} />
+          <StatCard title="Preview Boxes" value={previewStats.boxes} />
+          <StatCard title="Preview IMEI" value={previewStats.items} />
           <StatCard title="Étage" value={location} />
-        </div>
-      </div>
-
-      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">Labels par gros carton</div>
-            <div className="text-xs text-slate-500">PDF dispo après Confirm import.</div>
-          </div>
-
-          <div className="flex gap-2">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Filtrer device / carton…"
-              className="w-full md:w-[260px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
-            />
-
-            <button
-              onClick={async () => {
-                try {
-                  if (!committed) {
-                    toast({ kind: "error", title: "PDF", message: "D’abord Confirm import." });
-                    return;
-                  }
-                  await downloadPdfAllAfterConfirm();
-                } catch (e: any) {
-                  toast({ kind: "error", title: "PDF failed", message: e?.message || "Error" });
-                }
-              }}
-              disabled={!committed || loadingCommit || !labels.length}
-              className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
-            >
-              Download PDF (ALL)
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-auto">
-          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="text-left p-2 border-b border-slate-800">Device</th>
-                <th className="text-left p-2 border-b border-slate-800">Gros carton (BoxNR)</th>
-                <th className="text-right p-2 border-b border-slate-800">Qty IMEI</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((l) => (
-                <tr key={`${l.device}__${l.box_no}`} className="hover:bg-slate-950/50">
-                  <td className="p-2 border-b border-slate-800 font-semibold text-slate-100">{l.device}</td>
-                  <td className="p-2 border-b border-slate-800 text-slate-200">{l.box_no}</td>
-                  <td className="p-2 border-b border-slate-800 text-right text-slate-200">{l.qty}</td>
-                </tr>
-              ))}
-
-              {filtered.length === 0 && (
-                <tr>
-                  <td className="p-3 text-sm text-slate-400" colSpan={3}>
-                    No labels.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
         </div>
 
         {preview?.error && (
@@ -392,61 +398,163 @@ export default function InboundImportPage() {
             {String(preview.error)}
           </div>
         )}
+
+        {committed && (
+          <div className="mt-2 rounded-xl border border-emerald-900/50 bg-emerald-950/30 text-emerald-200 px-3 py-2 text-sm">
+            Import confirmé ✅ (check l’historique en bas)
+          </div>
+        )}
       </div>
 
-      {/* ✅ NEW: Import from Labels */}
-      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-sm font-semibold">Import from Labels</div>
-            <div className="text-xs text-slate-500">Historique des imports faits depuis l’onglet Labels.</div>
-          </div>
+      {/* HISTORY: IMPORTS (non-labels) */}
+      <HistoryBlock
+        title="Import history"
+        subtitle="Historique des imports fournisseurs (teltonika etc.)."
+        query={qImport}
+        setQuery={setQImport}
+        loading={loadingHistImport}
+        onRefresh={loadImportHistory}
+        rows={filteredImports}
+        openKey={openKey}
+        openBoxes={openBoxes}
+        loadingBoxes={loadingBoxes}
+        onToggle={(id) => toggleDetails("import", id)}
+        onDownloadPdf={(id) => downloadPdfForImport("import", id)}
+        showVendor
+        showDevices
+      />
 
-          <button
-            onClick={loadImportsFromLabels}
-            disabled={loadingHist}
-            className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
-          >
-            {loadingHist ? "Refreshing…" : "Refresh"}
-          </button>
+      {/* HISTORY: IMPORTS FROM LABELS */}
+      <HistoryBlock
+        title="Import from Labels"
+        subtitle="Historique des imports faits depuis l’onglet Labels."
+        query={qLabels}
+        setQuery={setQLabels}
+        loading={loadingHistLabels}
+        onRefresh={loadLabelsHistory}
+        rows={filteredLabelsImports}
+        openKey={openKey}
+        openBoxes={openBoxes}
+        loadingBoxes={loadingBoxes}
+        onToggle={(id) => toggleDetails("labels", id)}
+        onDownloadPdf={(id) => downloadPdfForImport("labels", id)}
+        showVendor={false}
+        showDevices
+      />
+    </div>
+  );
+}
+
+function HistoryBlock({
+  title,
+  subtitle,
+  query,
+  setQuery,
+  loading,
+  onRefresh,
+  rows,
+  openKey,
+  openBoxes,
+  loadingBoxes,
+  onToggle,
+  onDownloadPdf,
+  showVendor,
+  showDevices,
+}: {
+  title: string;
+  subtitle: string;
+  query: string;
+  setQuery: (v: string) => void;
+  loading: boolean;
+  onRefresh: () => Promise<void>;
+  rows: ImportLogRow[];
+  openKey: string | null;
+  openBoxes: ImportLogBoxRow[];
+  loadingBoxes: boolean;
+  onToggle: (importId: string) => void;
+  onDownloadPdf: (importId: string) => void;
+  showVendor: boolean;
+  showDevices: boolean;
+}) {
+  return (
+    <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">{title}</div>
+          <div className="text-xs text-slate-500">{subtitle}</div>
         </div>
 
-        <div className="overflow-auto">
-          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="text-left p-2 border-b border-slate-800">Date</th>
-                <th className="text-left p-2 border-b border-slate-800">User</th>
-                <th className="text-left p-2 border-b border-slate-800">Étage</th>
-                <th className="text-right p-2 border-b border-slate-800">Boxes</th>
-                <th className="text-right p-2 border-b border-slate-800">Items</th>
-                <th className="text-right p-2 border-b border-slate-800">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {importsFromLabels.map((im) => (
+        <div className="flex gap-2">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search… (user, étage, file, vendor)"
+            className="w-full md:w-[320px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
+          />
+
+          <button
+            onClick={onRefresh}
+            disabled={loading}
+            className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+      </div>
+
+      <div className="overflow-auto">
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <thead className="bg-slate-950/50">
+            <tr>
+              <th className="text-left p-2 border-b border-slate-800">Date</th>
+              <th className="text-left p-2 border-b border-slate-800">User</th>
+              {showVendor ? <th className="text-left p-2 border-b border-slate-800">Vendor</th> : null}
+              <th className="text-left p-2 border-b border-slate-800">Étage</th>
+              {showDevices ? <th className="text-right p-2 border-b border-slate-800">Devices</th> : null}
+              <th className="text-right p-2 border-b border-slate-800">Boxes</th>
+              <th className="text-right p-2 border-b border-slate-800">Items</th>
+              <th className="text-right p-2 border-b border-slate-800">Actions</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((im) => {
+              const key1 = `import:${im.id}`;
+              const key2 = `labels:${im.id}`;
+              const isOpen = openKey === key1 || openKey === key2;
+
+              return (
                 <React.Fragment key={im.id}>
                   <tr className="hover:bg-slate-950/50">
-                    <td className="p-2 border-b border-slate-800 text-slate-200">
-                      {new Date(im.created_at).toLocaleString()}
-                    </td>
+                    <td className="p-2 border-b border-slate-800 text-slate-200">{new Date(im.created_at).toLocaleString()}</td>
                     <td className="p-2 border-b border-slate-800 text-slate-200">{im.created_by_email || "—"}</td>
+                    {showVendor ? <td className="p-2 border-b border-slate-800 text-slate-200">{im.vendor || "—"}</td> : null}
                     <td className="p-2 border-b border-slate-800 text-slate-200">{im.location || "—"}</td>
-                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{im.boxes}</td>
-                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{im.items}</td>
+                    {showDevices ? <td className="p-2 border-b border-slate-800 text-right text-slate-200">{im.devices ?? 0}</td> : null}
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{im.boxes ?? 0}</td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{im.items ?? 0}</td>
                     <td className="p-2 border-b border-slate-800 text-right">
-                      <button
-                        onClick={() => toggleOpenImport(im.id)}
-                        className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
-                      >
-                        {openImportId === im.id ? "Hide" : "Details"}
-                      </button>
+                      <div className="inline-flex gap-2">
+                        <button
+                          onClick={() => onToggle(im.id)}
+                          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                        >
+                          {isOpen ? "Hide" : "Details"}
+                        </button>
+
+                        <button
+                          onClick={() => onDownloadPdf(im.id)}
+                          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                        >
+                          Download PDF (Import)
+                        </button>
+                      </div>
                     </td>
                   </tr>
 
-                  {openImportId === im.id && (
+                  {isOpen && (
                     <tr>
-                      <td className="p-3 border-b border-slate-800 bg-slate-950/30" colSpan={6}>
+                      <td className="p-3 border-b border-slate-800 bg-slate-950/30" colSpan={showVendor ? (showDevices ? 8 : 7) : (showDevices ? 7 : 6)}>
                         {loadingBoxes ? (
                           <div className="text-sm text-slate-400">Loading…</div>
                         ) : openBoxes.length ? (
@@ -479,18 +587,18 @@ export default function InboundImportPage() {
                     </tr>
                   )}
                 </React.Fragment>
-              ))}
+              );
+            })}
 
-              {importsFromLabels.length === 0 && (
-                <tr>
-                  <td className="p-3 text-sm text-slate-400" colSpan={6}>
-                    Aucun import depuis Labels pour l’instant.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            {rows.length === 0 && (
+              <tr>
+                <td className="p-3 text-sm text-slate-400" colSpan={showVendor ? (showDevices ? 8 : 7) : (showDevices ? 7 : 6)}>
+                  Aucun résultat.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -27,6 +27,7 @@ export async function GET(req: Request, { params }: { params: { import_id: strin
     const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : "";
     if (!token) return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
 
+    // security gate
     const userClient = authedClient(token);
     const { error: uErr } = await userClient.auth.getUser();
     if (uErr) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });

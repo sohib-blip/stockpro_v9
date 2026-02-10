@@ -5,29 +5,26 @@ import * as XLSX from "xlsx";
 /**
  * PREVIEW:
  * - device name = cellule au-dessus du header dans chaque bloc
- * - boxnr = après le 1er "-" dans Box No (col boxCol)
+ * - boxnr = gère formats:
+ *    - "FMC9202MAUWU-041-2" => "041-2"
+ *    - "041-2" => "041-2"   ✅ (fix)
+ *    - "041" + "2" split => fallback gère boxCol+1 mais pas split sur 2 colonnes (si besoin on le fera après)
  * - SI boxCol vide => prendre boxnr depuis boxCol+1
  * - qr_data = IMEI only, 1 par ligne
  * - BLOQUE si device du fichier n'existe pas dans Admin > Devices
  */
 
 function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, detectSessionInUrl: false } }
-  );
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { autoRefreshToken: false, detectSessionInUrl: false },
+  });
 }
 
 function authedClient(token: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { detectSessionInUrl: false },
-    }
-  );
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { detectSessionInUrl: false },
+  });
 }
 
 /* ========= safe utils ========= */
@@ -45,18 +42,39 @@ function isImei(v: any) {
   return digits.length === 15 ? digits : null;
 }
 
-// FMC9202MAUWU-023-09  -> 023-09
+/**
+ * ✅ FIX BOXNR:
+ * - If cell already looks like a boxnr (digits-digits), keep it
+ * - Else if contains "...-041-2" => take after first dash
+ * - Else try find "###-#" anywhere
+ */
 function extractBoxNr(boxCell: any) {
   const t = trim(boxCell);
   if (!t) return null;
 
-  const idx = t.indexOf("-");
-  if (idx < 0) return null;
+  // normalize spaces
+  const txt = t.replace(/\s+/g, "");
 
-  const after = t.slice(idx + 1).trim();
+  // if it's already a boxnr like 041-2 or 076-004
+  if (/^\d{1,4}-\d{1,4}$/.test(txt)) return txt;
+
+  // pattern anywhere
+  const mAny = txt.match(/(\d{1,4}-\d{1,4})/);
+  if (mAny) return mAny[1];
+
+  // fallback: after first dash (deviceprefix-BOXNR)
+  const idx = txt.indexOf("-");
+  if (idx < 0) return null;
+  const after = txt.slice(idx + 1).trim();
   if (!after) return null;
 
-  return after.replace(/\s+/g, "");
+  // after could be "041-2" => ok
+  if (/^\d{1,4}-\d{1,4}$/.test(after)) return after;
+
+  // sometimes after is only last segment; not ideal but keep if digits
+  if (/^\d{1,4}$/.test(after)) return after;
+
+  return null;
 }
 
 /**
@@ -184,6 +202,17 @@ function readBoxNrFromRow(row: any[], boxCol: number) {
   return null;
 }
 
+/**
+ * ✅ avoid “sticking” an old boxnr on separator rows:
+ * - if row has no value in boxCol..imeiCol => it's a separator row
+ */
+function isSeparatorRow(row: any[], boxCol: number, imeiCol: number) {
+  for (let c = boxCol; c <= imeiCol; c++) {
+    if (trim(row?.[c])) return false;
+  }
+  return true;
+}
+
 /* ========= handler ========= */
 
 type LabelRow = { device: string; box_no: string; qty: number; qr_data: string };
@@ -228,7 +257,6 @@ export async function POST(req: Request) {
 
     const rowAbove = rows[headerRowIdx - 1] || [];
     const unknown = new Set<string>();
-
     const map = new Map<string, { device: string; box_no: string; imeis: string[] }>();
 
     for (const b of blocks) {
@@ -245,6 +273,12 @@ export async function POST(req: Request) {
 
       for (let r = headerRowIdx + 1; r < rows.length; r++) {
         const row = rows[r] || [];
+
+        // ✅ separator reset
+        if (isSeparatorRow(row, b.boxCol, b.imeiCol)) {
+          currentBoxNr = null;
+          continue;
+        }
 
         const bn = readBoxNrFromRow(row, b.boxCol);
         if (bn) currentBoxNr = bn;

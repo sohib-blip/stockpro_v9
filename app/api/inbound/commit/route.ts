@@ -6,28 +6,24 @@ import * as XLSX from "xlsx";
  * COMMIT:
  * - même parsing que preview
  * - boxnr = boxCol, si vide => boxCol+1
+ * - ✅ boxnr "041-2" gardé (fix)
+ * - ✅ reset boxnr sur ligne séparateur
  * - crée / upsert boxes
  * - ajoute imei dans items
  * - renvoie labels: [{device, box_no, qty, qr_data, box_id}]
  */
 
 function adminClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { autoRefreshToken: false, detectSessionInUrl: false } }
-  );
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { autoRefreshToken: false, detectSessionInUrl: false },
+  });
 }
 
 function authedClient(token: string) {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-      auth: { detectSessionInUrl: false },
-    }
-  );
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { detectSessionInUrl: false },
+  });
 }
 
 const s = (v: any) => String(v ?? "");
@@ -47,13 +43,22 @@ function extractBoxNr(boxCell: any) {
   const t = trim(boxCell);
   if (!t) return null;
 
-  const idx = t.indexOf("-");
-  if (idx < 0) return null;
+  const txt = t.replace(/\s+/g, "");
 
-  const after = t.slice(idx + 1).trim();
+  if (/^\d{1,4}-\d{1,4}$/.test(txt)) return txt;
+
+  const mAny = txt.match(/(\d{1,4}-\d{1,4})/);
+  if (mAny) return mAny[1];
+
+  const idx = txt.indexOf("-");
+  if (idx < 0) return null;
+  const after = txt.slice(idx + 1).trim();
   if (!after) return null;
 
-  return after.replace(/\s+/g, "");
+  if (/^\d{1,4}-\d{1,4}$/.test(after)) return after;
+  if (/^\d{1,4}$/.test(after)) return after;
+
+  return null;
 }
 
 function resolveDeviceDisplay(
@@ -158,6 +163,13 @@ function readBoxNrFromRow(row: any[], boxCol: number) {
   if (fallback) return fallback;
 
   return null;
+}
+
+function isSeparatorRow(row: any[], boxCol: number, imeiCol: number) {
+  for (let c = boxCol; c <= imeiCol; c++) {
+    if (trim(row?.[c])) return false;
+  }
+  return true;
 }
 
 type ParsedLabel = { device: string; box_no: string; qty: number; qr_data: string; imeis: string[] };
@@ -293,6 +305,11 @@ export async function POST(req: Request) {
 
       for (let r = headerRowIdx + 1; r < rows.length; r++) {
         const row = rows[r] || [];
+
+        if (isSeparatorRow(row, b.boxCol, b.imeiCol)) {
+          currentBoxNr = null;
+          continue;
+        }
 
         const bn = readBoxNrFromRow(row, b.boxCol);
         if (bn) currentBoxNr = bn;

@@ -3,15 +3,15 @@ import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 
 /* ===============================
-   SUPABASE CLIENTS
+   SUPABASE
 ================================ */
 
 function adminClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-  return createClient(url, key, {
-    auth: { autoRefreshToken: false, detectSessionInUrl: false },
-  });
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, detectSessionInUrl: false } }
+  );
 }
 
 function authedClient(token: string) {
@@ -26,37 +26,37 @@ function authedClient(token: string) {
 }
 
 /* ===============================
-   HELPERS
+   SAFE HELPERS (NO CRASH)
 ================================ */
 
-const normalize = (v: any) =>
-  String(v ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+const safeStr = (v: any) => String(v ?? "");
+const norm = (v: any) =>
+  safeStr(v).toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 const isImei = (v: any) => {
-  const s = String(v ?? "").replace(/\D/g, "");
+  const s = safeStr(v).replace(/\D/g, "");
   return s.length === 15 ? s : null;
 };
 
-function extractBoxNo(cell: any) {
-  const s = String(cell ?? "");
-  const m = s.match(/(\d{3}-\d{3})/);
+function extractBoxNo(v: any) {
+  const m = safeStr(v).match(/(\d{3}-\d{3})/);
   return m ? m[1] : null;
 }
 
-function extractRawDevice(cell: any) {
-  const s = String(cell ?? "").trim();
+function extractRawDevice(v: any) {
+  const s = safeStr(v).trim();
   if (!s) return null;
   return s.split("-")[0];
 }
 
 /* ===============================
-   DEVICE RESOLVER (IMPORTANT)
+   DEVICE RESOLVER (FIX FMC 920)
 ================================ */
 
 function resolveDevice(raw: string, devices: any[]) {
-  const canon = normalize(raw);
+  const canon = norm(raw);
 
-  // FMC9202MAUWU -> FMC920
+  // FMC 9202 MAUWU -> FMC920
   const m = canon.match(/^([A-Z]+)(\d{3})/);
   if (m) {
     const short = m[1] + m[2];
@@ -64,7 +64,7 @@ function resolveDevice(raw: string, devices: any[]) {
     if (found) return found.device;
   }
 
-  // FMC03 -> FMC003
+  // FMC 03 -> FMC003
   const m2 = canon.match(/^([A-Z]+)(\d{1,2})$/);
   if (m2) {
     const padded = m2[1] + m2[2].padStart(3, "0");
@@ -72,46 +72,50 @@ function resolveDevice(raw: string, devices: any[]) {
     if (found) return found.device;
   }
 
-  // exact match
-  const exact = devices.find((d) => canon === d.canonical_name);
+  // Exact match
+  const exact = devices.find((d) => d.canonical_name === canon);
   return exact ? exact.device : null;
 }
 
 /* ===============================
-   HEADER + BLOCK DETECTION
+   HEADER + BLOCKS (SAFE)
 ================================ */
 
 function detectHeaderRow(rows: any[][]) {
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < Math.min(rows.length, 50); i++) {
     const r = rows[i] || [];
-    if (
-      r.some((c) => String(c).toLowerCase().includes("box")) &&
-      r.some((c) => String(c).toLowerCase().includes("imei"))
-    ) {
-      return i;
-    }
+    const hasBox = r.some((c) => safeStr(c).toLowerCase().includes("box"));
+    const hasImei = r.some((c) => safeStr(c).toLowerCase().includes("imei"));
+    if (hasBox && hasImei) return i;
   }
   return -1;
 }
 
 function detectBlocks(header: string[]) {
-  const blocks = [];
+  const blocks: { boxCol: number; imeiCol: number }[] = [];
+
   for (let i = 0; i < header.length; i++) {
-    if (header[i].includes("box")) {
-      const imeiCol = header.findIndex(
-        (h, idx) => idx >= i && h.includes("imei")
-      );
-      if (imeiCol > -1) {
-        blocks.push({ boxCol: i, imeiCol });
-        i = imeiCol;
+    const h = safeStr(header[i]);
+    if (!h.includes("box")) continue;
+
+    let imeiCol = -1;
+    for (let j = i; j < header.length; j++) {
+      if (safeStr(header[j]).includes("imei")) {
+        imeiCol = j;
+        break;
       }
+    }
+
+    if (imeiCol >= 0) {
+      blocks.push({ boxCol: i, imeiCol });
+      i = imeiCol;
     }
   }
   return blocks;
 }
 
 /* ===============================
-   MAIN PREVIEW
+   PREVIEW ENDPOINT
 ================================ */
 
 export async function POST(req: Request) {
@@ -130,18 +134,10 @@ export async function POST(req: Request) {
     const file = form.get("file") as File;
     if (!file) throw new Error("Missing file");
 
-    /* ===============================
-       LOAD DEVICES DB
-    ================================ */
-
     const { data: devicesDb } = await admin
       .from("devices")
       .select("canonical_name, device")
       .eq("active", true);
-
-    /* ===============================
-       READ EXCEL
-    ================================ */
 
     const buf = new Uint8Array(await file.arrayBuffer());
     const wb = XLSX.read(buf, { type: "array" });
@@ -151,28 +147,25 @@ export async function POST(req: Request) {
     const headerIdx = detectHeaderRow(rows);
     if (headerIdx < 0) throw new Error("Header not found");
 
-    const header = rows[headerIdx].map((x) =>
-      String(x).toLowerCase().trim()
+    const header = (rows[headerIdx] || []).map((x) =>
+      safeStr(x).toLowerCase()
     );
     const blocks = detectBlocks(header);
 
     const labelsMap = new Map<string, any>();
-    const unknownDevices = new Set<string>();
+    const unknown = new Set<string>();
 
     for (const block of blocks) {
       let currentDevice: string | null = null;
       let currentBox: string | null = null;
 
       for (let r = headerIdx + 1; r < rows.length; r++) {
-        const row = rows[r];
+        const row = rows[r] || [];
 
         if (row[block.boxCol]) {
-          const rawDev = extractRawDevice(row[block.boxCol]);
-          const resolved = rawDev
-            ? resolveDevice(rawDev, devicesDb || [])
-            : null;
-
-          if (rawDev && !resolved) unknownDevices.add(rawDev);
+          const raw = extractRawDevice(row[block.boxCol]);
+          const resolved = raw ? resolveDevice(raw, devicesDb || []) : null;
+          if (raw && !resolved) unknown.add(raw);
           currentDevice = resolved;
           currentBox = extractBoxNo(row[block.boxCol]);
         }
@@ -192,13 +185,12 @@ export async function POST(req: Request) {
       }
     }
 
-    if (unknownDevices.size) {
+    if (unknown.size) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "device(s) not found in Admin > Devices",
-          unknown_devices: Array.from(unknownDevices),
+          error: "device(s) not found in Admin > Devices",
+          unknown_devices: Array.from(unknown),
         },
         { status: 400 }
       );
@@ -210,7 +202,7 @@ export async function POST(req: Request) {
         device: l.device,
         box_no: l.box_no,
         qty: uniq.length,
-        qr_data: uniq.join("\n"), // ✅ IMEI only
+        qr_data: uniq.join("\n"),
       };
     });
 

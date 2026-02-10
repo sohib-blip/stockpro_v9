@@ -9,9 +9,10 @@ type LabelRow = {
   box_no: string;
   qty: number;
   qr_data: string;
+  box_id?: string | null;
 };
 
-export default function InboundPage() {
+export default function InboundImportPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
@@ -21,32 +22,34 @@ export default function InboundPage() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingCommit, setLoadingCommit] = useState(false);
 
-  const [preview, setPreview] = useState<{
-    ok: boolean;
-    file_name?: string;
-    devices?: number;
-    boxes?: number;
-    items?: number;
-    labels?: LabelRow[];
-    zpl_all?: string;
-  } | null>(null);
+  const [preview, setPreview] = useState<any | null>(null);
+  const [labels, setLabels] = useState<LabelRow[]>([]);
+  const [committed, setCommitted] = useState(false);
 
-  const STAGES = ["00", "1", "6", "cabinet"]; // ✅ only these
+  const [q, setQ] = useState("");
 
-  async function getToken() {
+  async function getAccessToken() {
     const { data } = await supabase.auth.getSession();
     return data.session?.access_token || "";
   }
 
-  async function runPreview() {
-    if (!file) return toast({ kind: "error", title: "Choisis un fichier Excel" });
-
-    setLoadingPreview(true);
-    setPreview(null);
-
+  async function onPreview() {
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Not logged in");
+      setCommitted(false);
+      setPreview(null);
+      setLabels([]);
+      setLoadingPreview(true);
+
+      if (!file) {
+        toast({ kind: "error", title: "File missing", message: "Choisis un fichier Excel." });
+        return;
+      }
+
+      const token = await getAccessToken();
+      if (!token) {
+        toast({ kind: "error", title: "Auth", message: "Pas connecté." });
+        return;
+      }
 
       const form = new FormData();
       form.append("file", file);
@@ -58,11 +61,13 @@ export default function InboundPage() {
         body: form,
       });
 
-      const json = await res.json();
-      if (!json?.ok) throw new Error(json?.error || "Preview failed");
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Preview failed");
+      }
 
       setPreview(json);
-      toast({ kind: "success", title: "Preview OK", message: `${json.devices} device(s), ${json.boxes} carton(s)` });
+      setLabels((json.labels || []) as LabelRow[]);
     } catch (e: any) {
       toast({ kind: "error", title: "Preview failed", message: e?.message || "Error" });
     } finally {
@@ -70,17 +75,20 @@ export default function InboundPage() {
     }
   }
 
-  // NOTE: commit endpoint depends on your existing /api/inbound/commit
-  // If your commit expects parsed payload instead of file, tell me and I adapt.
-  async function confirmImport() {
-    if (!file) return toast({ kind: "error", title: "Choisis un fichier Excel" });
-    if (!preview?.ok) return toast({ kind: "error", title: "Fais d'abord Preview" });
-
-    setLoadingCommit(true);
-
+  async function onConfirmImport() {
     try {
-      const token = await getToken();
-      if (!token) throw new Error("Not logged in");
+      setLoadingCommit(true);
+
+      if (!file) {
+        toast({ kind: "error", title: "File missing", message: "Choisis un fichier Excel." });
+        return;
+      }
+
+      const token = await getAccessToken();
+      if (!token) {
+        toast({ kind: "error", title: "Auth", message: "Pas connecté." });
+        return;
+      }
 
       const form = new FormData();
       form.append("file", file);
@@ -92,11 +100,18 @@ export default function InboundPage() {
         body: form,
       });
 
-      const json = await res.json();
-      if (!json?.ok) throw new Error(json?.error || "Import failed");
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Import failed");
 
-      toast({ kind: "success", title: "Import OK", message: `${json.items || 0} IMEI importés` });
-      // keep preview, user may still download zpl
+      setCommitted(true);
+      setPreview(json);
+      setLabels((json.labels || []) as LabelRow[]);
+
+      toast({
+        kind: "success",
+        title: "Import OK",
+        message: `${json.devices} devices · ${json.boxes} cartons · ${json.items} IMEI`,
+      });
     } catch (e: any) {
       toast({ kind: "error", title: "Import failed", message: e?.message || "Error" });
     } finally {
@@ -104,47 +119,111 @@ export default function InboundPage() {
     }
   }
 
-  function copy(text: string) {
-    navigator.clipboard.writeText(text);
-    toast({ kind: "success", title: "Copié" });
-  }
+  async function downloadPdfAllAfterConfirm() {
+    const box_ids = (labels || [])
+      .map((l) => l.box_id)
+      .filter((x): x is string => Boolean(x));
 
-  function downloadText(filename: string, content: string) {
-    const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+    if (!box_ids.length) {
+      toast({ kind: "error", title: "PDF", message: "Aucun box_id trouvé. Confirme l’import d’abord." });
+      return;
+    }
+
+    const token = await getAccessToken();
+    const res = await fetch("/api/labels/pdf/boxes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token ? `Bearer ${token}` : "",
+      },
+      body: JSON.stringify({ box_ids }),
+    });
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error(msg || "PDF generation failed");
+    }
+
+    const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename;
+    a.download = `labels-${new Date().toISOString().slice(0, 10)}.pdf`;
+    document.body.appendChild(a);
     a.click();
+    a.remove();
     URL.revokeObjectURL(url);
   }
 
-  const labels = preview?.labels || [];
+  async function downloadPdfOneAfterConfirm(box_id: string, device: string, box_no: string) {
+    const token = await getAccessToken();
+    const res = await fetch("/api/labels/pdf/boxes", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: token ? `Bearer ${token}` : "",
+      },
+      body: JSON.stringify({ box_ids: [box_id] }),
+    });
+
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "");
+      throw new Error(msg || "PDF generation failed");
+    }
+
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `label-${device}-${box_no}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  const filtered = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return labels;
+    return labels.filter((l) => {
+      const d = String(l.device ?? "").toLowerCase();
+      const b = String(l.box_no ?? "").toLowerCase();
+      return d.includes(qq) || b.includes(qq);
+    });
+  }, [labels, q]);
+
+  const stats = useMemo(() => {
+    const devices = new Set(labels.map((l) => l.device)).size;
+    const boxes = labels.length;
+    const items = labels.reduce((acc, l) => acc + (Number(l.qty) || 0), 0);
+    return { devices, boxes, items };
+  }, [labels]);
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="text-xs text-slate-500">Inbound</div>
-        <h2 className="text-xl font-semibold">Import fournisseur</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Support multi-devices (3,4,5+) dans 1 seul Excel. Grouping + labels = <b>gros carton</b>.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-xs text-slate-500">Inbound</div>
+          <h2 className="text-xl font-semibold">Import fournisseur</h2>
+          <p className="text-sm text-slate-400 mt-1">
+            Multi-devices dans 1 seul Excel. Après confirm: PDF labels téléchargeable direct.
+          </p>
+        </div>
       </div>
 
-      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
-        <div className="grid grid-cols-1 lg:grid-cols-[160px_1fr_140px_160px] gap-3 items-center">
-          <div className="flex items-center gap-2">
-            <div className="text-sm text-slate-400 w-[60px]">Étage</div>
+      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
+          <div className="flex items-center gap-3">
+            <div className="text-sm text-slate-400">Étage</div>
             <select
               value={location}
               onChange={(e) => setLocation(e.target.value)}
               className="border border-slate-800 bg-slate-950 text-slate-100 rounded-xl px-3 py-2 text-sm"
             >
-              {STAGES.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
+              <option value="00">00</option>
+              <option value="1">1</option>
+              <option value="6">6</option>
+              <option value="cabinet">cabinet</option>
             </select>
           </div>
 
@@ -152,120 +231,139 @@ export default function InboundPage() {
             type="file"
             accept=".xlsx,.xls"
             onChange={(e) => setFile(e.target.files?.[0] || null)}
-            className="w-full border border-slate-800 bg-slate-950 text-slate-100 rounded-xl px-3 py-2 text-sm"
+            className="border border-slate-800 bg-slate-950 text-slate-100 rounded-xl px-3 py-2 text-sm"
           />
 
-          <button
-            onClick={runPreview}
-            disabled={loadingPreview || !file}
-            className="rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-          >
-            {loadingPreview ? "Preview…" : "Preview"}
-          </button>
+          <div className="flex gap-2 justify-end">
+            <button
+              onClick={onPreview}
+              disabled={loadingPreview || loadingCommit || !file}
+              className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+            >
+              {loadingPreview ? "Preview…" : "Preview"}
+            </button>
 
-          <button
-            onClick={confirmImport}
-            disabled={loadingCommit || !preview?.ok}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-          >
-            {loadingCommit ? "Import…" : "Confirm import"}
-          </button>
+            <button
+              onClick={onConfirmImport}
+              disabled={loadingCommit || loadingPreview || !file}
+              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            >
+              {loadingCommit ? "Import…" : "Confirm import"}
+            </button>
+          </div>
         </div>
 
-        <div className="text-xs text-slate-500 mt-2">
-          Après preview : labels par gros carton + ZPL prêt pour ZD220 (QR = IMEI-only, 1 par ligne).
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-3">
+          <StatCard title="Devices détectés" value={stats.devices} />
+          <StatCard title="Cartons (labels)" value={stats.boxes} />
+          <StatCard title="IMEI parsés" value={stats.items} />
+          <StatCard title="Étage" value={location} />
         </div>
       </div>
 
-      {preview?.ok && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <Stat title="Devices détectés" value={String(preview.devices ?? 0)} />
-            <Stat title="Cartons (labels)" value={String(preview.boxes ?? 0)} />
-            <Stat title="IMEI parsés" value={String(preview.items ?? 0)} />
-            <Stat title="Étage" value={String(location)} />
+      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold">Labels par gros carton</div>
+            <div className="text-xs text-slate-500">PDF dispo après Confirm import.</div>
           </div>
 
-          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
-              <div>
-                <div className="text-sm font-semibold">Labels par gros carton</div>
-                <div className="text-xs text-slate-500">
-                  QR = IMEI uniquement (1 par ligne). Device + BoxNR sur le label.
-                </div>
-              </div>
+          <div className="flex gap-2">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Filtrer device / carton…"
+              className="w-full md:w-[260px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
+            />
 
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => preview.zpl_all && copy(preview.zpl_all)}
-                  disabled={!preview.zpl_all}
-                  className="rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                >
-                  Copy ZPL (ALL)
-                </button>
-                <button
-                  onClick={() => preview.zpl_all && downloadText("labels.zpl", preview.zpl_all)}
-                  disabled={!preview.zpl_all}
-                  className="rounded-xl bg-slate-800 hover:bg-slate-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                >
-                  Download .ZPL
-                </button>
-              </div>
-            </div>
-
-            <div className="overflow-auto">
-              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-                <thead className="bg-slate-950/50">
-                  <tr>
-                    <th className="text-left p-2 border-b border-slate-800">Device</th>
-                    <th className="text-left p-2 border-b border-slate-800">Gros carton (BoxNR)</th>
-                    <th className="text-right p-2 border-b border-slate-800">Qty IMEI</th>
-                    <th className="text-right p-2 border-b border-slate-800">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {labels.map((l) => (
-                    <tr key={`${l.device}-${l.box_no}`} className="hover:bg-slate-950/50">
-                      <td className="p-2 border-b border-slate-800 font-semibold">{l.device}</td>
-                      <td className="p-2 border-b border-slate-800">{l.box_no}</td>
-                      <td className="p-2 border-b border-slate-800 text-right">{l.qty}</td>
-                      <td className="p-2 border-b border-slate-800 text-right">
-                        <button
-                          onClick={() => copy(l.qr_data)}
-                          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
-                        >
-                          Copy QR data
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-
-                  {labels.length === 0 && (
-                    <tr>
-                      <td className="p-3 text-sm text-slate-400" colSpan={4}>
-                        No labels.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="text-xs text-slate-500 mt-2">
-              Pour imprimer ZD220 : colle le ZPL dans ton outil Zebra (ou envoie le fichier .zpl à l’imprimante).
-            </div>
+            <button
+              onClick={async () => {
+                try {
+                  if (!committed) {
+                    toast({ kind: "error", title: "PDF", message: "D’abord Confirm import." });
+                    return;
+                  }
+                  await downloadPdfAllAfterConfirm();
+                } catch (e: any) {
+                  toast({ kind: "error", title: "PDF failed", message: e?.message || "Error" });
+                }
+              }}
+              disabled={!committed || loadingCommit || !labels.length}
+              className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+            >
+              Download PDF (ALL)
+            </button>
           </div>
-        </>
-      )}
+        </div>
+
+        <div className="overflow-auto">
+          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+            <thead className="bg-slate-950/50">
+              <tr>
+                <th className="text-left p-2 border-b border-slate-800">Device</th>
+                <th className="text-left p-2 border-b border-slate-800">Gros carton (BoxNR)</th>
+                <th className="text-right p-2 border-b border-slate-800">Qty IMEI</th>
+                <th className="text-right p-2 border-b border-slate-800">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((l) => (
+                <tr key={`${l.device}__${l.box_no}`} className="hover:bg-slate-950/50">
+                  <td className="p-2 border-b border-slate-800 font-semibold text-slate-100">{l.device}</td>
+                  <td className="p-2 border-b border-slate-800 text-slate-200">{l.box_no}</td>
+                  <td className="p-2 border-b border-slate-800 text-right text-slate-200">{l.qty}</td>
+                  <td className="p-2 border-b border-slate-800 text-right">
+                    <button
+                      onClick={async () => {
+                        try {
+                          if (!committed) {
+                            toast({ kind: "error", title: "PDF", message: "D’abord Confirm import." });
+                            return;
+                          }
+                          if (!l.box_id) {
+                            toast({ kind: "error", title: "PDF", message: "box_id manquant pour ce carton." });
+                            return;
+                          }
+                          await downloadPdfOneAfterConfirm(l.box_id, l.device, l.box_no);
+                        } catch (e: any) {
+                          toast({ kind: "error", title: "PDF failed", message: e?.message || "Error" });
+                        }
+                      }}
+                      disabled={!committed || !l.box_id}
+                      className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
+                    >
+                      Download PDF
+                    </button>
+                  </td>
+                </tr>
+              ))}
+
+              {filtered.length === 0 && (
+                <tr>
+                  <td className="p-3 text-sm text-slate-400" colSpan={4}>
+                    No labels.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {preview?.error && (
+          <div className="mt-3 rounded-xl border border-red-900/50 bg-red-950/40 text-red-200 px-3 py-2 text-sm">
+            {String(preview.error)}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-function Stat({ title, value }: { title: string; value: string }) {
+function StatCard({ title, value }: { title: string; value: any }) {
   return (
-    <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
+    <div className="bg-slate-950 rounded-2xl border border-slate-800 p-4">
       <div className="text-xs text-slate-500">{title}</div>
-      <div className="text-2xl font-bold mt-1">{value}</div>
+      <div className="text-xl font-semibold text-slate-100 mt-1">{String(value)}</div>
     </div>
   );
 }

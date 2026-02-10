@@ -1,181 +1,296 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useToast } from "@/components/ToastProvider";
 
-function normalizeImeis(raw: string): string[] {
-  const parts = raw
-    .split(/\r?\n|,|;|\t|\s+/g)
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const cleaned = parts
-    .map((x) => x.replace(/\D/g, ""))
-    .filter((x) => x.length >= 14 && x.length <= 17);
-  return Array.from(new Set(cleaned));
+type BoxRow = {
+  box_id: string;
+  box_no: string | null;
+  master_box_no?: string | null;
+  device: string | null;
+  location?: string | null;
+  status?: string | null;
+};
+
+function cleanImei(v: any): string | null {
+  const s = String(v ?? "").replace(/\D/g, "");
+  return s.length === 15 ? s : null;
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 export default function LabelsPage() {
-  const [device, setDevice] = useState("");
-  const [boxNo, setBoxNo] = useState("");
-  const [imeisText, setImeisText] = useState("");
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { toast } = useToast();
+
   const [loading, setLoading] = useState(false);
-  const [previewPng, setPreviewPng] = useState<string | null>(null);
-  const [uiError, setUiError] = useState<string>("");
-  const imeis = useMemo(() => normalizeImeis(imeisText), [imeisText]);
+  const [boxes, setBoxes] = useState<BoxRow[]>([]);
+  const [q, setQ] = useState("");
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
 
-  const boxNoDisplay = useMemo(() => {
-    const d = device.trim();
-    const b = boxNo.trim();
-    if (d && b.startsWith(d + "-")) return b.slice(d.length + 1);
-    return b;
-  }, [device, boxNo]);
-
-  async function generatePreview() {
-    setUiError("");
-    setPreviewPng(null);
-
-    const d = device.trim();
-    const b = boxNo.trim();
-    if (!d) return setUiError("Please enter a device name.");
-    if (!b) return setUiError("Please enter a box number.");
-    if (imeis.length === 0) return setUiError("Please paste at least 1 IMEI.");
-
+  async function loadBoxes() {
     setLoading(true);
     try {
-      const QRCode = (await import("qrcode")).default;
-      const qrData = `BOX:${b}|DEV:${d}|IMEI:${imeis.join(",")}`;
-      const png = await QRCode.toDataURL(qrData, { errorCorrectionLevel: "M", margin: 1, scale: 6 });
-      setPreviewPng(png);
+      const res = await supabase
+        .from("boxes")
+        .select("box_id, box_no, master_box_no, device, location, status")
+        .order("created_at", { ascending: false })
+        .limit(500);
+
+      if (res.error) throw res.error;
+      setBoxes((res.data as any) || []);
     } catch (e: any) {
-      setUiError(e?.message || "Failed to generate QR preview");
+      toast({ kind: "error", title: "Load failed", message: e?.message || "Error" });
     } finally {
       setLoading(false);
     }
   }
 
-  async function downloadPdf() {
-    setUiError("");
+  useEffect(() => {
+    loadBoxes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    const d = device.trim();
-    const b = boxNo.trim();
-    if (!d) return setUiError("Please enter a device name.");
-    if (!b) return setUiError("Please enter a box number.");
-    if (imeis.length === 0) return setUiError("Please paste at least 1 IMEI.");
+  const filtered = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return boxes;
+
+    return boxes.filter((b) => {
+      const device = String(b.device ?? "").toLowerCase();
+      const boxNo = String(b.box_no ?? "").toLowerCase();
+      const master = String(b.master_box_no ?? "").toLowerCase();
+      const loc = String(b.location ?? "").toLowerCase();
+      return device.includes(qq) || boxNo.includes(qq) || master.includes(qq) || loc.includes(qq);
+    });
+  }, [boxes, q]);
+
+  const selectedBoxes = useMemo(() => {
+    return boxes.filter((b) => selected[b.box_id]);
+  }, [boxes, selected]);
+
+  function toggleAll(on: boolean) {
+    const next: Record<string, boolean> = {};
+    if (on) {
+      for (const b of filtered) next[b.box_id] = true;
+    }
+    setSelected(next);
+  }
+
+  async function getQrDataForBox(box_id: string): Promise<string> {
+    // ✅ IMEI-only from DB (items table), 1 per line
+    const r = await supabase
+      .from("items")
+      .select("imei")
+      .eq("box_id", box_id)
+      .order("imei", { ascending: true });
+
+    if (r.error) throw r.error;
+
+    const imeis = Array.from(
+      new Set((r.data || []).map((x: any) => cleanImei(x.imei)).filter(Boolean) as string[])
+    );
+
+    if (!imeis.length) throw new Error("No valid IMEI in this box");
+    return imeis.join("\n");
+  }
+
+  async function copyQrData(box: BoxRow) {
+    try {
+      const qr = await getQrDataForBox(box.box_id);
+      await navigator.clipboard.writeText(qr);
+      toast({
+        kind: "success",
+        title: "Copied",
+        message: `QR data copied (IMEI only): ${qr.split("\n").length} IMEI`,
+      });
+    } catch (e: any) {
+      toast({ kind: "error", title: "Copy failed", message: e?.message || "Error" });
+    }
+  }
+
+  async function downloadPdfForBoxes(target: BoxRow[]) {
+    if (!target.length) {
+      toast({ kind: "error", title: "Select at least one box" });
+      return;
+    }
 
     setLoading(true);
     try {
-      const [{ jsPDF }, QRCode] = await Promise.all([import("jspdf"), import("qrcode")]);
+      // ✅ uses your server route: /api/labels/pdf/boxes (POST)
+      const res = await fetch("/api/labels/pdf/boxes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          boxes: target.map((b) => ({
+            box_id: b.box_id,
+            box_no: b.box_no ?? "",
+            device: b.device ?? "",
+          })),
+        }),
+      });
 
-      // Same layout as inbound import PDF: QR centered, then device, then BoxNr.
-      const doc = new jsPDF({ unit: "mm", format: [60, 90] });
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(txt || `PDF generation failed (${res.status})`);
+      }
 
-      const qrData = `BOX:${b}|DEV:${d}|IMEI:${imeis.join(",")}`;
-      const qrDataUrl = await QRCode.toDataURL(qrData, { margin: 1, scale: 8 });
+      const pdfBlob = await res.blob();
+      const name =
+        target.length === 1
+          ? `label_${String(target[0].device ?? "device").replace(/\s+/g, "_")}_${String(target[0].box_no ?? "box")}.pdf`
+          : `labels_${target.length}_boxes.pdf`;
 
-      const qrSize = 38;
-      const qrX = (60 - qrSize) / 2;
-      const qrY = 10;
-      doc.addImage(qrDataUrl, "PNG", qrX, qrY, qrSize, qrSize);
-
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(16);
-      doc.text(d || "-", 30, 60, { align: "center" });
-
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(13);
-      doc.text(`BoxNr. ${boxNoDisplay || "-"}`, 30, 70, { align: "center" });
-
-      doc.setFontSize(9);
-      doc.text(`IMEI: ${imeis.length}`, 30, 78, { align: "center" });
-
-      doc.save(`manual_label_${d}_${boxNoDisplay || b}.pdf`);
+      downloadBlob(pdfBlob, name);
+      toast({ kind: "success", title: "PDF downloaded", message: name });
     } catch (e: any) {
-      setUiError(e?.message || "Failed to generate PDF");
+      toast({ kind: "error", title: "PDF failed", message: e?.message || "Error" });
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="text-xs text-slate-500">Labels</div>
-        <h2 className="text-xl font-semibold">Manual QR label generator</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Fallback mode if the USB scanner is down: paste IMEIs, set Device + BoxNr, then generate the same PDF label as supplier imports.
-        </p>
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <div className="text-xs text-slate-500">Labels</div>
+          <h2 className="text-xl font-semibold">QR Labels</h2>
+          <p className="text-sm text-slate-400 mt-1">
+            QR = <span className="text-slate-200 font-semibold">IMEI only</span>, 1 par ligne.
+          </p>
+        </div>
+
+        <div className="flex gap-2">
+          <button
+            onClick={loadBoxes}
+            disabled={loading}
+            className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loading ? "Refreshing…" : "Refresh"}
+          </button>
+
+          <button
+            onClick={() => downloadPdfForBoxes(selectedBoxes)}
+            disabled={loading || selectedBoxes.length === 0}
+            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            Download PDF ({selectedBoxes.length || 0})
+          </button>
+        </div>
       </div>
 
-      <div className="bg-slate-900 rounded-xl border border-slate-800 p-4 max-w-3xl space-y-4">
-        {uiError ? (
-          <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">{uiError}</div>
-        ) : null}
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-slate-200">Device name</label>
-            <input
-              className="w-full border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-600 rounded-lg p-2 mt-1 text-sm"
-              value={device}
-              onChange={(e) => setDevice(e.target.value)}
-              placeholder="e.g. FMC234WC3XWU"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-semibold text-slate-200">Box No (master or inner)</label>
-            <input
-              className="w-full border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-600 rounded-lg p-2 mt-1 font-mono text-sm"
-              value={boxNo}
-              onChange={(e) => setBoxNo(e.target.value)}
-              placeholder="e.g. FMC234WC3XWU-025-007 or 025-36"
-            />
-            <div className="text-[11px] text-slate-500 mt-1">
-              Label will show: <span className="text-slate-300 font-mono">{boxNoDisplay || "-"}</span>
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <label className="text-xs font-semibold text-slate-200">IMEIs (paste list)</label>
-          <textarea
-            className="w-full border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-600 rounded-lg p-2 mt-1 font-mono text-xs min-h-[160px]"
-            value={imeisText}
-            onChange={(e) => setImeisText(e.target.value)}
-            placeholder={`Paste IMEIs here (one per line)\n\nExample:\n123456789012345\n123456789012346`}
+      <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search device, box, master box, location…"
+            className="w-full md:w-[420px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
           />
-          <div className="flex items-center justify-between mt-2 text-[11px] text-slate-500">
-            <div>Valid IMEIs detected: <span className="text-slate-300 font-semibold">{imeis.length}</span></div>
-            <div className="text-slate-500">Duplicates are auto-removed</div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => toggleAll(true)}
+              disabled={loading || filtered.length === 0}
+              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm font-semibold hover:bg-slate-900 disabled:opacity-50"
+            >
+              Select all (filtered)
+            </button>
+
+            <button
+              onClick={() => toggleAll(false)}
+              disabled={loading}
+              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm font-semibold hover:bg-slate-900 disabled:opacity-50"
+            >
+              Clear
+            </button>
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <button
-            onClick={generatePreview}
-            disabled={loading}
-            className="bg-slate-900 text-white px-4 py-2 rounded-lg text-sm font-semibold border border-slate-700 disabled:opacity-50"
-          >
-            {loading ? "..." : "Generate QR preview"}
-          </button>
+        <div className="overflow-auto">
+          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+            <thead className="bg-slate-950/50">
+              <tr>
+                <th className="text-left p-2 border-b border-slate-800 w-[44px]">Sel</th>
+                <th className="text-left p-2 border-b border-slate-800">Device</th>
+                <th className="text-left p-2 border-b border-slate-800">Box</th>
+                <th className="text-left p-2 border-b border-slate-800">Master</th>
+                <th className="text-left p-2 border-b border-slate-800">Location</th>
+                <th className="text-right p-2 border-b border-slate-800">Actions</th>
+              </tr>
+            </thead>
 
-          <button
-            onClick={downloadPdf}
-            disabled={loading}
-            className="bg-indigo-700 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
-          >
-            {loading ? "..." : "Download label (PDF)"}
-          </button>
+            <tbody>
+              {filtered.map((b) => {
+                const isSel = !!selected[b.box_id];
+                return (
+                  <tr key={b.box_id} className="hover:bg-slate-950/50">
+                    <td className="p-2 border-b border-slate-800">
+                      <input
+                        type="checkbox"
+                        checked={isSel}
+                        onChange={(e) => setSelected((s) => ({ ...s, [b.box_id]: e.target.checked }))}
+                      />
+                    </td>
+                    <td className="p-2 border-b border-slate-800">
+                      <div className="text-slate-100 font-semibold">{b.device || "—"}</div>
+                    </td>
+                    <td className="p-2 border-b border-slate-800">
+                      <div className="text-slate-200">{b.box_no || "—"}</div>
+                    </td>
+                    <td className="p-2 border-b border-slate-800">
+                      <div className="text-slate-400">{b.master_box_no || "—"}</div>
+                    </td>
+                    <td className="p-2 border-b border-slate-800">
+                      <div className="text-slate-300">{b.location || "—"}</div>
+                    </td>
+                    <td className="p-2 border-b border-slate-800 text-right">
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => copyQrData(b)}
+                          disabled={loading}
+                          className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-900 disabled:opacity-50"
+                        >
+                          Copy QR data
+                        </button>
+
+                        <button
+                          onClick={() => downloadPdfForBoxes([b])}
+                          disabled={loading}
+                          className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-900 disabled:opacity-50"
+                        >
+                          Download PDF
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {filtered.length === 0 && (
+                <tr>
+                  <td className="p-3 text-sm text-slate-400" colSpan={6}>
+                    No boxes found.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
 
-        {previewPng ? (
-          <div className="rounded-lg border border-slate-800 bg-slate-900 p-3">
-            <div className="text-xs text-slate-500 mb-2">QR preview</div>
-            <img src={previewPng} alt="QR preview" className="max-w-[320px]" />
-            <div className="text-[11px] text-slate-500 mt-2">
-              The QR contains all IMEIs (comma-separated).
-            </div>
-          </div>
-        ) : null}
+        <div className="text-xs text-slate-500">
+          Selected: <span className="text-slate-200 font-semibold">{selectedBoxes.length}</span>
+        </div>
       </div>
     </div>
   );

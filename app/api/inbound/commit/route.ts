@@ -3,10 +3,11 @@ import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 
 /**
- * ✅ SECURE (solution 1): DB writes with service role key (server-side only)
+ * ✅ SECURE: DB writes with service role key (server-side only)
  * Requires env:
  * - NEXT_PUBLIC_SUPABASE_URL
  * - SUPABASE_SERVICE_ROLE_KEY (recommended) OR SUPABASE_SERVICE_ROLE / SUPABASE_SERVICE_KEY
+ * - NEXT_PUBLIC_SUPABASE_ANON_KEY (for authed client)
  */
 
 function adminClient() {
@@ -100,7 +101,7 @@ function resolveDeviceDisplay(rawDevice: string, deviceList: { canonical: string
 }
 
 function detectHeaderRow(rows: any[][]) {
-  for (let r = 0; r < Math.min(rows.length, 40); r++) {
+  for (let r = 0; r < Math.min(rows.length, 60); r++) {
     const row = rows[r] || [];
     const cells = row.map(norm);
     const hasImei = cells.some((c) => c.includes("imei"));
@@ -112,7 +113,7 @@ function detectHeaderRow(rows: any[][]) {
 
 /**
  * Detect repeated blocks (multi-device):
- * find columns where header looks like "Box No." then an IMEI exists within next ~12 cols
+ * find columns where header looks like "Box No." then an IMEI exists within next ~18 cols
  */
 function detectBlocks(header: string[]) {
   const blocks: { start: number; boxCol: number; imeiCol: number; deviceHintCol: number }[] = [];
@@ -123,7 +124,7 @@ function detectBlocks(header: string[]) {
     if (!isBox) continue;
 
     let imeiCol = -1;
-    for (let k = c; k <= Math.min(header.length - 1, c + 12); k++) {
+    for (let k = c; k <= Math.min(header.length - 1, c + 18); k++) {
       if ((header[k] || "").includes("imei")) {
         imeiCol = k;
         break;
@@ -142,29 +143,6 @@ function detectBlocks(header: string[]) {
   return blocks;
 }
 
-function buildZplLabel(qrData: string, device: string, boxNo: string) {
-  return `
-^XA
-^PW600
-^LL400
-^CI28
-
-^FO30,30
-^BQN,2,8
-^FDLA,${qrData}^FS
-
-^FO320,70
-^A0N,35,35
-^FD${device}^FS
-
-^FO320,120
-^A0N,30,30
-^FDBox: ${boxNo}^FS
-
-^XZ
-`.trim();
-}
-
 type ParsedLabel = {
   device: string;
   box_no: string; // master box no (gros carton)
@@ -173,17 +151,13 @@ type ParsedLabel = {
   imeis: string[];
 };
 
-async function safeInsertInboundImport(
-  admin: ReturnType<typeof adminClient>,
-  payload: Record<string, any>
-) {
+async function safeInsertInboundImport(admin: ReturnType<typeof adminClient>, payload: Record<string, any>) {
   // inbound_imports schema can differ. We'll progressively remove unknown columns.
   const tries: Record<string, any>[] = [];
 
   // most complete
   tries.push({ ...payload });
 
-  // remove common failing columns progressively
   const drop = (obj: any, keys: string[]) => {
     const o = { ...obj };
     for (const k of keys) delete o[k];
@@ -194,15 +168,14 @@ async function safeInsertInboundImport(
   tries.push(drop(payload, ["created_by_email", "devices"]));
   tries.push(drop(payload, ["created_by_email", "devices", "location"]));
   tries.push(drop(payload, ["created_by_email", "devices", "location", "file_name"]));
-  tries.push({}); // last resort (if table has defaults)
+  tries.push({}); // last resort
 
   for (const t of tries) {
     const res = await admin!.from("inbound_imports").insert(t as any).select("*").maybeSingle();
     if (!res.error) return res.data;
-    const msg = String(res.error.message || "");
-    // if table doesn't exist, stop
-    if (msg.toLowerCase().includes("relation") && msg.toLowerCase().includes("does not exist")) break;
-    // otherwise, try next
+
+    const msg = String(res.error.message || "").toLowerCase();
+    if (msg.includes("relation") && msg.includes("does not exist")) break;
   }
   return null;
 }
@@ -212,8 +185,6 @@ async function ensureBoxes(
   labels: ParsedLabel[],
   location: string
 ) {
-  // We will upsert by (device, master_box_no) if possible; otherwise insert then refetch.
-  // Table "boxes" expected to have: box_id (uuid), device (text), master_box_no (text), box_no (text), location (text)
   const uniquePairs = labels.map((l) => ({
     device: l.device,
     master_box_no: l.box_no,
@@ -222,12 +193,12 @@ async function ensureBoxes(
     status: "IN_STOCK",
   }));
 
-  // Remove duplicates
+  // dedup
   const dedupMap = new Map<string, any>();
   for (const r of uniquePairs) dedupMap.set(`${r.device}__${r.master_box_no}`, r);
   const rows = Array.from(dedupMap.values());
 
-  // Try upsert with onConflict if constraint exists
+  // Try upsert
   let upsertOk = false;
   {
     const res = await admin!
@@ -238,28 +209,19 @@ async function ensureBoxes(
     if (!res.error) upsertOk = true;
   }
 
-  // Fallback: plain insert (ignore duplicates if possible)
+  // Fallback insert
   if (!upsertOk) {
-    // try insert one by one, ignore duplicate errors
     for (const r of rows) {
       const ins = await admin!.from("boxes").insert(r as any);
-      // ignore duplicates
       if (ins.error) {
         const msg = String(ins.error.message || "").toLowerCase();
-        if (
-          msg.includes("duplicate") ||
-          msg.includes("already exists") ||
-          msg.includes("unique")
-        ) {
-          continue;
-        }
-        // If column mismatch, just continue (your schema may differ)
+        if (msg.includes("duplicate") || msg.includes("already exists") || msg.includes("unique")) continue;
         continue;
       }
     }
   }
 
-  // Fetch map (device+master_box_no -> box_id)
+  // Fetch map
   const devices = Array.from(new Set(rows.map((r) => r.device)));
   const masterBoxNos = Array.from(new Set(rows.map((r) => r.master_box_no)));
 
@@ -271,7 +233,7 @@ async function ensureBoxes(
 
   const map = new Map<string, string>();
   for (const b of fetched.data || []) {
-    map.set(`${b.device}__${b.master_box_no}`, String(b.box_id));
+    map.set(`${b.device}__${b.master_box_no}`, String((b as any).box_id));
   }
   return map;
 }
@@ -281,39 +243,34 @@ async function insertImeis(
   boxIdMap: Map<string, string>,
   labels: ParsedLabel[]
 ) {
-  // Try inserting into likely tables: "items" then "box_items"
-  // Expected columns: box_id + imei
-  const makeRows = (table: "items" | "box_items") => {
-    const out: any[] = [];
-    for (const l of labels) {
-      const box_id = boxIdMap.get(`${l.device}__${l.box_no}`);
-      if (!box_id) continue;
+  const rows: any[] = [];
+  for (const l of labels) {
+    const box_id = boxIdMap.get(`${l.device}__${l.box_no}`);
+    if (!box_id) continue;
 
-      // Dedup inside the box
-      const uniq = Array.from(new Set(l.imeis));
-      for (const imei of uniq) {
-        if (table === "items") out.push({ box_id, imei, status: "IN_STOCK" });
-        else out.push({ box_id, imei });
-      }
-    }
-    return out;
-  };
+    const uniq = Array.from(new Set(l.imeis));
+    for (const imei of uniq) rows.push({ box_id, imei, status: "IN_STOCK" });
+  }
 
-  // Try "items"
+  // Try items table
   {
-    const rows = makeRows("items");
     const res = await admin!.from("items").insert(rows as any);
     if (!res.error) return { table: "items", inserted: rows.length };
   }
 
-  // Try "box_items"
+  // Try box_items fallback
   {
-    const rows = makeRows("box_items");
-    const res = await admin!.from("box_items").insert(rows as any);
-    if (!res.error) return { table: "box_items", inserted: rows.length };
+    const rows2: any[] = [];
+    for (const l of labels) {
+      const box_id = boxIdMap.get(`${l.device}__${l.box_no}`);
+      if (!box_id) continue;
+      const uniq = Array.from(new Set(l.imeis));
+      for (const imei of uniq) rows2.push({ box_id, imei });
+    }
+    const res2 = await admin!.from("box_items").insert(rows2 as any);
+    if (!res2.error) return { table: "box_items", inserted: rows2.length };
   }
 
-  // If both fail, we still return 0 but commit doesn't hard-fail (so you can see preview/labels)
   return { table: null, inserted: 0 };
 }
 
@@ -321,17 +278,13 @@ export async function POST(req: Request) {
   try {
     const admin = adminClient();
     if (!admin) {
-      return NextResponse.json(
-        { ok: false, error: "Missing service role key on server" },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "Missing service role key on server" }, { status: 500 });
     }
 
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.toLowerCase().startsWith("bearer ") ? authHeader.slice(7) : "";
     if (!token) return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
 
-    // get user email (for history if table supports it)
     const userClient = authedClient(token);
     const { data: userData, error: userErr } = await userClient.auth.getUser();
     if (userErr) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -342,6 +295,7 @@ export async function POST(req: Request) {
     const location = String(form.get("location") ?? "").trim();
 
     if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
+    if (!location) return NextResponse.json({ ok: false, error: "Missing location" }, { status: 400 });
 
     const bytes = new Uint8Array(await file.arrayBuffer());
     const wb = XLSX.read(bytes, { type: "array" });
@@ -368,16 +322,16 @@ export async function POST(req: Request) {
 
     const deviceList = await loadDeviceCanonicals(admin);
 
-    // Parse all blocks
+    // Parse all blocks (supports 3,4,5+ blocks)
     const byKey = new Map<string, { device: string; box_no: string; imeis: string[] }>();
 
     for (const block of blocks) {
-      const row1 = rows[0] || [];
-      const deviceHintRaw = String(row1[block.deviceHintCol] ?? "").trim();
+      // top row sometimes contains device hint
+      const row0 = rows[0] || [];
+      const deviceHintRaw = String(row0[block.deviceHintCol] ?? "").trim();
 
-      let currentDeviceRaw: string | null = deviceHintRaw || null;
       let currentDeviceDisplay: string | null =
-        currentDeviceRaw ? resolveDeviceDisplay(currentDeviceRaw, deviceList) : null;
+        deviceHintRaw ? resolveDeviceDisplay(deviceHintRaw, deviceList) : null;
 
       let currentMasterBox: string | null = null;
 
@@ -386,13 +340,14 @@ export async function POST(req: Request) {
         const boxCell = row[block.boxCol];
         const imeiCell = row[block.imeiCol];
 
+        // update current device/master box when box cell is present
         if (boxCell !== null && boxCell !== undefined && String(boxCell).trim() !== "") {
           const rawDev = extractRawDeviceFromBoxCell(boxCell);
           const mb = extractMasterBoxNo(boxCell);
 
           if (rawDev) {
-            currentDeviceRaw = rawDev;
-            currentDeviceDisplay = resolveDeviceDisplay(rawDev, deviceList) || currentDeviceDisplay;
+            const resolved = resolveDeviceDisplay(rawDev, deviceList);
+            if (resolved) currentDeviceDisplay = resolved;
           }
           if (mb) currentMasterBox = mb;
         }
@@ -416,7 +371,7 @@ export async function POST(req: Request) {
           box_no: x.box_no,
           qty: uniq.length,
           imeis: uniq,
-          qr_data: uniq.join("\n"),
+          qr_data: uniq.join("\n"), // ✅ IMEI only, 1 per line
         };
       })
       .filter((l) => l.qty > 0)
@@ -431,7 +386,7 @@ export async function POST(req: Request) {
 
     const devicesDetected = new Set(labels.map((l) => l.device)).size;
 
-    // 1) log inbound_import (optional, schema-safe)
+    // 1) log import (schema-safe)
     const importRow = await safeInsertInboundImport(admin, {
       file_name: file.name,
       location,
@@ -439,14 +394,20 @@ export async function POST(req: Request) {
       created_by_email,
     });
 
-    // 2) ensure boxes exist + map to box_id
+    // 2) ensure boxes exist
     const boxIdMap = await ensureBoxes(admin, labels, location);
 
     // 3) insert imeis
     const ins = await insertImeis(admin, boxIdMap, labels);
 
-    // 4) build ZPL for convenience
-    const zpl_all = labels.map((l) => buildZplLabel(l.qr_data, l.device, l.box_no)).join("\n\n");
+    // ✅ attach box_id per label (so UI can generate PDF after confirm)
+    const labelsWithBoxId = labels.map((l) => ({
+      device: l.device,
+      box_no: l.box_no,
+      qty: l.qty,
+      qr_data: l.qr_data,
+      box_id: boxIdMap.get(`${l.device}__${l.box_no}`) || null,
+    }));
 
     return NextResponse.json({
       ok: true,
@@ -458,8 +419,7 @@ export async function POST(req: Request) {
       items: labels.reduce((acc, l) => acc + l.qty, 0),
       inserted_into: ins.table,
       inserted_items: ins.inserted,
-      labels: labels.map((l) => ({ device: l.device, box_no: l.box_no, qty: l.qty, qr_data: l.qr_data })),
-      zpl_all,
+      labels: labelsWithBoxId,
       debug: {
         header_row_index: headerRowIdx,
         blocks_detected: blocks.map((b) => ({ start: b.start, boxCol: b.boxCol, imeiCol: b.imeiCol })),

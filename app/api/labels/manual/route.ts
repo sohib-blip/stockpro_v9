@@ -1,19 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import QRCode from "qrcode";
-import { PDFDocument, StandardFonts } from "pdf-lib";
-
-// Force Node runtime (pdf-lib + qrcode OK)
-export const runtime = "nodejs";
 
 function adminClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-  const key =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE ||
-    "";
-
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY!;
   if (!url || !key) return null;
 
   return createClient(url, key, {
@@ -21,241 +11,226 @@ function adminClient() {
   });
 }
 
-function canonicalize(input: string) {
-  return String(input ?? "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .trim();
+function authedClient(token: string) {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    global: { headers: { Authorization: `Bearer ${token}` } },
+    auth: { detectSessionInUrl: false },
+  });
 }
 
-function cleanImeiLines(imeis: string[]) {
-  const cleaned = imeis
-    .map((x) => String(x ?? "").replace(/\D/g, ""))
-    .filter((x) => x.length === 15);
+const s = (v: any) => String(v ?? "");
+const trim = (v: any) => s(v).trim();
 
-  // dedup
-  return Array.from(new Set(cleaned));
+function canonicalize(v: any) {
+  return s(v).toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
 }
 
-async function makeOneLabelPdf(opts: {
-  device: string;
-  box_no: string;
-  imeis: string[];
-}) {
-  const { device, box_no, imeis } = opts;
+function parseImeis(input: any): string[] {
+  // accept array or multi-line string
+  if (Array.isArray(input)) {
+    return input.map((x) => s(x).replace(/\D/g, "")).filter((x) => x.length === 15);
+  }
+  const lines = s(input).split(/\r?\n/);
+  const out: string[] = [];
+  for (const ln of lines) {
+    const digits = ln.replace(/\D/g, "");
+    if (digits.length === 15) out.push(digits);
+  }
+  return out;
+}
 
-  // QR = IMEI only, 1 per line
-  const qrData = imeis.join("\n");
+async function resolveDeviceDisplayOrNull(admin: any, rawDevice: string) {
+  const rawCanon = canonicalize(rawDevice);
+  if (!rawCanon) return null;
 
-  // QR as PNG data URL
-  const qrDataUrl = await QRCode.toDataURL(qrData, {
-    errorCorrectionLevel: "M",
-    margin: 1,
-    scale: 8,
-  });
+  const { data, error } = await admin.from("devices").select("canonical_name, device, active");
+  if (error) return null;
 
-  const pdf = await PDFDocument.create();
+  const active = (data || []).filter((d: any) => d.active !== false);
 
-  /**
-   * Label format (ZD220-ish):
-   * On part sur ~ 60mm x 40mm (en points PDF)
-   * 1 inch = 72pt
-   * 60mm = 170.08pt
-   * 40mm = 113.39pt
-   */
-  const mmToPt = (mm: number) => (mm * 72) / 25.4;
-  const pageW = mmToPt(60);
-  const pageH = mmToPt(40);
+  // exact canonical
+  const exact = active.find((d: any) => String(d.canonical_name || "") === rawCanon);
+  if (exact) return String(exact.device || exact.canonical_name);
 
-  const page = pdf.addPage([pageW, pageH]);
+  // longest prefix match
+  let best: any = null;
+  for (const d of active) {
+    const dbCanon = String(d.canonical_name || "");
+    if (!dbCanon) continue;
+    if (rawCanon.startsWith(dbCanon)) {
+      if (!best || dbCanon.length > String(best.canonical_name).length) best = d;
+    }
+  }
+  if (best) return String(best.device || best.canonical_name);
 
-  const font = await pdf.embedFont(StandardFonts.Helvetica);
+  // FMC9202... -> FMC920
+  const m3 = rawCanon.match(/^([A-Z]+)(\d{3})/);
+  if (m3) {
+    const short = m3[1] + m3[2];
+    const f = active.find((d: any) => String(d.canonical_name || "") === short);
+    if (f) return String(f.device || f.canonical_name);
+  }
 
-  // Embed QR PNG
-  const pngBytes = Buffer.from(qrDataUrl.split(",")[1], "base64");
-  const qrImg = await pdf.embedPng(pngBytes);
+  // FMC 03 -> FMC003
+  const mPad = rawCanon.match(/^([A-Z]+)(\d{1,2})$/);
+  if (mPad) {
+    const padded = mPad[1] + mPad[2].padStart(3, "0");
+    const f = active.find((d: any) => String(d.canonical_name || "") === padded);
+    if (f) return String(f.device || f.canonical_name);
+  }
 
-  // Layout
-  const padding = mmToPt(3);
-  const qrSize = mmToPt(26); // ~26mm
-  const qrX = padding;
-  const qrY = pageH - padding - qrSize;
+  return null;
+}
 
-  page.drawImage(qrImg, {
-    x: qrX,
-    y: qrY,
-    width: qrSize,
-    height: qrSize,
-  });
+async function ensureBox(admin: any, device: string, box_no: string, location: string) {
+  // upsert by device + master_box_no
+  const payload = {
+    device,
+    master_box_no: box_no,
+    box_no,
+    location,
+    status: "IN_STOCK",
+  };
 
-  // Text block (right side)
-  const textX = qrX + qrSize + mmToPt(3);
-  let y = pageH - padding - mmToPt(3);
+  const up = await admin
+    .from("boxes")
+    .upsert(payload, { onConflict: "device,master_box_no" })
+    .select("box_id, device, master_box_no, box_no")
+    .maybeSingle();
 
-  // Device
-  page.drawText(String(device), {
-    x: textX,
-    y: y - mmToPt(6),
-    size: 12,
-    font,
-  });
+  if (!up.error && up.data?.box_id) return String(up.data.box_id);
 
-  // Box
-  page.drawText(`Box: ${String(box_no)}`, {
-    x: textX,
-    y: y - mmToPt(13),
-    size: 10,
-    font,
-  });
+  // fallback: try insert then fetch
+  await admin.from("boxes").insert(payload);
 
-  // Qty
-  page.drawText(`${imeis.length} IMEI`, {
-    x: textX,
-    y: y - mmToPt(20),
-    size: 10,
-    font,
-  });
+  const fetch = await admin
+    .from("boxes")
+    .select("box_id")
+    .eq("device", device)
+    .eq("master_box_no", box_no)
+    .maybeSingle();
 
-  const pdfBytes = await pdf.save(); // Uint8Array
-  return pdfBytes;
+  if (fetch.error || !fetch.data?.box_id) return null;
+  return String(fetch.data.box_id);
+}
+
+async function insertImeis(admin: any, box_id: string, imeis: string[]) {
+  const uniq = Array.from(new Set(imeis));
+  if (!uniq.length) return { inserted: 0, table: null as string | null };
+
+  // try items first
+  const r1 = await admin.from("items").insert(uniq.map((imei) => ({ box_id, imei, status: "IN_STOCK" })));
+  if (!r1.error) return { inserted: uniq.length, table: "items" };
+
+  // fallback box_items
+  const r2 = await admin.from("box_items").insert(uniq.map((imei) => ({ box_id, imei })));
+  if (!r2.error) return { inserted: uniq.length, table: "box_items" };
+
+  return { inserted: 0, table: null };
 }
 
 export async function POST(req: Request) {
   try {
     const admin = adminClient();
-    if (!admin) {
-      return NextResponse.json(
-        { ok: false, error: "Missing service role key" },
-        { status: 500 }
-      );
-    }
+    if (!admin) return NextResponse.json({ ok: false, error: "Missing service role key" }, { status: 500 });
+
+    const auth = req.headers.get("authorization") || "";
+    const token = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7) : "";
+    if (!token) return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
+
+    const userClient = authedClient(token);
+    const { data: uData, error: uErr } = await userClient.auth.getUser();
+    if (uErr) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+    const created_by_email = uData.user?.email || null;
 
     const body = await req.json().catch(() => null);
+    if (!body) return NextResponse.json({ ok: false, error: "Invalid JSON body" }, { status: 400 });
 
-    const device = String(body?.device ?? "").trim();
-    const box_no = String(body?.box_no ?? "").trim();
-    const mode = String(body?.mode ?? "print").trim(); // "print" | "import" | "both"
-    const imeis = Array.isArray(body?.imeis) ? body.imeis : [];
+    const rawDevice = trim(body.device);
+    const box_no = trim(body.box_no);
+    const location = trim(body.location || "00");
+    const import_to_stock = Boolean(body.import_to_stock);
+    const imeis = parseImeis(body.imeis);
 
-    if (!device || !box_no || !Array.isArray(imeis)) {
-      return NextResponse.json(
-        { ok: false, error: "Invalid payload (device, box_no, imeis[] required)" },
-        { status: 400 }
-      );
-    }
+    if (!rawDevice) return NextResponse.json({ ok: false, error: "Missing device" }, { status: 400 });
+    if (!box_no) return NextResponse.json({ ok: false, error: "Missing box_no" }, { status: 400 });
 
-    // ✅ check device exists in DB (you wanted block)
-    const deviceCanon = canonicalize(device);
-    const { data: devRow, error: devErr } = await admin
-      .from("devices")
-      .select("canonical_name, device, active")
-      .eq("canonical_name", deviceCanon)
-      .maybeSingle();
-
-    if (devErr) {
-      return NextResponse.json({ ok: false, error: devErr.message }, { status: 500 });
-    }
-
-    if (!devRow || devRow.active === false) {
+    const deviceDisplay = await resolveDeviceDisplayOrNull(admin, rawDevice);
+    if (!deviceDisplay) {
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "Device not found (or inactive). Add/activate it in Admin > Devices, then retry.",
-          unknown_device: device,
-          expected_canonical: deviceCanon,
+          error: "device(s) not found in Admin > Devices",
+          unknown_devices: [rawDevice],
         },
         { status: 400 }
       );
     }
 
-    const deviceDisplay = String(devRow.device || devRow.canonical_name);
+    const uniqImeis = Array.from(new Set(imeis));
+    const qr_data = uniqImeis.join("\n"); // ✅ QR content = IMEI only, one per line
 
-    const cleanImeis = cleanImeiLines(imeis);
-    if (cleanImeis.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "No valid IMEI (need 15 digits). One per line." },
-        { status: 400 }
-      );
+    // If user only wants label (no import)
+    if (!import_to_stock) {
+      return NextResponse.json({
+        ok: true,
+        imported: false,
+        device: deviceDisplay,
+        box_no,
+        qty: uniqImeis.length,
+        qr_data,
+        box_id: null,
+      });
     }
 
-    // optional DB import
-    let box_id: string | null = null;
+    // Import to stock
+    const box_id = await ensureBox(admin, deviceDisplay, box_no, location);
+    if (!box_id) return NextResponse.json({ ok: false, error: "Could not create/fetch box_id" }, { status: 500 });
 
-    if (mode === "import" || mode === "both") {
-      // insert box
-      const insBox = await admin
-        .from("boxes")
-        .insert({
-          device: deviceDisplay,
-          box_no,
-          master_box_no: box_no,
-          location: "00",
-          status: "IN_STOCK",
-        } as any)
-        .select("box_id")
-        .maybeSingle();
+    const ins = await insertImeis(admin, box_id, uniqImeis);
 
-      // if duplicate etc, try fetch existing
-      if (insBox.error) {
-        const msg = String(insBox.error.message || "").toLowerCase();
-        if (msg.includes("duplicate") || msg.includes("unique")) {
-          const existing = await admin
-            .from("boxes")
-            .select("box_id")
-            .eq("device", deviceDisplay)
-            .eq("master_box_no", box_no)
-            .maybeSingle();
-          box_id = existing.data?.box_id ? String(existing.data.box_id) : null;
-        } else {
-          return NextResponse.json(
-            { ok: false, error: `Box insert failed: ${insBox.error.message}` },
-            { status: 400 }
-          );
-        }
-      } else {
-        box_id = insBox.data?.box_id ? String(insBox.data.box_id) : null;
-      }
+    // ✅ Write history: inbound_import_logs + inbound_import_log_boxes
+    const log = await admin
+      .from("inbound_import_logs")
+      .insert({
+        vendor: "labels",
+        location,
+        file_name: null,
+        created_by_email,
+        devices: 1,
+        boxes: 1,
+        items: uniqImeis.length,
+      })
+      .select("id")
+      .single();
 
-      if (box_id) {
-        // insert imeis
-        const itemsRows = cleanImeis.map((imei) => ({
-          box_id,
-          imei,
-          status: "IN_STOCK",
-        }));
-
-        const insItems = await admin.from("items").insert(itemsRows as any);
-        if (insItems.error) {
-          // don't hard-fail printing, but tell the user
-          return NextResponse.json(
-            { ok: false, error: `Items insert failed: ${insItems.error.message}` },
-            { status: 400 }
-          );
-        }
-      }
+    let history_warning: string | null = null;
+    if (log.error) {
+      history_warning = `History log failed: ${log.error.message}`;
+    } else {
+      const hist = await admin.from("inbound_import_log_boxes").insert({
+        import_id: log.data.id,
+        box_id,
+        device: deviceDisplay,
+        box_no,
+        qty: uniqImeis.length,
+      });
+      if (hist.error) history_warning = `History boxes failed: ${hist.error.message}`;
     }
 
-    // Always generate PDF (print or both)
-    const pdfBytes = await makeOneLabelPdf({
+    return NextResponse.json({
+      ok: true,
+      imported: true,
       device: deviceDisplay,
       box_no,
-      imeis: cleanImeis,
-    });
-
-    // ✅ Return PDF binary (download in browser)
-    return new Response(Buffer.from(pdfBytes), {
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="label-${deviceDisplay}-${box_no}.pdf"`,
-        "Cache-Control": "no-store",
-        "X-Box-Id": box_id || "",
-      },
+      qty: uniqImeis.length,
+      qr_data,
+      box_id,
+      inserted_into: ins.table,
+      inserted_items: ins.inserted,
+      history_warning,
     });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
   }
 }

@@ -12,15 +12,25 @@ type LabelRow = {
   box_id?: string | null;
 };
 
-type ImportEvent = {
-  id: any;
-  created_at: string | null;
-  created_by_email: string | null;
-  file_name: string | null;
+type ImportLogRow = {
+  id: string;
+  created_at: string;
+  vendor: string;
   location: string | null;
-  devices: number | null;
-  boxes: number | null;
-  items: number | null;
+  file_name: string | null;
+  created_by_email: string | null;
+  devices: number;
+  boxes: number;
+  items: number;
+};
+
+type ImportLogBoxRow = {
+  id: string;
+  created_at: string;
+  box_id: string | null;
+  device: string;
+  box_no: string;
+  qty: number;
 };
 
 export default function InboundImportPage() {
@@ -39,42 +49,17 @@ export default function InboundImportPage() {
 
   const [q, setQ] = useState("");
 
-  // ✅ history
-  const [history, setHistory] = useState<ImportEvent[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historyQ, setHistoryQ] = useState("");
+  // ✅ history from Labels (bottom block)
+  const [loadingHist, setLoadingHist] = useState(false);
+  const [importsFromLabels, setImportsFromLabels] = useState<ImportLogRow[]>([]);
+  const [openImportId, setOpenImportId] = useState<string | null>(null);
+  const [openBoxes, setOpenBoxes] = useState<ImportLogBoxRow[]>([]);
+  const [loadingBoxes, setLoadingBoxes] = useState(false);
 
   async function getAccessToken() {
     const { data } = await supabase.auth.getSession();
     return data.session?.access_token || "";
   }
-
-  async function loadHistory() {
-    try {
-      setHistoryLoading(true);
-
-      const token = await getAccessToken();
-      if (!token) return;
-
-      const res = await fetch("/api/inbound/history?limit=80", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-
-      const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "History load failed");
-
-      setHistory((json.events || []) as ImportEvent[]);
-    } catch (e: any) {
-      toast({ kind: "error", title: "History failed", message: e?.message || "Error" });
-    } finally {
-      setHistoryLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadHistory();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function onPreview() {
     try {
@@ -97,6 +82,7 @@ export default function InboundImportPage() {
       const form = new FormData();
       form.append("file", file);
       form.append("location", location);
+      form.append("vendor", "teltonika");
 
       const res = await fetch("/api/inbound/preview", {
         method: "POST",
@@ -106,14 +92,6 @@ export default function InboundImportPage() {
 
       const json = await res.json().catch(() => null);
       if (!res.ok || !json?.ok) {
-        // ✅ unknown devices returned by API
-        if (json?.unknown_devices?.length) {
-          toast({
-            kind: "error",
-            title: "Unknown devices",
-            message: `Ajoute d’abord dans Admin > Devices: ${json.unknown_devices.join(", ")}`,
-          });
-        }
         throw new Error(json?.error || "Preview failed");
       }
 
@@ -144,6 +122,7 @@ export default function InboundImportPage() {
       const form = new FormData();
       form.append("file", file);
       form.append("location", location);
+      form.append("vendor", "teltonika");
 
       const res = await fetch("/api/inbound/commit", {
         method: "POST",
@@ -152,16 +131,7 @@ export default function InboundImportPage() {
       });
 
       const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.ok) {
-        if (json?.unknown_devices?.length) {
-          toast({
-            kind: "error",
-            title: "Unknown devices",
-            message: `Ajoute d’abord dans Admin > Devices: ${json.unknown_devices.join(", ")}`,
-          });
-        }
-        throw new Error(json?.error || "Import failed");
-      }
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Import failed");
 
       setCommitted(true);
       setPreview(json);
@@ -172,9 +142,6 @@ export default function InboundImportPage() {
         title: "Import OK",
         message: `${json.devices} devices · ${json.boxes} cartons · ${json.items} IMEI`,
       });
-
-      // ✅ refresh history after commit
-      await loadHistory();
     } catch (e: any) {
       toast({ kind: "error", title: "Import failed", message: e?.message || "Error" });
     } finally {
@@ -218,33 +185,6 @@ export default function InboundImportPage() {
     URL.revokeObjectURL(url);
   }
 
-  async function downloadPdfOneAfterConfirm(box_id: string, device: string, box_no: string) {
-    const token = await getAccessToken();
-    const res = await fetch("/api/labels/pdf/boxes", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: token ? `Bearer ${token}` : "",
-      },
-      body: JSON.stringify({ box_ids: [box_id] }),
-    });
-
-    if (!res.ok) {
-      const msg = await res.text().catch(() => "");
-      throw new Error(msg || "PDF generation failed");
-    }
-
-    const blob = await res.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `label-${device}-${box_no}.pdf`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  }
-
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
     if (!qq) return labels;
@@ -262,17 +202,64 @@ export default function InboundImportPage() {
     return { devices, boxes, items };
   }, [labels]);
 
-  const historyFiltered = useMemo(() => {
-    const qq = historyQ.trim().toLowerCase();
-    if (!qq) return history;
+  async function loadImportsFromLabels() {
+    try {
+      setLoadingHist(true);
+      const token = await getAccessToken();
+      if (!token) return;
 
-    return history.filter((h) => {
-      const fileName = String(h.file_name ?? "").toLowerCase();
-      const email = String(h.created_by_email ?? "").toLowerCase();
-      const loc = String(h.location ?? "").toLowerCase();
-      return fileName.includes(qq) || email.includes(qq) || loc.includes(qq);
-    });
-  }, [history, historyQ]);
+      const res = await fetch("/api/inbound/history-from-labels?limit=50", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "History load failed");
+
+      setImportsFromLabels((json.imports || []) as ImportLogRow[]);
+    } catch (e: any) {
+      toast({ kind: "error", title: "History failed", message: e?.message || "Error" });
+      setImportsFromLabels([]);
+    } finally {
+      setLoadingHist(false);
+    }
+  }
+
+  async function toggleOpenImport(importId: string) {
+    try {
+      if (openImportId === importId) {
+        setOpenImportId(null);
+        setOpenBoxes([]);
+        return;
+      }
+
+      setOpenImportId(importId);
+      setOpenBoxes([]);
+      setLoadingBoxes(true);
+
+      const token = await getAccessToken();
+      if (!token) return;
+
+      const res = await fetch(`/api/inbound/history-from-labels/${importId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "History details failed");
+
+      setOpenBoxes((json.boxes || []) as ImportLogBoxRow[]);
+    } catch (e: any) {
+      toast({ kind: "error", title: "History details failed", message: e?.message || "Error" });
+      setOpenBoxes([]);
+      setOpenImportId(null);
+    } finally {
+      setLoadingBoxes(false);
+    }
+  }
+
+  useEffect(() => {
+    loadImportsFromLabels();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -281,12 +268,11 @@ export default function InboundImportPage() {
           <div className="text-xs text-slate-500">Inbound</div>
           <h2 className="text-xl font-semibold">Import fournisseur</h2>
           <p className="text-sm text-slate-400 mt-1">
-            Multi-devices dans 1 seul Excel. Preview → Confirm import → PDF labels.
+            Multi-devices dans 1 seul Excel. Après confirm: PDF labels téléchargeable direct.
           </p>
         </div>
       </div>
 
-      {/* IMPORT CARD */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-center">
           <div className="flex items-center gap-3">
@@ -337,7 +323,6 @@ export default function InboundImportPage() {
         </div>
       </div>
 
-      {/* LABELS CARD */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div>
@@ -380,7 +365,6 @@ export default function InboundImportPage() {
                 <th className="text-left p-2 border-b border-slate-800">Device</th>
                 <th className="text-left p-2 border-b border-slate-800">Gros carton (BoxNR)</th>
                 <th className="text-right p-2 border-b border-slate-800">Qty IMEI</th>
-                <th className="text-right p-2 border-b border-slate-800">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -389,35 +373,12 @@ export default function InboundImportPage() {
                   <td className="p-2 border-b border-slate-800 font-semibold text-slate-100">{l.device}</td>
                   <td className="p-2 border-b border-slate-800 text-slate-200">{l.box_no}</td>
                   <td className="p-2 border-b border-slate-800 text-right text-slate-200">{l.qty}</td>
-                  <td className="p-2 border-b border-slate-800 text-right">
-                    <button
-                      onClick={async () => {
-                        try {
-                          if (!committed) {
-                            toast({ kind: "error", title: "PDF", message: "D’abord Confirm import." });
-                            return;
-                          }
-                          if (!l.box_id) {
-                            toast({ kind: "error", title: "PDF", message: "box_id manquant pour ce carton." });
-                            return;
-                          }
-                          await downloadPdfOneAfterConfirm(l.box_id, l.device, l.box_no);
-                        } catch (e: any) {
-                          toast({ kind: "error", title: "PDF failed", message: e?.message || "Error" });
-                        }
-                      }}
-                      disabled={!committed || !l.box_id}
-                      className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
-                    >
-                      Download PDF
-                    </button>
-                  </td>
                 </tr>
               ))}
 
               {filtered.length === 0 && (
                 <tr>
-                  <td className="p-3 text-sm text-slate-400" colSpan={4}>
+                  <td className="p-3 text-sm text-slate-400" colSpan={3}>
                     No labels.
                   </td>
                 </tr>
@@ -433,29 +394,21 @@ export default function InboundImportPage() {
         )}
       </div>
 
-      {/* ✅ HISTORY (Option A) */}
+      {/* ✅ NEW: Import from Labels */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-semibold">Historique des imports</div>
-            <div className="text-xs text-slate-500">Qui, quand, fichier, étage, stats.</div>
+            <div className="text-sm font-semibold">Import from Labels</div>
+            <div className="text-xs text-slate-500">Historique des imports faits depuis l’onglet Labels.</div>
           </div>
 
-          <div className="flex gap-2">
-            <input
-              value={historyQ}
-              onChange={(e) => setHistoryQ(e.target.value)}
-              placeholder="Search file / email / étage…"
-              className="w-full md:w-[280px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
-            />
-            <button
-              onClick={loadHistory}
-              disabled={historyLoading}
-              className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
-            >
-              {historyLoading ? "Refreshing…" : "Refresh"}
-            </button>
-          </div>
+          <button
+            onClick={loadImportsFromLabels}
+            disabled={loadingHist}
+            className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loadingHist ? "Refreshing…" : "Refresh"}
+          </button>
         </div>
 
         <div className="overflow-auto">
@@ -464,41 +417,79 @@ export default function InboundImportPage() {
               <tr>
                 <th className="text-left p-2 border-b border-slate-800">Date</th>
                 <th className="text-left p-2 border-b border-slate-800">User</th>
-                <th className="text-left p-2 border-b border-slate-800">Fichier</th>
                 <th className="text-left p-2 border-b border-slate-800">Étage</th>
-                <th className="text-right p-2 border-b border-slate-800">Devices</th>
-                <th className="text-right p-2 border-b border-slate-800">Cartons</th>
-                <th className="text-right p-2 border-b border-slate-800">IMEI</th>
+                <th className="text-right p-2 border-b border-slate-800">Boxes</th>
+                <th className="text-right p-2 border-b border-slate-800">Items</th>
+                <th className="text-right p-2 border-b border-slate-800">Action</th>
               </tr>
             </thead>
             <tbody>
-              {historyFiltered.map((h, idx) => (
-                <tr key={String(h.id ?? idx)} className="hover:bg-slate-950/50">
-                  <td className="p-2 border-b border-slate-800 text-slate-200">
-                    {h.created_at ? new Date(h.created_at).toLocaleString() : "—"}
-                  </td>
-                  <td className="p-2 border-b border-slate-800 text-slate-200">{h.created_by_email || "—"}</td>
-                  <td className="p-2 border-b border-slate-800 text-slate-200">{h.file_name || "—"}</td>
-                  <td className="p-2 border-b border-slate-800 text-slate-200">{h.location || "—"}</td>
-                  <td className="p-2 border-b border-slate-800 text-right text-slate-200">{Number(h.devices ?? 0)}</td>
-                  <td className="p-2 border-b border-slate-800 text-right text-slate-200">{Number(h.boxes ?? 0)}</td>
-                  <td className="p-2 border-b border-slate-800 text-right text-slate-200">{Number(h.items ?? 0)}</td>
-                </tr>
+              {importsFromLabels.map((im) => (
+                <React.Fragment key={im.id}>
+                  <tr className="hover:bg-slate-950/50">
+                    <td className="p-2 border-b border-slate-800 text-slate-200">
+                      {new Date(im.created_at).toLocaleString()}
+                    </td>
+                    <td className="p-2 border-b border-slate-800 text-slate-200">{im.created_by_email || "—"}</td>
+                    <td className="p-2 border-b border-slate-800 text-slate-200">{im.location || "—"}</td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{im.boxes}</td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{im.items}</td>
+                    <td className="p-2 border-b border-slate-800 text-right">
+                      <button
+                        onClick={() => toggleOpenImport(im.id)}
+                        className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                      >
+                        {openImportId === im.id ? "Hide" : "Details"}
+                      </button>
+                    </td>
+                  </tr>
+
+                  {openImportId === im.id && (
+                    <tr>
+                      <td className="p-3 border-b border-slate-800 bg-slate-950/30" colSpan={6}>
+                        {loadingBoxes ? (
+                          <div className="text-sm text-slate-400">Loading…</div>
+                        ) : openBoxes.length ? (
+                          <div className="overflow-auto">
+                            <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+                              <thead className="bg-slate-950/50">
+                                <tr>
+                                  <th className="text-left p-2 border-b border-slate-800">Device</th>
+                                  <th className="text-left p-2 border-b border-slate-800">BoxNR</th>
+                                  <th className="text-right p-2 border-b border-slate-800">Qty</th>
+                                  <th className="text-left p-2 border-b border-slate-800">box_id</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {openBoxes.map((b) => (
+                                  <tr key={b.id} className="hover:bg-slate-950/50">
+                                    <td className="p-2 border-b border-slate-800 text-slate-100 font-semibold">{b.device}</td>
+                                    <td className="p-2 border-b border-slate-800 text-slate-200">{b.box_no}</td>
+                                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{b.qty}</td>
+                                    <td className="p-2 border-b border-slate-800 text-slate-500">{b.box_id || "—"}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : (
+                          <div className="text-sm text-slate-400">No details.</div>
+                        )}
+                      </td>
+                    </tr>
+                  )}
+                </React.Fragment>
               ))}
 
-              {historyFiltered.length === 0 && (
+              {importsFromLabels.length === 0 && (
                 <tr>
-                  <td className="p-3 text-sm text-slate-400" colSpan={7}>
-                    {historyLoading ? "Loading…" : "No history."}
+                  <td className="p-3 text-sm text-slate-400" colSpan={6}>
+                    Aucun import depuis Labels pour l’instant.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
-        </div>
-
-        <div className="text-xs text-slate-500">
-          Tip: après un import, l’historique se refresh automatiquement. Sinon clique Refresh.
         </div>
       </div>
     </div>

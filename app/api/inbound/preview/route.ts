@@ -2,17 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 
-/**
- * PREVIEW:
- * - device name = cellule au-dessus du header dans chaque bloc
- * - boxnr = gère formats:
- *    - "FMC9202MAUWU-041-2" => "041-2"
- *    - "041-2" => "041-2"   ✅ (fix)
- *    - "041" + "2" split => fallback gère boxCol+1 mais pas split sur 2 colonnes (si besoin on le fera après)
- * - SI boxCol vide => prendre boxnr depuis boxCol+1
- * - qr_data = IMEI only, 1 par ligne
- * - BLOQUE si device du fichier n'existe pas dans Admin > Devices
- */
+type Vendor = "teltonika" | "quicklink" | "truster" | "digitalmatter";
 
 function adminClient() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -27,8 +17,6 @@ function authedClient(token: string) {
   });
 }
 
-/* ========= safe utils ========= */
-
 const s = (v: any) => String(v ?? "");
 const lower = (v: any) => s(v).toLowerCase();
 const trim = (v: any) => s(v).trim();
@@ -42,50 +30,28 @@ function isImei(v: any) {
   return digits.length === 15 ? digits : null;
 }
 
-/**
- * ✅ FIX BOXNR:
- * - If cell already looks like a boxnr (digits-digits), keep it
- * - Else if contains "...-041-2" => take after first dash
- * - Else try find "###-#" anywhere
- */
 function extractBoxNr(boxCell: any) {
   const t = trim(boxCell);
   if (!t) return null;
 
-  // normalize spaces
   const txt = t.replace(/\s+/g, "");
 
-  // if it's already a boxnr like 041-2 or 076-004
   if (/^\d{1,4}-\d{1,4}$/.test(txt)) return txt;
 
-  // pattern anywhere
   const mAny = txt.match(/(\d{1,4}-\d{1,4})/);
   if (mAny) return mAny[1];
 
-  // fallback: after first dash (deviceprefix-BOXNR)
   const idx = txt.indexOf("-");
   if (idx < 0) return null;
   const after = txt.slice(idx + 1).trim();
   if (!after) return null;
 
-  // after could be "041-2" => ok
   if (/^\d{1,4}-\d{1,4}$/.test(after)) return after;
-
-  // sometimes after is only last segment; not ideal but keep if digits
   if (/^\d{1,4}$/.test(after)) return after;
 
   return null;
 }
 
-/**
- * Device resolver:
- * raw device from top cell like "FMC9202MAUWU" => match a device in DB.
- * Strategy:
- * - exact canonical
- * - longest prefix match raw startsWith db canonical
- * - heuristic letters+first3digits (FMC9202MAUWU -> FMC920)
- * - pad (FMC03 -> FMC003)
- */
 function resolveDeviceDisplay(
   rawDevice: string,
   devices: { canonical_name: string; device: string | null; active?: boolean | null }[]
@@ -132,8 +98,6 @@ function resolveDeviceDisplay(
   return null;
 }
 
-/* ========= detect layout ========= */
-
 function detectHeaderRow(rows: any[][]) {
   for (let r = 0; r < Math.min(rows.length, 60); r++) {
     const row = rows[r] || [];
@@ -144,10 +108,6 @@ function detectHeaderRow(rows: any[][]) {
   return -1;
 }
 
-/**
- * Detect blocks:
- * header contains "box no" and within next 20 cols find "imei".
- */
 function detectBlocks(headerRow: any[]) {
   const header = (headerRow || []).map((c) => lower(c).replace(/\s+/g, " ").trim());
   const blocks: { boxCol: number; imeiCol: number }[] = [];
@@ -176,9 +136,6 @@ function detectBlocks(headerRow: any[]) {
   return blocks;
 }
 
-/**
- * device name = first non-empty cell in rowAboveHeader between boxCol..imeiCol
- */
 function getDeviceNameFromTopRow(rowAboveHeader: any[], boxCol: number, imeiCol: number) {
   const row = rowAboveHeader || [];
   for (let c = boxCol; c <= imeiCol; c++) {
@@ -189,9 +146,6 @@ function getDeviceNameFromTopRow(rowAboveHeader: any[], boxCol: number, imeiCol:
   return v2 || null;
 }
 
-/**
- * ✅ New: read boxnr from primary col, else fallback to next col
- */
 function readBoxNrFromRow(row: any[], boxCol: number) {
   const primary = extractBoxNr(row?.[boxCol]);
   if (primary) return primary;
@@ -202,10 +156,6 @@ function readBoxNrFromRow(row: any[], boxCol: number) {
   return null;
 }
 
-/**
- * ✅ avoid “sticking” an old boxnr on separator rows:
- * - if row has no value in boxCol..imeiCol => it's a separator row
- */
 function isSeparatorRow(row: any[], boxCol: number, imeiCol: number) {
   for (let c = boxCol; c <= imeiCol; c++) {
     if (trim(row?.[c])) return false;
@@ -213,9 +163,87 @@ function isSeparatorRow(row: any[], boxCol: number, imeiCol: number) {
   return true;
 }
 
-/* ========= handler ========= */
-
 type LabelRow = { device: string; box_no: string; qty: number; qr_data: string };
+
+async function parseTeltonikaPreview(file: File, devicesDb: any[]) {
+  const buf = new Uint8Array(await file.arrayBuffer());
+  const wb = XLSX.read(buf, { type: "array" });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any[][];
+
+  if (!rows?.length) throw new Error("Empty excel file");
+
+  const headerRowIdx = detectHeaderRow(rows);
+  if (headerRowIdx < 0) throw new Error("Could not detect header row (need BOX + IMEI headers)");
+
+  const blocks = detectBlocks(rows[headerRowIdx] || []);
+  if (!blocks.length) throw new Error("No blocks detected (Box No + IMEI)");
+
+  const rowAbove = rows[headerRowIdx - 1] || [];
+  const unknown = new Set<string>();
+  const map = new Map<string, { device: string; box_no: string; imeis: string[] }>();
+
+  for (const b of blocks) {
+    const rawTopDevice = getDeviceNameFromTopRow(rowAbove, b.boxCol, b.imeiCol);
+    if (!rawTopDevice) continue;
+
+    const deviceDisplay = resolveDeviceDisplay(rawTopDevice, devicesDb || []);
+    if (!deviceDisplay) {
+      unknown.add(rawTopDevice);
+      continue;
+    }
+
+    let currentBoxNr: string | null = null;
+
+    for (let r = headerRowIdx + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+
+      if (isSeparatorRow(row, b.boxCol, b.imeiCol)) {
+        currentBoxNr = null;
+        continue;
+      }
+
+      const bn = readBoxNrFromRow(row, b.boxCol);
+      if (bn) currentBoxNr = bn;
+
+      const imei = isImei(row[b.imeiCol]);
+      if (!imei || !currentBoxNr) continue;
+
+      const key = `${deviceDisplay}__${currentBoxNr}`;
+      if (!map.has(key)) map.set(key, { device: deviceDisplay, box_no: currentBoxNr, imeis: [] });
+      map.get(key)!.imeis.push(imei);
+    }
+  }
+
+  if (unknown.size) {
+    return {
+      ok: false,
+      error: "device(s) not found in Admin > Devices",
+      unknown_devices: Array.from(unknown).sort(),
+    };
+  }
+
+  const labels: LabelRow[] = Array.from(map.values())
+    .map((x) => {
+      const uniq = Array.from(new Set(x.imeis));
+      return { device: x.device, box_no: x.box_no, qty: uniq.length, qr_data: uniq.join("\n") };
+    })
+    .filter((l) => l.qty > 0)
+    .sort((a, b) => (a.device + a.box_no).localeCompare(b.device + b.box_no));
+
+  if (!labels.length) {
+    return { ok: false, error: "No valid rows parsed. Check that IMEI cells contain 15 digits." };
+  }
+
+  return {
+    ok: true,
+    labels,
+    devices: new Set(labels.map((l) => l.device)).size,
+    boxes: labels.length,
+    items: labels.reduce((acc, l) => acc + l.qty, 0),
+    debug: { header_row_index: headerRowIdx, blocks: blocks.map((b) => ({ boxCol: b.boxCol, imeiCol: b.imeiCol })) },
+  };
+}
 
 export async function POST(req: Request) {
   try {
@@ -232,102 +260,33 @@ export async function POST(req: Request) {
     const form = await req.formData();
     const file = form.get("file") as File | null;
     const location = trim(form.get("location"));
+    const vendor = (trim(form.get("vendor")) || "teltonika") as Vendor;
 
     if (!file) return NextResponse.json({ ok: false, error: "Missing file" }, { status: 400 });
 
     const { data: devicesDb, error: dErr } = await admin.from("devices").select("canonical_name, device, active");
     if (dErr) return NextResponse.json({ ok: false, error: dErr.message }, { status: 500 });
 
-    const buf = new Uint8Array(await file.arrayBuffer());
-    const wb = XLSX.read(buf, { type: "array" });
-    const ws = wb.Sheets[wb.SheetNames[0]];
-    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any[][];
-
-    if (!rows?.length) return NextResponse.json({ ok: false, error: "Empty excel file" }, { status: 400 });
-
-    const headerRowIdx = detectHeaderRow(rows);
-    if (headerRowIdx < 0) {
-      return NextResponse.json({ ok: false, error: "Could not detect header row (need BOX + IMEI headers)" }, { status: 400 });
-    }
-
-    const blocks = detectBlocks(rows[headerRowIdx] || []);
-    if (!blocks.length) {
-      return NextResponse.json({ ok: false, error: "No blocks detected (Box No + IMEI)" }, { status: 400 });
-    }
-
-    const rowAbove = rows[headerRowIdx - 1] || [];
-    const unknown = new Set<string>();
-    const map = new Map<string, { device: string; box_no: string; imeis: string[] }>();
-
-    for (const b of blocks) {
-      const rawTopDevice = getDeviceNameFromTopRow(rowAbove, b.boxCol, b.imeiCol);
-      if (!rawTopDevice) continue;
-
-      const deviceDisplay = resolveDeviceDisplay(rawTopDevice, devicesDb || []);
-      if (!deviceDisplay) {
-        unknown.add(rawTopDevice);
-        continue;
-      }
-
-      let currentBoxNr: string | null = null;
-
-      for (let r = headerRowIdx + 1; r < rows.length; r++) {
-        const row = rows[r] || [];
-
-        // ✅ separator reset
-        if (isSeparatorRow(row, b.boxCol, b.imeiCol)) {
-          currentBoxNr = null;
-          continue;
-        }
-
-        const bn = readBoxNrFromRow(row, b.boxCol);
-        if (bn) currentBoxNr = bn;
-
-        const imei = isImei(row[b.imeiCol]);
-        if (!imei) continue;
-        if (!currentBoxNr) continue;
-
-        const key = `${deviceDisplay}__${currentBoxNr}`;
-        if (!map.has(key)) map.set(key, { device: deviceDisplay, box_no: currentBoxNr, imeis: [] });
-        map.get(key)!.imeis.push(imei);
-      }
-    }
-
-    if (unknown.size) {
+    if (vendor !== "teltonika") {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "device(s) not found in Admin > Devices",
-          unknown_devices: Array.from(unknown).sort(),
-        },
+        { ok: false, error: `Parser not implemented yet for vendor: ${vendor}` },
         { status: 400 }
       );
     }
 
-    const labels: LabelRow[] = Array.from(map.values())
-      .map((x) => {
-        const uniq = Array.from(new Set(x.imeis));
-        return { device: x.device, box_no: x.box_no, qty: uniq.length, qr_data: uniq.join("\n") };
-      })
-      .filter((l) => l.qty > 0)
-      .sort((a, b) => (a.device + a.box_no).localeCompare(b.device + b.box_no));
-
-    if (!labels.length) {
-      return NextResponse.json({ ok: false, error: "No valid rows parsed. Check that IMEI cells contain 15 digits." }, { status: 400 });
-    }
+    const parsed = await parseTeltonikaPreview(file, devicesDb || []);
+    if (!parsed.ok) return NextResponse.json(parsed, { status: 400 });
 
     return NextResponse.json({
       ok: true,
-      file_name: file.name,
+      vendor,
       location,
-      devices: new Set(labels.map((l) => l.device)).size,
-      boxes: labels.length,
-      items: labels.reduce((acc, l) => acc + l.qty, 0),
-      labels,
-      debug: {
-        header_row_index: headerRowIdx,
-        blocks: blocks.map((b) => ({ boxCol: b.boxCol, imeiCol: b.imeiCol, fallbackBoxCol: b.boxCol + 1 })),
-      },
+      file_name: file.name,
+      devices: parsed.devices,
+      boxes: parsed.boxes,
+      items: parsed.items,
+      labels: parsed.labels,
+      debug: parsed.debug,
     });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });

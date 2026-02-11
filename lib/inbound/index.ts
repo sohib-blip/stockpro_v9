@@ -7,7 +7,7 @@ export * from "./parsers";
 export {
   parseTeltonikaExcel,
   parseQuicklinkExcel,
-  parseTrusterExcel,
+  parseTrustedExcel,
   parseDigitalMatterExcel,
   parseVendorExcel,
 } from "./parsers";

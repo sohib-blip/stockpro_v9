@@ -393,6 +393,7 @@ export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[
  * TRUSTED / TRUSTER
  * ✅ Fix: accept "Serialnumber" as IMEI
  * ✅ Fix: if header missing/changed -> auto-detect IMEI column
+ * ✅ Fix: force device = Neon-R (no guessing)
  */
 export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
@@ -414,8 +415,7 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
     );
   });
 
-  const idxImei =
-    idxImeiHeader >= 0 ? idxImeiHeader : detectImeiColumn(rows, 60);
+  const idxImei = idxImeiHeader >= 0 ? idxImeiHeader : detectImeiColumn(rows, 60);
 
   if (idxImei < 0) {
     return makeFail(
@@ -427,39 +427,15 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
 
   const debug: Record<string, any> = { header, idxImei };
 
-  // device guess (old logic) — if you want better later, we can add rules
-  // Here: if cannot guess, we will fail with a clear message.
-  // You can also hardcode Truster to a specific device if always same.
-  function guessDeviceRaw(v: any): string | null {
-    const s = String(v ?? "").toUpperCase();
-    if (!s) return null;
-    const m = s.match(/\b([A-Z]{2,}\d{2,}[A-Z0-9]{0,})\b/);
-    return m ? m[1] : null;
-  }
+  // ✅ FORCE DEVICE (Truster => Neon-R)
+  const forcedDeviceRaw = "Neon-R T7";
+  const deviceDisplay = resolveDeviceDisplay(forcedDeviceRaw, devices);
 
-  // Try to guess device from filename-like strings inside sheet (rare)
-  // If no device column exists, you will have to set it manually in Admin > Devices mapping later.
-  let deviceRawBest: string | null = null;
-
-  // Heuristic: scan first row cells for something like CV200, FMC, FMB, etc.
-  const firstRowStr = (rows[0] || []).map((c) => String(c ?? "")).join(" ").toUpperCase();
-  deviceRawBest = guessDeviceRaw(firstRowStr);
-
-  if (!deviceRawBest) {
-    // fallback: tell user clearly what to do
-    return makeFail(
-      "Truster: device name not detected. Add a device hint in file (header/first row) OR tell me what device this Truster report corresponds to.",
-      [],
-      debug
-    );
-  }
-
-  const deviceDisplay = resolveDeviceDisplay(deviceRawBest, devices);
   if (!deviceDisplay) {
     return makeFail(
-      `device(s) not found in Admin > Devices: ${deviceRawBest}`,
-      [deviceRawBest],
-      debug
+      `device(s) not found in Admin > Devices: ${forcedDeviceRaw}`,
+      [forcedDeviceRaw],
+      { ...debug, forcedDeviceRaw }
     );
   }
 
@@ -473,7 +449,11 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
   }
 
   if (!allImeis.length) {
-    return makeFail("Truster: no IMEI parsed from Serial/IMEI column", [], { ...debug, deviceRawBest, deviceDisplay });
+    return makeFail(
+      "Truster: no IMEI parsed from Serial/IMEI column",
+      [],
+      { ...debug, deviceDisplay, chunkSize }
+    );
   }
 
   const labels: ParsedLabel[] = [];
@@ -492,7 +472,7 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
     boxCounter++;
   }
 
-  return makeOk(labels, { ...debug, deviceRawBest, deviceDisplay, chunkSize }, []);
+  return makeOk(labels, { ...debug, deviceDisplay, chunkSize }, []);
 }
 
 /**

@@ -1,3 +1,4 @@
+// app/api/inbound/commit/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -12,11 +13,14 @@ type Vendor = "teltonika" | "quicklink" | "truster" | "digitalmatter";
 const ITEMS_TABLE = "items";
 const ITEMS_IMEI_COL = "imei";
 const ITEMS_BOX_ID_COL = "box_id";
+const ITEMS_DEVICE_ID_COL = "device_id";
 
 const BOXES_TABLE = "boxes";
 const BOXES_ID_COL = "box_id";
 const BOXES_BOXNO_COL = "box_no";
 const BOXES_LOCATION_COL = "location";
+const BOXES_DEVICE_ID_COL = "device_id";
+const BOXES_DEVICE_COL = "device";
 
 /* =========================
    Supabase helpers
@@ -53,7 +57,7 @@ function chunk<T>(arr: T[], size: number) {
 }
 
 /* =========================
-   Duplicate check
+   Duplicate check (IMEI)
 ========================= */
 async function findExistingImeis(
   admin: NonNullable<ReturnType<typeof adminClient>>,
@@ -74,26 +78,89 @@ async function findExistingImeis(
 
     if (error) throw new Error(error.message);
 
-    for (const row of data || []) {
-      const imei = row[ITEMS_IMEI_COL];
-      const box_id = row[ITEMS_BOX_ID_COL];
+    const boxIds = Array.from(
+      new Set((data || []).map((r: any) => String(r?.[ITEMS_BOX_ID_COL] || "")).filter(Boolean))
+    );
 
-      if (!box_id) continue;
+    const boxInfo = new Map<string, { box_no: string | null; location: string | null }>();
 
-      const { data: box } = await admin
+    if (boxIds.length > 0) {
+      const { data: boxes, error: bErr } = await admin
         .from(BOXES_TABLE)
-        .select(`${BOXES_BOXNO_COL}, ${BOXES_LOCATION_COL}`)
-        .eq(BOXES_ID_COL, box_id)
-        .maybeSingle();
+        .select(`${BOXES_ID_COL}, ${BOXES_BOXNO_COL}, ${BOXES_LOCATION_COL}`)
+        .in(BOXES_ID_COL, boxIds);
 
+      if (bErr) throw new Error(bErr.message);
+
+      for (const b of boxes || []) {
+        boxInfo.set(String((b as any)[BOXES_ID_COL]), {
+          box_no: (b as any)[BOXES_BOXNO_COL] ?? null,
+          location: (b as any)[BOXES_LOCATION_COL] ?? null,
+        });
+      }
+    }
+
+    for (const row of data || []) {
+      const imei = String((row as any)[ITEMS_IMEI_COL] ?? "");
+      const box_id = String((row as any)[ITEMS_BOX_ID_COL] ?? "");
+      if (!imei || !box_id) continue;
+
+      const info = boxInfo.get(box_id);
       result.set(imei, {
-        box_no: box?.[BOXES_BOXNO_COL] ?? null,
-        location: box?.[BOXES_LOCATION_COL] ?? null,
+        box_no: info?.box_no ?? null,
+        location: info?.location ?? null,
       });
     }
   }
 
   return result;
+}
+
+/* =========================
+   Get or create box
+   - reuse existing bin if exists (device_id + box_no + location)
+========================= */
+async function getOrCreateBoxId(params: {
+  admin: NonNullable<ReturnType<typeof adminClient>>;
+  device_id: string;
+  device_display: string;
+  box_no: string;
+  location: string;
+}) {
+  const { admin, device_id, device_display, box_no, location } = params;
+
+  // 1) Try find existing
+  const { data: existing, error: selErr } = await admin
+    .from(BOXES_TABLE)
+    .select(`${BOXES_ID_COL}`)
+    .eq(BOXES_DEVICE_ID_COL, device_id)
+    .eq(BOXES_BOXNO_COL, box_no)
+    .eq(BOXES_LOCATION_COL, location)
+    .maybeSingle();
+
+  if (selErr) throw new Error(selErr.message);
+
+  if (existing?.[BOXES_ID_COL]) return existing[BOXES_ID_COL] as string;
+
+  // 2) Insert new
+  const { data: inserted, error: insErr } = await admin
+    .from(BOXES_TABLE)
+    .insert({
+      [BOXES_DEVICE_ID_COL]: device_id,
+      [BOXES_DEVICE_COL]: device_display, // keep text for debug
+      [BOXES_BOXNO_COL]: box_no,
+      [BOXES_LOCATION_COL]: location,
+      status: "IN",
+    })
+    .select(`${BOXES_ID_COL}`)
+    .maybeSingle();
+
+  if (insErr) throw new Error(insErr.message);
+
+  const boxId = inserted?.[BOXES_ID_COL];
+  if (!boxId) throw new Error("Failed to create box (no box_id returned)");
+
+  return boxId as string;
 }
 
 /* =========================
@@ -110,10 +177,12 @@ export async function POST(req: Request) {
     }
 
     const userClient = authedClient(token);
-    const { error: authErr } = await userClient.auth.getUser();
-    if (authErr) {
+    const { data: userData, error: authErr } = await userClient.auth.getUser();
+    if (authErr || !userData?.user) {
       return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
+
+    const userId = userData.user.id;
 
     /* ---------- FormData ---------- */
     const form = await req.formData();
@@ -132,18 +201,30 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Server misconfiguration" }, { status: 500 });
     }
 
-    const { data: devicesDbRows } = await admin
+    // 1) Load devices from DB (for parsing + for device_id mapping)
+    const { data: devicesDbRows, error: devErr } = await admin
       .from("devices")
-      .select("canonical_name, device, active");
+      .select("device_id, canonical_name, device, active");
+
+    if (devErr) throw new Error(devErr.message);
 
     const devicesDb = toDeviceMatchList(devicesDbRows || []);
 
+    // deviceDisplay -> device_id (case-insensitive + trim)
+    const deviceIdByDisplay = new Map<string, string>();
+    for (const d of devicesDbRows || []) {
+      const display = String((d as any).device ?? "").trim();
+      const id = String((d as any).device_id ?? "").trim();
+      if (display && id) deviceIdByDisplay.set(display.toLowerCase(), id);
+    }
+
+    // 2) Parse excel
     const parsed = parseVendorExcel(vendor, bytes, devicesDb);
     if (!parsed.ok) {
       return NextResponse.json(parsed, { status: 400 });
     }
 
-    /* ---------- Duplicate check AGAIN ---------- */
+    // 3) Duplicate check
     const incomingImeis = parsed.labels.flatMap((l) => l.imeis || []);
     const existing = await findExistingImeis(admin, incomingImeis);
 
@@ -162,44 +243,74 @@ export async function POST(req: Request) {
       );
     }
 
-    /* ---------- Insert ---------- */
+    // 4) Insert / reuse boxes + insert items WITH device_id
+    let insertedBoxes = 0;
+    let insertedItems = 0;
+
     for (const l of parsed.labels) {
-      const { data: boxRow, error: boxErr } = await admin
-        .from(BOXES_TABLE)
-        .insert({
-          box_no: l.box_no,
-          location,
-        })
-        .select(BOXES_ID_COL)
-        .maybeSingle();
+      const deviceDisplay = String(l.device || "").trim();
+      const deviceId = deviceIdByDisplay.get(deviceDisplay.toLowerCase()) || "";
 
-      if (boxErr) throw new Error(boxErr.message);
+      if (!deviceId) {
+        return NextResponse.json(
+          { ok: false, error: `Device not found in DB for import: ${deviceDisplay}` },
+          { status: 400 }
+        );
+      }
 
-      const boxId = boxRow?.[BOXES_ID_COL];
+      const boxId = await getOrCreateBoxId({
+        admin,
+        device_id: deviceId,
+        device_display: deviceDisplay,
+        box_no: String(l.box_no || "").trim(),
+        location,
+      });
 
-      const rowsToInsert = l.imeis.map((imei) => ({
-        box_id: boxId,
-        imei,
+      // Count if it was newly created (cheap check)
+      // (optional: you can remove this if you don’t care)
+      // We’ll just increment when box_no/device/location didn’t exist
+      // -> ignore, keep simple
+
+      const rowsToInsert = (l.imeis || []).map((imei) => ({
+        [ITEMS_BOX_ID_COL]: boxId,
+        [ITEMS_DEVICE_ID_COL]: deviceId,
+        [ITEMS_IMEI_COL]: imei,
         status: "IN",
+        imported_by: userId,
+        imported_at: new Date().toISOString(),
       }));
 
-      const { error: itemsErr } = await admin.from(ITEMS_TABLE).insert(rowsToInsert);
+      // insert in chunks to avoid payload limits
+      for (const part of chunk(rowsToInsert, 500)) {
+        const { error: itemsErr } = await admin.from(ITEMS_TABLE).insert(part);
 
-      if (itemsErr) {
-        // sécurité ultime si unique constraint déclenche
-        if (itemsErr.message.includes("duplicate")) {
-          return NextResponse.json(
-            { ok: false, error: "IMEI déjà existant détecté pendant insertion." },
-            { status: 400 }
-          );
+        if (itemsErr) {
+          if (itemsErr.message.toLowerCase().includes("duplicate")) {
+            return NextResponse.json(
+              { ok: false, error: "IMEI déjà existant détecté pendant insertion." },
+              { status: 400 }
+            );
+          }
+          throw new Error(itemsErr.message);
         }
-        throw new Error(itemsErr.message);
+
+        insertedItems += part.length;
       }
+
+      // Update box qty/status quickly (optional but nice)
+      await admin
+        .from(BOXES_TABLE)
+        .update({ status: "IN" })
+        .eq(BOXES_ID_COL, boxId);
+
+      insertedBoxes += 1;
     }
 
     return NextResponse.json({
       ok: true,
       counts: parsed.counts,
+      inserted_boxes: insertedBoxes,
+      inserted_items: insertedItems,
     });
   } catch (e: any) {
     console.error("Inbound commit error:", e);

@@ -391,9 +391,10 @@ export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[
 
 /**
  * TRUSTED / TRUSTER
- * ✅ Fix: accept "Serialnumber" as IMEI
- * ✅ Fix: if header missing/changed -> auto-detect IMEI column
- * ✅ Fix: force device = Neon-R (no guessing)
+ * ✅ 1 Excel = 1 box (pas de boxnr dans le fichier)
+ * ✅ accepte "Serialnumber" comme IMEI
+ * ✅ auto-detect colonne IMEI si header change
+ * ✅ device forcé (ici: Neon-R T7)
  */
 export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
@@ -401,7 +402,7 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
 
   const header = (rows[0] || []).map(norm);
 
-  // try header-based detection first
+  // 1) detect IMEI column (IMEI or Serialnumber)
   const idxImeiHeader = header.findIndex((h) => {
     const x = String(h || "");
     return (
@@ -427,7 +428,7 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
 
   const debug: Record<string, any> = { header, idxImei };
 
-  // ✅ FORCE DEVICE (Truster => Neon-R)
+  // 2) ✅ force device
   const forcedDeviceRaw = "Neon-R T7";
   const deviceDisplay = resolveDeviceDisplay(forcedDeviceRaw, devices);
 
@@ -439,40 +440,36 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
     );
   }
 
-  // chunk IMEIs into 50 per box (default)
-  const chunkSize = 50;
+  // 3) parse all imeis from this single file (single box)
   const allImeis: string[] = [];
-
   for (let r = 1; r < rows.length; r++) {
     const imei = isImei((rows[r] || [])[idxImei]);
     if (imei) allImeis.push(imei);
   }
 
-  if (!allImeis.length) {
+  const uniqueImeis = uniq(allImeis);
+
+  if (!uniqueImeis.length) {
     return makeFail(
       "Truster: no IMEI parsed from Serial/IMEI column",
       [],
-      { ...debug, deviceDisplay, chunkSize }
+      { ...debug, deviceDisplay }
     );
   }
 
-  const labels: ParsedLabel[] = [];
-  let boxCounter = 1;
-
-  for (let i = 0; i < allImeis.length; i += chunkSize) {
-    const chunk = allImeis.slice(i, i + chunkSize);
-    labels.push({
+  // ✅ one label = one box
+  const labels: ParsedLabel[] = [
+    {
       vendor: "truster",
       device: deviceDisplay,
-      box_no: String(boxCounter),
-      imeis: uniq(chunk),
+      box_no: "1", // 1 fichier = 1 boîte
+      imeis: uniqueImeis,
       qty: 0,
       qr_data: "",
-    });
-    boxCounter++;
-  }
+    },
+  ];
 
-  return makeOk(labels, { ...debug, deviceDisplay, chunkSize }, []);
+  return makeOk(labels, { ...debug, deviceDisplay, mode: "single_box" }, []);
 }
 
 /**

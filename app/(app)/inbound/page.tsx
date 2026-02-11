@@ -6,7 +6,7 @@ import { useToast } from "@/components/ToastProvider";
 
 type Vendor = "teltonika" | "quicklink" | "truster" | "digitalmatter";
 type ImportFormat =
-  | "teltonika_serial_multi" // ✅ celui qu’on a déjà (multi blocks)
+  | "teltonika_serial_multi"
   | "teltonika_serial_simple"
   | "quicklink_default"
   | "truster_default"
@@ -18,6 +18,14 @@ type LabelRow = {
   qty: number;
   qr_data: string;
   box_id?: string | null;
+};
+
+type DuplicateRow = {
+  imei: string;
+  incoming_device: string;
+  incoming_box_no: string;
+  existing_box_no: string | null;
+  existing_location: string | null;
 };
 
 const VENDORS: Array<{ key: Vendor; label: string }> = [
@@ -32,9 +40,9 @@ const FORMATS_BY_VENDOR: Record<Vendor, Array<{ key: ImportFormat; label: string
     { key: "teltonika_serial_multi", label: "Serial list — Multi devices (blocks)", hint: "Excel avec plusieurs devices côte à côte" },
     { key: "teltonika_serial_simple", label: "Serial list — Simple (1 device)", hint: "Excel simple, 1 seul bloc" },
   ],
-  quicklink: [{ key: "quicklink_default", label: "Default", hint: "Parser Quicklink (à brancher)" }],
-  truster: [{ key: "truster_default", label: "Default", hint: "Parser Truster (à brancher)" }],
-  digitalmatter: [{ key: "digitalmatter_default", label: "Default", hint: "Parser DigitalMatter (à brancher)" }],
+  quicklink: [{ key: "quicklink_default", label: "Default", hint: "Parser Quicklink" }],
+  truster: [{ key: "truster_default", label: "Default", hint: "Parser Truster" }],
+  digitalmatter: [{ key: "digitalmatter_default", label: "Default", hint: "Parser DigitalMatter" }],
 };
 
 export default function InboundImportPage() {
@@ -43,10 +51,7 @@ export default function InboundImportPage() {
 
   const [file, setFile] = useState<File | null>(null);
 
-  // ✅ locations locked
   const [location, setLocation] = useState<string>("00");
-
-  // ✅ clean UI: tabs vendor + dropdown format
   const [vendor, setVendor] = useState<Vendor>("teltonika");
   const [format, setFormat] = useState<ImportFormat>("teltonika_serial_multi");
 
@@ -55,6 +60,7 @@ export default function InboundImportPage() {
 
   const [preview, setPreview] = useState<any | null>(null);
   const [labels, setLabels] = useState<LabelRow[]>([]);
+  const [duplicates, setDuplicates] = useState<DuplicateRow[]>([]);
   const [committed, setCommitted] = useState(false);
 
   const [q, setQ] = useState("");
@@ -75,6 +81,7 @@ export default function InboundImportPage() {
       setCommitted(false);
       setPreview(null);
       setLabels([]);
+      setDuplicates([]);
       setLoadingPreview(true);
 
       if (!file) {
@@ -101,22 +108,45 @@ export default function InboundImportPage() {
       });
 
       const json = await res.json().catch(() => null);
+
+      // ❌ preview FAIL
       if (!res.ok || !json?.ok) {
-        // show unknown_devices nicely if present
+        setPreview(json);
+
+        // unknown devices
         if (json?.unknown_devices?.length) {
           toast({
             kind: "error",
             title: "Unknown devices",
             message: `Ajoute d'abord dans Admin > Devices: ${json.unknown_devices.join(", ")}`,
           });
-          setPreview(json);
           return;
         }
+
+        // duplicates
+        if (Array.isArray(json?.duplicates) && json.duplicates.length > 0) {
+          setDuplicates(json.duplicates as DuplicateRow[]);
+          toast({
+            kind: "error",
+            title: "Doublons IMEI",
+            message: `Import bloqué: ${json?.duplicates_count ?? json.duplicates.length} doublon(s) détecté(s).`,
+          });
+          return;
+        }
+
         throw new Error(json?.error || "Preview failed");
       }
 
+      // ✅ preview OK
       setPreview(json);
       setLabels((json.labels || []) as LabelRow[]);
+      setDuplicates([]);
+
+      toast({
+        kind: "success",
+        title: "Preview OK",
+        message: `${json?.counts?.devices ?? "?"} devices · ${json?.counts?.boxes ?? "?"} cartons · ${json?.counts?.items ?? "?"} IMEI`,
+      });
     } catch (e: any) {
       toast({ kind: "error", title: "Preview failed", message: e?.message || "Error" });
     } finally {
@@ -130,6 +160,12 @@ export default function InboundImportPage() {
 
       if (!file) {
         toast({ kind: "error", title: "File missing", message: "Choisis un fichier Excel." });
+        return;
+      }
+
+      // si doublons encore affichés => blocage UI
+      if (duplicates.length > 0) {
+        toast({ kind: "error", title: "Import bloqué", message: "Il y a des doublons IMEI. Corrige avant de commit." });
         return;
       }
 
@@ -162,17 +198,30 @@ export default function InboundImportPage() {
           setPreview(json);
           return;
         }
+
+        if (Array.isArray(json?.duplicates) && json.duplicates.length > 0) {
+          setPreview(json);
+          setDuplicates(json.duplicates as DuplicateRow[]);
+          toast({
+            kind: "error",
+            title: "Doublons IMEI",
+            message: `Import bloqué: ${json?.duplicates_count ?? json.duplicates.length} doublon(s) détecté(s).`,
+          });
+          return;
+        }
+
         throw new Error(json?.error || "Import failed");
       }
 
       setCommitted(true);
       setPreview(json);
       setLabels((json.labels || []) as LabelRow[]);
+      setDuplicates([]);
 
       toast({
         kind: "success",
         title: "Import OK",
-        message: `${json.devices} devices · ${json.boxes} cartons · ${json.items} IMEI`,
+        message: `${json?.counts?.devices ?? "?"} devices · ${json?.counts?.boxes ?? "?"} cartons · ${json?.counts?.items ?? "?"} IMEI`,
       });
     } catch (e: any) {
       toast({ kind: "error", title: "Import failed", message: e?.message || "Error" });
@@ -208,14 +257,11 @@ export default function InboundImportPage() {
         <div>
           <div className="text-xs text-slate-500">Inbound</div>
           <h2 className="text-xl font-semibold">Import fournisseurs</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Preview → Confirm. Vendor + format = lecture stable (même multi devices).
-          </p>
+          <p className="text-sm text-slate-400 mt-1">Preview → Confirm. Doublons IMEI bloquent direct.</p>
         </div>
 
-        {/* ✅ CLEAN BAR: tabs + format dropdown */}
+        {/* tabs + format */}
         <div className="bg-slate-900 rounded-2xl border border-slate-800 p-3 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          {/* Tabs desktop / dropdown mobile */}
           <div className="flex flex-col md:flex-row gap-3 md:items-center">
             <div className="hidden md:flex items-center gap-1 bg-slate-950 border border-slate-800 rounded-xl p-1">
               {VENDORS.map((v) => {
@@ -307,7 +353,7 @@ export default function InboundImportPage() {
 
             <button
               onClick={onConfirmImport}
-              disabled={loadingCommit || loadingPreview || !file}
+              disabled={loadingCommit || loadingPreview || !file || duplicates.length > 0}
               className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
             >
               {loadingCommit ? "Import…" : "Confirm import"}
@@ -322,6 +368,7 @@ export default function InboundImportPage() {
           <StatCard title="Étage" value={location} />
         </div>
 
+        {/* unknown devices */}
         {!preview?.ok && preview?.unknown_devices?.length ? (
           <div className="mt-3 rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
             <div className="font-semibold">Unknown devices</div>
@@ -338,12 +385,54 @@ export default function InboundImportPage() {
           </div>
         ) : null}
 
-        {!preview?.ok && preview?.error ? (
+        {/* generic error */}
+        {!preview?.ok && preview?.error && !duplicates.length ? (
           <div className="mt-3 rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
             {String(preview.error)}
           </div>
         ) : null}
       </div>
+
+      {/* DUPLICATES BLOCK */}
+      {duplicates.length > 0 ? (
+        <div className="bg-slate-900 rounded-2xl border border-rose-900/60 p-4 space-y-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-rose-200">Doublons IMEI détectés</div>
+              <div className="text-xs text-rose-300/80 mt-1">
+                Import bloqué. Corrige l’excel (ou supprime ces IMEI) puis refais Preview.
+              </div>
+            </div>
+
+            <div className="text-xs text-rose-200 font-bold">{duplicates.length} doublon(s)</div>
+          </div>
+
+          <div className="overflow-auto">
+            <table className="w-full text-sm border border-rose-900/60 rounded-xl overflow-hidden">
+              <thead className="bg-rose-950/30">
+                <tr>
+                  <th className="text-left p-2 border-b border-rose-900/60">IMEI</th>
+                  <th className="text-left p-2 border-b border-rose-900/60">Incoming (device)</th>
+                  <th className="text-left p-2 border-b border-rose-900/60">Incoming (box)</th>
+                  <th className="text-left p-2 border-b border-rose-900/60">Existe déjà (box)</th>
+                  <th className="text-left p-2 border-b border-rose-900/60">Location</th>
+                </tr>
+              </thead>
+              <tbody>
+                {duplicates.map((d) => (
+                  <tr key={`${d.imei}__${d.incoming_device}__${d.incoming_box_no}`} className="hover:bg-rose-950/20">
+                    <td className="p-2 border-b border-rose-900/40 font-mono text-rose-100">{d.imei}</td>
+                    <td className="p-2 border-b border-rose-900/40 text-slate-100">{d.incoming_device}</td>
+                    <td className="p-2 border-b border-rose-900/40 text-slate-200">{d.incoming_box_no}</td>
+                    <td className="p-2 border-b border-rose-900/40 text-slate-200">{d.existing_box_no ?? "—"}</td>
+                    <td className="p-2 border-b border-rose-900/40 text-slate-200">{d.existing_location ?? "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
 
       {/* LABELS PREVIEW TABLE */}
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
@@ -391,9 +480,9 @@ export default function InboundImportPage() {
         </div>
 
         {committed ? (
-          <div className="text-xs text-emerald-300">
-            ✅ Import confirmé. (PDF labels et historique on branche après, étape suivante)
-          </div>
+          <div className="text-xs text-emerald-300">✅ Import confirmé.</div>
+        ) : duplicates.length > 0 ? (
+          <div className="text-xs text-rose-300">⛔ Doublons détectés: import bloqué tant que c’est pas clean.</div>
         ) : (
           <div className="text-xs text-slate-500">Fais Preview puis Confirm import.</div>
         )}

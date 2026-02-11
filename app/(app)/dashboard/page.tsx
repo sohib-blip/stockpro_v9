@@ -1,518 +1,260 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
-import { exportInStockByDevice } from "@/lib/exports";
 
-type SummaryResp = {
-  ok: boolean;
-  error?: string;
-  counts?: {
-    devices?: number;
-    items_in?: number;
-    items_out?: number;
-    boxes?: number;
-  };
-  per_device?: Array<{ device: string; in_stock: number; out_stock: number; total: number }>;
-
-  // optional if your summary API supports it
-  per_location?: Array<{ location: "00" | "1" | "6" | "Cabinet" | "UNKNOWN"; in_stock: number }>;
-  per_device_location?: Array<{
-    device: string;
-    total_in: number;
-    locations: Array<{ location: "00" | "1" | "6" | "Cabinet" | "UNKNOWN"; in_stock: number }>;
-  }>;
-};
-
-type DeviceRow = { device: string; min_stock: number };
-
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-2 text-2xl font-semibold text-slate-100">{value}</div>
-    </div>
-  );
-}
+type StockRow = { device: string; boxes: number; items: number };
+type ImportRow = { created_at: string; vendor: string | null; device: string | null; box_no: string | null; qty: number | null };
+type MovementRow = { created_at: string; type: string | null; device: string | null; box_no: string | null; imei: string | null };
 
 export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  const deviceFromUrl = String(searchParams.get("device") || "").trim();
 
   const [loading, setLoading] = useState(false);
-  const [summary, setSummary] = useState<SummaryResp | null>(null);
 
-  // ✅ thresholds from devices table
-  const [thresholds, setThresholds] = useState<Record<string, number>>({});
+  const [devices, setDevices] = useState<string[]>([]);
+  const [kpi, setKpi] = useState<{ devices: number; boxes: number; items: number }>({ devices: 0, boxes: 0, items: 0 });
+  const [stock, setStock] = useState<StockRow[]>([]);
+  const [imports, setImports] = useState<ImportRow[]>([]);
+  const [movements, setMovements] = useState<MovementRow[]>([]);
 
-  const [deviceQuery, setDeviceQuery] = useState<string>("");
-  const [sort, setSort] = useState<{ key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" }>({
-    key: "device",
-    dir: "asc",
-  });
-  const [page, setPage] = useState(1);
-  const pageSize = 25;
+  // UI filter
+  const [q, setQ] = useState("");
+  const [deviceSelected, setDeviceSelected] = useState<string>(deviceFromUrl || "");
 
-  const [canExport, setCanExport] = useState(false);
+  useEffect(() => {
+    setDeviceSelected(deviceFromUrl || "");
+  }, [deviceFromUrl]);
+
+  async function getAccessToken() {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token || "";
+  }
+
+  function setDeviceInUrl(device: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (device) params.set("device", device);
+    else params.delete("device");
+    router.push(`?${params.toString()}`);
+  }
 
   async function load() {
-    setLoading(true);
-    setSummary(null);
-
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-
-    if (!token) {
-      setSummary({ ok: false, error: "Please sign in first." });
-      setLoading(false);
-      return;
-    }
-
     try {
-      // 1) dashboard summary
-      const res = await fetch("/api/dashboard/summary", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const json = (await res.json()) as SummaryResp;
-      setSummary(json);
+      setLoading(true);
 
-      // 2) thresholds from devices (min_stock)
-      //    if table doesn't exist, we fallback silently
-      const { data: dData, error: dErr } = await supabase.from("devices").select("device, min_stock");
-
-      if (dErr) {
-        toast({
-          kind: "error",
-          title: "Devices min stock not loaded",
-          message: dErr.message,
-        });
-        setThresholds({});
-      } else {
-        const map: Record<string, number> = {};
-        (dData || []).forEach((r: DeviceRow) => {
-          map[String(r.device)] = Number(r.min_stock ?? 0);
-        });
-        setThresholds(map);
+      const token = await getAccessToken();
+      if (!token) {
+        toast({ kind: "error", title: "Auth", message: "Pas connecté." });
+        return;
       }
 
-      // 3) permissions (optional)
-      const { data: u } = await supabase.auth.getUser();
-      if (u.user?.id) {
-        const { data: p } = await supabase
-          .from("user_permissions")
-          .select("can_export")
-          .eq("user_id", u.user.id)
-          .maybeSingle();
-        setCanExport(!!p?.can_export);
-      }
+      const url = deviceSelected ? `/api/dashboard?device=${encodeURIComponent(deviceSelected)}` : "/api/dashboard";
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Dashboard fetch failed");
+
+      setDevices((json.devices || []) as string[]);
+      setKpi(json.kpi || { devices: 0, boxes: 0, items: 0 });
+      setStock((json.stock || []) as StockRow[]);
+      setImports((json.imports || []) as ImportRow[]);
+      setMovements((json.movements || []) as MovementRow[]);
     } catch (e: any) {
-      setSummary({ ok: false, error: e?.message ?? "Dashboard error" });
+      toast({ kind: "error", title: "Dashboard", message: e?.message || "Error" });
     } finally {
       setLoading(false);
     }
   }
 
+  // reload when deviceSelected changes
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [deviceSelected]);
 
-  // Reset pagination when filters/sort change
-  useEffect(() => {
-    setPage(1);
-  }, [deviceQuery, sort.key, sort.dir]);
-
-  const counts = summary?.counts || {};
-  const perDeviceAll = Array.isArray(summary?.per_device) ? summary!.per_device! : [];
-
-  const q = deviceQuery.trim().toLowerCase();
-  const filtered = useMemo(() => {
-    return perDeviceAll.filter((r) => (!q ? true : String(r.device ?? "").toLowerCase().includes(q)));
-  }, [perDeviceAll, q]);
-
-  // ✅ Stats follow filter
-  const filteredTotals = useMemo(() => {
-    const devices = filtered.length;
-    const items_in = filtered.reduce((acc, r) => acc + Number(r.in_stock ?? 0), 0);
-    const items_out = filtered.reduce((acc, r) => acc + Number(r.out_stock ?? 0), 0);
-    const total = filtered.reduce((acc, r) => acc + Number(r.total ?? 0), 0);
-    return { devices, items_in, items_out, total };
-  }, [filtered]);
-
-  const useFilteredStats = q.length > 0;
-
-  const devicesCount = useFilteredStats ? filteredTotals.devices : (counts.devices ?? 0);
-  const inStock = useFilteredStats ? filteredTotals.items_in : (counts.items_in ?? 0);
-  const outStock = useFilteredStats ? filteredTotals.items_out : (counts.items_out ?? 0);
-  const totalItems = useFilteredStats ? filteredTotals.total : ((counts.items_in ?? 0) + (counts.items_out ?? 0));
-
-  // ✅ RED ONLY if strictly BELOW min_stock
-  function isLow(device: string, in_stock: number) {
-    const min = thresholds[device] ?? 0;
-    return Number(in_stock ?? 0) < Number(min);
-  }
-
-  const sorted = useMemo(() => {
-    const rows = [...filtered];
-    const dir = sort.dir === "asc" ? 1 : -1;
-    rows.sort((a, b) => {
-      const va =
-        sort.key === "device"
-          ? String(a.device ?? "")
-          : sort.key === "in"
-          ? a.in_stock ?? 0
-          : sort.key === "out"
-          ? a.out_stock ?? 0
-          : a.total ?? 0;
-
-      const vb =
-        sort.key === "device"
-          ? String(b.device ?? "")
-          : sort.key === "in"
-          ? b.in_stock ?? 0
-          : sort.key === "out"
-          ? b.out_stock ?? 0
-          : b.total ?? 0;
-
-      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
-      return String(va).localeCompare(String(vb)) * dir;
-    });
-    return rows;
-  }, [filtered, sort.key, sort.dir]);
-
-  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
-  const safePage = Math.min(Math.max(1, page), totalPages);
-  const perDevice = sorted.slice((safePage - 1) * pageSize, safePage * pageSize);
-
-  // optional sections (only if API returns them)
-  const perLocation = Array.isArray(summary?.per_location) ? summary!.per_location! : [];
-  const perDeviceLocation = Array.isArray(summary?.per_device_location) ? summary!.per_device_location! : [];
-
-  const perDeviceLocationFiltered = useMemo(() => {
-    if (!q) return perDeviceLocation;
-    return perDeviceLocation.filter((r) => String(r.device ?? "").toLowerCase().includes(q));
-  }, [perDeviceLocation, q]);
+  const stockFiltered = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    if (!qq) return stock;
+    return stock.filter((s) => String(s.device || "").toLowerCase().includes(qq));
+  }, [stock, q]);
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      {/* HEADER + FILTER */}
+      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
         <div>
-          <div className="text-xs text-slate-500">Overview</div>
-          <h2 className="text-xl font-semibold">Dashboard</h2>
-          <p className="text-sm text-slate-400 mt-1">Devices + stock in / out + totals. Low stock is red.</p>
+          <div className="text-xs text-slate-500">Dashboard</div>
+          <h2 className="text-xl font-semibold">Stock overview</h2>
+          <p className="text-sm text-slate-400 mt-1">
+            Filtre par device (nom affiché) + URL persistante.
+          </p>
         </div>
 
-        <div className="flex items-center gap-2">
-          {canExport ? (
-            <>
-              <button
-                onClick={() => exportFullInventory(supabase, toast)}
-                className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-              >
-                Export inventory CSV
-              </button>
-              <button
-                onClick={() => exportInStockByDevice(supabase, toast)}
-                className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-              >
-                Export IN stock (device/box/IMEI)
-              </button>
-            </>
-          ) : null}
+        <div className="flex flex-col md:flex-row gap-2 md:items-center">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search device…"
+            className="border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm w-full md:w-[220px]"
+          />
+
+          <select
+            value={deviceSelected}
+            onChange={(e) => {
+              const v = e.target.value;
+              setDeviceSelected(v);
+              setDeviceInUrl(v);
+            }}
+            className="border border-slate-800 bg-slate-950 text-slate-100 rounded-xl px-3 py-2 text-sm w-full md:w-[240px]"
+          >
+            <option value="">All devices</option>
+            {devices.map((d) => (
+              <option key={d} value={d}>
+                {d}
+              </option>
+            ))}
+          </select>
 
           <button
-            onClick={load}
+            onClick={() => load()}
             disabled={loading}
             className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
           >
-            {loading ? "Refreshing…" : "Refresh"}
+            {loading ? "Loading…" : "Refresh"}
+          </button>
+
+          <button
+            onClick={() => {
+              setQ("");
+              setDeviceSelected("");
+              setDeviceInUrl("");
+            }}
+            className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+          >
+            Clear
           </button>
         </div>
       </div>
 
-      {!summary ? null : summary.ok ? (
-        <>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Stat label="Devices" value={devicesCount} />
-            <Stat label="In stock" value={inStock} />
-            <Stat label="Out stock" value={outStock} />
-            <Stat label="Total items" value={totalItems} />
+      {/* KPI */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <StatCard title="Devices" value={kpi.devices} />
+        <StatCard title="Boxes" value={kpi.boxes} />
+        <StatCard title="Items (IMEI)" value={kpi.items} />
+      </div>
+
+      {/* MAIN GRID */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* LEFT: STOCK TABLE */}
+        <div className="lg:col-span-2 bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold">Stock par device</div>
+              <div className="text-xs text-slate-500">Boxes + Items (IMEI) calculés.</div>
+            </div>
           </div>
 
-          {/* ✅ Stock par étage (optional) */}
-          {perLocation.length > 0 ? (
-            <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
-              <div className="text-sm font-semibold">In stock par étage</div>
-              <div className="text-xs text-slate-500 mt-1">00 / 1 / 6 / Cabinet</div>
-
-              <div className="overflow-auto mt-3">
-                <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-                  <thead className="bg-slate-950/50">
-                    <tr>
-                      <th className="p-2 text-left border-b border-slate-800">Étage</th>
-                      <th className="p-2 text-right border-b border-slate-800">IN</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {perLocation.map((r) => (
-                      <tr key={r.location} className="hover:bg-slate-950/50">
-                        <td className="p-2 border-b border-slate-800">{r.location}</td>
-                        <td className="p-2 border-b border-slate-800 text-right font-semibold">{r.in_stock}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Devices table */}
-          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
-            <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
-              <div>
-                <div className="text-sm font-semibold">Devices</div>
-                <div className="text-xs text-slate-500">IN / OUT / total per device.</div>
-              </div>
-
-              <input
-                value={deviceQuery}
-                onChange={(e) => setDeviceQuery(e.target.value)}
-                placeholder="Filter by device name…"
-                className="w-full md:w-[280px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
-              />
-            </div>
-
-            <div className="overflow-auto">
-              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-                <thead className="bg-slate-950/50">
-                  <tr>
-                    <Th label="Device" active={sort.key === "device"} dir={sort.dir} onClick={() => toggleSort(setSort, "device")} align="left" />
-                    <Th label="IN" active={sort.key === "in"} dir={sort.dir} onClick={() => toggleSort(setSort, "in")} align="right" />
-                    <Th label="OUT" active={sort.key === "out"} dir={sort.dir} onClick={() => toggleSort(setSort, "out")} align="right" />
-                    <Th label="Total" active={sort.key === "total"} dir={sort.dir} onClick={() => toggleSort(setSort, "total")} align="right" />
+          <div className="overflow-auto">
+            <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+              <thead className="bg-slate-950/50">
+                <tr>
+                  <th className="text-left p-2 border-b border-slate-800">Device</th>
+                  <th className="text-right p-2 border-b border-slate-800">Boxes</th>
+                  <th className="text-right p-2 border-b border-slate-800">Items</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockFiltered.map((s) => (
+                  <tr key={s.device} className="hover:bg-slate-950/50">
+                    <td className="p-2 border-b border-slate-800 font-semibold text-slate-100">{s.device}</td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{s.boxes}</td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{s.items}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {perDevice.map((r) => {
-                    const dev = r.device || "UNKNOWN";
-                    const low = dev !== "UNKNOWN" ? isLow(dev, Number(r.in_stock ?? 0)) : false;
-                    const min = thresholds[dev] ?? 0;
+                ))}
 
-                    return (
-                      <tr key={dev} className={low ? "bg-rose-950/20 hover:bg-rose-950/30" : "hover:bg-slate-950/50"}>
-                        <td className="p-2 border-b border-slate-800">
-                          <div className="flex items-center gap-2">
-                            <span className="text-slate-100">{dev}</span>
-                            {low ? <LowBadge /> : null}
-                          </div>
-                          {dev !== "UNKNOWN" ? (
-                            <div className="text-xs text-slate-500 mt-0.5">
-                              Min stock: <span className="text-slate-300 font-semibold">{min}</span>
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="p-2 border-b border-slate-800 text-right">
-                          <Badge kind="in">{r.in_stock ?? 0}</Badge>
-                        </td>
-                        <td className="p-2 border-b border-slate-800 text-right">
-                          <Badge kind="out">{r.out_stock ?? 0}</Badge>
-                        </td>
-                        <td className="p-2 border-b border-slate-800 text-right text-slate-200">{r.total ?? 0}</td>
-                      </tr>
-                    );
-                  })}
-                  {perDevice.length === 0 && (
-                    <tr>
-                      <td className="p-3 text-sm text-slate-400" colSpan={4}>
-                        No devices found.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+                {stockFiltered.length === 0 && (
+                  <tr>
+                    <td className="p-3 text-sm text-slate-400" colSpan={3}>
+                      No data.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-            <div className="mt-3 flex items-center justify-between gap-2">
-              <div className="text-xs text-slate-500">
-                Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, sorted.length)} of {sorted.length}
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
-                  disabled={safePage === 1}
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                >
-                  Prev
-                </button>
-                <div className="text-xs text-slate-400">
-                  Page {safePage} / {totalPages}
-                </div>
-                <button
-                  className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
-                  disabled={safePage === totalPages}
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                >
-                  Next
-                </button>
-              </div>
+        {/* RIGHT: IMPORTS + MOVEMENTS */}
+        <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-4">
+          <div>
+            <div className="text-sm font-semibold">Derniers imports</div>
+            <div className="text-xs text-slate-500">Si table import_history existe.</div>
+
+            <div className="mt-2 space-y-2">
+              {imports.length === 0 ? (
+                <div className="text-xs text-slate-400">Aucun import.</div>
+              ) : (
+                imports.slice(0, 8).map((x, i) => (
+                  <div key={i} className="rounded-xl border border-slate-800 bg-slate-950 p-2 text-xs">
+                    <div className="text-slate-200 font-semibold">
+                      {x.device || "?"} · {x.box_no || "?"} · {x.qty ?? "?"} IMEI
+                    </div>
+                    <div className="text-slate-500">
+                      {x.vendor || "vendor?"} · {formatDate(x.created_at)}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           </div>
 
-          {/* ✅ Devices x étages (optional) */}
-          {perDeviceLocationFiltered.length > 0 ? (
-            <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
-              <div className="text-sm font-semibold">Devices par étage</div>
-              <div className="text-xs text-slate-500 mt-1">IN stock (00 / 1 / 6 / Cabinet)</div>
+          <div>
+            <div className="text-sm font-semibold">Derniers mouvements</div>
+            <div className="text-xs text-slate-500">Si table movement_history existe.</div>
 
-              <div className="overflow-auto mt-3">
-                <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-                  <thead className="bg-slate-950/50">
-                    <tr>
-                      <th className="p-2 text-left border-b border-slate-800">Device</th>
-                      <th className="p-2 text-right border-b border-slate-800">00</th>
-                      <th className="p-2 text-right border-b border-slate-800">1</th>
-                      <th className="p-2 text-right border-b border-slate-800">6</th>
-                      <th className="p-2 text-right border-b border-slate-800">Cabinet</th>
-                      <th className="p-2 text-right border-b border-slate-800">Total IN</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {perDeviceLocationFiltered.slice(0, 200).map((r) => {
-                      const get = (loc: string) => r.locations.find((x) => x.location === loc)?.in_stock ?? 0;
-                      return (
-                        <tr key={r.device} className="hover:bg-slate-950/50">
-                          <td className="p-2 border-b border-slate-800">{r.device}</td>
-                          <td className="p-2 border-b border-slate-800 text-right">{get("00")}</td>
-                          <td className="p-2 border-b border-slate-800 text-right">{get("1")}</td>
-                          <td className="p-2 border-b border-slate-800 text-right">{get("6")}</td>
-                          <td className="p-2 border-b border-slate-800 text-right">{get("Cabinet")}</td>
-                          <td className="p-2 border-b border-slate-800 text-right font-semibold">{r.total_in}</td>
-                        </tr>
-                      );
-                    })}
-                    {perDeviceLocationFiltered.length === 0 ? (
-                      <tr>
-                        <td className="p-3 text-slate-400" colSpan={6}>
-                          No data.
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-
-              <div className="text-xs text-slate-500 mt-2">(Affichage limité à 200 lignes pour éviter lag.)</div>
+            <div className="mt-2 space-y-2">
+              {movements.length === 0 ? (
+                <div className="text-xs text-slate-400">Aucun mouvement.</div>
+              ) : (
+                movements.slice(0, 8).map((x, i) => (
+                  <div key={i} className="rounded-xl border border-slate-800 bg-slate-950 p-2 text-xs">
+                    <div className="text-slate-200 font-semibold">
+                      {x.type || "MOVE"} · {x.device || "?"} · {x.box_no || "?"}
+                    </div>
+                    <div className="text-slate-500">
+                      {x.imei ? `IMEI: ${x.imei}` : "IMEI: —"} · {formatDate(x.created_at)}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-          ) : null}
-        </>
-      ) : (
-        <div className="rounded-2xl border border-rose-900/60 bg-rose-950/40 p-4 text-sm text-rose-200">
-          {summary.error || "Dashboard error"}
+          </div>
         </div>
-      )}
+      </div>
     </div>
   );
 }
 
-function toggleSort(
-  setSort: React.Dispatch<React.SetStateAction<{ key: "device" | "in" | "out" | "total"; dir: "asc" | "desc" }>>,
-  key: "device" | "in" | "out" | "total"
-) {
-  setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "desc" }));
-}
-
-function Th({
-  label,
-  active,
-  dir,
-  onClick,
-  align,
-}: {
-  label: string;
-  active: boolean;
-  dir: "asc" | "desc";
-  onClick: () => void;
-  align: "left" | "right";
-}) {
+function StatCard({ title, value }: { title: string; value: any }) {
   return (
-    <th
-      className={`select-none cursor-pointer ${align === "left" ? "text-left" : "text-right"} p-2 border-b border-slate-800 hover:bg-slate-950/60`}
-      onClick={onClick}
-      title="Sort"
-    >
-      <span className="inline-flex items-center gap-1">
-        {label}
-        {active ? <span className="text-slate-500">{dir === "asc" ? "▲" : "▼"}</span> : null}
-      </span>
-    </th>
+    <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
+      <div className="text-xs text-slate-500">{title}</div>
+      <div className="text-2xl font-semibold text-slate-100 mt-1">{String(value)}</div>
+    </div>
   );
 }
 
-function Badge({ kind, children }: { kind: "in" | "out"; children: React.ReactNode }) {
-  const cls =
-    kind === "in"
-      ? "border-emerald-900/60 bg-emerald-950/40 text-emerald-200"
-      : "border-rose-900/60 bg-rose-950/40 text-rose-200";
-  return <span className={`inline-flex min-w-[44px] justify-end rounded-lg border px-2 py-1 font-semibold ${cls}`}>{children}</span>;
-}
-
-function LowBadge() {
-  return (
-    <span className="inline-flex items-center rounded-full border border-rose-900/60 bg-rose-950/40 px-2 py-0.5 text-[11px] font-bold text-rose-200">
-      LOW STOCK
-    </span>
-  );
-}
-
-async function exportFullInventory(supabase: any, toast: (t: any) => void) {
-  try {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const token = sessionData.session?.access_token;
-    if (!token) {
-      toast({ kind: "error", title: "Export failed", message: "Please sign in first." });
-      return;
-    }
-
-    const res = await fetch("/api/export/inventory", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (!res.ok) {
-      let msg = "Export failed";
-      try {
-        const j = await res.json();
-        msg = j?.error || msg;
-      } catch {}
-      toast({ kind: "error", title: "Export failed", message: msg });
-      return;
-    }
-
-    const blob = await res.blob();
-    const filename =
-      getFilenameFromDisposition(res.headers.get("content-disposition")) ||
-      `inventory_${new Date().toISOString().slice(0, 10)}.csv`;
-    downloadBlob(filename, blob);
-    toast({ kind: "success", title: "Inventory exported" });
-  } catch (e: any) {
-    toast({ kind: "error", title: "Export failed", message: e?.message || "Export failed" });
-  }
-}
-
-function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-function getFilenameFromDisposition(disposition: string | null) {
-  if (!disposition) return null;
-  const m = disposition.match(/filename\*?=(?:UTF-8''|\")?([^;\"\n]+)/i);
-  if (!m) return null;
-  return decodeURIComponent(m[1].replaceAll('"', "").trim());
+function formatDate(v: any) {
+  const s = String(v || "");
+  if (!s) return "—";
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) return s;
+  return d.toLocaleString();
 }

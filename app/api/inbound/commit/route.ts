@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-// parsers (nouvelle archi)
 import { parseVendorExcel } from "@/lib/inbound/parsers";
 import { toDeviceMatchList } from "@/lib/inbound/vendorParser";
 
 type Vendor = "teltonika" | "quicklink" | "truster" | "digitalmatter";
+
+/* =========================
+   CONFIG DB
+========================= */
+const ITEMS_TABLE = "items";
+const ITEMS_IMEI_COL = "imei";
+const ITEMS_BOX_ID_COL = "box_id";
+
+const BOXES_TABLE = "boxes";
+const BOXES_ID_COL = "box_id";
+const BOXES_BOXNO_COL = "box_no";
+const BOXES_LOCATION_COL = "location";
 
 /* =========================
    Supabase helpers
@@ -35,6 +46,59 @@ function authedClient(token: string) {
   );
 }
 
+function chunk<T>(arr: T[], size: number) {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/* =========================
+   Duplicate check
+========================= */
+async function findExistingImeis(
+  admin: NonNullable<ReturnType<typeof adminClient>>,
+  imeis: string[]
+) {
+  const result = new Map<string, { box_no?: string | null; location?: string | null }>();
+
+  const uniqueImeis = Array.from(new Set(imeis));
+  if (uniqueImeis.length === 0) return result;
+
+  const chunks = chunk(uniqueImeis, 500);
+
+  for (const part of chunks) {
+    const { data, error } = await admin
+      .from(ITEMS_TABLE)
+      .select(`${ITEMS_IMEI_COL}, ${ITEMS_BOX_ID_COL}`)
+      .in(ITEMS_IMEI_COL, part);
+
+    if (error) throw new Error(error.message);
+
+    for (const row of data || []) {
+      const imei = row[ITEMS_IMEI_COL];
+      const box_id = row[ITEMS_BOX_ID_COL];
+
+      if (!box_id) continue;
+
+      const { data: box } = await admin
+        .from(BOXES_TABLE)
+        .select(`${BOXES_BOXNO_COL}, ${BOXES_LOCATION_COL}`)
+        .eq(BOXES_ID_COL, box_id)
+        .maybeSingle();
+
+      result.set(imei, {
+        box_no: box?.[BOXES_BOXNO_COL] ?? null,
+        location: box?.[BOXES_LOCATION_COL] ?? null,
+      });
+    }
+  }
+
+  return result;
+}
+
+/* =========================
+   POST /api/inbound/commit
+========================= */
 export async function POST(req: Request) {
   try {
     /* ---------- Auth ---------- */
@@ -61,111 +125,81 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Missing file or vendor" }, { status: 400 });
     }
 
-    /* ---------- Read Excel (bytes) ---------- */
     const bytes = new Uint8Array(await file.arrayBuffer());
 
-    /* ---------- Admin + devices list ---------- */
     const admin = adminClient();
     if (!admin) {
       return NextResponse.json({ ok: false, error: "Server misconfiguration" }, { status: 500 });
     }
 
-    const { data: devicesDbRows, error: devErr } = await admin
+    const { data: devicesDbRows } = await admin
       .from("devices")
       .select("canonical_name, device, active");
 
-    if (devErr) {
-      return NextResponse.json({ ok: false, error: devErr.message }, { status: 500 });
-    }
-
     const devicesDb = toDeviceMatchList(devicesDbRows || []);
 
-    /* ---------- Parse (NEW SIGNATURE) ---------- */
     const parsed = parseVendorExcel(vendor, bytes, devicesDb);
-
     if (!parsed.ok) {
       return NextResponse.json(parsed, { status: 400 });
     }
 
-    const labels = parsed.labels;
+    /* ---------- Duplicate check AGAIN ---------- */
+    const incomingImeis = parsed.labels.flatMap((l) => l.imeis || []);
+    const existing = await findExistingImeis(admin, incomingImeis);
 
-    /* ---------- Import DB (boxes + items) ---------- */
-    // ⚠️ assumes tables:
-    // boxes: { box_id, device, box_no, location, status }
-    // items: { box_id, imei, status }
-    // If your schema differs -> tell me and I adjust in 2 sec.
-    const imported: Array<{ device: string; box_no: string; qty: number; box_id?: string | null }> = [];
-
-    for (const l of labels) {
-      // 1) create box (or reuse if exists)
-      let boxId: string | null = null;
-
-      // try insert first
-      const { data: boxRow, error: boxErr } = await admin
-        .from("boxes")
-        .insert({
-          device: l.device,
-          box_no: l.box_no,
-          location,
-          status: "IN_STOCK",
-        })
-        .select("box_id")
-        .maybeSingle();
-
-      if (boxErr) {
-        // if duplicate (box already exists) => fetch existing
-        const { data: existing, error: fetchErr } = await admin
-          .from("boxes")
-          .select("box_id")
-          .eq("device", l.device)
-          .eq("box_no", l.box_no)
-          .maybeSingle();
-
-        if (fetchErr || !existing?.box_id) {
-          return NextResponse.json(
-            { ok: false, error: `Failed to create/fetch box ${l.device} ${l.box_no}: ${boxErr.message}` },
-            { status: 500 }
-          );
-        }
-        boxId = existing.box_id;
-      } else {
-        boxId = boxRow?.box_id ?? null;
-      }
-
-      // 2) insert items
-      if (boxId) {
-        const rowsToInsert = (l.imeis || []).map((imei) => ({
-          box_id: boxId,
-          imei,
-          status: "IN_STOCK",
-        }));
-
-        if (rowsToInsert.length > 0) {
-          const { error: itemsErr } = await admin.from("items").insert(rowsToInsert);
-          if (itemsErr) {
-            return NextResponse.json(
-              { ok: false, error: `Failed inserting IMEIs for ${l.device} ${l.box_no}: ${itemsErr.message}` },
-              { status: 500 }
-            );
-          }
-        }
-      }
-
-      imported.push({ device: l.device, box_no: l.box_no, qty: l.qty, box_id: boxId });
+    if (existing.size > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Doublons IMEI détectés (${existing.size}). Import bloqué.`,
+          duplicates: Array.from(existing.entries()).map(([imei, ex]) => ({
+            imei,
+            existing_box_no: ex.box_no ?? null,
+            existing_location: ex.location ?? null,
+          })),
+        },
+        { status: 400 }
+      );
     }
 
-    /* ---------- Response ---------- */
+    /* ---------- Insert ---------- */
+    for (const l of parsed.labels) {
+      const { data: boxRow, error: boxErr } = await admin
+        .from(BOXES_TABLE)
+        .insert({
+          box_no: l.box_no,
+          location,
+        })
+        .select(BOXES_ID_COL)
+        .maybeSingle();
+
+      if (boxErr) throw new Error(boxErr.message);
+
+      const boxId = boxRow?.[BOXES_ID_COL];
+
+      const rowsToInsert = l.imeis.map((imei) => ({
+        box_id: boxId,
+        imei,
+        status: "IN",
+      }));
+
+      const { error: itemsErr } = await admin.from(ITEMS_TABLE).insert(rowsToInsert);
+
+      if (itemsErr) {
+        // sécurité ultime si unique constraint déclenche
+        if (itemsErr.message.includes("duplicate")) {
+          return NextResponse.json(
+            { ok: false, error: "IMEI déjà existant détecté pendant insertion." },
+            { status: 400 }
+          );
+        }
+        throw new Error(itemsErr.message);
+      }
+    }
+
     return NextResponse.json({
       ok: true,
-      vendor,
-      location,
       counts: parsed.counts,
-      labels: imported.map((x) => ({
-        device: x.device,
-        box_no: x.box_no,
-        qty: x.qty,
-      })),
-      debug: parsed.debug ?? null,
     });
   } catch (e: any) {
     console.error("Inbound commit error:", e);

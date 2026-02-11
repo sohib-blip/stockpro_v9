@@ -1,8 +1,13 @@
 // lib/inbound/index.ts
 
 export * from "./vendorParser";
+export * from "./parsers";
 
-export { parseTeltonikaExcel } from "./teltonika";
-export { parseQuicklinkExcel } from "./quicklink";
-export { parseTrusterExcel } from "./truster";
-export { parseDigitalMatterExcel } from "./digitalmatter";
+// exports explicites (optionnel mais pratique)
+export {
+  parseTeltonikaExcel,
+  parseQuicklinkExcel,
+  parseTrusterExcel,
+  parseDigitalMatterExcel,
+  parseVendorExcel,
+} from "./parsers";

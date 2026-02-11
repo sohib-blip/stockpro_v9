@@ -6,7 +6,6 @@ import {
   ParsedLabel,
   ParseResult,
   Vendor,
-  canonicalize,
   isImei,
   makeFail,
   makeOk,
@@ -26,12 +25,7 @@ function sheetToRows(bytes: Uint8Array): any[][] {
 }
 
 /**
- * TELTONIKA parser (format en blocs horizontaux)
- * Règle (comme tu as demandé):
- * - device name = cellule AU-DESSUS du bloc (dans les premières lignes)
- * - boxCell dans la 1ère colonne du bloc, sinon si vide -> 2ème colonne du bloc
- * - boxNo = partie après premier "-" => ex FMC9202MAUWU-041-2 -> 041-2
- * - IMEI = colonne "IMEI" dans chaque bloc
+ * TELTONIKA (blocs horizontaux multi-devices)
  */
 export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
@@ -40,7 +34,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
   const debug: Record<string, any> = {};
   const unknown: string[] = [];
 
-  // 1) header row detection
+  // 1) detect header row
   let headerRowIdx = -1;
   for (let r = 0; r < Math.min(rows.length, 60); r++) {
     const cells = (rows[r] || []).map(norm);
@@ -57,7 +51,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
 
   const header = (rows[headerRowIdx] || []).map(norm);
 
-  // 2) detect blocks = columns with "box no." (or box+no) then within next 14 cols a "imei"
+  // 2) detect blocks
   const blocks: Array<{ start: number; boxCol1: number; boxCol2: number; imeiCol: number }> = [];
   for (let c = 0; c < header.length; c++) {
     const h = header[c] || "";
@@ -73,11 +67,9 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     }
     if (imeiCol < 0) continue;
 
-    // box col2 sometimes is next column (some suppliers place boxnr in 2nd column)
     const boxCol1 = c;
     const boxCol2 = Math.min(c + 1, header.length - 1);
 
-    // avoid near-duplicates
     const already = blocks.some((b) => Math.abs(b.start - c) <= 2);
     if (already) continue;
 
@@ -93,7 +85,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return makeFail("No blocks detected (expected repeated Box No + IMEI sections)", [], debug);
   }
 
-  // 3) device name above block: scan upwards from header row to row 0 in same column start
+  // device name above block
   function deviceNameAbove(blockStartCol: number): string | null {
     for (let r = headerRowIdx - 1; r >= 0; r--) {
       const v = String((rows[r] || [])[blockStartCol] ?? "").trim();
@@ -102,29 +94,20 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return null;
   }
 
-  // 4) extract box_no from cell:
   // ex "FMC9202MAUWU-041-2" => "041-2"
   function extractBoxNoFromCell(v: any): string | null {
     const s = String(v ?? "").trim();
     if (!s) return null;
-    // take after first "-"
     const parts = s.split("-").map((x) => String(x).trim()).filter(Boolean);
-    if (parts.length >= 3) {
-      // ex [FMC9202MAUWU, 041, 2] => 041-2
-      return `${parts[1]}-${parts[2]}`;
-    }
-    if (parts.length === 2) {
-      // ex [FMC..., 041] => 041
-      return parts[1];
-    }
-    // fallback: last token
+    if (parts.length >= 3) return `${parts[1]}-${parts[2]}`;
+    if (parts.length === 2) return parts[1];
     return parts[parts.length - 1] || null;
   }
 
+  // device = avant le premier "-"
   function extractRawDeviceFromCell(v: any): string | null {
     const s = String(v ?? "").trim();
     if (!s) return null;
-    // device = avant le premier "-"
     const p = s.split("-")[0]?.trim();
     return p || null;
   }
@@ -135,7 +118,6 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     const rawAbove = deviceNameAbove(b.start) || "";
     let rawDevice = rawAbove.trim() || null;
 
-    // resolve device display
     let currentDeviceDisplay: string | null = null;
     if (rawDevice) {
       currentDeviceDisplay = resolveDeviceDisplay(rawDevice, devices);
@@ -147,13 +129,12 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     for (let r = headerRowIdx + 1; r < rows.length; r++) {
       const row = rows[r] || [];
 
-      // box cell: prefer col1, if empty then col2
       const boxCell1 = row[b.boxCol1];
       const boxCell2 = row[b.boxCol2];
 
-      const boxCellStr1 = String(boxCell1 ?? "").trim();
-      const boxCellStr2 = String(boxCell2 ?? "").trim();
-      const pickCell = boxCellStr1 ? boxCell1 : (boxCellStr2 ? boxCell2 : null);
+      const s1 = String(boxCell1 ?? "").trim();
+      const s2 = String(boxCell2 ?? "").trim();
+      const pickCell = s1 ? boxCell1 : (s2 ? boxCell2 : null);
 
       if (pickCell !== null) {
         const rawFromCell = extractRawDeviceFromCell(pickCell);
@@ -181,7 +162,6 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     }
   }
 
-  // block import if unknown devices
   if (uniq(unknown).length > 0) {
     return makeFail(
       `device(s) not found in Admin > Devices: ${uniq(unknown).join(", ")}`,
@@ -206,7 +186,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
  * QUICKLINK
  * - colonnes: IMEI, Carton
  * - box_no = 5 derniers chiffres du champ Carton (digits only)
- * - device: extrait depuis le nom sheet OU depuis Carton (pattern type CV200XEU, etc.)
+ * - device: guess depuis Carton
  */
 export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
@@ -232,25 +212,19 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
   function guessDeviceRaw(carton: any): string | null {
     const s = String(carton ?? "").toUpperCase();
     if (!s) return null;
-
-    // find something like CV200XEU, FMB140, FMC920 etc.
     const m = s.match(/\b([A-Z]{2,}\d{2,}[A-Z0-9]{0,})\b/);
     return m ? m[1] : null;
   }
 
-  // device raw: pick most common guess from carton
   const guesses: Record<string, number> = {};
   for (let r = 1; r < rows.length; r++) {
     const carton = (rows[r] || [])[idxCarton];
     const g = guessDeviceRaw(carton);
     if (g) guesses[g] = (guesses[g] || 0) + 1;
   }
-  const deviceRawBest =
-    Object.entries(guesses).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  const deviceRawBest = Object.entries(guesses).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
-  if (!deviceRawBest) {
-    return makeFail("Quicklink: could not guess device name from Carton", [], debug);
-  }
+  if (!deviceRawBest) return makeFail("Quicklink: could not guess device name from Carton", [], debug);
 
   const deviceDisplay = resolveDeviceDisplay(deviceRawBest, devices);
   if (!deviceDisplay) {
@@ -279,14 +253,7 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
 
   const labels: ParsedLabel[] = Array.from(byBox.entries()).map(([key, imeis]) => {
     const box_no = key.split("__")[1] || "";
-    return {
-      vendor: "quicklink",
-      device: deviceDisplay,
-      box_no,
-      imeis: uniq(imeis),
-      qty: 0,
-      qr_data: "",
-    };
+    return { vendor: "quicklink", device: deviceDisplay, box_no, imeis: uniq(imeis), qty: 0, qr_data: "" };
   });
 
   return makeOk(labels, { ...debug, deviceRawBest, deviceDisplay }, []);
@@ -295,10 +262,10 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
 /**
  * DIGITALMATTER
  * - colonnes: Product Name, IMEI/PACCODE, BOXID
- * - box_no = BOXID (comme tu as dit)
+ * - box_no = BOXID
  * - device = Product Name -> match Admin Devices
  */
-export function parseDigitalmatterExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
+export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
   if (!rows.length) return makeFail("Empty excel file", [], {});
 
@@ -348,27 +315,19 @@ export function parseDigitalmatterExcel(bytes: Uint8Array, devices: DeviceMatch[
   }
 
   const labels: ParsedLabel[] = Array.from(byKey.entries()).map(([key, imeis]) => {
-    const box_no = key.split("__")[1] || "";
-    const device = key.split("__")[0] || "";
-    return {
-      vendor: "digitalmatter",
-      device,
-      box_no,
-      imeis: uniq(imeis),
-      qty: 0,
-      qr_data: "",
-    };
+    const [device, box_no] = key.split("__");
+    return { vendor: "digitalmatter", device: device || "", box_no: box_no || "", imeis: uniq(imeis), qty: 0, qr_data: "" };
   });
 
   return makeOk(labels, debug, []);
 }
 
 /**
- * TRUSTED
- * - pas de boxnr fiable => on chunk (1,2,3...) par packs de 50 IMEI (modifiable)
- * - device: deviné via colonne Carton OU nom sheet, puis match Admin Devices
+ * TRUSTER (ancien "Trusted")
+ * - pas de boxnr fiable => chunk (1,2,3...) par packs de 50 IMEI
+ * - device: deviné via colonne Carton puis match Admin Devices
  */
-export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
+export function parseTrusterExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
   if (!rows.length) return makeFail("Empty excel file", [], {});
 
@@ -376,11 +335,10 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
   const idxImei = header.findIndex((h) => h === "imei" || h.includes("imei"));
   const idxCarton = header.findIndex((h) => h === "carton" || h.includes("carton"));
 
-  if (idxImei < 0) return makeFail("Trusted: IMEI column not found", [], { header });
+  if (idxImei < 0) return makeFail("Truster: IMEI column not found", [], { header });
 
   const debug: Record<string, any> = { header };
 
-  // guess device from Carton values (works for trusted/quicklink style)
   function guessDeviceRawFromCarton(v: any): string | null {
     const s = String(v ?? "").toUpperCase();
     if (!s) return null;
@@ -396,32 +354,24 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
     }
   }
 
-  const deviceRawBest =
-    Object.entries(guesses).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-
-  if (!deviceRawBest) {
-    return makeFail("Trusted: could not guess device (Carton missing or unparseable)", [], debug);
-  }
+  const deviceRawBest = Object.entries(guesses).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+  if (!deviceRawBest) return makeFail("Truster: could not guess device (Carton missing or unparseable)", [], debug);
 
   const deviceDisplay = resolveDeviceDisplay(deviceRawBest, devices);
   if (!deviceDisplay) {
-    return makeFail(
-      `device(s) not found in Admin > Devices: ${deviceRawBest}`,
-      [deviceRawBest],
-      debug
-    );
+    return makeFail(`device(s) not found in Admin > Devices: ${deviceRawBest}`, [deviceRawBest], debug);
   }
 
-  // chunk IMEIs into 50 per box (default)
   const chunkSize = 50;
   const allImeis: string[] = [];
+
   for (let r = 1; r < rows.length; r++) {
     const imei = isImei((rows[r] || [])[idxImei]);
     if (imei) allImeis.push(imei);
   }
 
   if (!allImeis.length) {
-    return makeFail("Trusted: no IMEI parsed", [], { ...debug, deviceRawBest, deviceDisplay });
+    return makeFail("Truster: no IMEI parsed", [], { ...debug, deviceRawBest, deviceDisplay });
   }
 
   const labels: ParsedLabel[] = [];
@@ -432,7 +382,7 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
     labels.push({
       vendor: "truster",
       device: deviceDisplay,
-      box_no: String(boxCounter), // 1,2,3...
+      box_no: String(boxCounter),
       imeis: uniq(chunk),
       qty: 0,
       qr_data: "",
@@ -444,22 +394,18 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
 }
 
 /**
- * Router principal: appelle le bon parser par vendor
+ * Router principal
  */
-export function parseVendorExcel(
-  vendor: Vendor,
-  bytes: Uint8Array,
-  devices: DeviceMatch[]
-): ParseResult {
+export function parseVendorExcel(vendor: Vendor, bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   switch (vendor) {
     case "teltonika":
       return parseTeltonikaExcel(bytes, devices);
     case "quicklink":
       return parseQuicklinkExcel(bytes, devices);
     case "digitalmatter":
-      return parseDigitalmatterExcel(bytes, devices);
+      return parseDigitalMatterExcel(bytes, devices);
     case "truster":
-      return parseTrustedExcel(bytes, devices);
+      return parseTrusterExcel(bytes, devices);
     default:
       return makeFail("Unknown vendor", [], { vendor });
   }

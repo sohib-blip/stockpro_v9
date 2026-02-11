@@ -5,9 +5,37 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 
-type StockRow = { device: string; boxes: number; items: number };
-type ImportRow = { created_at: string; vendor: string | null; device: string | null; box_no: string | null; qty: number | null };
-type MovementRow = { created_at: string; type: string | null; device: string | null; box_no: string | null; imei: string | null };
+type ApiDeviceRow = {
+  device_id: string;
+  device: string;
+  active: boolean;
+  in: number;
+  out: number;
+  total: number;
+};
+
+type ApiLocationRow = {
+  location: string;
+  in: number;
+};
+
+type ApiResponse = {
+  ok: true;
+  stats: {
+    devices: number;
+    in_stock: number;
+    out_stock: number;
+    total_items: number;
+  };
+  in_stock_by_location: ApiLocationRow[];
+  devices: ApiDeviceRow[];
+  pagination: {
+    q: string;
+    page: number;
+    limit: number;
+    total_filtered: number;
+  };
+};
 
 export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -15,34 +43,65 @@ export default function DashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
-  const deviceFromUrl = String(searchParams.get("device") || "").trim();
+  const qFromUrl = String(searchParams.get("q") || "");
+  const pageFromUrl = Math.max(1, Number(searchParams.get("page") || "1") || 1);
 
   const [loading, setLoading] = useState(false);
 
-  const [devices, setDevices] = useState<string[]>([]);
-  const [kpi, setKpi] = useState<{ devices: number; boxes: number; items: number }>({ devices: 0, boxes: 0, items: 0 });
-  const [stock, setStock] = useState<StockRow[]>([]);
-  const [imports, setImports] = useState<ImportRow[]>([]);
-  const [movements, setMovements] = useState<MovementRow[]>([]);
+  const [stats, setStats] = useState<ApiResponse["stats"]>({
+    devices: 0,
+    in_stock: 0,
+    out_stock: 0,
+    total_items: 0,
+  });
 
-  // UI filter
-  const [q, setQ] = useState("");
-  const [deviceSelected, setDeviceSelected] = useState<string>(deviceFromUrl || "");
+  const [inByLocation, setInByLocation] = useState<ApiLocationRow[]>([]);
+  const [deviceRows, setDeviceRows] = useState<ApiDeviceRow[]>([]);
+  const [pagination, setPagination] = useState<ApiResponse["pagination"]>({
+    q: "",
+    page: 1,
+    limit: 25,
+    total_filtered: 0,
+  });
+
+  const [q, setQ] = useState(qFromUrl);
+  const [deviceFilter, setDeviceFilter] = useState<string>(String(searchParams.get("device") || ""));
 
   useEffect(() => {
-    setDeviceSelected(deviceFromUrl || "");
-  }, [deviceFromUrl]);
+    setQ(qFromUrl);
+  }, [qFromUrl]);
+
+  useEffect(() => {
+    setDeviceFilter(String(searchParams.get("device") || ""));
+  }, [searchParams]);
 
   async function getAccessToken() {
     const { data } = await supabase.auth.getSession();
     return data.session?.access_token || "";
   }
 
-  function setDeviceInUrl(device: string) {
+  function pushParams(next: { q?: string; page?: number; device?: string }) {
     const params = new URLSearchParams(searchParams.toString());
-    if (device) params.set("device", device);
-    else params.delete("device");
-    router.push(`?${params.toString()}`);
+
+    if (typeof next.q === "string") {
+      const v = next.q.trim();
+      if (v) params.set("q", v);
+      else params.delete("q");
+    }
+
+    if (typeof next.device === "string") {
+      const v = next.device.trim();
+      if (v) params.set("device", v);
+      else params.delete("device");
+    }
+
+    if (typeof next.page === "number") {
+      if (next.page > 1) params.set("page", String(next.page));
+      else params.delete("page");
+    }
+
+    const qs = params.toString();
+    router.push(qs ? `?${qs}` : "?");
   }
 
   async function load() {
@@ -55,17 +114,22 @@ export default function DashboardPage() {
         return;
       }
 
-      const url = deviceSelected ? `/api/dashboard?device=${encodeURIComponent(deviceSelected)}` : "/api/dashboard";
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const params = new URLSearchParams();
+      if (qFromUrl.trim()) params.set("q", qFromUrl.trim());
+      params.set("page", String(pageFromUrl));
+      params.set("limit", "25");
 
-      const json = await res.json().catch(() => null);
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Dashboard fetch failed");
+      const res = await fetch(`/api/dashboard?${params.toString()}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-      setDevices((json.devices || []) as string[]);
-      setKpi(json.kpi || { devices: 0, boxes: 0, items: 0 });
-      setStock((json.stock || []) as StockRow[]);
-      setImports((json.imports || []) as ImportRow[]);
-      setMovements((json.movements || []) as MovementRow[]);
+      const json = (await res.json().catch(() => null)) as ApiResponse | null;
+      if (!res.ok || !json?.ok) throw new Error((json as any)?.error || "Dashboard fetch failed");
+
+      setStats(json.stats);
+      setInByLocation(json.in_stock_by_location || []);
+      setDeviceRows(json.devices || []);
+      setPagination(json.pagination);
     } catch (e: any) {
       toast({ kind: "error", title: "Dashboard", message: e?.message || "Error" });
     } finally {
@@ -73,17 +137,30 @@ export default function DashboardPage() {
     }
   }
 
-  // reload when deviceSelected changes
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [deviceSelected]);
+  }, [qFromUrl, pageFromUrl]);
 
-  const stockFiltered = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return stock;
-    return stock.filter((s) => String(s.device || "").toLowerCase().includes(qq));
-  }, [stock, q]);
+  const deviceOptions = useMemo(() => {
+    // dropdown = tous les devices (même si pagination ne montre qu’une page)
+    // -> on prend ceux de la page + on garde le filtre actuel (sinon dropdown vide)
+    const set = new Set<string>();
+    for (const d of deviceRows) set.add(d.device);
+    if (deviceFilter) set.add(deviceFilter);
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [deviceRows, deviceFilter]);
+
+  const visibleDeviceRows = useMemo(() => {
+    if (!deviceFilter) return deviceRows;
+    return deviceRows.filter((d) => d.device === deviceFilter);
+  }, [deviceRows, deviceFilter]);
+
+  const totalPages = useMemo(() => {
+    const total = pagination.total_filtered || 0;
+    const lim = pagination.limit || 25;
+    return Math.max(1, Math.ceil(total / lim));
+  }, [pagination]);
 
   return (
     <div className="space-y-6">
@@ -92,9 +169,7 @@ export default function DashboardPage() {
         <div>
           <div className="text-xs text-slate-500">Dashboard</div>
           <h2 className="text-xl font-semibold">Stock overview</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Filtre par device (nom affiché) + URL persistante.
-          </p>
+          <p className="text-sm text-slate-400 mt-1">Filtre par device + recherche + pagination.</p>
         </div>
 
         <div className="flex flex-col md:flex-row gap-2 md:items-center">
@@ -105,17 +180,21 @@ export default function DashboardPage() {
             className="border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm w-full md:w-[220px]"
           />
 
+          <button
+            onClick={() => pushParams({ q, page: 1 })}
+            disabled={loading}
+            className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loading ? "Loading…" : "Search"}
+          </button>
+
           <select
-            value={deviceSelected}
-            onChange={(e) => {
-              const v = e.target.value;
-              setDeviceSelected(v);
-              setDeviceInUrl(v);
-            }}
+            value={deviceFilter}
+            onChange={(e) => pushParams({ device: e.target.value, page: 1 })}
             className="border border-slate-800 bg-slate-950 text-slate-100 rounded-xl px-3 py-2 text-sm w-full md:w-[240px]"
           >
             <option value="">All devices</option>
-            {devices.map((d) => (
+            {deviceOptions.map((d) => (
               <option key={d} value={d}>
                 {d}
               </option>
@@ -123,19 +202,7 @@ export default function DashboardPage() {
           </select>
 
           <button
-            onClick={() => load()}
-            disabled={loading}
-            className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
-          >
-            {loading ? "Loading…" : "Refresh"}
-          </button>
-
-          <button
-            onClick={() => {
-              setQ("");
-              setDeviceSelected("");
-              setDeviceInUrl("");
-            }}
+            onClick={() => pushParams({ q: "", device: "", page: 1 })}
             className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
           >
             Clear
@@ -144,20 +211,41 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <StatCard title="Devices" value={kpi.devices} />
-        <StatCard title="Boxes" value={kpi.boxes} />
-        <StatCard title="Items (IMEI)" value={kpi.items} />
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <StatCard title="Devices" value={stats.devices} />
+        <StatCard title="IN stock" value={stats.in_stock} />
+        <StatCard title="OUT" value={stats.out_stock} />
+        <StatCard title="Total items" value={stats.total_items} />
       </div>
 
       {/* MAIN GRID */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* LEFT: STOCK TABLE */}
+        {/* LEFT: DEVICES TABLE */}
         <div className="lg:col-span-2 bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
             <div>
               <div className="text-sm font-semibold">Stock par device</div>
-              <div className="text-xs text-slate-500">Boxes + Items (IMEI) calculés.</div>
+              <div className="text-xs text-slate-500">IN / OUT / Total (sur la page).</div>
+            </div>
+
+            <div className="flex items-center gap-2 text-xs text-slate-400">
+              <span>
+                Page {pagination.page} / {totalPages}
+              </span>
+              <button
+                onClick={() => pushParams({ page: Math.max(1, pageFromUrl - 1) })}
+                disabled={loading || pageFromUrl <= 1}
+                className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-1 disabled:opacity-50"
+              >
+                Prev
+              </button>
+              <button
+                onClick={() => pushParams({ page: Math.min(totalPages, pageFromUrl + 1) })}
+                disabled={loading || pageFromUrl >= totalPages}
+                className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-1 disabled:opacity-50"
+              >
+                Next
+              </button>
             </div>
           </div>
 
@@ -166,22 +254,26 @@ export default function DashboardPage() {
               <thead className="bg-slate-950/50">
                 <tr>
                   <th className="text-left p-2 border-b border-slate-800">Device</th>
-                  <th className="text-right p-2 border-b border-slate-800">Boxes</th>
-                  <th className="text-right p-2 border-b border-slate-800">Items</th>
+                  <th className="text-right p-2 border-b border-slate-800">IN</th>
+                  <th className="text-right p-2 border-b border-slate-800">OUT</th>
+                  <th className="text-right p-2 border-b border-slate-800">Total</th>
+                  <th className="text-right p-2 border-b border-slate-800">Active</th>
                 </tr>
               </thead>
               <tbody>
-                {stockFiltered.map((s) => (
-                  <tr key={s.device} className="hover:bg-slate-950/50">
-                    <td className="p-2 border-b border-slate-800 font-semibold text-slate-100">{s.device}</td>
-                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{s.boxes}</td>
-                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{s.items}</td>
+                {visibleDeviceRows.map((d) => (
+                  <tr key={d.device_id} className="hover:bg-slate-950/50">
+                    <td className="p-2 border-b border-slate-800 font-semibold text-slate-100">{d.device}</td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{d.in}</td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{d.out}</td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{d.total}</td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{d.active ? "✅" : "—"}</td>
                   </tr>
                 ))}
 
-                {stockFiltered.length === 0 && (
+                {visibleDeviceRows.length === 0 && (
                   <tr>
-                    <td className="p-3 text-sm text-slate-400" colSpan={3}>
+                    <td className="p-3 text-sm text-slate-400" colSpan={5}>
                       No data.
                     </td>
                   </tr>
@@ -191,51 +283,35 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* RIGHT: IMPORTS + MOVEMENTS */}
-        <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-4">
+        {/* RIGHT: LOCATION */}
+        <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
           <div>
-            <div className="text-sm font-semibold">Derniers imports</div>
-            <div className="text-xs text-slate-500">Si table import_history existe.</div>
-
-            <div className="mt-2 space-y-2">
-              {imports.length === 0 ? (
-                <div className="text-xs text-slate-400">Aucun import.</div>
-              ) : (
-                imports.slice(0, 8).map((x, i) => (
-                  <div key={i} className="rounded-xl border border-slate-800 bg-slate-950 p-2 text-xs">
-                    <div className="text-slate-200 font-semibold">
-                      {x.device || "?"} · {x.box_no || "?"} · {x.qty ?? "?"} IMEI
-                    </div>
-                    <div className="text-slate-500">
-                      {x.vendor || "vendor?"} · {formatDate(x.created_at)}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+            <div className="text-sm font-semibold">IN stock par étage</div>
+            <div className="text-xs text-slate-500">Basé sur boxes.location + items IN.</div>
           </div>
 
-          <div>
-            <div className="text-sm font-semibold">Derniers mouvements</div>
-            <div className="text-xs text-slate-500">Si table movement_history existe.</div>
-
-            <div className="mt-2 space-y-2">
-              {movements.length === 0 ? (
-                <div className="text-xs text-slate-400">Aucun mouvement.</div>
-              ) : (
-                movements.slice(0, 8).map((x, i) => (
-                  <div key={i} className="rounded-xl border border-slate-800 bg-slate-950 p-2 text-xs">
-                    <div className="text-slate-200 font-semibold">
-                      {x.type || "MOVE"} · {x.device || "?"} · {x.box_no || "?"}
-                    </div>
-                    <div className="text-slate-500">
-                      {x.imei ? `IMEI: ${x.imei}` : "IMEI: —"} · {formatDate(x.created_at)}
-                    </div>
+          <div className="space-y-2">
+            {inByLocation.length === 0 ? (
+              <div className="text-xs text-slate-400">Aucune donnée.</div>
+            ) : (
+              inByLocation.map((x) => (
+                <div key={x.location} className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="font-semibold text-slate-100">{x.location}</div>
+                    <div className="text-slate-200">{x.in}</div>
                   </div>
-                ))
-              )}
-            </div>
+                </div>
+              ))
+            )}
           </div>
+
+          <button
+            onClick={() => load()}
+            disabled={loading}
+            className="w-full rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loading ? "Loading…" : "Refresh"}
+          </button>
         </div>
       </div>
     </div>
@@ -249,12 +325,4 @@ function StatCard({ title, value }: { title: string; value: any }) {
       <div className="text-2xl font-semibold text-slate-100 mt-1">{String(value)}</div>
     </div>
   );
-}
-
-function formatDate(v: any) {
-  const s = String(v || "");
-  if (!s) return "—";
-  const d = new Date(s);
-  if (Number.isNaN(d.getTime())) return s;
-  return d.toLocaleString();
 }

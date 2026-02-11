@@ -1,21 +1,12 @@
 "use client";
 
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
-import { LOCATIONS } from "@/lib/device";
 
 type ApiResp = { ok: boolean; error?: string; [k: string]: any };
 
-function TabButton({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
+function TabButton({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
     <button
       onClick={onClick}
@@ -32,15 +23,8 @@ function TabButton({
 
 function cleanImeisFromText(text: string) {
   const raw = String(text || "");
-  const parts = raw
-    .split(/[\s,;]+/g)
-    .map((x) => x.trim())
-    .filter(Boolean);
-
-  const imeis = parts
-    .map((x) => x.replace(/\D/g, ""))
-    .filter((x) => /^\d{14,17}$/.test(x));
-
+  const parts = raw.split(/[\s,;]+/g).map((x) => x.trim()).filter(Boolean);
+  const imeis = parts.map((x) => x.replace(/\D/g, "")).filter((x) => /^\d{14,17}$/.test(x));
   const out: string[] = [];
   const seen = new Set<string>();
   for (const i of imeis) {
@@ -52,599 +36,401 @@ function cleanImeisFromText(text: string) {
   return out;
 }
 
-export default function OutboundUnifiedPage() {
+export default function OutboundPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const { toast } = useToast();
 
-  const [tab, setTab] = useState<"outbound" | "movements" | "eod">("outbound");
+  const [tab, setTab] = useState<"work" | "history">("work");
 
-  // scan input
-  const [scanText, setScanText] = useState("");
+  const [text, setText] = useState("");
+  const [file, setFile] = useState<File | null>(null);
 
-  // outbound
-  const [outLoading, setOutLoading] = useState(false);
-  const [outResult, setOutResult] = useState<any>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [preview, setPreview] = useState<any>(null);
 
-  // movements
-  const [moveLoading, setMoveLoading] = useState(false);
-  const [moveResult, setMoveResult] = useState<any>(null);
-  const [toLocation, setToLocation] =
-    useState<(typeof LOCATIONS)[number]>("00");
+  const [excluded, setExcluded] = useState<Set<string>>(new Set());
 
-  // end of day
-  const [eodFile, setEodFile] = useState<File | null>(null);
-  const [eodLoading, setEodLoading] = useState(false);
-  const [eodPreview, setEodPreview] = useState<any>(null);
-  const [eodCommitLoading, setEodCommitLoading] = useState(false);
-  const [eodCommitResult, setEodCommitResult] = useState<any>(null);
+  const [loadingCommit, setLoadingCommit] = useState(false);
+  const [commitRes, setCommitRes] = useState<any>(null);
 
-  // ✅ selection manuelle d'IMEI (tu peux enlever avant commit)
-  const [eodSelectedImeis, setEodSelectedImeis] = useState<Set<string>>(
-    new Set()
-  );
-  const [eodImeiSearch, setEodImeiSearch] = useState("");
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [history, setHistory] = useState<any[]>([]);
 
   async function getToken() {
     const { data } = await supabase.auth.getSession();
     return data.session?.access_token ?? null;
   }
 
-  async function runOutbound() {
-    const imeis = cleanImeisFromText(scanText);
-    if (imeis.length === 0) {
-      toast({
-        kind: "error",
-        title: "Scan un IMEI (ou colle plusieurs IMEIs)",
-      });
-      return;
-    }
-
-    setOutLoading(true);
-    setOutResult(null);
-
-    try {
-      const token = await getToken();
-      if (!token) {
-        toast({ kind: "error", title: "Please sign in first." });
-        return;
-      }
-
-      const res = await fetch("/api/outbound/scan", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ imei: imeis[0], imeis }),
-      });
-
-      const json = (await res.json()) as ApiResp;
-
-      if (!res.ok || !json.ok) {
-        toast({
-          kind: "error",
-          title: "Outbound failed",
-          message: json.error || "Error",
-        });
-        return;
-      }
-
-      setOutResult(json);
-      toast({ kind: "success", title: "Outbound OK" });
-    } catch (e: any) {
-      toast({
-        kind: "error",
-        title: "Outbound failed",
-        message: e?.message || "Error",
-      });
-    } finally {
-      setOutLoading(false);
-    }
+  function resetAll() {
+    setPreview(null);
+    setCommitRes(null);
+    setExcluded(new Set());
   }
 
-  async function runMovement() {
-    const imeis = cleanImeisFromText(scanText);
-    if (imeis.length === 0) {
-      toast({
-        kind: "error",
-        title: "Scan un IMEI (ou colle plusieurs IMEIs)",
-      });
-      return;
-    }
-
-    setMoveLoading(true);
-    setMoveResult(null);
-
-    try {
-      const token = await getToken();
-      if (!token) {
-        toast({ kind: "error", title: "Please sign in first." });
-        return;
-      }
-
-      const res = await fetch("/api/movements/box", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ imei: imeis[0], imeis, to_location: toLocation }),
-      });
-
-      const json = (await res.json()) as ApiResp;
-
-      if (!res.ok || !json.ok) {
-        toast({
-          kind: "error",
-          title: "Movement failed",
-          message: json.error || "Error",
-        });
-        return;
-      }
-
-      setMoveResult(json);
-      toast({ kind: "success", title: `Déplacé vers ${toLocation}` });
-    } catch (e: any) {
-      toast({
-        kind: "error",
-        title: "Movement failed",
-        message: e?.message || "Error",
-      });
-    } finally {
-      setMoveLoading(false);
-    }
+  function removeImei(imei: string) {
+    setExcluded((prev) => new Set([...Array.from(prev), imei]));
   }
 
-  function buildSelectedFromPreview(preview: any) {
-    const boxes = Array.isArray(preview?.boxes) ? preview.boxes : [];
-    const imeis: string[] = [];
-    for (const b of boxes) {
-      const list = Array.isArray(b?.imeis_out) ? b.imeis_out : [];
-      for (const i of list) {
-        const s = String(i || "").trim();
-        if (s) imeis.push(s);
-      }
-    }
-    // unique
-    const set = new Set<string>();
-    for (const i of imeis) set.add(i);
-    return set;
+  function restoreAllImeis() {
+    setExcluded(new Set());
   }
 
-  async function eodPreviewRun() {
-    if (!eodFile) {
-      toast({ kind: "error", title: "Choisis le fichier End of Day (Excel)" });
-      return;
-    }
-
-    setEodLoading(true);
-    setEodPreview(null);
-    setEodCommitResult(null);
-    setEodSelectedImeis(new Set());
-    setEodImeiSearch("");
-
+  async function runPreview() {
     try {
+      setLoadingPreview(true);
+      setPreview(null);
+      setCommitRes(null);
+      setExcluded(new Set());
+
       const token = await getToken();
       if (!token) {
-        toast({ kind: "error", title: "Please sign in first." });
+        toast({ kind: "error", title: "Auth", message: "Pas connecté." });
         return;
       }
 
-      const fd = new FormData();
-      fd.append("file", eodFile);
-      fd.append("mode", "preview");
+      let res: Response;
 
-      // ✅ route correcte
-      const res = await fetch("/api/outbound/eod", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
-      });
+      if (file) {
+        const fd = new FormData();
+        fd.append("file", file);
 
-      const json = await res.json();
-
-      if (!res.ok || !json.ok) {
-        toast({
-          kind: "error",
-          title: "Preview failed",
-          message: json.error || "Error",
+        res = await fetch("/api/outbound/preview", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}` },
+          body: fd,
         });
-        return;
+      } else {
+        const imeis = cleanImeisFromText(text);
+        if (imeis.length === 0) {
+          toast({ kind: "error", title: "Preview", message: "Colle des IMEI valides OU choisis un Excel." });
+          return;
+        }
+
+        res = await fetch("/api/outbound/preview", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ imeis }),
+        });
       }
 
-      setEodPreview(json);
+      const json = (await res.json().catch(() => null)) as ApiResp | null;
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Preview failed");
 
-      // ✅ auto-select tous les IMEI qui vont sortir (tu pourras décocher)
-      const set = buildSelectedFromPreview(json);
-      setEodSelectedImeis(set);
-
+      setPreview(json);
       toast({ kind: "success", title: "Preview ready" });
     } catch (e: any) {
-      toast({
-        kind: "error",
-        title: "Preview failed",
-        message: e?.message || "Error",
-      });
+      toast({ kind: "error", title: "Preview", message: e?.message || "Error" });
     } finally {
-      setEodLoading(false);
+      setLoadingPreview(false);
     }
   }
 
-  async function eodCommitRun() {
-    if (!eodFile) {
-      toast({ kind: "error", title: "Choisis le fichier End of Day (Excel)" });
-      return;
-    }
-
-    if (!eodPreview) {
-      toast({ kind: "error", title: "Fais un preview avant commit 😄" });
-      return;
-    }
-
-    const selected = Array.from(eodSelectedImeis);
-    if (selected.length === 0) {
-      toast({
-        kind: "error",
-        title: "Aucun IMEI sélectionné",
-        message: "Tu as tout décoché 😅",
-      });
-      return;
-    }
-
-    setEodCommitLoading(true);
-    setEodCommitResult(null);
-
+  async function runCommit() {
     try {
+      if (!preview?.ok) {
+        toast({ kind: "error", title: "Commit", message: "Fais un preview d’abord." });
+        return;
+      }
+
       const token = await getToken();
       if (!token) {
-        toast({ kind: "error", title: "Please sign in first." });
+        toast({ kind: "error", title: "Auth", message: "Pas connecté." });
         return;
       }
 
-      const fd = new FormData();
-      fd.append("file", eodFile);
-      fd.append("mode", "commit");
+      setLoadingCommit(true);
+      setCommitRes(null);
 
-      // ✅ on envoie la sélection (après suppression manuelle)
-      fd.append("selected_imeis", JSON.stringify(selected));
+      const excludedArr = Array.from(excluded);
 
-      const res = await fetch("/api/outbound/eod", {
+      // commit via JSON basé sur preview.will_go_out (plus safe pour le "remove manuel")
+      const finalImeis: string[] = Array.isArray(preview?.will_go_out) ? preview.will_go_out : [];
+      const toCommit = excludedArr.length ? finalImeis.filter((x) => !excluded.has(x)) : finalImeis;
+
+      if (toCommit.length === 0) {
+        toast({ kind: "error", title: "Commit", message: "Rien à sortir (tout est exclu)." });
+        return;
+      }
+
+      const res = await fetch("/api/outbound/commit", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
-        body: fd,
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imeis: toCommit,
+          exclude_imeis: [],
+          source: preview?.source ?? { type: "manual" },
+        }),
       });
 
-      const json = await res.json();
+      const json = (await res.json().catch(() => null)) as ApiResp | null;
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Commit failed");
 
-      if (!res.ok || !json.ok) {
-        toast({
-          kind: "error",
-          title: "Commit failed",
-          message: json.error || "Error",
-        });
-        return;
-      }
-
-      setEodCommitResult(json);
+      setCommitRes(json);
       toast({ kind: "success", title: "Stock updated (OUT)" });
     } catch (e: any) {
-      toast({
-        kind: "error",
-        title: "Commit failed",
-        message: e?.message || "Error",
-      });
+      toast({ kind: "error", title: "Commit", message: e?.message || "Error" });
     } finally {
-      setEodCommitLoading(false);
+      setLoadingCommit(false);
     }
   }
 
-  const imeiCount = cleanImeisFromText(scanText).length;
+  async function loadHistory() {
+    try {
+      setHistoryLoading(true);
+      const token = await getToken();
+      if (!token) {
+        toast({ kind: "error", title: "Auth", message: "Pas connecté." });
+        return;
+      }
 
-  // ✅ liste IMEI preview (filtrable)
-  const eodAllImeis = useMemo(() => {
-    if (!eodPreview) return [];
-    const set = buildSelectedFromPreview(eodPreview);
-    return Array.from(set).sort((a, b) => a.localeCompare(b));
-  }, [eodPreview]);
+      const res = await fetch("/api/outbound/history?limit=80", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
 
-  const eodImeisFiltered = useMemo(() => {
-    const q = eodImeiSearch.trim();
-    if (!q) return eodAllImeis;
-    return eodAllImeis.filter((i) => i.includes(q));
-  }, [eodAllImeis, eodImeiSearch]);
+      const json = (await res.json().catch(() => null)) as ApiResp | null;
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "History failed");
 
-  function toggleEodImei(imei: string) {
-    setEodSelectedImeis((prev) => {
-      const next = new Set(prev);
-      if (next.has(imei)) next.delete(imei);
-      else next.add(imei);
-      return next;
-    });
-  }
-
-  function selectAllEod(filteredOnly = false) {
-    const list = filteredOnly ? eodImeisFiltered : eodAllImeis;
-    setEodSelectedImeis((prev) => {
-      const next = new Set(prev);
-      for (const i of list) next.add(i);
-      return next;
-    });
-  }
-
-  function clearAllEod(filteredOnly = false) {
-    if (!filteredOnly) {
-      setEodSelectedImeis(new Set());
-      return;
+      setHistory(Array.isArray(json.events) ? json.events : []);
+    } catch (e: any) {
+      toast({ kind: "error", title: "History", message: e?.message || "Error" });
+    } finally {
+      setHistoryLoading(false);
     }
-    setEodSelectedImeis((prev) => {
-      const next = new Set(prev);
-      for (const i of eodImeisFiltered) next.delete(i);
-      return next;
-    });
   }
+
+  const imeiCountText = cleanImeisFromText(text).length;
+  const willGoOut: string[] = Array.isArray(preview?.will_go_out) ? preview.will_go_out : [];
+  const willGoOutAfter = willGoOut.filter((x) => !excluded.has(x));
 
   return (
     <div className="space-y-6">
       <div>
         <div className="text-xs text-slate-500">Outbound</div>
-        <h1 className="text-xl font-semibold">Outbound + Movements + End of day</h1>
+        <h1 className="text-xl font-semibold">Preview → Commit (propre)</h1>
         <p className="text-sm text-slate-400 mt-1">
-          QR = IMEIs only. Outbound = sortir des IMEI. Movements = déplacer boîtes. End of day = import Excel + preview + commit.
+          Tu upload un Excel OU tu colles des IMEI, tu vois ce qui va sortir, tu peux retirer des IMEI, puis commit.
         </p>
       </div>
 
       <div className="flex flex-wrap gap-2">
-        <TabButton active={tab === "outbound"} onClick={() => setTab("outbound")}>
-          Outbound
+        <TabButton active={tab === "work"} onClick={() => setTab("work")}>
+          Work
         </TabButton>
-        <TabButton active={tab === "movements"} onClick={() => setTab("movements")}>
-          Movements
-        </TabButton>
-        <TabButton active={tab === "eod"} onClick={() => setTab("eod")}>
-          End of day report
+        <TabButton
+          active={tab === "history"}
+          onClick={() => {
+            setTab("history");
+            loadHistory();
+          }}
+        >
+          History
         </TabButton>
       </div>
 
-      {tab !== "eod" ? (
+      {tab === "work" ? (
         <>
           <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-            <div className="text-sm font-semibold">
-              {tab === "outbound" ? "Outbound scan" : "Déplacer une boîte"}
-            </div>
+            <div className="text-sm font-semibold">Input</div>
 
-            <textarea
-              value={scanText}
-              onChange={(e) => setScanText(e.target.value)}
-              rows={6}
-              placeholder={`Scanne ou colle ici…
-Ex:
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <div className="text-xs text-slate-500">Option A — Coller des IMEI</div>
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  rows={6}
+                  placeholder={`Colle ici…
 355123456789012
 355123456789013`}
-              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
-            />
-
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-              <div className="text-xs text-slate-400">
-                IMEIs détectés:{" "}
-                <span className="font-semibold text-slate-200">{imeiCount}</span>
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-slate-100 placeholder:text-slate-500"
+                />
+                <div className="text-xs text-slate-400">
+                  IMEIs détectés (texte): <span className="font-semibold text-slate-200">{imeiCountText}</span>
+                </div>
               </div>
 
-              {tab === "movements" ? (
-                <div className="flex items-center gap-2">
-                  <select
-                    value={toLocation}
-                    onChange={(e) => setToLocation(e.target.value as any)}
-                    className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm"
-                  >
-                    {LOCATIONS.map((l) => (
-                      <option key={l} value={l}>
-                        {l}
-                      </option>
-                    ))}
-                  </select>
-
-                  <button
-                    onClick={runMovement}
-                    disabled={moveLoading}
-                    className="rounded-xl bg-amber-500 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                  >
-                    {moveLoading ? "Moving…" : "Move"}
-                  </button>
+              <div className="space-y-2">
+                <div className="text-xs text-slate-500">Option B — Upload Excel</div>
+                <input type="file" onChange={(e) => setFile(e.target.files?.[0] || null)} />
+                <div className="text-xs text-slate-500">
+                  Si tu mets un fichier, on ignore le texte (c’est volontaire).
                 </div>
-              ) : (
-                <button
-                  onClick={runOutbound}
-                  disabled={outLoading}
-                  className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
-                >
-                  {outLoading ? "Outbound…" : "Outbound"}
-                </button>
-              )}
+              </div>
             </div>
-          </div>
-
-          <ResultPanel
-            title={tab === "outbound" ? "Outbound result" : "Movement result"}
-            data={tab === "outbound" ? outResult : moveResult}
-          />
-        </>
-      ) : (
-        <>
-          <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-            <div className="text-sm font-semibold">Import End of Day report (Excel)</div>
-            <div className="text-xs text-slate-500">
-              Preview = montre quelles boîtes vont perdre combien d’IMEI et combien restent. Commit = met ces IMEI en OUT.
-            </div>
-
-            <input type="file" onChange={(e) => setEodFile(e.target.files?.[0] || null)} />
 
             <div className="flex flex-wrap gap-2">
               <button
-                onClick={eodPreviewRun}
-                disabled={!eodFile || eodLoading}
+                onClick={runPreview}
+                disabled={loadingPreview}
                 className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
               >
-                {eodLoading ? "Preview…" : "Preview"}
+                {loadingPreview ? "Preview…" : "Preview"}
               </button>
 
               <button
-                onClick={eodCommitRun}
-                disabled={!eodFile || eodCommitLoading || !eodPreview}
+                onClick={runCommit}
+                disabled={loadingCommit || !preview?.ok}
                 className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
               >
-                {eodCommitLoading ? "Committing…" : `Commit OUT (${eodSelectedImeis.size})`}
+                {loadingCommit ? "Committing…" : "Commit OUT"}
+              </button>
+
+              <button
+                onClick={() => {
+                  setText("");
+                  setFile(null);
+                  resetAll();
+                }}
+                className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+              >
+                Clear
               </button>
             </div>
           </div>
 
-          {eodPreview ? (
-            <>
-              <EodPreviewPanel data={eodPreview} />
-
-              {/* ✅ IMEI selector */}
-              <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-                <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
-                  <div>
-                    <div className="text-sm font-semibold">IMEIs sélectionnés pour sortir</div>
-                    <div className="text-xs text-slate-500">
-                      Tu peux décocher des IMEI avant commit.
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col md:flex-row gap-2 md:items-center">
-                    <input
-                      value={eodImeiSearch}
-                      onChange={(e) => setEodImeiSearch(e.target.value)}
-                      placeholder="Search IMEI…"
-                      className="border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm w-full md:w-[220px]"
-                    />
-                    <button
-                      onClick={() => selectAllEod(true)}
-                      className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-                    >
-                      Select filtered
-                    </button>
-                    <button
-                      onClick={() => clearAllEod(true)}
-                      className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-                    >
-                      Clear filtered
-                    </button>
-                    <button
-                      onClick={() => selectAllEod(false)}
-                      className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-                    >
-                      Select all
-                    </button>
-                    <button
-                      onClick={() => clearAllEod(false)}
-                      className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-                    >
-                      Clear all
-                    </button>
+          {preview?.ok ? (
+            <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold">Preview</div>
+                  <div className="text-xs text-slate-500">
+                    Source: {preview?.source?.type} {preview?.source?.filename ? `(${preview.source.filename})` : ""}
                   </div>
                 </div>
 
-                <div className="text-xs text-slate-400">
-                  Total IMEI preview:{" "}
-                  <span className="font-semibold text-slate-200">{eodAllImeis.length}</span>{" "}
-                  · Selected:{" "}
-                  <span className="font-semibold text-slate-200">{eodSelectedImeis.size}</span>
+                <div className="flex gap-2">
+                  <button
+                    onClick={restoreAllImeis}
+                    className="rounded-xl bg-slate-900 border border-slate-800 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                  >
+                    Restore all
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Stat label="IMEIs total" value={Number(preview.imeis_total ?? 0)} />
+                <Stat label="Found in DB" value={Number(preview.imeis_found ?? 0)} />
+                <Stat label="Missing" value={Number(preview.imeis_missing_count ?? 0)} />
+                <Stat label="Already OUT" value={Number(preview.imeis_already_out_count ?? 0)} />
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-2 gap-3">
+                <Stat label="Will go OUT" value={Number(preview.imeis_will_go_out_count ?? 0)} />
+                <Stat label="Will go OUT (after removals)" value={willGoOutAfter.length} />
+              </div>
+
+              {/* boxes */}
+              <div className="overflow-auto">
+                <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+                  <thead className="bg-slate-950/50">
+                    <tr>
+                      <th className="p-2 text-left border-b border-slate-800">Device</th>
+                      <th className="p-2 text-left border-b border-slate-800">Box</th>
+                      <th className="p-2 text-left border-b border-slate-800">Location</th>
+                      <th className="p-2 text-right border-b border-slate-800">IN before</th>
+                      <th className="p-2 text-right border-b border-slate-800">OUT now</th>
+                      <th className="p-2 text-right border-b border-slate-800">Remaining</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(preview.boxes || []).map((b: any) => (
+                      <tr key={b.box_id} className="hover:bg-slate-950/50">
+                        <td className="p-2 border-b border-slate-800">{b.device}</td>
+                        <td className="p-2 border-b border-slate-800">{b.box_no}</td>
+                        <td className="p-2 border-b border-slate-800">{b.location}</td>
+                        <td className="p-2 border-b border-slate-800 text-right font-semibold">{b.in_before}</td>
+                        <td className="p-2 border-b border-slate-800 text-right font-semibold">{b.out_now}</td>
+                        <td className="p-2 border-b border-slate-800 text-right font-semibold">{b.remaining_after}</td>
+                      </tr>
+                    ))}
+                    {(preview.boxes || []).length === 0 ? (
+                      <tr>
+                        <td className="p-3 text-slate-400" colSpan={6}>
+                          Aucun IMEI IN trouvé (rien à sortir).
+                        </td>
+                      </tr>
+                    ) : null}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* removable list */}
+              <div className="bg-slate-950 rounded-2xl border border-slate-800 p-4 space-y-2">
+                <div className="text-sm font-semibold">IMEIs qui vont sortir (tu peux retirer)</div>
+                <div className="text-xs text-slate-500">
+                  Clique “Remove” pour exclure un IMEI du commit.
                 </div>
 
-                <div className="max-h-[340px] overflow-auto rounded-xl border border-slate-800 bg-slate-950">
-                  {eodImeisFiltered.length === 0 ? (
-                    <div className="p-3 text-xs text-slate-400">No IMEI match.</div>
+                <div className="max-h-[260px] overflow-auto mt-2 space-y-2">
+                  {willGoOut.length === 0 ? (
+                    <div className="text-xs text-slate-400">—</div>
                   ) : (
-                    <ul className="divide-y divide-slate-800">
-                      {eodImeisFiltered.map((imei) => {
-                        const checked = eodSelectedImeis.has(imei);
-                        return (
-                          <li key={imei} className="flex items-center justify-between gap-3 p-2 hover:bg-slate-900/40">
-                            <label className="flex items-center gap-3 cursor-pointer select-none">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={() => toggleEodImei(imei)}
-                                className="accent-rose-500"
-                              />
-                              <span className="text-sm text-slate-100 font-mono">{imei}</span>
-                            </label>
-                            <span className="text-xs text-slate-500">
-                              {checked ? "will OUT" : "ignored"}
-                            </span>
-                          </li>
-                        );
-                      })}
-                    </ul>
+                    willGoOut.map((i) => {
+                      const removed = excluded.has(i);
+                      return (
+                        <div key={i} className="flex items-center justify-between gap-2 rounded-xl border border-slate-800 bg-slate-900 p-2">
+                          <div className={`text-xs font-mono ${removed ? "line-through text-slate-500" : "text-slate-100"}`}>
+                            {i}
+                          </div>
+                          <button
+                            onClick={() => removeImei(i)}
+                            disabled={removed}
+                            className="rounded-lg bg-slate-900 border border-slate-700 px-3 py-1 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      );
+                    })
                   )}
                 </div>
               </div>
-            </>
+
+              {commitRes ? <ResultPanel title="Commit result" data={commitRes} /> : null}
+            </div>
           ) : null}
 
-          {eodCommitResult ? <ResultPanel title="Commit result" data={eodCommitResult} /> : null}
+          {/* debug preview json if needed */}
+          {preview ? <ResultPanel title="Preview JSON" data={preview} /> : null}
         </>
+      ) : (
+        <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold">History</div>
+              <div className="text-xs text-slate-500">audit_events (action = STOCK_OUT)</div>
+            </div>
+
+            <button
+              onClick={loadHistory}
+              disabled={historyLoading}
+              className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+            >
+              {historyLoading ? "Loading…" : "Refresh"}
+            </button>
+          </div>
+
+          <div className="space-y-2">
+            {history.length === 0 ? (
+              <div className="text-xs text-slate-400">Aucun event.</div>
+            ) : (
+              history.map((e, idx) => (
+                <div key={idx} className="rounded-xl border border-slate-800 bg-slate-950 p-3">
+                  <div className="text-xs text-slate-300 font-semibold">
+                    {String(e.action || "")} · {String(e.created_at || "")}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-1">
+                    boxes: {e?.payload?.affected_boxes ?? "?"} · committed: {e?.payload?.committed_imeis ?? "?"}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+
+          <ResultPanel title="History JSON" data={history} />
+        </div>
       )}
-    </div>
-  );
-}
-
-function EodPreviewPanel({ data }: { data: any }) {
-  const boxes = Array.isArray(data?.boxes) ? data.boxes : [];
-
-  // API v2 keys
-  const totalSelected = Number(data?.imeis_total_selected ?? 0);
-  const willOut = Number(data?.imeis_will_go_out_count ?? 0);
-  const missingCount = Number(data?.imeis_missing_count ?? 0);
-  const notInCount = Number(data?.imeis_not_in_stock_count ?? 0);
-
-  return (
-    <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
-      <div className="text-sm font-semibold">Preview</div>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Stat label="Selected" value={totalSelected} />
-        <Stat label="Will go OUT" value={willOut} />
-        <Stat label="Missing" value={missingCount} />
-        <Stat label="Not IN" value={notInCount} />
-      </div>
-
-      <div className="overflow-auto">
-        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-          <thead className="bg-slate-950/50">
-            <tr>
-              <th className="p-2 text-left border-b border-slate-800">Device</th>
-              <th className="p-2 text-left border-b border-slate-800">Box</th>
-              <th className="p-2 text-left border-b border-slate-800">Location</th>
-              <th className="p-2 text-right border-b border-slate-800">IN before</th>
-              <th className="p-2 text-right border-b border-slate-800">OUT now</th>
-              <th className="p-2 text-right border-b border-slate-800">Remaining</th>
-            </tr>
-          </thead>
-          <tbody>
-            {boxes.map((b: any) => (
-              <tr key={b.box_id} className="hover:bg-slate-950/50">
-                <td className="p-2 border-b border-slate-800">{b.device}</td>
-                <td className="p-2 border-b border-slate-800">{b.box_no}</td>
-                <td className="p-2 border-b border-slate-800">{b.location}</td>
-                <td className="p-2 border-b border-slate-800 text-right font-semibold">{b.total_in_before}</td>
-                <td className="p-2 border-b border-slate-800 text-right font-semibold">{b.out_now}</td>
-                <td className="p-2 border-b border-slate-800 text-right font-semibold">{b.remaining_after}</td>
-              </tr>
-            ))}
-            {boxes.length === 0 ? (
-              <tr>
-                <td className="p-3 text-slate-400" colSpan={6}>
-                  Aucun IMEI IN trouvé (ou rien à sortir).
-                </td>
-              </tr>
-            ) : null}
-          </tbody>
-        </table>
-      </div>
-
-      <ResultPanel title="Preview JSON" data={data} />
     </div>
   );
 }

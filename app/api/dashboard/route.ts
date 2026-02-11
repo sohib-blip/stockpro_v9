@@ -3,24 +3,6 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 /* =========================
-   ✅ CONFIG DB
-========================= */
-const DEVICES_TABLE = "devices";
-const DEVICES_NAME_COL = "device";
-const DEVICES_ACTIVE_COL = "active";
-
-const BOXES_TABLE = "boxes";
-const BOXES_ID_COL = "box_id";
-const BOXES_DEVICE_COL = "device";
-
-const ITEMS_TABLE = "items";
-const ITEMS_BOX_ID_COL = "box_id";
-const ITEMS_STATUS_COL = "status";
-
-const STATUS_IN = "IN";
-const STATUS_OUT = "OUT";
-
-/* =========================
    Supabase helpers
 ========================= */
 function adminClient() {
@@ -48,31 +30,27 @@ function authedClient(token: string) {
   );
 }
 
-function uniqStrings(arr: any[]): string[] {
-  const out: string[] = [];
-  const seen = new Set<string>();
-  for (const v of arr || []) {
-    const s = String(v ?? "").trim();
-    if (!s) continue;
-    if (!seen.has(s)) {
-      seen.add(s);
-      out.push(s);
-    }
-  }
-  return out;
+function getBearerToken(req: Request) {
+  const auth = req.headers.get("authorization") || "";
+  if (!auth.toLowerCase().startsWith("bearer ")) return "";
+  return auth.slice(7).trim();
+}
+
+function toInt(v: any, fallback = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
 }
 
 /* =========================
    GET /api/dashboard
    Query params:
-   - device: exact match device name
+   - device: filter (exact match display name)
+   - q: search (ilike) in display device
 ========================= */
 export async function GET(req: Request) {
   try {
     /* ---------- Auth ---------- */
-    const authHeader = req.headers.get("authorization") || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-
+    const token = getBearerToken(req);
     if (!token) {
       return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
     }
@@ -88,102 +66,161 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "Server misconfiguration" }, { status: 500 });
     }
 
+    /* ---------- Params ---------- */
     const url = new URL(req.url);
     const deviceFilter = String(url.searchParams.get("device") || "").trim();
+    const q = String(url.searchParams.get("q") || "").trim();
 
-    /* ---------- Devices list (dropdown) ---------- */
+    /* =========================
+       1) Fetch devices list (dropdown)
+       -> basé sur table devices
+    ========================= */
     const { data: devicesRows, error: devErr } = await admin
-      .from(DEVICES_TABLE)
-      .select(`${DEVICES_NAME_COL}, ${DEVICES_ACTIVE_COL}`)
-      .order(DEVICES_NAME_COL, { ascending: true });
+      .from("devices")
+      .select("device_id, device, canonical_name, active")
+      .order("device", { ascending: true });
 
     if (devErr) {
       return NextResponse.json({ ok: false, error: devErr.message }, { status: 500 });
     }
 
-    const devices = uniqStrings(
-      (devicesRows || [])
-        .filter((d: any) => d?.[DEVICES_ACTIVE_COL] !== false)
-        .map((d: any) => d?.[DEVICES_NAME_COL])
-    );
+    const devicesList = (devicesRows || [])
+      .map((d: any) => String(d?.device || "").trim())
+      .filter(Boolean);
 
-    /* ---------- Boxes ---------- */
-    let boxesQuery = admin.from(BOXES_TABLE).select(`${BOXES_ID_COL}, ${BOXES_DEVICE_COL}`);
+    /* =========================
+       2) Fetch boxes (source of truth for device display)
+       boxes columns (selon tes screenshots):
+       - box_id, box_no, device_id, device, location, status, qty ...
+    ========================= */
+    let boxesQuery = admin
+      .from("boxes")
+      .select("box_id, device_id, device, location, status");
 
-    if (deviceFilter) boxesQuery = boxesQuery.eq(BOXES_DEVICE_COL, deviceFilter);
-
-    const { data: boxesRows, error: boxErr } = await boxesQuery;
-    if (boxErr) return NextResponse.json({ ok: false, error: boxErr.message }, { status: 500 });
-
-    const boxDeviceById = new Map<string, string>();
-    const boxIds: string[] = [];
-
-    for (const b of boxesRows || []) {
-      const id = String((b as any)[BOXES_ID_COL] ?? "").trim();
-      const dev = String((b as any)[BOXES_DEVICE_COL] ?? "").trim();
-      if (!id) continue;
-      boxIds.push(id);
-      boxDeviceById.set(id, dev);
+    // Filter by device
+    if (deviceFilter) {
+      // prefer filter by boxes.device text (car c'est ce que manual import remplit souvent)
+      boxesQuery = boxesQuery.eq("device", deviceFilter);
+    } else if (q) {
+      boxesQuery = boxesQuery.ilike("device", `%${q}%`);
     }
 
-    /* ---------- Items (for these boxes) ---------- */
-    let itemsRows: any[] = [];
+    const { data: boxes, error: boxErr } = await boxesQuery;
+    if (boxErr) {
+      return NextResponse.json({ ok: false, error: boxErr.message }, { status: 500 });
+    }
+
+    const boxIds = (boxes || []).map((b: any) => String(b?.box_id || "")).filter(Boolean);
+
+    /* =========================
+       3) Fetch items for these boxes
+       items columns:
+       - item_id, imei, device_id, box_id, status ...
+       IMPORTANT:
+       - On ne dépend PAS de items.device_id
+       - On utilise items.box_id => join en mémoire
+    ========================= */
+    let items: any[] = [];
     if (boxIds.length > 0) {
-      const { data, error } = await admin
-        .from(ITEMS_TABLE)
-        .select(`${ITEMS_BOX_ID_COL}, ${ITEMS_STATUS_COL}`)
-        .in(ITEMS_BOX_ID_COL, boxIds);
+      // chunk safe (IN clause)
+      const chunkSize = 500;
+      for (let i = 0; i < boxIds.length; i += chunkSize) {
+        const chunk = boxIds.slice(i, i + chunkSize);
+        const { data, error } = await admin
+          .from("items")
+          .select("box_id, status")
+          .in("box_id", chunk);
 
-      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-      itemsRows = data || [];
+        if (error) {
+          return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+        }
+
+        items = items.concat(data || []);
+      }
     }
 
-    /* ---------- Aggregations ---------- */
-    const boxesSetByDevice = new Map<string, Set<string>>();
-    const itemsCountByDevice = new Map<string, number>();
+    /* =========================
+       4) KPI global (basé sur DB entière)
+       - devices: count devices
+       - boxes: count boxes
+       - items: count items
+       NB: si tu veux uniquement IN, je te le fais après,
+       mais là ton UI montre total items, donc on suit.
+    ========================= */
+    const [devicesCountRes, boxesCountRes, itemsCountRes] = await Promise.all([
+      admin.from("devices").select("device_id", { count: "exact", head: true }),
+      admin.from("boxes").select("box_id", { count: "exact", head: true }),
+      admin.from("items").select("item_id", { count: "exact", head: true }),
+    ]);
 
-    let inTotal = 0;
-    let outTotal = 0;
+    const kpi = {
+      devices: devicesCountRes.count ?? 0,
+      boxes: boxesCountRes.count ?? 0,
+      items: itemsCountRes.count ?? 0,
+    };
 
-    for (const row of itemsRows || []) {
-      const boxId = String((row as any)[ITEMS_BOX_ID_COL] ?? "").trim();
-      const st = String((row as any)[ITEMS_STATUS_COL] ?? "").trim().toUpperCase();
-      const dev = boxDeviceById.get(boxId) || "";
+    /* =========================
+       5) Stock par device (Boxes + Items)
+       - device display = boxes.device (texte)
+       - on compte boxes et items groupés par device display
+    ========================= */
+    const deviceAgg = new Map<string, { device: string; boxes: number; items: number }>();
 
-      if (!dev) continue;
-
-      if (!boxesSetByDevice.has(dev)) boxesSetByDevice.set(dev, new Set<string>());
-      boxesSetByDevice.get(dev)!.add(boxId);
-
-      itemsCountByDevice.set(dev, (itemsCountByDevice.get(dev) || 0) + 1);
-
-      if (st === STATUS_IN) inTotal += 1;
-      else if (st === STATUS_OUT) outTotal += 1;
+    // init per device from devices table (pour que ça affiche même 0)
+    for (const name of devicesList) {
+      deviceAgg.set(name, { device: name, boxes: 0, items: 0 });
     }
 
-    const allDevicesForStock = deviceFilter ? [deviceFilter] : devices;
+    const itemsByBox: Record<string, number> = {};
+    for (const it of items || []) {
+      const bid = String((it as any).box_id || "");
+      if (!bid) continue;
+      itemsByBox[bid] = (itemsByBox[bid] || 0) + 1;
+    }
 
-    const stock = allDevicesForStock.map((dev) => {
-      const boxes = boxesSetByDevice.get(dev)?.size || 0;
-      const items = itemsCountByDevice.get(dev) || 0;
-      return { device: dev, boxes, items };
-    });
+    for (const b of boxes || []) {
+      const bid = String((b as any).box_id || "");
+      const devName = String((b as any).device || "").trim() || "UNKNOWN";
 
-    stock.sort((a, b) => (b.items - a.items) || a.device.localeCompare(b.device));
+      const row = deviceAgg.get(devName) || { device: devName, boxes: 0, items: 0 };
+      row.boxes += 1;
+      row.items += toInt(itemsByBox[bid], 0);
+      deviceAgg.set(devName, row);
+    }
 
+    const stock = Array.from(deviceAgg.values()).sort((a, b) => a.device.localeCompare(b.device));
+
+    /* =========================
+       6) Historique (safe fallback)
+       On essaye d'abord audit_events, sinon on renvoie []
+    ========================= */
+    let history: any[] = [];
+    try {
+      const { data: ev, error: evErr } = await admin
+        .from("audit_events")
+        .select("created_at, action, entity, entity_id, payload, created_by")
+        .order("created_at", { ascending: false })
+        .limit(30);
+
+      if (!evErr) history = ev || [];
+    } catch {
+      // ignore
+      history = [];
+    }
+
+    /* ---------- Response ---------- */
     return NextResponse.json({
       ok: true,
-      devices,
-      kpi: {
-        devices: devices.length,
-        boxes: boxIds.length,
-        items: itemsRows.length,
-        in_stock: inTotal,
-        out_stock: outTotal,
-      },
+      devices: devicesList, // dropdown
+      kpi,
       stock,
-      imports: [],   // tu les activeras quand tu me donnes les tables
-      movements: [], // idem
+      history, // tu peux l'afficher quand tu veux
+      debug: {
+        filtered_boxes: boxIds.length,
+        filtered_items: items.length,
+        deviceFilter: deviceFilter || null,
+        q: q || null,
+      },
     });
   } catch (e: any) {
     console.error("Dashboard error:", e);

@@ -85,7 +85,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
   const debug: Record<string, any> = {};
   const unknown: string[] = [];
 
-  // header row detection
+  // 1) header row detection
   let headerRowIdx = -1;
   for (let r = 0; r < Math.min(rows.length, 60); r++) {
     const cells = (rows[r] || []).map(norm);
@@ -96,12 +96,18 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
       break;
     }
   }
+
   if (headerRowIdx < 0) {
-    return makeFail("Could not detect header row (need BOX + IMEI headers)", [], { sampleTop: rows.slice(0, 10) });
+    return makeFail(
+      "Could not detect header row (need BOX + IMEI headers)",
+      [],
+      { sampleTop: rows.slice(0, 10) }
+    );
   }
 
   const header = (rows[headerRowIdx] || []).map(norm);
 
+  // 2) detect blocks
   const blocks: Array<{ start: number; boxCol1: number; boxCol2: number; imeiCol: number }> = [];
   for (let c = 0; c < header.length; c++) {
     const h = header[c] || "";
@@ -120,6 +126,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     const boxCol1 = c;
     const boxCol2 = Math.min(c + 1, header.length - 1);
 
+    // avoid near-duplicates
     const already = blocks.some((b) => Math.abs(b.start - c) <= 2);
     if (already) continue;
 
@@ -135,6 +142,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return makeFail("No blocks detected (expected repeated Box No + IMEI sections)", [], debug);
   }
 
+  // 3) device name above block
   function deviceNameAbove(blockStartCol: number): string | null {
     for (let r = headerRowIdx - 1; r >= 0; r--) {
       const v = String((rows[r] || [])[blockStartCol] ?? "").trim();
@@ -143,33 +151,81 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return null;
   }
 
-  function extractBoxNoFromCell(v: any): string | null {
-    const s = String(v ?? "").trim();
-    if (!s) return null;
-    const parts = s.split("-").map((x) => String(x).trim()).filter(Boolean);
-    if (parts.length >= 3) return `${parts[1]}-${parts[2]}`;
-    if (parts.length === 2) return parts[1];
-    return parts[parts.length - 1] || null;
+  // ✅ helpers robustes
+  function hasLetters(v: any): boolean {
+    return /[A-Z]/i.test(String(v ?? ""));
   }
 
   function extractRawDeviceFromCell(v: any): string | null {
     const s = String(v ?? "").trim();
     if (!s) return null;
+
+    // ✅ IMPORTANT: if no letters => it's not a device
+    if (!hasLetters(s)) return null;
+
+    // device = before first "-"
     const p = s.split("-")[0]?.trim();
     return p || null;
+  }
+
+  // ✅ box number extraction:
+  // - "FMC...-041-2" => "041-2"
+  // - "041-2" => "041-2"
+  // - "041" => "041"
+  function extractBoxNoFromCell(v: any): string | null {
+    const s = String(v ?? "").trim();
+    if (!s) return null;
+
+    const parts = s.split("-").map((x) => String(x).trim()).filter(Boolean);
+
+    // full code starts with letters
+    if (parts.length >= 3 && hasLetters(parts[0])) {
+      return `${parts[1]}-${parts[2]}`;
+    }
+
+    // already a boxnr like 041-2
+    if (parts.length === 2 && !hasLetters(parts[0])) {
+      return `${parts[0]}-${parts[1]}`;
+    }
+
+    // plain number "041"
+    return parts[0] || null;
+  }
+
+  // ✅ best pick logic:
+  // - device: prefer value that has letters (from col1/col2)
+  // - box_no: prefer value with "-" or value extracted from full code, else fallback
+  function pickDeviceCell(a: any, b: any): any | null {
+    if (hasLetters(a)) return a;
+    if (hasLetters(b)) return b;
+    return null;
+  }
+
+  function pickBoxCell(a: any, b: any): any | null {
+    const sa = String(a ?? "").trim();
+    const sb = String(b ?? "").trim();
+
+    // if one includes "-" it’s likely the real boxnr
+    if (sa.includes("-")) return a;
+    if (sb.includes("-")) return b;
+
+    // if one is not empty -> prefer it
+    if (sa) return a;
+    if (sb) return b;
+
+    return null;
   }
 
   const byKey = new Map<string, { vendor: Vendor; device: string; box_no: string; imeis: string[] }>();
 
   for (const b of blocks) {
+    // device from above block
     const rawAbove = deviceNameAbove(b.start) || "";
-    let rawDevice = rawAbove.trim() || null;
-
     let currentDeviceDisplay: string | null = null;
-    if (rawDevice) {
-      currentDeviceDisplay = resolveDeviceDisplay(rawDevice, devices);
-      if (!currentDeviceDisplay) unknown.push(rawDevice);
-    }
+
+    const aboveResolved = rawAbove.trim() ? resolveDeviceDisplay(rawAbove.trim(), devices) : null;
+    if (rawAbove.trim() && !aboveResolved) unknown.push(rawAbove.trim());
+    currentDeviceDisplay = aboveResolved;
 
     let currentBoxNo: string | null = null;
 
@@ -179,20 +235,21 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
       const boxCell1 = row[b.boxCol1];
       const boxCell2 = row[b.boxCol2];
 
-      const boxCellStr1 = String(boxCell1 ?? "").trim();
-      const boxCellStr2 = String(boxCell2 ?? "").trim();
-      const pickCell = boxCellStr1 ? boxCell1 : (boxCellStr2 ? boxCell2 : null);
-
-      if (pickCell !== null) {
-        const rawFromCell = extractRawDeviceFromCell(pickCell);
-        const boxNo = extractBoxNoFromCell(pickCell);
-
+      // ✅ update device ONLY if there is letters
+      const devCell = pickDeviceCell(boxCell1, boxCell2);
+      if (devCell !== null) {
+        const rawFromCell = extractRawDeviceFromCell(devCell);
         if (rawFromCell) {
-          rawDevice = rawFromCell;
           const resolved = resolveDeviceDisplay(rawFromCell, devices);
           if (!resolved) unknown.push(rawFromCell);
           currentDeviceDisplay = resolved || currentDeviceDisplay;
         }
+      }
+
+      // ✅ update boxno from best box cell (col2 often contains it for FMC003 case)
+      const bxCell = pickBoxCell(boxCell1, boxCell2);
+      if (bxCell !== null) {
+        const boxNo = extractBoxNoFromCell(bxCell);
         if (boxNo) currentBoxNo = boxNo;
       }
 
@@ -209,6 +266,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     }
   }
 
+  // block import if unknown devices
   if (uniq(unknown).length > 0) {
     return makeFail(
       `device(s) not found in Admin > Devices: ${uniq(unknown).join(", ")}`,

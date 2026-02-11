@@ -125,8 +125,8 @@ export default function ManualLabelsImportPage() {
   return (
     <div className="space-y-6">
       <div>
-        <div className="text-xs text-slate-500">Labels</div>
-        <h1 className="text-xl font-semibold">Manual import (Preview → Commit)</h1>
+        <div className="text-xs text-slate-500">Manual Import</div>
+        <h1 className="text-xl font-semibold">Manual Import (Preview → Commit)</h1>
         <p className="text-sm text-slate-400 mt-1">
           Tu colles/scannes des IMEI, tu peux supprimer des lignes, puis commit. Si doublon DB → ça bloque direct avec détails.
         </p>

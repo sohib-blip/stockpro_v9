@@ -12,9 +12,6 @@ const DEVICES_ACTIVE_COL = "active";
 const BOXES_TABLE = "boxes";
 const BOXES_ID_COL = "box_id";
 const BOXES_DEVICE_COL = "device";
-const BOXES_BOXNO_COL = "box_no";
-const BOXES_LOCATION_COL = "location";
-const BOXES_STATUS_COL = "status";
 
 const ITEMS_TABLE = "items";
 const ITEMS_BOX_ID_COL = "box_id";
@@ -51,18 +48,15 @@ function authedClient(token: string) {
   );
 }
 
-function toInt(v: any, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
-
-function uniq(arr: string[]) {
+function uniqStrings(arr: any[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const x of arr) {
-    if (!seen.has(x)) {
-      seen.add(x);
-      out.push(x);
+  for (const v of arr || []) {
+    const s = String(v ?? "").trim();
+    if (!s) continue;
+    if (!seen.has(s)) {
+      seen.add(s);
+      out.push(s);
     }
   }
   return out;
@@ -78,73 +72,48 @@ export async function GET(req: Request) {
     /* ---------- Auth ---------- */
     const authHeader = req.headers.get("authorization") || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+
     if (!token) {
-      return NextResponse.json(
-        { ok: false, error: "Missing Bearer token" },
-        { status: 401 }
-      );
+      return NextResponse.json({ ok: false, error: "Missing Bearer token" }, { status: 401 });
     }
 
     const userClient = authedClient(token);
     const { error: authErr } = await userClient.auth.getUser();
     if (authErr) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      );
+      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
     }
 
     const admin = adminClient();
     if (!admin) {
-      return NextResponse.json(
-        { ok: false, error: "Server misconfiguration" },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "Server misconfiguration" }, { status: 500 });
     }
 
-    /* ---------- Params ---------- */
     const url = new URL(req.url);
     const deviceFilter = String(url.searchParams.get("device") || "").trim();
 
-    /* =========================
-       1) Load devices (dropdown)
-    ========================= */
+    /* ---------- Devices list (dropdown) ---------- */
     const { data: devicesRows, error: devErr } = await admin
       .from(DEVICES_TABLE)
       .select(`${DEVICES_NAME_COL}, ${DEVICES_ACTIVE_COL}`)
       .order(DEVICES_NAME_COL, { ascending: true });
 
     if (devErr) {
-      return NextResponse.json(
-        { ok: false, error: devErr.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: devErr.message }, { status: 500 });
     }
 
-    const devices = (devicesRows || [])
-      .filter((d: any) => d?.[DEVICES_ACTIVE_COL] !== false)
-      .map((d: any) => String(d?.[DEVICES_NAME_COL] ?? "").trim())
-      .filter(Boolean);
+    const devices = uniqStrings(
+      (devicesRows || [])
+        .filter((d: any) => d?.[DEVICES_ACTIVE_COL] !== false)
+        .map((d: any) => d?.[DEVICES_NAME_COL])
+    );
 
-    /* =========================
-       2) Load boxes
-       (we need box_id -> device)
-    ========================= */
-    let boxesQuery = admin
-      .from(BOXES_TABLE)
-      .select(`${BOXES_ID_COL}, ${BOXES_DEVICE_COL}`);
+    /* ---------- Boxes ---------- */
+    let boxesQuery = admin.from(BOXES_TABLE).select(`${BOXES_ID_COL}, ${BOXES_DEVICE_COL}`);
 
-    if (deviceFilter) {
-      boxesQuery = boxesQuery.eq(BOXES_DEVICE_COL, deviceFilter);
-    }
+    if (deviceFilter) boxesQuery = boxesQuery.eq(BOXES_DEVICE_COL, deviceFilter);
 
     const { data: boxesRows, error: boxErr } = await boxesQuery;
-    if (boxErr) {
-      return NextResponse.json(
-        { ok: false, error: boxErr.message },
-        { status: 500 }
-      );
-    }
+    if (boxErr) return NextResponse.json({ ok: false, error: boxErr.message }, { status: 500 });
 
     const boxDeviceById = new Map<string, string>();
     const boxIds: string[] = [];
@@ -152,43 +121,31 @@ export async function GET(req: Request) {
     for (const b of boxesRows || []) {
       const id = String((b as any)[BOXES_ID_COL] ?? "").trim();
       const dev = String((b as any)[BOXES_DEVICE_COL] ?? "").trim();
-      if (id) {
-        boxIds.push(id);
-        boxDeviceById.set(id, dev);
-      }
+      if (!id) continue;
+      boxIds.push(id);
+      boxDeviceById.set(id, dev);
     }
 
-    /* =========================
-       3) Load items (IN + OUT)
-       and aggregate by device via box_id
-    ========================= */
-    // If there are no boxes, we can return empty stock cleanly.
+    /* ---------- Items (for these boxes) ---------- */
     let itemsRows: any[] = [];
     if (boxIds.length > 0) {
-      // If your DB is huge, we can optimize later.
       const { data, error } = await admin
         .from(ITEMS_TABLE)
         .select(`${ITEMS_BOX_ID_COL}, ${ITEMS_STATUS_COL}`)
         .in(ITEMS_BOX_ID_COL, boxIds);
 
-      if (error) {
-        return NextResponse.json(
-          { ok: false, error: error.message },
-          { status: 500 }
-        );
-      }
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
       itemsRows = data || [];
     }
 
-    const itemsTotal = itemsRows.length;
-
+    /* ---------- Aggregations ---------- */
     const boxesSetByDevice = new Map<string, Set<string>>();
     const itemsCountByDevice = new Map<string, number>();
 
     let inTotal = 0;
     let outTotal = 0;
 
-    for (const row of itemsRows) {
+    for (const row of itemsRows || []) {
       const boxId = String((row as any)[ITEMS_BOX_ID_COL] ?? "").trim();
       const st = String((row as any)[ITEMS_STATUS_COL] ?? "").trim().toUpperCase();
       const dev = boxDeviceById.get(boxId) || "";
@@ -204,49 +161,32 @@ export async function GET(req: Request) {
       else if (st === STATUS_OUT) outTotal += 1;
     }
 
-    const boxesTotal = boxIds.length;
+    const allDevicesForStock = deviceFilter ? [deviceFilter] : devices;
 
-    /* =========================
-       4) Build stock rows
-       (StockRow = { device, boxes, items })
-    ========================= */
-    const stockAll = uniq(
-      deviceFilter ? [deviceFilter] : devices
-    ).map((dev) => {
-      const boxesCount = boxesSetByDevice.get(dev)?.size || 0;
-      const itemsCount = itemsCountByDevice.get(dev) || 0;
-      return { device: dev, boxes: boxesCount, items: itemsCount };
+    const stock = allDevicesForStock.map((dev) => {
+      const boxes = boxesSetByDevice.get(dev)?.size || 0;
+      const items = itemsCountByDevice.get(dev) || 0;
+      return { device: dev, boxes, items };
     });
 
-    // Sort like a dashboard: most items first
-    stockAll.sort((a, b) => (b.items - a.items) || a.device.localeCompare(b.device));
+    stock.sort((a, b) => (b.items - a.items) || a.device.localeCompare(b.device));
 
-    /* =========================
-       5) imports + movements
-       (optional tables — return empty if not present)
-    ========================= */
-    // Your UI can handle empty arrays.
-    const imports: any[] = [];
-    const movements: any[] = [];
-
-    /* ---------- Response ---------- */
     return NextResponse.json({
       ok: true,
-      devices, // string[]
+      devices,
       kpi: {
         devices: devices.length,
-        boxes: boxesTotal,
-        items: itemsTotal,
+        boxes: boxIds.length,
+        items: itemsRows.length,
+        in_stock: inTotal,
+        out_stock: outTotal,
       },
-      stock: stockAll,
-      imports,
-      movements,
+      stock,
+      imports: [],   // tu les activeras quand tu me donnes les tables
+      movements: [], // idem
     });
   } catch (e: any) {
     console.error("Dashboard error:", e);
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Server error" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
   }
 }

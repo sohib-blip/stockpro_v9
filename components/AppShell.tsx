@@ -15,7 +15,7 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
-  { href: "/labels", label: "Labels", icon: Tag },
+  { href: "/labels", label: "Manual import", icon: Tag },
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
   { href: "/admin", label: "Admin", icon: Shield },
   { href: "/admin/devices", label: "Devices", icon: Shield },
@@ -24,7 +24,7 @@ const NAV: NavItem[] = [
 function pageTitle(pathname: string) {
   if (pathname === "/" || pathname.startsWith("/dashboard")) return "Dashboard";
   if (pathname.startsWith("/inbound")) return "Inbound Import";
-  if (pathname.startsWith("/labels")) return "QR Labels";
+  if (pathname.startsWith("/Manual import")) return "QR Labels";
   if (pathname.startsWith("/outbound")) return "Outbound";
   if (pathname.startsWith("/admin")) return "Admin";
   return "StockPro";

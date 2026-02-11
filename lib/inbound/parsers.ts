@@ -25,7 +25,58 @@ function sheetToRows(bytes: Uint8Array): any[][] {
 }
 
 /**
- * TELTONIKA (blocs horizontaux multi-devices)
+ * Quick vendor-specific cleanup:
+ * - ONLY for CV200: if string contains CV200 anywhere => use CV200
+ */
+function normalizeQuicklinkDevice(raw: any): string | null {
+  const s = String(raw ?? "").toUpperCase();
+  if (!s) return null;
+
+  // ✅ only this special case, as you requested
+  if (s.includes("CV200")) return "CV200";
+
+  return null;
+}
+
+/**
+ * Find best IMEI column by scanning rows:
+ * returns column index that contains most "IMEI-like" values (14-17 digits).
+ */
+function detectImeiColumn(rows: any[][], maxScanRows = 60): number {
+  const scanRows = rows.slice(0, Math.min(rows.length, maxScanRows));
+  const maxCols = Math.max(...scanRows.map((r) => (r ? r.length : 0)), 0);
+
+  const counts = new Array(maxCols).fill(0);
+
+  const looksLikeImei = (v: any) => {
+    const digits = String(v ?? "").replace(/\D/g, "");
+    return /^\d{14,17}$/.test(digits);
+  };
+
+  for (const r of scanRows) {
+    for (let c = 0; c < maxCols; c++) {
+      if (looksLikeImei(r?.[c])) counts[c] += 1;
+    }
+  }
+
+  let bestIdx = -1;
+  let bestScore = 0;
+  for (let i = 0; i < counts.length; i++) {
+    if (counts[i] > bestScore) {
+      bestScore = counts[i];
+      bestIdx = i;
+    }
+  }
+
+  // threshold: must detect at least 3 IMEIs in that column
+  if (bestScore >= 3) return bestIdx;
+
+  return -1;
+}
+
+/**
+ * TELTONIKA parser (format en blocs horizontaux)
+ * (inchangé chez toi)
  */
 export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
@@ -34,7 +85,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
   const debug: Record<string, any> = {};
   const unknown: string[] = [];
 
-  // 1) detect header row
+  // header row detection
   let headerRowIdx = -1;
   for (let r = 0; r < Math.min(rows.length, 60); r++) {
     const cells = (rows[r] || []).map(norm);
@@ -51,7 +102,6 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
 
   const header = (rows[headerRowIdx] || []).map(norm);
 
-  // 2) detect blocks
   const blocks: Array<{ start: number; boxCol1: number; boxCol2: number; imeiCol: number }> = [];
   for (let c = 0; c < header.length; c++) {
     const h = header[c] || "";
@@ -85,7 +135,6 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return makeFail("No blocks detected (expected repeated Box No + IMEI sections)", [], debug);
   }
 
-  // device name above block
   function deviceNameAbove(blockStartCol: number): string | null {
     for (let r = headerRowIdx - 1; r >= 0; r--) {
       const v = String((rows[r] || [])[blockStartCol] ?? "").trim();
@@ -94,7 +143,6 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return null;
   }
 
-  // ex "FMC9202MAUWU-041-2" => "041-2"
   function extractBoxNoFromCell(v: any): string | null {
     const s = String(v ?? "").trim();
     if (!s) return null;
@@ -104,7 +152,6 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return parts[parts.length - 1] || null;
   }
 
-  // device = avant le premier "-"
   function extractRawDeviceFromCell(v: any): string | null {
     const s = String(v ?? "").trim();
     if (!s) return null;
@@ -132,9 +179,9 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
       const boxCell1 = row[b.boxCol1];
       const boxCell2 = row[b.boxCol2];
 
-      const s1 = String(boxCell1 ?? "").trim();
-      const s2 = String(boxCell2 ?? "").trim();
-      const pickCell = s1 ? boxCell1 : (s2 ? boxCell2 : null);
+      const boxCellStr1 = String(boxCell1 ?? "").trim();
+      const boxCellStr2 = String(boxCell2 ?? "").trim();
+      const pickCell = boxCellStr1 ? boxCell1 : (boxCellStr2 ? boxCell2 : null);
 
       if (pickCell !== null) {
         const rawFromCell = extractRawDeviceFromCell(pickCell);
@@ -184,9 +231,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
 
 /**
  * QUICKLINK
- * - colonnes: IMEI, Carton
- * - box_no = 5 derniers chiffres du champ Carton (digits only)
- * - device: guess depuis Carton
+ * ✅ Fix: auto-match CNHYCV200XEU2025... => CV200
  */
 export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
@@ -195,11 +240,12 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
   const header = (rows[0] || []).map(norm);
   const idxImei = header.findIndex((h) => h === "imei" || h.includes("imei"));
   const idxCarton = header.findIndex((h) => h === "carton" || h.includes("carton"));
+
   if (idxImei < 0) return makeFail("Quicklink: IMEI column not found", [], { header });
   if (idxCarton < 0) return makeFail("Quicklink: Carton column not found", [], { header });
 
-  const unknown: string[] = [];
   const debug: Record<string, any> = { header };
+  const unknown: string[] = [];
 
   function extractBoxNo(carton: any): string | null {
     const s = String(carton ?? "").trim();
@@ -212,6 +258,11 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
   function guessDeviceRaw(carton: any): string | null {
     const s = String(carton ?? "").toUpperCase();
     if (!s) return null;
+
+    // ✅ ONLY CV200 special rule
+    if (s.includes("CV200")) return "CV200";
+
+    // fallback generic token
     const m = s.match(/\b([A-Z]{2,}\d{2,}[A-Z0-9]{0,})\b/);
     return m ? m[1] : null;
   }
@@ -222,9 +273,13 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     const g = guessDeviceRaw(carton);
     if (g) guesses[g] = (guesses[g] || 0) + 1;
   }
-  const deviceRawBest = Object.entries(guesses).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
 
-  if (!deviceRawBest) return makeFail("Quicklink: could not guess device name from Carton", [], debug);
+  const deviceRawBest =
+    Object.entries(guesses).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
+
+  if (!deviceRawBest) {
+    return makeFail("Quicklink: could not guess device name from Carton", [], debug);
+  }
 
   const deviceDisplay = resolveDeviceDisplay(deviceRawBest, devices);
   if (!deviceDisplay) {
@@ -232,7 +287,7 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return makeFail(
       `device(s) not found in Admin > Devices: ${uniq(unknown).join(", ")}`,
       uniq(unknown),
-      debug
+      { ...debug, deviceRawBest }
     );
   }
 
@@ -253,17 +308,21 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
 
   const labels: ParsedLabel[] = Array.from(byBox.entries()).map(([key, imeis]) => {
     const box_no = key.split("__")[1] || "";
-    return { vendor: "quicklink", device: deviceDisplay, box_no, imeis: uniq(imeis), qty: 0, qr_data: "" };
+    return {
+      vendor: "quicklink",
+      device: deviceDisplay,
+      box_no,
+      imeis: uniq(imeis),
+      qty: 0,
+      qr_data: "",
+    };
   });
 
   return makeOk(labels, { ...debug, deviceRawBest, deviceDisplay }, []);
 }
 
 /**
- * DIGITALMATTER
- * - colonnes: Product Name, IMEI/PACCODE, BOXID
- * - box_no = BOXID
- * - device = Product Name -> match Admin Devices
+ * DIGITALMATTER (inchangé)
  */
 export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
@@ -315,53 +374,96 @@ export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[
   }
 
   const labels: ParsedLabel[] = Array.from(byKey.entries()).map(([key, imeis]) => {
-    const [device, box_no] = key.split("__");
-    return { vendor: "digitalmatter", device: device || "", box_no: box_no || "", imeis: uniq(imeis), qty: 0, qr_data: "" };
+    const box_no = key.split("__")[1] || "";
+    const device = key.split("__")[0] || "";
+    return {
+      vendor: "digitalmatter",
+      device,
+      box_no,
+      imeis: uniq(imeis),
+      qty: 0,
+      qr_data: "",
+    };
   });
 
   return makeOk(labels, debug, []);
 }
 
 /**
- * TRUSTER (ancien "Trusted")
- * - pas de boxnr fiable => chunk (1,2,3...) par packs de 50 IMEI
- * - device: deviné via colonne Carton puis match Admin Devices
+ * TRUSTED / TRUSTER
+ * ✅ Fix: accept "Serialnumber" as IMEI
+ * ✅ Fix: if header missing/changed -> auto-detect IMEI column
  */
-export function parseTrusterExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
+export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
   if (!rows.length) return makeFail("Empty excel file", [], {});
 
   const header = (rows[0] || []).map(norm);
-  const idxImei = header.findIndex((h) => h === "imei" || h.includes("imei"));
-  const idxCarton = header.findIndex((h) => h === "carton" || h.includes("carton"));
 
-  if (idxImei < 0) return makeFail("Truster: IMEI column not found", [], { header });
+  // try header-based detection first
+  const idxImeiHeader = header.findIndex((h) => {
+    const x = String(h || "");
+    return (
+      x === "imei" ||
+      x.includes("imei") ||
+      x === "serialnumber" ||
+      x === "serial number" ||
+      x.includes("serialnumber") ||
+      x.includes("serial number") ||
+      x === "serial"
+    );
+  });
 
-  const debug: Record<string, any> = { header };
+  const idxImei =
+    idxImeiHeader >= 0 ? idxImeiHeader : detectImeiColumn(rows, 60);
 
-  function guessDeviceRawFromCarton(v: any): string | null {
+  if (idxImei < 0) {
+    return makeFail(
+      "Truster: IMEI/Serial column not found (expected IMEI or Serialnumber, or a column with many 15-digit values)",
+      [],
+      { header, sampleTop: rows.slice(0, 10) }
+    );
+  }
+
+  const debug: Record<string, any> = { header, idxImei };
+
+  // device guess (old logic) — if you want better later, we can add rules
+  // Here: if cannot guess, we will fail with a clear message.
+  // You can also hardcode Truster to a specific device if always same.
+  function guessDeviceRaw(v: any): string | null {
     const s = String(v ?? "").toUpperCase();
     if (!s) return null;
     const m = s.match(/\b([A-Z]{2,}\d{2,}[A-Z0-9]{0,})\b/);
     return m ? m[1] : null;
   }
 
-  const guesses: Record<string, number> = {};
-  if (idxCarton >= 0) {
-    for (let r = 1; r < rows.length; r++) {
-      const g = guessDeviceRawFromCarton((rows[r] || [])[idxCarton]);
-      if (g) guesses[g] = (guesses[g] || 0) + 1;
-    }
-  }
+  // Try to guess device from filename-like strings inside sheet (rare)
+  // If no device column exists, you will have to set it manually in Admin > Devices mapping later.
+  let deviceRawBest: string | null = null;
 
-  const deviceRawBest = Object.entries(guesses).sort((a, b) => b[1] - a[1])[0]?.[0] || null;
-  if (!deviceRawBest) return makeFail("Truster: could not guess device (Carton missing or unparseable)", [], debug);
+  // Heuristic: scan first row cells for something like CV200, FMC, FMB, etc.
+  const firstRowStr = (rows[0] || []).map((c) => String(c ?? "")).join(" ").toUpperCase();
+  deviceRawBest = guessDeviceRaw(firstRowStr);
+
+  if (!deviceRawBest) {
+    // fallback: tell user clearly what to do
+    return makeFail(
+      "Truster: device name not detected. Add a device hint in file (header/first row) OR tell me what device this Truster report corresponds to.",
+      [],
+      debug
+    );
+  }
 
   const deviceDisplay = resolveDeviceDisplay(deviceRawBest, devices);
   if (!deviceDisplay) {
-    return makeFail(`device(s) not found in Admin > Devices: ${deviceRawBest}`, [deviceRawBest], debug);
+    return makeFail(
+      `device(s) not found in Admin > Devices: ${deviceRawBest}`,
+      [deviceRawBest],
+      debug
+    );
   }
 
+  // chunk IMEIs into 50 per box (default)
   const chunkSize = 50;
   const allImeis: string[] = [];
 
@@ -371,7 +473,7 @@ export function parseTrusterExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
   }
 
   if (!allImeis.length) {
-    return makeFail("Truster: no IMEI parsed", [], { ...debug, deviceRawBest, deviceDisplay });
+    return makeFail("Truster: no IMEI parsed from Serial/IMEI column", [], { ...debug, deviceRawBest, deviceDisplay });
   }
 
   const labels: ParsedLabel[] = [];
@@ -396,7 +498,11 @@ export function parseTrusterExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
 /**
  * Router principal
  */
-export function parseVendorExcel(vendor: Vendor, bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
+export function parseVendorExcel(
+  vendor: Vendor,
+  bytes: Uint8Array,
+  devices: DeviceMatch[]
+): ParseResult {
   switch (vendor) {
     case "teltonika":
       return parseTeltonikaExcel(bytes, devices);
@@ -405,7 +511,7 @@ export function parseVendorExcel(vendor: Vendor, bytes: Uint8Array, devices: Dev
     case "digitalmatter":
       return parseDigitalMatterExcel(bytes, devices);
     case "truster":
-      return parseTrusterExcel(bytes, devices);
+      return parseTrustedExcel(bytes, devices);
     default:
       return makeFail("Unknown vendor", [], { vendor });
   }

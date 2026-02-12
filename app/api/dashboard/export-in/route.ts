@@ -3,14 +3,12 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 
-type Vendor = "teltonika" | "quicklink" | "truster" | "digitalmatter";
-
 /* =========================
-   ✅ CONFIG DB (adapte si besoin)
+   ✅ CONFIG DB
 ========================= */
 const DEVICES_TABLE = "devices";
 const DEVICES_ID_COL = "device_id";
-const DEVICES_NAME_COL = "device"; // display name
+const DEVICES_NAME_COL = "device";
 
 const BOXES_TABLE = "boxes";
 const BOXES_ID_COL = "box_id";
@@ -81,28 +79,48 @@ export async function GET(req: Request) {
 
     /* ---------- Params ---------- */
     const url = new URL(req.url);
-    const deviceFilter = String(url.searchParams.get("device") || "").trim(); // display name
+    const deviceFilter = String(url.searchParams.get("device") || "").trim(); // display name (or partial)
+    const locationFilter = String(url.searchParams.get("location") || "").trim(); // exact (ex "02")
 
-    /* ---------- Resolve deviceFilter -> device_id (si fourni) ---------- */
+    /* ---------- Resolve deviceFilter -> device_id (optional) ---------- */
     let deviceIdFilter: string | null = null;
+
     if (deviceFilter) {
-      const { data: devRow, error: devErr } = await admin
+      // more robust than eq: match exact first, else ilike
+      const { data: devExact, error: devExactErr } = await admin
         .from(DEVICES_TABLE)
         .select(`${DEVICES_ID_COL}, ${DEVICES_NAME_COL}`)
         .eq(DEVICES_NAME_COL, deviceFilter)
         .maybeSingle();
 
-      if (devErr) {
-        return NextResponse.json({ ok: false, error: devErr.message }, { status: 500 });
+      if (devExactErr) {
+        return NextResponse.json({ ok: false, error: devExactErr.message }, { status: 500 });
       }
-      deviceIdFilter = devRow ? String((devRow as any)[DEVICES_ID_COL] ?? "") : null;
+
+      if (devExact?.[DEVICES_ID_COL]) {
+        deviceIdFilter = String((devExact as any)[DEVICES_ID_COL]);
+      } else {
+        const { data: devLike, error: devLikeErr } = await admin
+          .from(DEVICES_TABLE)
+          .select(`${DEVICES_ID_COL}, ${DEVICES_NAME_COL}`)
+          .ilike(DEVICES_NAME_COL, `%${deviceFilter}%`)
+          .order(DEVICES_NAME_COL, { ascending: true })
+          .limit(1)
+          .maybeSingle();
+
+        if (devLikeErr) {
+          return NextResponse.json({ ok: false, error: devLikeErr.message }, { status: 500 });
+        }
+
+        deviceIdFilter = devLike ? String((devLike as any)[DEVICES_ID_COL] ?? "") : null;
+      }
 
       if (!deviceIdFilter) {
         return NextResponse.json({ ok: false, error: `Device not found: ${deviceFilter}` }, { status: 400 });
       }
     }
 
-    /* ---------- 1) Fetch items IN (paginated) ---------- */
+    /* ---------- 1) Fetch items IN (paged) ---------- */
     const pageSize = 5000;
     let from = 0;
 
@@ -118,15 +136,15 @@ export async function GET(req: Request) {
       if (deviceIdFilter) q = q.eq(ITEMS_DEVICE_ID_COL, deviceIdFilter);
 
       const { data, error } = await q;
-      if (error) {
-        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
-      }
+      if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
 
-      const batch = (data || []).map((r: any) => ({
-        imei: String(r?.[ITEMS_IMEI_COL] ?? "").trim(),
-        box_id: (r?.[ITEMS_BOX_ID_COL] ?? null) as string | null,
-        device_id: (r?.[ITEMS_DEVICE_ID_COL] ?? null) as string | null,
-      })).filter((x) => x.imei);
+      const batch = (data || [])
+        .map((r: any) => ({
+          imei: String(r?.[ITEMS_IMEI_COL] ?? "").trim(),
+          box_id: (r?.[ITEMS_BOX_ID_COL] ?? null) as string | null,
+          device_id: (r?.[ITEMS_DEVICE_ID_COL] ?? null) as string | null,
+        }))
+        .filter((x) => x.imei);
 
       itemsAll.push(...batch);
 
@@ -138,7 +156,7 @@ export async function GET(req: Request) {
     const deviceIds = Array.from(new Set(itemsAll.map((x) => x.device_id).filter(Boolean))) as string[];
     const boxIds = Array.from(new Set(itemsAll.map((x) => x.box_id).filter(Boolean))) as string[];
 
-    const devicesMap = new Map<string, string>(); // device_id -> device name
+    const devicesMap = new Map<string, string>(); // device_id -> name
     for (const part of chunk(deviceIds, 500)) {
       const { data, error } = await admin
         .from(DEVICES_TABLE)
@@ -154,7 +172,7 @@ export async function GET(req: Request) {
       }
     }
 
-    const boxesMap = new Map<string, { box_no: string; location: string }>(); // box_id -> {box_no, location}
+    const boxesMap = new Map<string, { box_no: string; location: string }>();
     for (const part of chunk(boxIds, 500)) {
       const { data, error } = await admin
         .from(BOXES_TABLE)
@@ -171,8 +189,8 @@ export async function GET(req: Request) {
       }
     }
 
-    /* ---------- 3) Build export rows ---------- */
-    const exportRows = itemsAll.map((it) => {
+    /* ---------- 3) Build export rows (apply location filter here) ---------- */
+    let exportRows = itemsAll.map((it) => {
       const device_name = it.device_id ? (devicesMap.get(it.device_id) || "") : "";
       const b = it.box_id ? boxesMap.get(it.box_id) : null;
 
@@ -185,37 +203,40 @@ export async function GET(req: Request) {
       };
     });
 
-/* ---------- 4) Generate XLSX ---------- */
-const ws = XLSX.utils.json_to_sheet(exportRows);
-const wb = XLSX.utils.book_new();
-XLSX.utils.book_append_sheet(wb, ws, "IN_STOCK");
+    if (locationFilter) {
+      exportRows = exportRows.filter((r) => String(r.etage || "") === locationFilter);
+    }
 
-// ⚠️ IMPORTANT : utiliser type "array" (pas "buffer")
-const fileData = XLSX.write(wb, {
-  type: "array",
-  bookType: "xlsx",
-});
+    /* ---------- 4) Generate XLSX ---------- */
+    const ws = XLSX.utils.json_to_sheet(exportRows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "IN_STOCK");
 
-// convertir en Uint8Array propre
-const uint8 = new Uint8Array(fileData);
+    const fileData = XLSX.write(wb, { type: "array", bookType: "xlsx" });
+    const uint8 = new Uint8Array(fileData as ArrayBuffer);
 
-const now = new Date();
-const yyyy = now.getFullYear();
-const mm = String(now.getMonth() + 1).padStart(2, "0");
-const dd = String(now.getDate()).padStart(2, "0");
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
 
-const filename = deviceFilter
-  ? `in_stock_${deviceFilter}_${yyyy}-${mm}-${dd}.xlsx`
-  : `in_stock_${yyyy}-${mm}-${dd}.xlsx`;
+    const safeDev = deviceFilter ? deviceFilter.replace(/[^\w\-]+/g, "_") : "";
+    const safeLoc = locationFilter ? locationFilter.replace(/[^\w\-]+/g, "_") : "";
 
-return new NextResponse(uint8, {
-  status: 200,
-  headers: {
-    "Content-Type":
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "Content-Disposition": `attachment; filename="${filename}"`,
-  },
-});
+    const filenameParts = ["in_stock"];
+    if (safeDev) filenameParts.push(safeDev);
+    if (safeLoc) filenameParts.push(`loc_${safeLoc}`);
+    filenameParts.push(`${yyyy}-${mm}-${dd}`);
+
+    const filename = `${filenameParts.join("_")}.xlsx`;
+
+    return new NextResponse(uint8, {
+      status: 200,
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${filename}"`,
+      },
+    });
   } catch (e: any) {
     console.error("Export IN error:", e);
     return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });

@@ -1,4 +1,4 @@
-// app/api/inbound/manual/route.ts
+// app/api/inbound/manual-cabinet/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -23,10 +23,14 @@ function uniq(arr: string[]) {
   return out;
 }
 
-async function getDeviceId(admin: any, deviceDisplay: string) {
-  const { data, error } = await admin.from("devices").select("device_id").eq("device", deviceDisplay).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data?.device_id ?? null;
+function makeAutoBoxNo() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `CABINET-RETURN-${y}${m}${day}-${hh}${mm}`;
 }
 
 export async function POST(req: Request) {
@@ -40,24 +44,21 @@ export async function POST(req: Request) {
     if (authErr) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
-
-    const mode = String(body.mode || "preview"); // preview | commit
-    const device = String(body.device || "").trim(); // ✅ display name (bin)
-    const box_no = String(body.box_no || "").trim();
-    const location = String(body.location || "00").trim() || "00";
+    const device = String(body.device || "").trim();
     const imeis = uniq((Array.isArray(body.imeis) ? body.imeis : []).map((x: any) => String(x).replace(/\D/g, "")))
       .filter((x) => /^\d{14,17}$/.test(x));
 
-    if (!device || !box_no) return NextResponse.json({ ok: false, error: "Device & Box No required" }, { status: 400 });
+    if (!device) return NextResponse.json({ ok: false, error: "Device required" }, { status: 400 });
     if (imeis.length === 0) return NextResponse.json({ ok: false, error: "No valid IMEIs" }, { status: 400 });
 
     const admin = adminClient();
     if (!admin) return NextResponse.json({ ok: false, error: "Server misconfiguration" }, { status: 500 });
 
-    const device_id = await getDeviceId(admin, device);
+    const { data: devRow, error: devErr } = await admin.from("devices").select("device_id").eq("device", device).maybeSingle();
+    if (devErr) throw new Error(devErr.message);
+    const device_id = devRow?.device_id;
     if (!device_id) return NextResponse.json({ ok: false, error: `Device not found: ${device}` }, { status: 400 });
 
-    // duplicate check
     const { data: existing, error: exErr } = await admin.from("items").select("imei").in("imei", imeis);
     if (exErr) throw new Error(exErr.message);
     if ((existing || []).length > 0) {
@@ -67,18 +68,13 @@ export async function POST(req: Request) {
       );
     }
 
+    const box_no = makeAutoBoxNo();
+    const location = "CABINET";
     const qr_payload = imeis.join("\n");
-    const preview = { device, box_no, location, qty: imeis.length, qr_payload, sample: imeis.slice(0, 10) };
 
-    if (mode === "preview") return NextResponse.json({ ok: true, preview });
-
-    // commit: upsert box then insert items
     const { data: boxRow, error: boxErr } = await admin
       .from("boxes")
-      .upsert(
-        { device_id, box_no, location, status: "IN", qr_payload, qty: imeis.length },
-        { onConflict: "device_id,box_no,location" }
-      )
+      .insert({ device_id, box_no, location, status: "IN", qr_payload, qty: imeis.length })
       .select("box_id")
       .maybeSingle();
     if (boxErr) throw new Error(boxErr.message);
@@ -89,9 +85,9 @@ export async function POST(req: Request) {
     const { error: insErr } = await admin.from("items").insert(rows);
     if (insErr) throw new Error(insErr.message);
 
-    return NextResponse.json({ ok: true, inserted: rows.length, box_id, preview });
+    return NextResponse.json({ ok: true, inserted: rows.length, box_no, box_id, location });
   } catch (e: any) {
-    console.error("Manual box import error:", e);
+    console.error("Manual cabinet import error:", e);
     return NextResponse.json({ ok: false, error: e?.message || "Server error" }, { status: 500 });
   }
 }

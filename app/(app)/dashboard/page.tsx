@@ -1,3 +1,4 @@
+// app/(app)/dashboard/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
@@ -6,18 +7,20 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
 
 type StockRow = { device: string; boxes: number; items: number };
-type ImportRow = { created_at: string; vendor: string | null; device: string | null; box_no: string | null; qty: number | null };
-type MovementRow = { created_at: string; type: string | null; device: string | null; box_no: string | null; imei: string | null };
-
-function safeStringArray(v: any): string[] {
-  if (!Array.isArray(v)) return [];
-  return v.map((x) => String(x ?? "").trim()).filter(Boolean);
-}
-
-function safeNumber(v: any, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
+type ImportRow = {
+  created_at: string;
+  vendor: string | null;
+  device: string | null;
+  box_no: string | null;
+  qty: number | null;
+};
+type MovementRow = {
+  created_at: string;
+  type: string | null;
+  device: string | null;
+  box_no: string | null;
+  imei: string | null;
+};
 
 export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -28,14 +31,19 @@ export default function DashboardPage() {
   const deviceFromUrl = String(searchParams.get("device") || "").trim();
 
   const [loading, setLoading] = useState(false);
-  const [lastError, setLastError] = useState<string>("");
+  const [exportLoading, setExportLoading] = useState(false);
 
   const [devices, setDevices] = useState<string[]>([]);
-  const [kpi, setKpi] = useState<{ devices: number; boxes: number; items: number }>({ devices: 0, boxes: 0, items: 0 });
+  const [kpi, setKpi] = useState<{ devices: number; boxes: number; items: number }>({
+    devices: 0,
+    boxes: 0,
+    items: 0,
+  });
   const [stock, setStock] = useState<StockRow[]>([]);
   const [imports, setImports] = useState<ImportRow[]>([]);
   const [movements, setMovements] = useState<MovementRow[]>([]);
 
+  // UI filter
   const [q, setQ] = useState("");
   const [deviceSelected, setDeviceSelected] = useState<string>(deviceFromUrl || "");
 
@@ -56,58 +64,87 @@ export default function DashboardPage() {
   }
 
   async function load() {
-    setLastError("");
     try {
       setLoading(true);
 
       const token = await getAccessToken();
       if (!token) {
         toast({ kind: "error", title: "Auth", message: "Pas connecté." });
-        setLastError("Pas connecté.");
         return;
       }
 
-      const url = deviceSelected ? `/api/dashboard?device=${encodeURIComponent(deviceSelected)}` : "/api/dashboard";
-      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+      const url = deviceSelected
+        ? `/api/dashboard?device=${encodeURIComponent(deviceSelected)}`
+        : "/api/dashboard";
 
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       const json = await res.json().catch(() => null);
 
-      if (!res.ok || !json?.ok) {
-        const msg = String(json?.error || `Dashboard fetch failed (${res.status})`);
-        throw new Error(msg);
-      }
+      if (!res.ok || !json?.ok) throw new Error(json?.error || "Dashboard fetch failed");
 
-      const devList = safeStringArray(json.devices);
-
-      setDevices(devList);
-
-      setKpi({
-        devices: safeNumber(json?.kpi?.devices, 0),
-        boxes: safeNumber(json?.kpi?.boxes, 0),
-        items: safeNumber(json?.kpi?.items, 0),
-      });
-
-      const stockRows: StockRow[] = Array.isArray(json.stock)
-        ? json.stock.map((s: any) => ({
-            device: String(s?.device ?? ""),
-            boxes: safeNumber(s?.boxes, 0),
-            items: safeNumber(s?.items, 0),
-          }))
-        : [];
-
-      setStock(stockRows);
-
-      setImports(Array.isArray(json.imports) ? (json.imports as ImportRow[]) : []);
-      setMovements(Array.isArray(json.movements) ? (json.movements as MovementRow[]) : []);
+      setDevices((json.devices || []) as string[]);
+      setKpi(json.kpi || { devices: 0, boxes: 0, items: 0 });
+      setStock((json.stock || []) as StockRow[]);
+      setImports((json.imports || []) as ImportRow[]);
+      setMovements((json.movements || []) as MovementRow[]);
     } catch (e: any) {
-      const msg = String(e?.message || "Error");
-      setLastError(msg);
-      toast({ kind: "error", title: "Dashboard", message: msg });
+      toast({ kind: "error", title: "Dashboard", message: e?.message || "Error" });
     } finally {
       setLoading(false);
     }
   }
 
+  // ✅ Export IN stock (Excel)
+  async function exportInStock() {
+    try {
+      setExportLoading(true);
+
+      const token = await getAccessToken();
+      if (!token) {
+        toast({ kind: "error", title: "Auth", message: "Pas connecté." });
+        return;
+      }
+
+      const url = deviceSelected
+        ? `/api/dashboard/export-in?device=${encodeURIComponent(deviceSelected)}`
+        : "/api/dashboard/export-in";
+
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => null);
+        throw new Error(errJson?.error || "Export failed");
+      }
+
+      const blob = await res.blob();
+
+      // récupérer le filename depuis Content-Disposition si possible
+      const cd = res.headers.get("Content-Disposition") || "";
+      const match = cd.match(/filename="([^"]+)"/i);
+      const filename = match?.[1] || "in_stock.xlsx";
+
+      const objectUrl = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(objectUrl);
+
+      toast({
+        kind: "success",
+        title: "Export OK",
+        message: deviceSelected ? `Filtré: ${deviceSelected}` : "Tout le stock IN",
+      });
+    } catch (e: any) {
+      toast({ kind: "error", title: "Export", message: e?.message || "Error" });
+    } finally {
+      setExportLoading(false);
+    }
+  }
+
+  // reload when deviceSelected changes
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -126,12 +163,9 @@ export default function DashboardPage() {
         <div>
           <div className="text-xs text-slate-500">Dashboard</div>
           <h2 className="text-xl font-semibold">Stock overview</h2>
-          <p className="text-sm text-slate-400 mt-1">Filtre par device + URL persistante.</p>
-          {lastError ? (
-            <div className="mt-2 text-xs text-rose-300">
-              ⚠️ {lastError}
-            </div>
-          ) : null}
+          <p className="text-sm text-slate-400 mt-1">
+            Filtre par device + export Excel du stock IN.
+          </p>
         </div>
 
         <div className="flex flex-col md:flex-row gap-2 md:items-center">
@@ -177,6 +211,15 @@ export default function DashboardPage() {
           >
             Clear
           </button>
+
+          {/* ✅ Export button */}
+          <button
+            onClick={exportInStock}
+            disabled={exportLoading}
+            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+          >
+            {exportLoading ? "Export…" : "Export stock (IN)"}
+          </button>
         </div>
       </div>
 
@@ -194,7 +237,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-sm font-semibold">Stock par device</div>
-              <div className="text-xs text-slate-500">Boxes + Items (IMEI) calculés.</div>
+              <div className="text-xs text-slate-500">Boxes + Items (IMEI).</div>
             </div>
           </div>
 
@@ -210,9 +253,15 @@ export default function DashboardPage() {
               <tbody>
                 {stockFiltered.map((s) => (
                   <tr key={s.device} className="hover:bg-slate-950/50">
-                    <td className="p-2 border-b border-slate-800 font-semibold text-slate-100">{s.device}</td>
-                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{s.boxes}</td>
-                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">{s.items}</td>
+                    <td className="p-2 border-b border-slate-800 font-semibold text-slate-100">
+                      {s.device}
+                    </td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">
+                      {s.boxes}
+                    </td>
+                    <td className="p-2 border-b border-slate-800 text-right text-slate-200">
+                      {s.items}
+                    </td>
                   </tr>
                 ))}
 
@@ -232,7 +281,7 @@ export default function DashboardPage() {
         <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-4">
           <div>
             <div className="text-sm font-semibold">Derniers imports</div>
-            <div className="text-xs text-slate-500">Bientôt (quand on relie les tables).</div>
+            <div className="text-xs text-slate-500">Si table import_history existe.</div>
 
             <div className="mt-2 space-y-2">
               {imports.length === 0 ? (
@@ -254,7 +303,7 @@ export default function DashboardPage() {
 
           <div>
             <div className="text-sm font-semibold">Derniers mouvements</div>
-            <div className="text-xs text-slate-500">Bientôt (quand on relie les tables).</div>
+            <div className="text-xs text-slate-500">Si table movement_history existe.</div>
 
             <div className="mt-2 space-y-2">
               {movements.length === 0 ? (

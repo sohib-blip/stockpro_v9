@@ -25,7 +25,8 @@ export default function InboundPage() {
     try {
       const { data: devs, error: devErr } = await supabase
         .from("devices")
-        .select("canonical_name,device,active");
+        .select("canonical_name,device,active,units_per_imei");
+
       if (devErr) throw devErr;
 
       const deviceMatches = toDeviceMatchList((devs as any) || []);
@@ -46,7 +47,7 @@ export default function InboundPage() {
         <div className="text-xs text-slate-500">Inbound</div>
         <h2 className="text-xl font-semibold">Inbound Import</h2>
         <p className="text-sm text-slate-400 mt-1">
-          Upload supplier Excel → parse → preview labels. (DB save step can be plugged in here.)
+          Upload supplier Excel → parse → preview labels. Qty = IMEI × Units/IMEI (set in Admin &gt; Devices).
         </p>
       </div>
 
@@ -79,7 +80,11 @@ export default function InboundPage() {
           </button>
         </div>
 
-        {err && <div className="text-sm text-rose-200 border border-rose-900/60 bg-rose-950/40 p-3 rounded-xl">{err}</div>}
+        {err && (
+          <div className="text-sm text-rose-200 border border-rose-900/60 bg-rose-950/40 p-3 rounded-xl">
+            {err}
+          </div>
+        )}
       </div>
 
       {!result ? null : result.ok ? (
@@ -112,7 +117,9 @@ export default function InboundPage() {
                     <td className="p-2 border-b border-slate-800 font-semibold">{l.device}</td>
                     <td className="p-2 border-b border-slate-800">{l.box_no}</td>
                     <td className="p-2 border-b border-slate-800 text-right">{Number(l.qty ?? 0)}</td>
-                    <td className="p-2 border-b border-slate-800 text-right">{Array.isArray(l.imeis) ? l.imeis.length : 0}</td>
+                    <td className="p-2 border-b border-slate-800 text-right">
+                      {Array.isArray(l.imeis) ? l.imeis.length : 0}
+                    </td>
                   </tr>
                 ))}
               </tbody>

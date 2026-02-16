@@ -6,21 +6,23 @@ export type DevicesDbRow = {
   canonical_name: string;
   device: string | null;
   active?: boolean | null;
+  units_per_imei?: number | null; // ✅ NEW
 };
 
 export type DeviceMatch = {
   canonical: string;
   display: string;
   active: boolean;
+  units_per_imei: number; // ✅ NEW
 };
 
 export type ParsedLabel = {
   vendor: Vendor;
-  device: string;     // display name (comme dans Admin > Devices)
-  box_no: string;     // master box no (gros carton)
-  qty: number;
+  device: string; // display name (comme dans Admin > Devices)
+  box_no: string; // master box no (gros carton)
+  qty: number; // ✅ items calculés (IMEI * units_per_imei)
   imeis: string[];
-  qr_data: string;    // ✅ IMEI only, 1 par ligne
+  qr_data: string; // ✅ IMEI only, 1 par ligne
 };
 
 export type ParseCounts = { devices: number; boxes: number; items: number };
@@ -47,6 +49,7 @@ export function toDeviceMatchList(rows: DevicesDbRow[]): DeviceMatch[] {
     canonical: String(d.canonical_name || ""),
     display: String(d.device || d.canonical_name || ""),
     active: d.active !== false,
+    units_per_imei: Number(d.units_per_imei ?? 1) || 1,
   }));
 }
 
@@ -81,10 +84,7 @@ export function uniq(arr: string[]): string[] {
  * - padding num: FMC03 -> FMC003
  * - trim digits: FMC9202 -> FMC920 (si existe)
  */
-export function resolveDeviceDisplay(
-  rawDevice: string,
-  devices: DeviceMatch[]
-): string | null {
+export function resolveDeviceDisplay(rawDevice: string, devices: DeviceMatch[]): string | null {
   const rawCanon = canonicalize(rawDevice);
   if (!rawCanon) return null;
 
@@ -131,7 +131,7 @@ export function resolveDeviceDisplay(
 export function computeCounts(labels: ParsedLabel[]): ParseCounts {
   const devices = new Set(labels.map((l) => l.device)).size;
   const boxes = labels.length;
-  const items = labels.reduce((acc, l) => acc + (l.qty || 0), 0);
+  const items = labels.reduce((acc, l) => acc + (Number(l.qty) || 0), 0);
   return { devices, boxes, items };
 }
 
@@ -158,13 +158,12 @@ export function makeOk(
       const imeis = uniq(l.imeis || []);
       const qtyFromInput = Number.isFinite(l.qty as any) ? Number(l.qty) : 0;
       const qty = qtyFromInput > 0 ? qtyFromInput : imeis.length;
+
       return {
         ...l,
         imeis,
-        // ✅ If parser provided a qty, keep it. Otherwise default to imei count.
-        // This prevents wrong totals when a vendor file represents quantities differently.
         qty,
-        qr_data: imeis.join("\n"), // ✅ IMEI only
+        qr_data: imeis.join("\n"),
       };
     })
     .filter((l) => (Number(l.qty) || 0) > 0)

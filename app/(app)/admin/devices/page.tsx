@@ -9,6 +9,7 @@ type DeviceRow = {
   canonical_name: string;
   device: string | null;
   min_stock: number | null;
+  units_per_imei: number | null; // ✅ NEW
   active: boolean | null;
 };
 
@@ -29,13 +30,14 @@ export default function AdminDevicesPage() {
 
   const [newName, setNewName] = useState("");
   const [newMin, setNewMin] = useState<number>(0);
+  const [newUnits, setNewUnits] = useState<number>(1);
 
   async function load() {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from("devices")
-        .select("device_id, device, canonical_name, min_stock, active")
+        .select("device_id, device, canonical_name, min_stock, units_per_imei, active")
         .order("canonical_name", { ascending: true });
 
       if (error) throw error;
@@ -76,12 +78,15 @@ export default function AdminDevicesPage() {
       });
     }
 
+    const units = Number.isFinite(newUnits) && Number(newUnits) > 0 ? Number(newUnits) : 1;
+
     setLoading(true);
     try {
       const payload = {
         device: display,
         canonical_name,
         min_stock: Number.isFinite(newMin) ? Number(newMin) : 0,
+        units_per_imei: units,
         active: true,
       };
 
@@ -91,6 +96,7 @@ export default function AdminDevicesPage() {
       toast({ kind: "success", title: "Device added", message: `${display} (${canonical_name})` });
       setNewName("");
       setNewMin(0);
+      setNewUnits(1);
       await load();
     } catch (e: any) {
       toast({ kind: "error", title: "Add failed", message: e?.message || "Error" });
@@ -99,17 +105,20 @@ export default function AdminDevicesPage() {
     }
   }
 
-  async function saveMinStock(row: DeviceRow, min_stock: number) {
+  async function saveRow(row: DeviceRow, min_stock: number, units_per_imei: number) {
+    const min = Number.isFinite(min_stock) ? Number(min_stock) : 0;
+    const units = Number.isFinite(units_per_imei) && Number(units_per_imei) > 0 ? Number(units_per_imei) : 1;
+
     setLoading(true);
     try {
       const { error } = await supabase
         .from("devices")
-        .update({ min_stock: Number.isFinite(min_stock) ? Number(min_stock) : 0 })
+        .update({ min_stock: min, units_per_imei: units })
         .eq("device_id", row.device_id);
 
       if (error) throw error;
 
-      toast({ kind: "success", title: "Saved", message: "Min stock updated" });
+      toast({ kind: "success", title: "Saved", message: "Min stock + Units/IMEI updated" });
       await load();
     } catch (e: any) {
       toast({ kind: "error", title: "Save failed", message: e?.message || "Error" });
@@ -125,8 +134,7 @@ export default function AdminDevicesPage() {
           <div className="text-xs text-slate-500">Admin</div>
           <h2 className="text-xl font-semibold">Devices</h2>
           <p className="text-sm text-slate-400 mt-1">
-            Add devices + set min stock. Import uses{" "}
-            <span className="text-slate-200 font-semibold">canonical_name</span>.
+            Import uses <span className="text-slate-200 font-semibold">canonical_name</span>. Qty = IMEI × Units/IMEI.
           </p>
         </div>
 
@@ -142,11 +150,11 @@ export default function AdminDevicesPage() {
       <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4 space-y-3">
         <div className="text-sm font-semibold">Add device</div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
-            placeholder='Ex: "FMB 140"'
+            placeholder='Ex: "CV200"'
             className="border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
           />
 
@@ -156,6 +164,15 @@ export default function AdminDevicesPage() {
             type="number"
             min={0}
             placeholder="Min stock"
+            className="border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
+          />
+
+          <input
+            value={String(newUnits)}
+            onChange={(e) => setNewUnits(Number(e.target.value || 1))}
+            type="number"
+            min={1}
+            placeholder="Units/IMEI"
             className="border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
           />
 
@@ -170,9 +187,7 @@ export default function AdminDevicesPage() {
 
         <div className="text-xs text-slate-500">
           Canonical preview:{" "}
-          <span className="text-slate-200 font-semibold">
-            {newName.trim() ? canonicalize(newName) : "—"}
-          </span>
+          <span className="text-slate-200 font-semibold">{newName.trim() ? canonicalize(newName) : "—"}</span>
         </div>
       </div>
 
@@ -197,24 +212,29 @@ export default function AdminDevicesPage() {
               <tr>
                 <th className="text-left p-2 border-b border-slate-800">Display</th>
                 <th className="text-left p-2 border-b border-slate-800">Canonical</th>
+                <th className="text-right p-2 border-b border-slate-800">Units/IMEI</th>
                 <th className="text-right p-2 border-b border-slate-800">Min stock</th>
                 <th className="text-right p-2 border-b border-slate-800">Action</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((r) => (
-                <DeviceRowItem key={r.device_id} row={r} onSave={saveMinStock} loading={loading} />
+                <DeviceRowItem key={r.device_id} row={r} onSave={saveRow} loading={loading} />
               ))}
 
               {filtered.length === 0 && (
                 <tr>
-                  <td className="p-3 text-sm text-slate-400" colSpan={4}>
+                  <td className="p-3 text-sm text-slate-400" colSpan={5}>
                     No devices.
                   </td>
                 </tr>
               )}
             </tbody>
           </table>
+        </div>
+
+        <div className="mt-3 text-xs text-slate-500">
+          Exemple: CV200 = 25 → si 20 IMEI importés, Qty = 500.
         </div>
       </div>
     </div>
@@ -227,14 +247,16 @@ function DeviceRowItem({
   loading,
 }: {
   row: DeviceRow;
-  onSave: (row: DeviceRow, min: number) => Promise<void>;
+  onSave: (row: DeviceRow, min: number, units: number) => Promise<void>;
   loading: boolean;
 }) {
-  const [val, setVal] = useState<number>(Number(row.min_stock ?? 0));
+  const [minVal, setMinVal] = useState<number>(Number(row.min_stock ?? 0));
+  const [unitsVal, setUnitsVal] = useState<number>(Number(row.units_per_imei ?? 1));
 
   useEffect(() => {
-    setVal(Number(row.min_stock ?? 0));
-  }, [row.min_stock]);
+    setMinVal(Number(row.min_stock ?? 0));
+    setUnitsVal(Number(row.units_per_imei ?? 1));
+  }, [row.min_stock, row.units_per_imei]);
 
   return (
     <tr className="hover:bg-slate-950/50">
@@ -244,19 +266,31 @@ function DeviceRowItem({
       <td className="p-2 border-b border-slate-800">
         <div className="text-slate-200">{row.canonical_name}</div>
       </td>
+
+      <td className="p-2 border-b border-slate-800 text-right">
+        <input
+          type="number"
+          min={1}
+          value={String(unitsVal)}
+          onChange={(e) => setUnitsVal(Number(e.target.value || 1))}
+          className="w-[120px] text-right border border-slate-800 bg-slate-950 text-slate-100 rounded-lg px-2 py-1"
+        />
+      </td>
+
       <td className="p-2 border-b border-slate-800 text-right">
         <input
           type="number"
           min={0}
-          value={String(val)}
-          onChange={(e) => setVal(Number(e.target.value || 0))}
+          value={String(minVal)}
+          onChange={(e) => setMinVal(Number(e.target.value || 0))}
           className="w-[120px] text-right border border-slate-800 bg-slate-950 text-slate-100 rounded-lg px-2 py-1"
         />
       </td>
+
       <td className="p-2 border-b border-slate-800 text-right">
         <button
           disabled={loading}
-          onClick={() => onSave(row, Number.isFinite(val) ? Number(val) : 0)}
+          onClick={() => onSave(row, minVal, unitsVal)}
           className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800 disabled:opacity-50"
         >
           Save

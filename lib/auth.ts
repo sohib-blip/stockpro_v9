@@ -5,6 +5,7 @@ export type Permissions = {
   can_outbound: boolean;
   can_export: boolean;
   can_admin: boolean;
+  can_stock_alerts?: boolean;
 };
 
 export function supabaseAnon() {
@@ -35,7 +36,7 @@ export async function getPermissions(userId: string) {
   const sb = supabaseService();
   const { data, error } = await sb
     .from("user_permissions")
-    .select("can_inbound,can_outbound,can_export,can_admin")
+    .select("can_inbound,can_outbound,can_export,can_admin,can_stock_alerts")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -46,6 +47,7 @@ export async function getPermissions(userId: string) {
       can_outbound: true,
       can_export: false,
       can_admin: false,
+      can_stock_alerts: false,
     } satisfies Permissions;
   }
 
@@ -54,5 +56,6 @@ export async function getPermissions(userId: string) {
     can_outbound: !!data.can_outbound,
     can_export: !!data.can_export,
     can_admin: !!data.can_admin,
+    can_stock_alerts: !!(data as any).can_stock_alerts,
   } satisfies Permissions;
 }

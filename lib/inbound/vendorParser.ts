@@ -156,14 +156,18 @@ export function makeOk(
   const cleaned = (labels || [])
     .map((l) => {
       const imeis = uniq(l.imeis || []);
+      const qtyFromInput = Number.isFinite(l.qty as any) ? Number(l.qty) : 0;
+      const qty = qtyFromInput > 0 ? qtyFromInput : imeis.length;
       return {
         ...l,
         imeis,
-        qty: imeis.length,
+        // ✅ If parser provided a qty, keep it. Otherwise default to imei count.
+        // This prevents wrong totals when a vendor file represents quantities differently.
+        qty,
         qr_data: imeis.join("\n"), // ✅ IMEI only
       };
     })
-    .filter((l) => l.qty > 0)
+    .filter((l) => (Number(l.qty) || 0) > 0)
     .sort((a, b) => (a.device + a.box_no).localeCompare(b.device + b.box_no));
 
   return {

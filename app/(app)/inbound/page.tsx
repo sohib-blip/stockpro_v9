@@ -117,15 +117,16 @@ export default function InboundPage() {
         />
 
         {/* FLOOR SELECTOR */}
-        <select
-          value={floor}
-          onChange={(e) => setFloor(e.target.value)}
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-        >
-          <option value="1">Floor 1</option>
-          <option value="2">Floor 2</option>
-          <option value="3">Floor 3</option>
-        </select>
+       <select
+       value={floor}
+       onChange={(e) => setFloor(e.target.value)}
+       className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+       >
+       <option value="00">Floor 00</option>
+       <option value="1">Floor 1</option>
+       <option value="6">Floor 6</option>
+       <option value="Cabinet">Cabinet</option>
+       </select>
 
         <button
           onClick={parse}

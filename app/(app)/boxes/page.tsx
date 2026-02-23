@@ -55,18 +55,19 @@ export default function BoxesPage() {
                 </td>
                 <td className="p-2 border-b border-slate-800">{r.box_no}</td>
                 <td className="p-2 border-b border-slate-800">
-                  <select
-                    value={r.floor || ""}
-                    onChange={(e) =>
-                      updateFloor(r.box_id, e.target.value)
-                    }
-                    className="border border-slate-800 bg-slate-950 rounded-lg px-2 py-1"
-                  >
-                    <option value="">—</option>
-                    <option value="1">Floor 1</option>
-                    <option value="2">Floor 2</option>
-                    <option value="3">Floor 3</option>
-                  </select>
+                 <select
+  value={r.floor || ""}
+  onChange={(e) =>
+    updateFloor(r.box_id, e.target.value)
+  }
+  className="border border-slate-800 bg-slate-950 rounded-lg px-2 py-1"
+>
+  <option value="">—</option>
+  <option value="00">00</option>
+  <option value="1">1</option>
+  <option value="6">6</option>
+  <option value="Cabinet">Cabinet</option>
+</select>
                 </td>
               </tr>
             ))}

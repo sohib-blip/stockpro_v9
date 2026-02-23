@@ -31,6 +31,9 @@ export default function InboundPage() {
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
+  // After confirm, we store last batch id to allow instant labels download
+  const [lastBatchId, setLastBatchId] = useState<string>("");
+
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
@@ -58,6 +61,8 @@ export default function InboundPage() {
   async function parse() {
     setErr("");
     setResult(null);
+    setLastBatchId("");
+
     if (!file) return setErr("Choose a file.");
 
     setBusy(true);
@@ -91,7 +96,7 @@ export default function InboundPage() {
   async function confirmInbound() {
     if (!result?.ok) return;
 
-    // ✅ BLOCK CONFIRM if unknown devices
+    // STRICT: block confirm if unknown devices
     if (result.unknown_devices && result.unknown_devices.length > 0) {
       setErr(
         `Import blocked: unknown devices -> ${result.unknown_devices.join(", ")}`
@@ -123,7 +128,6 @@ export default function InboundPage() {
       const json = await res.json();
 
       if (!json.ok) {
-        // ✅ Show unknown devices from API too (double safety)
         if (json.unknown_devices?.length) {
           setErr(
             `Import blocked: unknown devices -> ${json.unknown_devices.join(
@@ -135,6 +139,7 @@ export default function InboundPage() {
         throw new Error(json.error || "Confirm failed");
       }
 
+      setLastBatchId(json.batch_id);
       setResult(null);
       setFile(null);
 
@@ -169,16 +174,32 @@ export default function InboundPage() {
     : { boxes: 0, imeis: 0 };
 
   const hasUnknown =
-    result?.ok && Array.isArray(result.unknown_devices) && result.unknown_devices.length > 0;
+    result?.ok &&
+    Array.isArray(result.unknown_devices) &&
+    result.unknown_devices.length > 0;
 
   return (
     <div className="space-y-8 max-w-5xl">
-      <div>
-        <div className="text-xs text-slate-500">Inbound</div>
-        <h2 className="text-xl font-semibold">Inbound Import</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          User: <b>{actor}</b>
-        </p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-xs text-slate-500">Inbound</div>
+          <h2 className="text-xl font-semibold">Inbound Import</h2>
+          <p className="text-sm text-slate-400 mt-1">
+            User: <b>{actor}</b>
+          </p>
+        </div>
+
+        {/* After successful confirm, show instant labels download */}
+        {lastBatchId && (
+          <a
+            href={`/api/inbound/labels?batch_id=${encodeURIComponent(
+              lastBatchId
+            )}`}
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
+          >
+            Download QR labels (PDF)
+          </a>
+        )}
       </div>
 
       {/* Controls */}
@@ -246,7 +267,7 @@ export default function InboundPage() {
             </button>
           </div>
 
-          {/* Unknown devices warning (STRICT) */}
+          {/* Strict unknown block */}
           {hasUnknown && (
             <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
               <div className="font-semibold">Import blocked</div>
@@ -254,7 +275,7 @@ export default function InboundPage() {
                 Unknown devices found: <b>{result.unknown_devices.join(", ")}</b>
               </div>
               <div className="text-xs text-amber-200/70 mt-1">
-                Add these devices in Admin → Devices (or add aliases), then re-import.
+                Add these devices in Admin → Devices, then re-import.
               </div>
             </div>
           )}
@@ -263,10 +284,18 @@ export default function InboundPage() {
             <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
               <thead className="bg-slate-950/50">
                 <tr>
-                  <th className="p-2 border-b border-slate-800 text-left">Device</th>
-                  <th className="p-2 border-b border-slate-800 text-left">Box</th>
-                  <th className="p-2 border-b border-slate-800 text-left">Floor</th>
-                  <th className="p-2 border-b border-slate-800 text-right">IMEIs</th>
+                  <th className="p-2 border-b border-slate-800 text-left">
+                    Device
+                  </th>
+                  <th className="p-2 border-b border-slate-800 text-left">
+                    Box
+                  </th>
+                  <th className="p-2 border-b border-slate-800 text-left">
+                    Floor
+                  </th>
+                  <th className="p-2 border-b border-slate-800 text-right">
+                    IMEIs
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -275,7 +304,9 @@ export default function InboundPage() {
                     <td className="p-2 border-b border-slate-800 font-semibold">
                       {l.device}
                     </td>
-                    <td className="p-2 border-b border-slate-800">{l.box_no}</td>
+                    <td className="p-2 border-b border-slate-800">
+                      {l.box_no}
+                    </td>
                     <td className="p-2 border-b border-slate-800">
                       {l.floor || floor}
                     </td>
@@ -296,7 +327,7 @@ export default function InboundPage() {
           <div>
             <div className="font-semibold">Inbound history</div>
             <div className="text-xs text-slate-500">
-              Each line = one inbound batch. Download Excel to trace device/box/IMEI.
+              Download Excel for trace + download QR labels anytime.
             </div>
           </div>
 
@@ -312,26 +343,51 @@ export default function InboundPage() {
           <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
             <thead className="bg-slate-950/50">
               <tr>
-                <th className="p-2 border-b border-slate-800 text-left">Date/Time</th>
+                <th className="p-2 border-b border-slate-800 text-left">
+                  Date/Time
+                </th>
                 <th className="p-2 border-b border-slate-800 text-left">User</th>
-                <th className="p-2 border-b border-slate-800 text-left">Vendor</th>
+                <th className="p-2 border-b border-slate-800 text-left">
+                  Vendor
+                </th>
                 <th className="p-2 border-b border-slate-800 text-right">Qty</th>
-                <th className="p-2 border-b border-slate-800 text-right">Excel</th>
+                <th className="p-2 border-b border-slate-800 text-right">
+                  Excel
+                </th>
+                <th className="p-2 border-b border-slate-800 text-right">
+                  Labels
+                </th>
               </tr>
             </thead>
             <tbody>
               {history.map((h) => (
                 <tr key={h.batch_id} className="hover:bg-slate-950/40">
-                  <td className="p-2 border-b border-slate-800">{fmtDateTime(h.created_at)}</td>
+                  <td className="p-2 border-b border-slate-800">
+                    {fmtDateTime(h.created_at)}
+                  </td>
                   <td className="p-2 border-b border-slate-800">{h.actor}</td>
                   <td className="p-2 border-b border-slate-800">{h.vendor}</td>
-                  <td className="p-2 border-b border-slate-800 text-right font-semibold">{h.qty}</td>
+                  <td className="p-2 border-b border-slate-800 text-right font-semibold">
+                    {h.qty}
+                  </td>
                   <td className="p-2 border-b border-slate-800 text-right">
                     <a
-                      href={`/api/inbound/export?batch_id=${encodeURIComponent(h.batch_id)}`}
+                      href={`/api/inbound/export?batch_id=${encodeURIComponent(
+                        h.batch_id
+                      )}`}
                       className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
                     >
                       Excel
+                    </a>
+                  </td>
+                  <td className="p-2 border-b border-slate-800 text-right">
+                    <a
+                      href={`/api/inbound/labels?batch_id=${encodeURIComponent(
+                        h.batch_id
+                      )}`}
+                      className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
+                    >
+                      PDF
                     </a>
                   </td>
                 </tr>
@@ -339,7 +395,7 @@ export default function InboundPage() {
 
               {history.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-3 text-slate-400">
+                  <td colSpan={6} className="p-3 text-slate-400">
                     No inbound batches yet.
                   </td>
                 </tr>

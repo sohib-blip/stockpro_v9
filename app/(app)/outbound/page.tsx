@@ -3,65 +3,80 @@
 import { useState } from "react";
 
 export default function OutboundPage() {
-  const [imei, setImei] = useState("");
-  const [shipmentRef, setShipmentRef] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<any>(null);
   const [message, setMessage] = useState("");
 
-  async function handleShip() {
-    setMessage("");
+  async function handlePreview() {
+    if (!file) return;
 
-    const res = await fetch("/api/outbound", {
+    const form = new FormData();
+    form.append("file", file);
+
+    const res = await fetch("/api/outbound/eod-preview", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imei, shipment_ref: shipmentRef }),
+      body: form,
     });
 
     const json = await res.json();
+    setPreview(json);
+  }
 
+  async function handleConfirm() {
+    const res = await fetch("/api/outbound/eod-confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ imeis: preview.imeis }),
+    });
+
+    const json = await res.json();
     if (json.ok) {
-      setMessage("✅ Shipped successfully");
-      setImei("");
-    } else {
-      setMessage("❌ " + json.error);
+      setMessage("Stock updated successfully ✅");
+      setPreview(null);
     }
   }
 
   return (
-    <div className="space-y-6 max-w-xl">
-      <div>
-        <div className="text-xs text-slate-500">Outbound</div>
-        <h2 className="text-xl font-semibold">Ship IMEI</h2>
-      </div>
+    <div className="space-y-6 max-w-3xl">
+      <h2 className="text-xl font-semibold">End Of Day Import</h2>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+      <input
+        type="file"
+        accept=".xlsx,.xls"
+        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
+      />
 
-        <input
-          value={shipmentRef}
-          onChange={(e) => setShipmentRef(e.target.value)}
-          placeholder="Shipment reference (optional)"
-          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-        />
+      <button
+        onClick={handlePreview}
+        className="rounded-xl bg-indigo-600 px-4 py-2"
+      >
+        Preview
+      </button>
 
-        <input
-          value={imei}
-          onChange={(e) => setImei(e.target.value)}
-          placeholder="Scan or enter IMEI"
-          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-lg"
-        />
-
-        <button
-          onClick={handleShip}
-          className="w-full rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-3 font-semibold"
-        >
-          Ship
-        </button>
-
-        {message && (
-          <div className="text-sm mt-2">
-            {message}
+      {preview?.ok && (
+        <div className="rounded-xl border border-slate-800 p-4 bg-slate-900">
+          <div className="mb-3 font-semibold">
+            {preview.totalDetected} IMEIs detected
           </div>
-        )}
-      </div>
+
+          {preview.summary.map((s: any, idx: number) => (
+            <div key={idx} className="text-sm mb-2">
+              {s.device} — Box {s.box_no} → 
+              {s.detected} out • {s.remaining} remaining
+            </div>
+          ))}
+
+          <button
+            onClick={handleConfirm}
+            className="mt-4 rounded-xl bg-emerald-600 px-4 py-2"
+          >
+            Confirm Stock Out
+          </button>
+        </div>
+      )}
+
+      {message && <div>{message}</div>}
     </div>
   );
 }

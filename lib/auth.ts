@@ -29,11 +29,17 @@ export async function requireUserFromBearer(req: Request) {
   const auth = req.headers.get("authorization") || "";
   const match = auth.match(/^Bearer\s+(.+)$/i);
   const token = match?.[1];
-  if (!token) return { ok: false as const };
+
+  if (!token) {
+    return { ok: false as const, error: "Missing token" };
+  }
 
   const sb = supabaseAnon();
-  const { data } = await sb.auth.getUser(token);
-  if (!data.user) return { ok: false as const };
+  const { data, error } = await sb.auth.getUser(token);
+
+  if (error || !data.user) {
+    return { ok: false as const, error: "Invalid session" };
+  }
 
   return { ok: true as const, user: data.user };
 }

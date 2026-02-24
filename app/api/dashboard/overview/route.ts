@@ -12,100 +12,135 @@ function sb() {
   });
 }
 
+type Level = "ok" | "low" | "empty";
+
 export async function GET() {
   try {
     const supabase = sb();
 
-    // -------- GLOBAL COUNTS --------
-    const { data: items } = await supabase
+    // ---- ITEMS (light) ----
+    const { data: items, error: itemsErr } = await supabase
       .from("items")
-      .select("status, device_id, box_id");
+      .select("status, device_id, box_id, imported_at, imported_by");
 
-    const { data: devices } = await supabase
+    if (itemsErr) throw itemsErr;
+
+    // ---- DEVICES (bins) ----
+    const { data: devices, error: devErr } = await supabase
       .from("devices")
-      .select("device_id, device, min_stock");
+      .select("device_id, device, min_stock")
+      .order("device", { ascending: true });
 
-    const { data: boxes } = await supabase
+    if (devErr) throw devErr;
+
+    // ---- BOXES ----
+    // On essaye avec floor, si ça fail -> fallback sans floor
+    const { data: boxesWithFloor, error: boxErr } = await supabase
       .from("boxes")
-      .select("id, box_code, bin_id");
+      .select("id, box_code, bin_id, floor");
 
-    const totalIn = items?.filter(i => i.status === "IN").length ?? 0;
-    const totalOut = items?.filter(i => i.status === "OUT").length ?? 0;
+    let boxes: any[] = [];
+    if (!boxErr) {
+      boxes = (boxesWithFloor as any) || [];
+    } else {
+      const { data: boxesNoFloor, error: boxErr2 } = await supabase
+        .from("boxes")
+        .select("id, box_code, bin_id");
+      if (boxErr2) throw boxErr2;
 
-    // -------- DEVICE SUMMARY --------
-    const deviceSummary = devices?.map(d => {
-      const inCount =
-        items?.filter(
-          i => i.device_id === d.device_id && i.status === "IN"
-        ).length ?? 0;
+      boxes = ((boxesNoFloor as any) || []).map((b: any) => ({ ...b, floor: null }));
+    }
 
-      const outCount =
-        items?.filter(
-          i => i.device_id === d.device_id && i.status === "OUT"
-        ).length ?? 0;
+    const itemsArr = items || [];
+    const devicesArr = devices || [];
 
-      let level: "ok" | "low" | "empty" = "ok";
+    // ---- KPI ----
+    const totalIn = itemsArr.filter((i: any) => i.status === "IN").length;
+    const totalOut = itemsArr.filter((i: any) => i.status === "OUT").length;
 
-      if (inCount === 0) level = "empty";
-      else if (d.min_stock && inCount <= d.min_stock) level = "low";
+    // map device_id -> device row
+    const deviceById = new Map<string, any>();
+    for (const d of devicesArr) deviceById.set(String((d as any).device_id), d);
 
-      return {
-        device: d.device,
-        total_in: inCount,
-        total_out: outCount,
-        min_stock: d.min_stock ?? 0,
-        level,
-      };
-    }) ?? [];
+    // ---- DEVICE SUMMARY ----
+    const deviceSummary =
+      devicesArr.map((d: any) => {
+        const device_id = String(d.device_id);
 
-    const alertCount = deviceSummary.filter(d => d.level !== "ok").length;
+        const inCount = itemsArr.filter(
+          (i: any) => String(i.device_id) === device_id && i.status === "IN"
+        ).length;
 
-    // -------- BOX SUMMARY --------
-    const boxSummary = boxes?.map(b => {
-      const inCount =
-        items?.filter(
-          i => i.box_id === b.id && i.status === "IN"
-        ).length ?? 0;
+        const outCount = itemsArr.filter(
+          (i: any) => String(i.device_id) === device_id && i.status === "OUT"
+        ).length;
 
-      const total =
-        items?.filter(
-          i => i.box_id === b.id
-        ).length ?? 0;
+        let level: Level = "ok";
+        const minStock = Number(d.min_stock || 0);
 
-      const percent =
-        total > 0 ? Math.round((inCount / total) * 100) : 0;
+        if (inCount === 0) level = "empty";
+        else if (minStock > 0 && inCount <= minStock) level = "low";
 
-      let level: "ok" | "low" | "empty" = "ok";
+        return {
+          device_id,
+          device: d.device,
+          total_in: inCount,
+          total_out: outCount,
+          min_stock: minStock,
+          level,
+        };
+      }) || [];
 
-      if (inCount === 0) level = "empty";
-      else if (percent < 30) level = "low";
+    const alerts = deviceSummary.filter((d: any) => d.level !== "ok").length;
 
-      const deviceName =
-        devices?.find(d => d.device_id === b.bin_id)?.device ?? "";
+    // ---- BOX SUMMARY (par box) ----
+    const boxSummary =
+      boxes.map((b: any) => {
+        const boxId = String(b.id);
 
-      return {
-        device: deviceName,
-        box_code: b.box_code,
-        remaining: inCount,
-        total,
-        percent,
-        level,
-      };
-    }) ?? [];
+        const total = itemsArr.filter((i: any) => String(i.box_id) === boxId).length;
+        const remaining = itemsArr.filter(
+          (i: any) => String(i.box_id) === boxId && i.status === "IN"
+        ).length;
+
+        const percent = total > 0 ? Math.round((remaining / total) * 100) : 0;
+
+        let level: Level = "ok";
+        if (remaining === 0) level = "empty";
+        else if (percent < 30) level = "low";
+
+        const d = deviceById.get(String(b.bin_id));
+        const deviceName = d?.device || "";
+
+        return {
+          box_id: boxId,
+          device_id: String(b.bin_id || ""),
+          device: deviceName,
+          box_code: b.box_code,
+          floor: b.floor || null,
+          remaining,
+          total,
+          percent,
+          level,
+        };
+      }) || [];
 
     return NextResponse.json({
       ok: true,
       kpis: {
         total_in: totalIn,
         total_out: totalOut,
-        total_devices: devices?.length ?? 0,
-        alerts: alertCount,
+        total_devices: devicesArr.length,
+        total_boxes: boxes.length,
+        alerts,
       },
       deviceSummary,
       boxSummary,
     });
-
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message });
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Dashboard overview failed" },
+      { status: 500 }
+    );
   }
 }

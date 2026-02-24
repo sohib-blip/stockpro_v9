@@ -4,53 +4,35 @@ import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Search, Download, AlertTriangle, Pencil, X } from "lucide-react";
 
+type Level = "ok" | "low" | "empty";
+
 type KPI = {
-  devices: number;
-  boxes: number;
-  imeis_in: number;
-  low_stock_devices: number;
+  total_in: number;
+  total_out: number;
+  total_devices: number;
+  total_boxes: number;
+  alerts: number;
 };
 
-type BinRow = {
+type DeviceSummaryRow = {
   device_id: string;
   device: string;
-  min_stock: number | null;
-  imeis_in: number;
-  boxes_count: number;
-  floors: string[]; // ["00","1","Cabinet"...]
-  is_low: boolean;
+  total_in: number;
+  total_out: number;
+  min_stock: number;
+  level: Level;
 };
 
-type BoxRow = {
+type BoxSummaryRow = {
   box_id: string;
-  box_no: string;
+  device_id: string;
+  device: string;
+  box_code: string;
   floor: string | null;
-  imeis_in: number;
-};
-
-type Drilldown = {
-  ok: boolean;
-  device?: {
-    device_id: string;
-    device: string;
-    min_stock: number | null;
-    imeis_in: number;
-    boxes_count: number;
-    floors: string[];
-    is_low: boolean;
-  };
-  boxes?: Array<{
-    box_id: string;
-    box_no: string;
-    floor: string | null;
-    imeis_in: number;
-    imeis: Array<{
-      imei: string;
-      imported_at: string | null;
-      imported_by: string | null;
-    }>;
-  }>;
-  error?: string;
+  remaining: number;
+  total: number;
+  percent: number;
+  level: Level;
 };
 
 export default function DashboardPage() {
@@ -62,13 +44,15 @@ export default function DashboardPage() {
   const [err, setErr] = useState("");
 
   const [kpi, setKpi] = useState<KPI>({
-    devices: 0,
-    boxes: 0,
-    imeis_in: 0,
-    low_stock_devices: 0,
+    total_in: 0,
+    total_out: 0,
+    total_devices: 0,
+    total_boxes: 0,
+    alerts: 0,
   });
 
-  const [bins, setBins] = useState<BinRow[]>([]);
+  const [devices, setDevices] = useState<DeviceSummaryRow[]>([]);
+  const [boxes, setBoxes] = useState<BoxSummaryRow[]>([]);
 
   // UI filters
   const [q, setQ] = useState("");
@@ -78,10 +62,8 @@ export default function DashboardPage() {
   const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
   const [minStockDraft, setMinStockDraft] = useState<string>("");
 
-  // drilldown modal
+  // drilldown modal (local drilldown from boxSummary)
   const [openDeviceId, setOpenDeviceId] = useState<string | null>(null);
-  const [drill, setDrill] = useState<Drilldown | null>(null);
-  const [drillLoading, setDrillLoading] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -94,6 +76,7 @@ export default function DashboardPage() {
   async function loadOverview() {
     setLoading(true);
     setErr("");
+
     try {
       const res = await fetch("/api/dashboard/overview", { cache: "no-store" });
       const json = await res.json();
@@ -102,12 +85,45 @@ export default function DashboardPage() {
         throw new Error(json?.error || "Failed to load dashboard");
       }
 
-      setKpi(json.kpi);
-      setBins(json.bins || []);
+      // ✅ ton API actuelle renvoie kpis/deviceSummary/boxSummary
+      const kpis: KPI =
+        json.kpis || json.kpi || {
+          total_in: 0,
+          total_out: 0,
+          total_devices: 0,
+          total_boxes: 0,
+          alerts: 0,
+        };
+
+      const devs: DeviceSummaryRow[] = (json.deviceSummary || json.devices || []).map((d: any) => ({
+        device_id: String(d.device_id ?? ""),
+        device: String(d.device ?? ""),
+        total_in: Number(d.total_in ?? 0),
+        total_out: Number(d.total_out ?? 0),
+        min_stock: Number(d.min_stock ?? 0),
+        level: (d.level as Level) || "ok",
+      }));
+
+      const bxs: BoxSummaryRow[] = (json.boxSummary || json.boxes || []).map((b: any) => ({
+        box_id: String(b.box_id ?? b.id ?? ""),
+        device_id: String(b.device_id ?? b.bin_id ?? ""),
+        device: String(b.device ?? ""),
+        box_code: String(b.box_code ?? b.box_no ?? ""),
+        floor: b.floor ?? null,
+        remaining: Number(b.remaining ?? 0),
+        total: Number(b.total ?? 0),
+        percent: Number(b.percent ?? 0),
+        level: (b.level as Level) || "ok",
+      }));
+
+      setKpi(kpis);
+      setDevices(devs);
+      setBoxes(bxs);
     } catch (e: any) {
       setErr(e?.message || "Failed to load dashboard");
-      setBins([]);
-      setKpi({ devices: 0, boxes: 0, imeis_in: 0, low_stock_devices: 0 });
+      setKpi({ total_in: 0, total_out: 0, total_devices: 0, total_boxes: 0, alerts: 0 });
+      setDevices([]);
+      setBoxes([]);
     } finally {
       setLoading(false);
     }
@@ -118,14 +134,30 @@ export default function DashboardPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const filtered = bins.filter((b) => {
-    if (lowOnly && !b.is_low) return false;
-    if (!q.trim()) return true;
+  const filteredDevices = devices.filter((d) => {
     const s = q.trim().toLowerCase();
-    return (b.device || "").toLowerCase().includes(s);
+    if (lowOnly && d.level === "ok") return false;
+    if (!s) return true;
+    return (d.device || "").toLowerCase().includes(s);
   });
 
-  function startEditMinStock(row: BinRow) {
+  function floorsForDevice(device_id: string): string[] {
+    const set = new Set<string>();
+    for (const b of boxes) {
+      if (b.device_id === device_id && b.floor) set.add(String(b.floor));
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }
+
+  function boxesCountForDevice(device_id: string): number {
+    const set = new Set<string>();
+    for (const b of boxes) {
+      if (b.device_id === device_id) set.add(b.box_id);
+    }
+    return set.size;
+  }
+
+  function startEditMinStock(row: DeviceSummaryRow) {
     setEditingDeviceId(row.device_id);
     setMinStockDraft(String(row.min_stock ?? ""));
   }
@@ -134,7 +166,7 @@ export default function DashboardPage() {
     const v = minStockDraft.trim();
     const num = v === "" ? null : Number(v);
 
-    if (v !== "" && (Number.isNaN(num) || num! < 0)) {
+    if (v !== "" && (Number.isNaN(num) || (num as number) < 0)) {
       alert("min_stock must be a number >= 0 (or empty)");
       return;
     }
@@ -154,31 +186,6 @@ export default function DashboardPage() {
     setEditingDeviceId(null);
     setMinStockDraft("");
     await loadOverview();
-  }
-
-  async function openDrilldown(device_id: string) {
-    setOpenDeviceId(device_id);
-    setDrill(null);
-    setDrillLoading(true);
-
-    try {
-      const res = await fetch(`/api/dashboard/drilldown?device_id=${encodeURIComponent(device_id)}`, {
-        cache: "no-store",
-      });
-      const json = await res.json();
-      if (!res.ok || !json?.ok) throw new Error(json?.error || "Failed to load drilldown");
-      setDrill(json);
-    } catch (e: any) {
-      setDrill({ ok: false, error: e?.message || "Failed to load drilldown" });
-    } finally {
-      setDrillLoading(false);
-    }
-  }
-
-  function closeDrilldown() {
-    setOpenDeviceId(null);
-    setDrill(null);
-    setDrillLoading(false);
   }
 
   async function exportExcel() {
@@ -202,6 +209,16 @@ export default function DashboardPage() {
       setErr(e?.message || "Export failed");
     }
   }
+
+  const openDevice = openDeviceId
+    ? devices.find((d) => d.device_id === openDeviceId) || null
+    : null;
+
+  const drillBoxes = openDeviceId
+    ? boxes
+        .filter((b) => b.device_id === openDeviceId)
+        .sort((a, b) => (a.box_code || "").localeCompare(b.box_code || ""))
+    : [];
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -241,15 +258,12 @@ export default function DashboardPage() {
       )}
 
       {/* KPI */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-        <KpiCard title="Devices (bins)" value={kpi.devices} />
-        <KpiCard title="Boxes" value={kpi.boxes} />
-        <KpiCard title="IMEIs IN" value={kpi.imeis_in} />
-        <KpiCard
-          title="Low stock"
-          value={kpi.low_stock_devices}
-          highlight={kpi.low_stock_devices > 0}
-        />
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
+        <KpiCard title="Devices (bins)" value={kpi.total_devices} />
+        <KpiCard title="Boxes" value={kpi.total_boxes} />
+        <KpiCard title="IMEIs IN" value={kpi.total_in} />
+        <KpiCard title="IMEIs OUT" value={kpi.total_out} />
+        <KpiCard title="Alerts" value={kpi.alerts} highlight={kpi.alerts > 0} />
       </div>
 
       {/* FILTERS */}
@@ -274,20 +288,16 @@ export default function DashboardPage() {
             />
             Low stock only
           </label>
+
+          {loading && <div className="text-sm text-slate-400">Loading…</div>}
         </div>
       </div>
 
       {/* TABLE */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="font-semibold">Bins</div>
-            <div className="text-xs text-slate-500">
-              Click a device to drill down into boxes + IMEIs.
-            </div>
-          </div>
-
-          {loading && <div className="text-sm text-slate-400">Loading…</div>}
+        <div>
+          <div className="font-semibold">Bins</div>
+          <div className="text-xs text-slate-500">Click a device to view boxes (drilldown).</div>
         </div>
 
         <div className="overflow-auto">
@@ -299,54 +309,63 @@ export default function DashboardPage() {
                 <th className="p-2 border-b border-slate-800 text-right">Boxes</th>
                 <th className="p-2 border-b border-slate-800 text-left">Floors</th>
                 <th className="p-2 border-b border-slate-800 text-right">Min stock</th>
-                <th className="p-2 border-b border-slate-800 text-right">Alert</th>
+                <th className="p-2 border-b border-slate-800 text-right">Status</th>
               </tr>
             </thead>
+
             <tbody>
-              {filtered.map((b) => {
-                const isEditing = editingDeviceId === b.device_id;
+              {filteredDevices.map((d) => {
+                const isEditing = editingDeviceId === d.device_id;
+
+                const floors = floorsForDevice(d.device_id);
+                const boxesCount = boxesCountForDevice(d.device_id);
+
+                const isLow = d.level !== "ok";
 
                 return (
                   <tr
-                    key={b.device_id}
+                    key={d.device_id}
                     className="hover:bg-slate-950/40 cursor-pointer"
-                    onClick={() => openDrilldown(b.device_id)}
+                    onClick={() => setOpenDeviceId(d.device_id)}
                   >
                     <td className="p-2 border-b border-slate-800">
                       <div className="flex items-center gap-2">
-                        <span className="font-semibold">{b.device}</span>
-                        {b.is_low && (
-                          <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-amber-950/40 border border-amber-500/30 text-amber-200">
+                        <span className="font-semibold">{d.device}</span>
+
+                        {isLow && (
+                          <span
+                            className={
+                              "inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full border " +
+                              (d.level === "empty"
+                                ? "bg-rose-950/40 border-rose-500/30 text-rose-200"
+                                : "bg-amber-950/40 border-amber-500/30 text-amber-200")
+                            }
+                          >
                             <AlertTriangle size={14} />
-                            LOW
+                            {d.level === "empty" ? "EMPTY" : "LOW"}
                           </span>
                         )}
                       </div>
                     </td>
 
-                    <td className="p-2 border-b border-slate-800 text-right font-semibold">
-                      {b.imeis_in}
-                    </td>
-
-                    <td className="p-2 border-b border-slate-800 text-right">
-                      {b.boxes_count}
-                    </td>
+                    <td className="p-2 border-b border-slate-800 text-right font-semibold">{d.total_in}</td>
+                    <td className="p-2 border-b border-slate-800 text-right">{boxesCount}</td>
 
                     <td className="p-2 border-b border-slate-800">
-                      {(b.floors || []).length ? (b.floors || []).join(", ") : "—"}
+                      {floors.length ? floors.join(", ") : "—"}
+                      <span className="ml-2 text-xs text-slate-500">
+                        {floors.length ? "(from boxes)" : "(no floor column yet)"}
+                      </span>
                     </td>
 
-                    <td
-                      className="p-2 border-b border-slate-800 text-right"
-                      onClick={(e) => e.stopPropagation()}
-                    >
+                    <td className="p-2 border-b border-slate-800 text-right" onClick={(e) => e.stopPropagation()}>
                       {!isEditing ? (
                         <button
-                          onClick={() => startEditMinStock(b)}
+                          onClick={() => startEditMinStock(d)}
                           className="inline-flex items-center gap-2 rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
                         >
                           <Pencil size={14} />
-                          {b.min_stock ?? "—"}
+                          {Number.isFinite(d.min_stock) ? d.min_stock : "—"}
                         </button>
                       ) : (
                         <div className="flex items-center justify-end gap-2">
@@ -358,7 +377,7 @@ export default function DashboardPage() {
                             autoFocus
                           />
                           <button
-                            onClick={() => saveMinStock(b.device_id)}
+                            onClick={() => saveMinStock(d.device_id)}
                             className="rounded-lg bg-emerald-600 hover:bg-emerald-700 px-3 py-2 text-xs font-semibold"
                           >
                             Save
@@ -374,17 +393,19 @@ export default function DashboardPage() {
                     </td>
 
                     <td className="p-2 border-b border-slate-800 text-right">
-                      {b.is_low ? (
-                        <span className="text-amber-200 font-semibold">Low</span>
-                      ) : (
+                      {d.level === "ok" ? (
                         <span className="text-slate-500">OK</span>
+                      ) : d.level === "empty" ? (
+                        <span className="text-rose-200 font-semibold">Empty</span>
+                      ) : (
+                        <span className="text-amber-200 font-semibold">Low</span>
                       )}
                     </td>
                   </tr>
                 );
               })}
 
-              {!loading && filtered.length === 0 && (
+              {!loading && filteredDevices.length === 0 && (
                 <tr>
                   <td colSpan={6} className="p-3 text-slate-400">
                     No devices match your filters.
@@ -403,20 +424,17 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between p-4 border-b border-slate-800">
               <div>
                 <div className="text-xs text-slate-500">Drilldown</div>
-                <div className="font-semibold">
-                  {drill?.device?.device || "Loading…"}
-                </div>
-                {drill?.device && (
+                <div className="font-semibold">{openDevice?.device || "Device"}</div>
+                {!!openDevice && (
                   <div className="text-xs text-slate-400 mt-1">
-                    IMEIs IN: <b>{drill.device.imeis_in}</b> • Boxes:{" "}
-                    <b>{drill.device.boxes_count}</b> • Floors:{" "}
-                    <b>{(drill.device.floors || []).join(", ") || "—"}</b>
+                    IN: <b>{openDevice.total_in}</b> • OUT: <b>{openDevice.total_out}</b> • Min stock:{" "}
+                    <b>{openDevice.min_stock}</b>
                   </div>
                 )}
               </div>
 
               <button
-                onClick={closeDrilldown}
+                onClick={() => setOpenDeviceId(null)}
                 className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm font-semibold hover:bg-slate-800 inline-flex items-center gap-2"
               >
                 <X size={16} />
@@ -425,77 +443,45 @@ export default function DashboardPage() {
             </div>
 
             <div className="p-4 space-y-4">
-              {drillLoading && (
-                <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300">
-                  Loading drilldown…
+              {drillBoxes.length === 0 ? (
+                <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
+                  No boxes for this device.
                 </div>
-              )}
-
-              {!drillLoading && drill?.ok === false && (
-                <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-4 text-sm text-rose-200">
-                  {drill?.error || "Failed to load drilldown"}
-                </div>
-              )}
-
-              {!drillLoading && drill?.ok && (
-                <div className="space-y-4">
-                  {(drill.boxes || []).map((box) => (
-                    <div key={box.box_id} className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+              ) : (
+                <div className="space-y-3">
+                  {drillBoxes.map((b) => (
+                    <div key={b.box_id} className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <div className="font-semibold">
-                            Box <span className="text-slate-300">{box.box_no}</span>
+                            Box <span className="text-slate-300">{b.box_code}</span>
                           </div>
                           <div className="text-xs text-slate-500 mt-1">
-                            Floor: <b className="text-slate-300">{box.floor || "—"}</b> • IMEIs IN:{" "}
-                            <b className="text-slate-300">{box.imeis_in}</b> • Box ID:{" "}
-                            <span className="text-slate-400">{box.box_id}</span>
+                            Floor: <b className="text-slate-300">{b.floor || "—"}</b> • Remaining IN:{" "}
+                            <b className="text-slate-300">{b.remaining}</b> • Total ever:{" "}
+                            <b className="text-slate-300">{b.total}</b> • {b.percent}%
                           </div>
+                          <div className="text-[11px] text-slate-600 mt-1">Box ID: {b.box_id}</div>
                         </div>
-                      </div>
 
-                      <div className="mt-3 overflow-auto">
-                        <table className="w-full text-xs border border-slate-800 rounded-xl overflow-hidden">
-                          <thead className="bg-slate-950/40">
-                            <tr>
-                              <th className="p-2 border-b border-slate-800 text-left">IMEI</th>
-                              <th className="p-2 border-b border-slate-800 text-left">Imported at</th>
-                              <th className="p-2 border-b border-slate-800 text-left">Imported by</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {(box.imeis || []).map((it) => (
-                              <tr key={it.imei} className="hover:bg-slate-950/40">
-                                <td className="p-2 border-b border-slate-800 font-mono">{it.imei}</td>
-                                <td className="p-2 border-b border-slate-800">
-                                  {it.imported_at ? new Date(it.imported_at).toLocaleString() : "—"}
-                                </td>
-                                <td className="p-2 border-b border-slate-800">
-                                  {it.imported_by || "—"}
-                                </td>
-                              </tr>
-                            ))}
-
-                            {(box.imeis || []).length === 0 && (
-                              <tr>
-                                <td colSpan={3} className="p-3 text-slate-400">
-                                  No IMEIs currently IN for this box.
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
+                        <div className="text-xs">
+                          {b.level === "ok" ? (
+                            <span className="text-slate-500">OK</span>
+                          ) : b.level === "empty" ? (
+                            <span className="text-rose-200 font-semibold">Empty</span>
+                          ) : (
+                            <span className="text-amber-200 font-semibold">Low</span>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
-
-                  {(drill.boxes || []).length === 0 && (
-                    <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
-                      No boxes found for this device.
-                    </div>
-                  )}
                 </div>
               )}
+
+              <div className="text-xs text-slate-500">
+                Note: la liste IMEIs par box (imported_at/imported_by) arrive via l’export Excel / route dédiée.
+              </div>
             </div>
           </div>
         </div>

@@ -97,7 +97,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     loadPermissions();
   }, [supabase]);
 
-  // ⏳ évite faux Access Denied
+  // ⏳ Attente chargement
   if (!ready) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
@@ -106,14 +106,34 @@ export default function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  // 🔒 PAGE BLOCKER
-  const blocked =
-    (pathname.startsWith("/dashboard") && !perms.can_dashboard) ||
-    (pathname.startsWith("/inbound") && !perms.can_inbound) ||
-    (pathname.startsWith("/outbound") && !perms.can_outbound) ||
-    (pathname.startsWith("/labels") && !perms.can_labels) ||
-    (pathname.startsWith("/admin/devices") && !perms.can_devices) ||
-    (pathname.startsWith("/admin") && !perms.can_admin);
+  // 🔒 PAGE BLOCKER PROPRE (ordre important)
+  const blocked = (() => {
+    if (pathname.startsWith("/admin/devices")) {
+      return !perms.can_devices;
+    }
+
+    if (pathname.startsWith("/admin")) {
+      return !perms.can_admin;
+    }
+
+    if (pathname.startsWith("/dashboard")) {
+      return !perms.can_dashboard;
+    }
+
+    if (pathname.startsWith("/inbound")) {
+      return !perms.can_inbound;
+    }
+
+    if (pathname.startsWith("/outbound")) {
+      return !perms.can_outbound;
+    }
+
+    if (pathname.startsWith("/labels")) {
+      return !perms.can_labels;
+    }
+
+    return false;
+  })();
 
   if (blocked) {
     return (

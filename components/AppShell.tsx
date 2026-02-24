@@ -4,7 +4,16 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { LayoutDashboard, ArrowDownToLine, ArrowUpFromLine, Tag, Shield, Menu, LogOut, Package } from "lucide-react";
+import {
+  LayoutDashboard,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Tag,
+  Shield,
+  Menu,
+  LogOut,
+  Package,
+} from "lucide-react";
 
 type NavItem = {
   href: string;
@@ -15,7 +24,7 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
-  { href: "/labels", label: "Manual import", icon: Tag },
+  { href: "/labels", label: "Labels", icon: Tag }, // ✅ renamed
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
   { href: "/admin", label: "Admin", icon: Shield },
   { href: "/admin/devices", label: "Devices", icon: Shield },
@@ -24,7 +33,7 @@ const NAV: NavItem[] = [
 function pageTitle(pathname: string) {
   if (pathname === "/" || pathname.startsWith("/dashboard")) return "Dashboard";
   if (pathname.startsWith("/inbound")) return "Inbound Import";
-  if (pathname.startsWith("/Manual import")) return "QR Labels";
+  if (pathname.startsWith("/labels")) return "Labels"; // ✅ fixed
   if (pathname.startsWith("/outbound")) return "Outbound";
   if (pathname.startsWith("/admin")) return "Admin";
   return "StockPro";
@@ -78,7 +87,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
     const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
       setEmail(session?.user?.email ?? "");
       if (!session?.user) {
-        setPerms({ can_inbound: true, can_outbound: true, can_export: false, can_admin: false });
+        setPerms({
+          can_inbound: true,
+          can_outbound: true,
+          can_export: false,
+          can_admin: false,
+        });
       }
     });
 

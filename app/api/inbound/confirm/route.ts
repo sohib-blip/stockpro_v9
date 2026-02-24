@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       deviceIdByName[String((d as any).device)] = String((d as any).device_id);
     }
 
-    // ✅ STRICT CHECK: unknown devices -> BLOCK
+    // Block unknown devices
     const unknownDevices = Array.from(
       new Set(
         labels
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Create inbound batch
+    // Create batch
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
       .insert({
@@ -77,12 +77,9 @@ export async function POST(req: Request) {
 
     if (batchErr) throw batchErr;
 
-    // Load existing IMEIs
-    const { data: existingItems, error: exErr } = await supabase
+    const { data: existingItems } = await supabase
       .from("items")
       .select("imei");
-
-    if (exErr) throw exErr;
 
     const existingSet = new Set(
       (existingItems || []).map((x: any) => String(x.imei))
@@ -93,20 +90,9 @@ export async function POST(req: Request) {
     let createdBoxes = 0;
     let reusedBoxes = 0;
 
-    const perBoxReport: Array<{
-      device: string;
-      box_no: string;
-      floor: string;
-      inserted: number;
-      skipped_existing: number;
-    }> = [];
-
-    const nowIso = new Date().toISOString();
-
     for (const raw of labels as LabelPayload[]) {
       const deviceName = String(raw.device || "").trim();
-      const box_no = String(raw.box_no || "").trim();
-      const floor = String(raw.floor || "").trim();
+      const boxCode = String(raw.box_no || "").trim();
       const imeis = Array.from(
         new Set(
           (raw.imeis || [])
@@ -115,57 +101,47 @@ export async function POST(req: Request) {
         )
       );
 
-      if (!deviceName || !box_no || imeis.length === 0) continue;
+      if (!deviceName || !boxCode || imeis.length === 0) continue;
 
-      const device_id = deviceIdByName[deviceName]; // ✅ guaranteed exists now
+      const device_id = deviceIdByName[deviceName];
 
-      // Find or create box
-      const { data: existingBox, error: findBoxErr } = await supabase
+      // 🔹 Find or create box (using REAL columns)
+      const { data: existingBox } = await supabase
         .from("boxes")
-        .select("box_id, floor")
-        .eq("device_id", device_id)
-        .eq("box_no", box_no)
+        .select("id")
+        .eq("bin_id", device_id)
+        .eq("box_code", boxCode)
         .maybeSingle();
-
-      if (findBoxErr) throw findBoxErr;
 
       let box_id: string;
 
-      if (existingBox?.box_id) {
-        box_id = String(existingBox.box_id);
+      if (existingBox?.id) {
+        box_id = String(existingBox.id);
         reusedBoxes += 1;
-
-        if (floor && floor !== String(existingBox.floor || "")) {
-          await supabase.from("boxes").update({ floor }).eq("box_id", box_id);
-        }
       } else {
         const { data: newBox, error: newBoxErr } = await supabase
           .from("boxes")
           .insert({
-            box_no,
-            device_id,
-            floor: floor || null,
+            box_code: boxCode,
+            bin_id: device_id,
           })
-          .select("box_id")
+          .select("id")
           .single();
 
         if (newBoxErr) throw newBoxErr;
 
-        box_id = String(newBox.box_id);
+        box_id = String(newBox.id);
         createdBoxes += 1;
       }
 
-      // Insert items (skip existing)
       const itemsToInsert: any[] = [];
-      let inserted = 0;
-      let skipped = 0;
 
       for (const imei of imeis) {
         if (existingSet.has(imei)) {
-          skipped += 1;
           skippedExistingImeis += 1;
           continue;
         }
+
         existingSet.add(imei);
 
         itemsToInsert.push({
@@ -175,53 +151,37 @@ export async function POST(req: Request) {
           status: "IN",
         });
 
-        inserted += 1;
         insertedImeis += 1;
       }
 
       if (itemsToInsert.length > 0) {
         const { error: insErr } = await supabase
           .from("items")
-          .insert(itemsToInsert as any);
+          .insert(itemsToInsert);
+
         if (insErr) throw insErr;
 
         const movements = itemsToInsert.map((it) => ({
-          imei: it.imei,
-          device_id: it.device_id,
-          box_id: it.box_id,
           type: "IN",
-          shipment_ref: null,
+          box_id: it.box_id,
+          item_id: null, // optional if not used
           batch_id: batch.batch_id,
           actor: actor || "unknown",
-          created_at: nowIso,
         }));
 
-        const { error: movErr } = await supabase
-          .from("movements")
-          .insert(movements as any);
-        if (movErr) throw movErr;
+        await supabase.from("movements").insert(movements);
       }
-
-      perBoxReport.push({
-        device: deviceName,
-        box_no,
-        floor: floor || "",
-        inserted,
-        skipped_existing: skipped,
-      });
     }
 
     return NextResponse.json({
       ok: true,
       batch_id: batch.batch_id,
-      created_at: batch.created_at,
       totals: {
         inserted_imeis: insertedImeis,
         skipped_existing_imeis: skippedExistingImeis,
         created_boxes: createdBoxes,
         reused_boxes: reusedBoxes,
       },
-      per_box: perBoxReport,
     });
   } catch (e: any) {
     return NextResponse.json(

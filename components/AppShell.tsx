@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
@@ -19,94 +19,86 @@ type NavItem = {
   href: string;
   label: string;
   icon: React.ElementType;
+  permission?: keyof Permissions;
 };
 
-const NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
-  { href: "/labels", label: "Labels", icon: Tag }, // ✅ renamed
-  { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
-  { href: "/admin", label: "Admin", icon: Shield },
-  { href: "/admin/devices", label: "Devices", icon: Shield },
+type Permissions = {
+  can_dashboard: boolean;
+  can_inbound: boolean;
+  can_outbound: boolean;
+  can_labels: boolean;
+  can_admin: boolean;
+};
+
+const MAIN_NAV: NavItem[] = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "can_dashboard" },
+  { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine, permission: "can_inbound" },
+  { href: "/labels", label: "Labels", icon: Tag, permission: "can_labels" },
+  { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine, permission: "can_outbound" },
 ];
 
-function pageTitle(pathname: string) {
-  if (pathname === "/" || pathname.startsWith("/dashboard")) return "Dashboard";
-  if (pathname.startsWith("/inbound")) return "Inbound Import";
-  if (pathname.startsWith("/labels")) return "Labels"; // ✅ fixed
-  if (pathname.startsWith("/outbound")) return "Outbound";
-  if (pathname.startsWith("/admin")) return "Admin";
-  return "StockPro";
-}
-
-function isActivePath(pathname: string, href: string) {
-  const path = typeof pathname === "string" ? pathname : "";
-  const h = typeof href === "string" ? href : "";
-  if (!h) return false;
-
-  if (h === "/dashboard") return path === "/" || path.startsWith("/dashboard");
-  return path === h || path.startsWith(h + "/") || path.startsWith(h);
-}
+const CONTROL_TOWER_NAV: NavItem[] = [
+  { href: "/admin", label: "Admin Overview", icon: Shield, permission: "can_admin" },
+  { href: "/admin/devices", label: "Devices (Bins)", icon: Package, permission: "can_admin" },
+];
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-  const pathnameRaw = usePathname();
-  const pathname = typeof pathnameRaw === "string" ? pathnameRaw : "";
-  const router = useRouter();
+  const pathname = usePathname() || "";
 
   const [collapsed, setCollapsed] = useState(false);
-  const [email, setEmail] = useState<string>("");
-
-  const [perms, setPerms] = useState({
+  const [email, setEmail] = useState("");
+  const [perms, setPerms] = useState<Permissions>({
+    can_dashboard: true,
     can_inbound: true,
     can_outbound: true,
-    can_export: false,
+    can_labels: true,
     can_admin: false,
   });
 
   useEffect(() => {
     supabase.auth.getUser().then(async ({ data }) => {
       setEmail(data.user?.email ?? "");
+
       if (data.user?.id) {
         const { data: p } = await supabase
           .from("user_permissions")
-          .select("can_inbound,can_outbound,can_export,can_admin")
+          .select("can_dashboard,can_inbound,can_outbound,can_labels,can_admin")
           .eq("user_id", data.user.id)
           .maybeSingle();
+
         if (p) {
           setPerms({
+            can_dashboard: !!p.can_dashboard,
             can_inbound: !!p.can_inbound,
             can_outbound: !!p.can_outbound,
-            can_export: !!p.can_export,
+            can_labels: !!p.can_labels,
             can_admin: !!p.can_admin,
           });
         }
       }
     });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, session) => {
-      setEmail(session?.user?.email ?? "");
-      if (!session?.user) {
-        setPerms({
-          can_inbound: true,
-          can_outbound: true,
-          can_export: false,
-          can_admin: false,
-        });
-      }
-    });
-
-    return () => sub.subscription.unsubscribe();
   }, [supabase]);
 
-  async function logout() {
-    await supabase.auth.signOut();
-    setEmail("");
-    router.push("/login");
-    router.refresh();
+  // 🔒 PAGE BLOCKER
+  if (
+    (pathname.startsWith("/dashboard") && !perms.can_dashboard) ||
+    (pathname.startsWith("/inbound") && !perms.can_inbound) ||
+    (pathname.startsWith("/outbound") && !perms.can_outbound) ||
+    (pathname.startsWith("/labels") && !perms.can_labels) ||
+    (pathname.startsWith("/admin") && !perms.can_admin)
+  ) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
+        <div className="text-center space-y-3">
+          <h2 className="text-xl font-semibold text-rose-400">Access Denied</h2>
+          <p className="text-slate-400 text-sm">
+            You do not have permission to access this page.
+          </p>
+        </div>
+      </div>
+    );
   }
-
-  const title = pageTitle(pathname);
 
   return (
     <div className="min-h-screen flex bg-slate-950 text-slate-100">
@@ -115,7 +107,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
         className={[
           "h-screen sticky top-0 shrink-0",
           "bg-slate-950 border-r border-slate-800/80",
-          "transition-all duration-200",
           collapsed ? "w-[72px]" : "w-[268px]",
         ].join(" ")}
       >
@@ -126,87 +117,68 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <Package size={18} className="text-white" />
             </div>
             {!collapsed && (
-              <div className="leading-tight">
+              <div>
                 <div className="font-semibold">StockPro</div>
                 <div className="text-[11px] text-slate-400">Inventory console</div>
               </div>
             )}
           </div>
 
-          <button
-            onClick={() => setCollapsed((v) => !v)}
-            className="h-9 w-9 rounded-xl bg-slate-900 border border-slate-800 hover:bg-slate-800 grid place-items-center"
-          >
-            <Menu size={16} />
+          <button onClick={() => setCollapsed(!collapsed)}>
+            <Menu size={18} />
           </button>
         </div>
 
-        {/* NAV */}
-        <nav className="px-2 py-3 space-y-1 text-sm">
-          {NAV.filter((item) => {
-            if (item.href === "/admin") return perms.can_admin;
-            if (item.href === "/inbound") return perms.can_inbound;
-            if (item.href === "/outbound") return perms.can_outbound;
-            return true;
-          }).map((item) => {
-            const active = isActivePath(pathname, item.href);
+        {/* MAIN NAV */}
+        <nav className="px-2 py-4 space-y-1 text-sm">
+          {MAIN_NAV.filter((item) => !item.permission || perms[item.permission]).map((item) => {
             const Icon = item.icon;
-
             return (
               <Link
                 key={item.href}
                 href={item.href}
-                className={[
-                  "flex items-center justify-between gap-3 px-3 py-2 rounded-xl",
-                  active
-                    ? "bg-slate-800 text-slate-50 border border-slate-700"
-                    : "text-slate-200 hover:bg-slate-900 hover:text-slate-50",
-                ].join(" ")}
+                className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-800"
               >
-                <div className="flex items-center gap-3">
-                  <Icon size={18} />
-                  {!collapsed && <span className="font-medium">{item.label}</span>}
-                </div>
+                <Icon size={18} />
+                {!collapsed && <span>{item.label}</span>}
               </Link>
             );
           })}
         </nav>
 
+        {/* CONTROL TOWER */}
+        {perms.can_admin && (
+          <>
+            <div className="px-3 mt-4 mb-2 text-[11px] uppercase tracking-wider text-slate-500">
+              {!collapsed && "Control Tower"}
+            </div>
+
+            <nav className="px-2 space-y-1 text-sm">
+              {CONTROL_TOWER_NAV.map((item) => {
+                const Icon = item.icon;
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-800"
+                  >
+                    <Icon size={18} />
+                    {!collapsed && <span>{item.label}</span>}
+                  </Link>
+                );
+              })}
+            </nav>
+          </>
+        )}
+
         {/* FOOTER */}
-        <div className="absolute bottom-0 left-0 right-0 p-2 border-t border-slate-800/80">
-          <div className="rounded-2xl bg-slate-900 border border-slate-800 p-2">
-            {!collapsed ? (
-              <>
-                <div className="text-[11px] text-slate-400">Signed in</div>
-                <div className="text-sm font-semibold truncate">{email || "—"}</div>
-                <button
-                  onClick={logout}
-                  className="mt-2 w-full rounded-xl bg-rose-600 hover:bg-rose-700 px-3 py-2 text-sm font-semibold flex items-center justify-center gap-2"
-                >
-                  <LogOut size={16} /> Sign out
-                </button>
-              </>
-            ) : (
-              <button
-                onClick={logout}
-                className="w-full rounded-xl bg-rose-600 hover:bg-rose-700 px-3 py-2 text-sm font-semibold grid place-items-center"
-              >
-                <LogOut size={16} />
-              </button>
-            )}
-          </div>
+        <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-slate-800/80 text-xs text-slate-500">
+          {!collapsed && <div>Signed in as {email}</div>}
         </div>
       </aside>
 
       {/* CONTENT */}
-      <section className="flex-1 min-w-0">
-        <header className="h-14 border-b border-slate-800/80 flex items-center justify-between px-4">
-          <h1 className="font-semibold truncate">{title}</h1>
-          <div className="text-sm text-slate-400 truncate">{email}</div>
-        </header>
-
-        <main className="p-4 md:p-6">{children}</main>
-      </section>
+      <section className="flex-1 p-6">{children}</section>
     </div>
   );
 }

@@ -9,6 +9,14 @@ type PermsPayload = {
   can_stock_alerts: boolean;
 };
 
+const DEFAULT_PERMS: PermsPayload = {
+  can_inbound: true,
+  can_outbound: true,
+  can_export: false,
+  can_admin: false,
+  can_stock_alerts: false,
+};
+
 function normalizePerms(p: any): PermsPayload {
   return {
     can_inbound: !!p?.can_inbound,
@@ -17,6 +25,18 @@ function normalizePerms(p: any): PermsPayload {
     can_admin: !!p?.can_admin,
     can_stock_alerts: !!p?.can_stock_alerts,
   };
+}
+
+function mergePerms(base: PermsPayload, patch: Partial<PermsPayload>): PermsPayload {
+  // Only apply keys that are explicitly boolean in patch.
+  const out: PermsPayload = { ...base };
+
+  (Object.keys(DEFAULT_PERMS) as (keyof PermsPayload)[]).forEach((k) => {
+    const v = (patch as any)?.[k];
+    if (typeof v === "boolean") out[k] = v;
+  });
+
+  return out;
 }
 
 export async function GET(req: Request) {
@@ -30,6 +50,7 @@ export async function GET(req: Request) {
 
   try {
     const sb = supabaseService();
+
     const { data: usersResp, error: usersErr } = await sb.auth.admin.listUsers({ perPage: 1000 });
     if (usersErr) throw new Error(usersErr.message);
 
@@ -48,13 +69,7 @@ export async function GET(req: Request) {
 
     const out = users
       .map((usr) => {
-        const p = map.get(usr.id) ?? {
-          can_inbound: true,
-          can_outbound: true,
-          can_export: false,
-          can_admin: false,
-          can_stock_alerts: false,
-        };
+        const p = map.get(usr.id) ?? DEFAULT_PERMS;
         return {
           user_id: usr.id,
           email: usr.email ?? null,
@@ -80,18 +95,57 @@ export async function PATCH(req: Request) {
 
   try {
     const body = (await req.json()) as { user_id?: string; permissions?: Partial<PermsPayload> };
+
     const user_id = String(body.user_id ?? "").trim();
     if (!user_id) return NextResponse.json({ ok: false, error: "Missing user_id" }, { status: 400 });
 
-    const p = normalizePerms(body.permissions || {});
+    const patch = (body.permissions || {}) as Partial<PermsPayload>;
 
     const sb = supabaseService();
-    const { error } = await sb
-      .from("user_permissions")
-      .upsert({ user_id, ...p }, { onConflict: "user_id" });
-    if (error) throw new Error(error.message);
 
-    return NextResponse.json({ ok: true });
+    // 1) Load existing perms for target user (if any)
+    const { data: existingRow, error: existingErr } = await sb
+      .from("user_permissions")
+      .select("user_id,can_inbound,can_outbound,can_export,can_admin,can_stock_alerts")
+      .eq("user_id", user_id)
+      .maybeSingle();
+
+    if (existingErr) throw new Error(existingErr.message);
+
+    const existingPerms = normalizePerms(existingRow ?? DEFAULT_PERMS);
+
+    // 2) Merge patch safely (no accidental false overwrite)
+    const nextPerms = mergePerms(existingPerms, patch);
+
+    // 3) Anti lock-out: cannot remove admin from the last admin
+    const currentlyAdmin = !!existingPerms.can_admin;
+    const wantsRemoveAdmin = currentlyAdmin && nextPerms.can_admin === false;
+
+    if (wantsRemoveAdmin) {
+      const { count, error: countErr } = await sb
+        .from("user_permissions")
+        .select("user_id", { count: "exact", head: true })
+        .eq("can_admin", true);
+
+      if (countErr) throw new Error(countErr.message);
+
+      // If only one admin exists and we're removing it => block
+      if ((count ?? 0) <= 1) {
+        return NextResponse.json(
+          { ok: false, error: "Cannot remove admin permission from the last admin." },
+          { status: 400 }
+        );
+      }
+    }
+
+    // 4) Upsert merged perms
+    const { error: upsertErr } = await sb
+      .from("user_permissions")
+      .upsert({ user_id, ...nextPerms }, { onConflict: "user_id" });
+
+    if (upsertErr) throw new Error(upsertErr.message);
+
+    return NextResponse.json({ ok: true, permissions: nextPerms });
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e?.message ?? "Update failed" }, { status: 500 });
   }

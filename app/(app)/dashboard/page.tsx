@@ -2,175 +2,180 @@
 
 import { useEffect, useState } from "react";
 
-export default function DashboardPage() {
+export default function Dashboard() {
   const [data, setData] = useState<any>(null);
-  const [search, setSearch] = useState("");
-  const [onlyLow, setOnlyLow] = useState(false);
-
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
-  const [selectedDeviceName, setSelectedDeviceName] = useState<string | null>(null);
-  const [drillData, setDrillData] = useState<any[]>([]);
+  const [filterDevice, setFilterDevice] = useState("");
+  const [selectedDevice, setSelectedDevice] = useState<any>(null);
+  const [selectedBox, setSelectedBox] = useState<any>(null);
+  const [editingMinStock, setEditingMinStock] = useState<Record<string, number>>({});
 
   async function load() {
-    const res = await fetch("/api/dashboard/overview", { cache: "no-store" });
+    const res = await fetch("/api/dashboard/overview");
     const json = await res.json();
     if (json.ok) setData(json);
-  }
-
-  async function loadDrill(deviceId: string, deviceName: string) {
-    const res = await fetch(
-      `/api/dashboard/drilldown?device=${encodeURIComponent(deviceId)}`
-    );
-    const json = await res.json();
-
-    if (json.ok) {
-      setSelectedDeviceId(deviceId);
-      setSelectedDeviceName(deviceName);
-      setDrillData(json.rows);
-    }
   }
 
   useEffect(() => {
     load();
   }, []);
 
+  async function updateMinStock(device_id: string) {
+    await fetch("/api/dashboard/update-minstock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        device_id,
+        min_stock: editingMinStock[device_id],
+      }),
+    });
+
+    load();
+  }
+
   if (!data) return <div className="p-6">Loading...</div>;
 
-  const filteredDevices = data.deviceSummary
-    .filter((d: any) =>
-      d.device.toLowerCase().includes(search.toLowerCase())
-    )
-    .filter((d: any) =>
-      onlyLow ? d.level !== "ok" : true
-    );
+  const filteredDevices = data.deviceSummary.filter((d: any) =>
+    d.device.toLowerCase().includes(filterDevice.toLowerCase())
+  );
 
-  const badgeColor = (level: string) => {
-    if (level === "empty") return "bg-rose-600";
-    if (level === "low") return "bg-amber-500";
-    return "bg-emerald-600";
-  };
+  const lowStockDevices = data.deviceSummary.filter(
+    (d: any) => d.total_imei <= (d.min_stock ?? 0)
+  );
 
   return (
     <div className="space-y-8 max-w-6xl">
 
-      {/* HEADER */}
-      <div>
-        <div className="text-xs text-slate-500">Dashboard</div>
-        <h2 className="text-xl font-semibold">Stock Overview</h2>
-      </div>
+      <h2 className="text-xl font-semibold">Inventory Dashboard</h2>
 
-      {/* EXPORT BUTTON */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <button
-          onClick={() => window.open("/api/dashboard/export")}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
-        >
-          Export Full Stock Excel
-        </button>
-
-        <label className="text-sm flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={onlyLow}
-            onChange={() => setOnlyLow(!onlyLow)}
-            className="accent-indigo-600"
-          />
-          View only low / empty stock
-        </label>
-      </div>
-
-      {/* SEARCH */}
-      <input
-        placeholder="Search device..."
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-      />
-
-      {/* DEVICE TABLE */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-        <div className="font-semibold mb-4">Stock by Device</div>
-
-        <table className="w-full text-sm">
-          <thead>
-            <tr>
-              <th className="text-left">Device</th>
-              <th className="text-right">IN</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredDevices.map((d: any, i: number) => (
-              <tr
-                key={i}
-                className="cursor-pointer hover:bg-slate-800"
-                onClick={() => loadDrill(d.device_id, d.device)}
-              >
-                <td>{d.device}</td>
-                <td className="text-right">{d.total_in}</td>
-                <td>
-                  <span
-                    className={`px-2 py-1 text-xs rounded ${badgeColor(
-                      d.level
-                    )}`}
-                  >
-                    {d.level}
-                  </span>
-                </td>
-              </tr>
+      {/* 🔴 LOW STOCK ALERT */}
+      {lowStockDevices.length > 0 && (
+        <div className="bg-rose-600 p-4 rounded text-white">
+          ⚠️ Low Stock Alert:
+          <ul className="mt-2 list-disc ml-6">
+            {lowStockDevices.map((d: any) => (
+              <li key={d.device_id}>
+                {d.device} — {d.total_imei} IMEI remaining (Min: {d.min_stock})
+              </li>
             ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* DRILLDOWN */}
-      {selectedDeviceId && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-          <div className="flex justify-between items-center mb-4">
-            <div className="font-semibold">
-              IMEIs IN — {selectedDeviceName}
-            </div>
-
-            <button
-              onClick={() => {
-                setSelectedDeviceId(null);
-                setSelectedDeviceName(null);
-                setDrillData([]);
-              }}
-              className="text-xs text-slate-400 hover:text-white"
-            >
-              Close
-            </button>
-          </div>
-
-          <div className="max-h-72 overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr>
-                  <th className="text-left">IMEI</th>
-                  <th className="text-left">Box</th>
-                </tr>
-              </thead>
-              <tbody>
-                {drillData.map((r: any, i: number) => (
-                  <tr key={i}>
-                    <td>{r.imei}</td>
-                    <td>{r.boxes?.box_code || "—"}</td>
-                  </tr>
-                ))}
-
-                {drillData.length === 0 && (
-                  <tr>
-                    <td colSpan={2} className="text-slate-400">
-                      No IMEIs found.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          </ul>
         </div>
       )}
+
+      {/* KPI */}
+      <div className="grid grid-cols-4 gap-4">
+        <KPI label="Devices" value={data.kpis.total_devices} />
+        <KPI label="IMEI IN" value={data.kpis.total_imei} />
+        <KPI label="Boxes" value={data.kpis.total_boxes} />
+        <KPI label="Floors" value={data.kpis.total_floors} />
+      </div>
+
+      <button
+        onClick={() => window.open("/api/dashboard/export")}
+        className="bg-indigo-600 px-4 py-2 rounded text-white"
+      >
+        Export Excel
+      </button>
+
+      <input
+        placeholder="Filter by device"
+        value={filterDevice}
+        onChange={(e) => setFilterDevice(e.target.value)}
+        className="border p-2 w-full"
+      />
+
+      {/* DEVICES TABLE */}
+      <table className="w-full border">
+        <thead>
+          <tr>
+            <th>Device</th>
+            <th>IMEI</th>
+            <th>Boxes</th>
+            <th>Floors</th>
+            <th>Min Stock</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filteredDevices.map((d: any) => (
+            <tr key={d.device_id}>
+              <td>{d.device}</td>
+              <td className={d.total_imei <= d.min_stock ? "text-red-600 font-bold" : ""}>
+                {d.total_imei}
+              </td>
+              <td>{d.total_boxes}</td>
+              <td>{d.floors.join(", ")}</td>
+
+              <td>
+                <input
+                  type="number"
+                  defaultValue={d.min_stock}
+                  onChange={(e) =>
+                    setEditingMinStock({
+                      ...editingMinStock,
+                      [d.device_id]: Number(e.target.value),
+                    })
+                  }
+                  className="border p-1 w-20"
+                />
+              </td>
+
+              <td>
+                <button
+                  onClick={() => updateMinStock(d.device_id)}
+                  className="bg-emerald-600 text-white px-2 py-1 rounded"
+                >
+                  Save
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* BOX DRILLDOWN */}
+      {selectedDevice && (
+        <div>
+          <h3>Boxes for {selectedDevice.device}</h3>
+
+          {data.boxes
+            .filter((b: any) => b.bin_id === selectedDevice.device_id)
+            .map((b: any) => (
+              <div
+                key={b.id}
+                onClick={() => setSelectedBox(b)}
+                className="border p-2 cursor-pointer"
+              >
+                Box: {b.id} | Floor: {b.floor}
+              </div>
+            ))}
+        </div>
+      )}
+
+      {/* IMEI DRILLDOWN */}
+      {selectedBox && (
+        <div>
+          <h3>IMEIs in Box {selectedBox.id}</h3>
+          <ul>
+            {data.items
+              .filter((i: any) =>
+                i.box_id === selectedBox.id && i.status === "IN"
+              )
+              .map((i: any) => (
+                <li key={i.imei}>{i.imei}</li>
+              ))}
+          </ul>
+        </div>
+      )}
+
+    </div>
+  );
+}
+
+function KPI({ label, value }: any) {
+  return (
+    <div className="border p-4 rounded">
+      <div className="text-sm">{label}</div>
+      <div className="text-xl font-bold">{value}</div>
     </div>
   );
 }

@@ -4,43 +4,59 @@ import * as XLSX from "xlsx";
 
 export const runtime = "nodejs";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+function sb() {
+  return createClient(SUPABASE_URL, SERVICE_ROLE, {
+    auth: { persistSession: false },
+  });
+}
 
 export async function GET() {
-  const { data } = await supabase
-    .from("items")
-    .select(`
-      imei,
-      imported_at,
-      imported_by,
-      devices(device),
-      boxes(id, floor)
-    `);
+  try {
+    const supabase = sb();
 
-  const rows = (data ?? []).map((i: any) => ({
-    Device: i.devices?.device,
-    Box_ID: i.boxes?.id,
-    Floor: i.boxes?.floor,
-    IMEI: i.imei,
-    Imported_At: i.imported_at,
-    Imported_By: i.imported_by,
-  }));
+    const { data: items } = await supabase
+      .from("items")
+      .select(`
+        imei,
+        status,
+        imported_at,
+        imported_by,
+        devices(device),
+        boxes(id, box_code)
+      `);
 
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, "Stock");
+    const rows = (items ?? []).map((i: any) => ({
+      Device: i.devices?.device ?? "",
+      Box_ID: i.boxes?.id ?? "",
+      Box_Code: i.boxes?.box_code ?? "",
+      IMEI: i.imei,
+      Status: i.status,
+      Imported_At: i.imported_at,
+      Imported_By: i.imported_by,
+    }));
 
-  const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    XLSX.utils.book_append_sheet(wb, ws, "Stock");
 
-  return new NextResponse(buffer, {
-    headers: {
-      "Content-Type":
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": 'attachment; filename="stock_export.xlsx"',
-    },
-  });
+    const buffer = XLSX.write(wb, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    return new NextResponse(buffer, {
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition":
+          'attachment; filename="full_stock_export.xlsx"',
+      },
+    });
+
+  } catch (e: any) {
+    return NextResponse.json({ ok: false, error: e.message });
+  }
 }

@@ -12,6 +12,7 @@ import {
   Shield,
   Menu,
   Package,
+  Boxes,
 } from "lucide-react";
 
 type Permissions = {
@@ -27,7 +28,7 @@ type NavItem = {
   href: string;
   label: string;
   icon: React.ElementType;
-  permission?: keyof Permissions;
+  permission: keyof Permissions;
 };
 
 const MAIN_NAV: NavItem[] = [
@@ -39,7 +40,7 @@ const MAIN_NAV: NavItem[] = [
 
 const CONTROL_TOWER_NAV: NavItem[] = [
   { href: "/admin", label: "Admin Overview", icon: Shield, permission: "can_admin" },
-  { href: "/admin/devices", label: "Devices (Bins)", icon: Package, permission: "can_devices" },
+  { href: "/admin/devices", label: "Devices (Bins)", icon: Boxes, permission: "can_devices" },
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -48,6 +49,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   const [collapsed, setCollapsed] = useState(false);
   const [email, setEmail] = useState("");
+  const [ready, setReady] = useState(false);
+
   const [perms, setPerms] = useState<Permissions>({
     can_dashboard: false,
     can_inbound: false,
@@ -58,41 +61,61 @@ export default function AppShell({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      setEmail(data.user?.email ?? "");
+    async function loadPermissions() {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
 
-      if (data.user?.id) {
-        const { data: p } = await supabase
-          .from("user_permissions")
-          .select(
-            "can_dashboard,can_inbound,can_outbound,can_labels,can_devices,can_admin"
-          )
-          .eq("user_id", data.user.id)
-          .maybeSingle();
-
-        if (p) {
-          setPerms({
-            can_dashboard: !!p.can_dashboard,
-            can_inbound: !!p.can_inbound,
-            can_outbound: !!p.can_outbound,
-            can_labels: !!p.can_labels,
-            can_devices: !!p.can_devices,
-            can_admin: !!p.can_admin,
-          });
-        }
+      if (!user) {
+        setReady(true);
+        return;
       }
-    });
+
+      setEmail(user.email ?? "");
+
+      const { data: p } = await supabase
+        .from("user_permissions")
+        .select(
+          "can_dashboard,can_inbound,can_outbound,can_labels,can_devices,can_admin"
+        )
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (p) {
+        setPerms({
+          can_dashboard: !!p.can_dashboard,
+          can_inbound: !!p.can_inbound,
+          can_outbound: !!p.can_outbound,
+          can_labels: !!p.can_labels,
+          can_devices: !!p.can_devices,
+          can_admin: !!p.can_admin,
+        });
+      }
+
+      setReady(true);
+    }
+
+    loadPermissions();
   }, [supabase]);
 
-  // 🔒 PAGE BLOCKER (ULTRA SIMPLE)
-  if (
+  // ⏳ évite faux Access Denied
+  if (!ready) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
+        Loading...
+      </div>
+    );
+  }
+
+  // 🔒 PAGE BLOCKER
+  const blocked =
     (pathname.startsWith("/dashboard") && !perms.can_dashboard) ||
     (pathname.startsWith("/inbound") && !perms.can_inbound) ||
     (pathname.startsWith("/outbound") && !perms.can_outbound) ||
     (pathname.startsWith("/labels") && !perms.can_labels) ||
     (pathname.startsWith("/admin/devices") && !perms.can_devices) ||
-    (pathname === "/admin" && !perms.can_admin)
-  ) {
+    (pathname.startsWith("/admin") && !perms.can_admin);
+
+  if (blocked) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-950 text-slate-100">
         <div className="text-center space-y-3">
@@ -117,7 +140,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
           collapsed ? "w-[72px]" : "w-[268px]",
         ].join(" ")}
       >
-        {/* HEADER */}
+        {/* LOGO */}
         <div className="h-14 flex items-center justify-between px-3 border-b border-slate-800/80">
           <div className="flex items-center gap-2">
             <div className="h-9 w-9 rounded-xl bg-indigo-600 grid place-items-center">
@@ -140,21 +163,19 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
         {/* MAIN NAV */}
         <nav className="px-2 py-4 space-y-1 text-sm">
-          {MAIN_NAV.filter((item) => !item.permission || perms[item.permission]).map(
-            (item) => {
-              const Icon = item.icon;
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-800"
-                >
-                  <Icon size={18} />
-                  {!collapsed && <span>{item.label}</span>}
-                </Link>
-              );
-            }
-          )}
+          {MAIN_NAV.filter((item) => perms[item.permission]).map((item) => {
+            const Icon = item.icon;
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-800"
+              >
+                <Icon size={18} />
+                {!collapsed && <span>{item.label}</span>}
+              </Link>
+            );
+          })}
         </nav>
 
         {/* CONTROL TOWER */}
@@ -165,21 +186,21 @@ export default function AppShell({ children }: { children: ReactNode }) {
             </div>
 
             <nav className="px-2 space-y-1 text-sm">
-              {CONTROL_TOWER_NAV.filter(
-                (item) => !item.permission || perms[item.permission]
-              ).map((item) => {
-                const Icon = item.icon;
-                return (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-800"
-                  >
-                    <Icon size={18} />
-                    {!collapsed && <span>{item.label}</span>}
-                  </Link>
-                );
-              })}
+              {CONTROL_TOWER_NAV.filter((item) => perms[item.permission]).map(
+                (item) => {
+                  const Icon = item.icon;
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className="flex items-center gap-3 px-3 py-2 rounded-xl hover:bg-slate-800"
+                    >
+                      <Icon size={18} />
+                      {!collapsed && <span>{item.label}</span>}
+                    </Link>
+                  );
+                }
+              )}
             </nav>
           </>
         )}

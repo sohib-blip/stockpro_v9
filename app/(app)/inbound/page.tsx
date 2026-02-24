@@ -17,9 +17,10 @@ type HistoryRow = {
   qty: number;
 };
 
-type DeviceRow = {
+type BinRow = {
   device_id: string;
   device: string;
+  canonical_name?: string | null;
 };
 
 export default function InboundPage() {
@@ -43,11 +44,11 @@ export default function InboundPage() {
   // Labels after confirm
   const [lastBatchId, setLastBatchId] = useState<string>("");
 
-  // Devices list (for manual dropdown)
-  const [devices, setDevices] = useState<DeviceRow[]>([]);
+  // Bins list (devices table)
+  const [bins, setBins] = useState<BinRow[]>([]);
 
-  // Manual import
-  const [manualDevice, setManualDevice] = useState<string>("");
+  // Manual import (now uses device_id)
+  const [manualDeviceId, setManualDeviceId] = useState<string>("");
   const [manualBox, setManualBox] = useState<string>("");
   const [manualFloor, setManualFloor] = useState<string>("00");
   const [manualImeis, setManualImeis] = useState<string>("");
@@ -67,16 +68,18 @@ export default function InboundPage() {
     })();
   }, [supabase]);
 
-  async function loadDevices() {
+  async function loadBins() {
     const { data, error } = await supabase
       .from("devices")
-      .select("device_id, device")
+      .select("device_id,device,canonical_name")
       .order("device", { ascending: true });
 
     if (!error) {
-      setDevices((data as any) || []);
-      if (!manualDevice && data && data.length > 0) {
-        setManualDevice((data as any)[0].device);
+      const rows = (data as any as BinRow[]) || [];
+      setBins(rows);
+
+      if (!manualDeviceId && rows.length > 0) {
+        setManualDeviceId(rows[0].device_id);
       }
     }
   }
@@ -95,7 +98,7 @@ export default function InboundPage() {
 
   useEffect(() => {
     loadHistory();
-    loadDevices();
+    loadBins();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -119,6 +122,7 @@ export default function InboundPage() {
 
     setBusy(true);
     try {
+      // bins/devices = source of truth
       const { data: devs, error: devErr } = await supabase
         .from("devices")
         .select("device_id,canonical_name,device,active,units_per_imei");
@@ -126,17 +130,42 @@ export default function InboundPage() {
       if (devErr) throw devErr;
 
       const deviceMatches = toDeviceMatchList((devs as any) || []);
+
+      // parse vendor excel -> gives labels with .device (name)
       const bytes = new Uint8Array(await file.arrayBuffer());
       const parsed = parseVendorExcel(vendor, bytes, deviceMatches);
 
-      if (parsed?.ok) {
-        parsed.labels = parsed.labels.map((l: any) => ({
-          ...l,
-          floor,
-        }));
+      if (!parsed?.ok) {
+        setResult(parsed);
+        return;
       }
 
-      setResult(parsed);
+      // map parsed.device(name) -> device_id
+      const mapByName = new Map<string, string>();
+      for (const d of (devs as any) || []) {
+        mapByName.set(String(d.device), String(d.device_id));
+      }
+
+      const unknown: string[] = [];
+
+      const labelsWithIds = (parsed.labels || []).map((l: any) => {
+        const name = String(l.device || "").trim();
+        const id = mapByName.get(name);
+
+        if (!id && name) unknown.push(name);
+
+        return {
+          ...l,
+          device_id: id || null,
+          floor,
+        };
+      });
+
+      setResult({
+        ...parsed,
+        labels: labelsWithIds,
+        unknown_devices: Array.from(new Set([...(parsed.unknown_devices || []), ...unknown])),
+      });
     } catch (e: any) {
       setErr(e?.message || "Parse failed");
     } finally {
@@ -159,7 +188,8 @@ export default function InboundPage() {
     try {
       const payload = {
         labels: result.labels.map((l: any) => ({
-          device: l.device,
+          device_id: l.device_id, // ✅ now ID
+          device: l.device, // keep for debug (optional)
           box_no: l.box_no,
           floor: l.floor || floor,
           imeis: l.imeis,
@@ -230,7 +260,7 @@ export default function InboundPage() {
 
     const imeis = extractManualImeis(manualImeis);
 
-    if (!manualDevice) return setManualMsg("❌ Select a device.");
+    if (!manualDeviceId) return setManualMsg("❌ Select a bin/device.");
     if (!manualBox.trim()) return setManualMsg("❌ Enter box number.");
     if (imeis.length === 0) return setManualMsg("❌ No valid 15-digit IMEIs found.");
 
@@ -240,7 +270,7 @@ export default function InboundPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device: manualDevice,
+          device_id: manualDeviceId, // ✅ ID
           box_no: manualBox.trim(),
           floor: manualFloor,
           imeis,
@@ -277,7 +307,7 @@ export default function InboundPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device: manualDevice,
+          device_id: manualDeviceId, // ✅ ID
           box_no: manualBox.trim(),
           floor: manualFloor,
           imeis: imeisToInsert,
@@ -319,7 +349,6 @@ export default function InboundPage() {
   const filteredHistory = history.filter((h) => {
     if (historyFilter === "all") return true;
     if (historyFilter === "manual") return (h.vendor || "").toLowerCase() === "manual";
-    // excel = everything else
     return (h.vendor || "").toLowerCase() !== "manual";
   });
 
@@ -337,7 +366,7 @@ export default function InboundPage() {
 
         {lastBatchId && (
           <a
-            href={`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`}
+            href={`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=100&h_mm=50`}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
           >
             Download QR labels (ZD220 PDF)
@@ -356,14 +385,14 @@ export default function InboundPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <select
-            value={manualDevice}
-            onChange={(e) => setManualDevice(e.target.value)}
+            value={manualDeviceId}
+            onChange={(e) => setManualDeviceId(e.target.value)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           >
-            {devices.length === 0 && <option value="">No devices found</option>}
-            {devices.map((d) => (
-              <option key={d.device_id} value={d.device}>
-                {d.device}
+            {bins.length === 0 && <option value="">No bins/devices found</option>}
+            {bins.map((b) => (
+              <option key={b.device_id} value={b.device_id}>
+                {b.device}
               </option>
             ))}
           </select>

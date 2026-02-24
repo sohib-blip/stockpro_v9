@@ -13,7 +13,8 @@ function sb() {
 }
 
 type LabelPayload = {
-  device: string;
+  device_id: string;
+  device?: string; // optional (debug)
   box_no: string;
   floor: string;
   imeis: string[];
@@ -24,42 +25,31 @@ export async function POST(req: Request) {
     const { labels, actor, vendor } = await req.json();
 
     if (!Array.isArray(labels) || labels.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "No labels provided" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "No labels provided" }, { status: 400 });
     }
 
     const supabase = sb();
 
-    // Load devices
-    const { data: devs, error: devErr } = await supabase
+    // Validate device_id exists
+    const { data: bins, error: binsErr } = await supabase
       .from("devices")
-      .select("device_id, device");
+      .select("device_id");
 
-    if (devErr) throw devErr;
+    if (binsErr) throw binsErr;
 
-    const deviceIdByName: Record<string, string> = {};
-    for (const d of devs || []) {
-      deviceIdByName[String((d as any).device)] = String((d as any).device_id);
-    }
+    const binSet = new Set((bins || []).map((b: any) => String(b.device_id)));
 
-    // Block unknown devices
-    const unknownDevices = Array.from(
+    const unknownIds = Array.from(
       new Set(
-        labels
-          .map((l: LabelPayload) => String(l.device || "").trim())
-          .filter((name: string) => name && !deviceIdByName[name])
+        (labels as LabelPayload[])
+          .map((l) => String(l.device_id || "").trim())
+          .filter((id) => !id || !binSet.has(id))
       )
     );
 
-    if (unknownDevices.length > 0) {
+    if (unknownIds.length > 0) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "Unknown devices found. Import blocked.",
-          unknown_devices: unknownDevices,
-        },
+        { ok: false, error: "Unknown bins/device_id. Import blocked.", unknown_device_ids: unknownIds },
         { status: 400 }
       );
     }
@@ -77,22 +67,26 @@ export async function POST(req: Request) {
 
     if (batchErr) throw batchErr;
 
-    const { data: existingItems } = await supabase
+    // Existing IMEIs
+    const { data: existingItems, error: exErr } = await supabase
       .from("items")
       .select("imei");
 
-    const existingSet = new Set(
-      (existingItems || []).map((x: any) => String(x.imei))
-    );
+    if (exErr) throw exErr;
+
+    const existingSet = new Set((existingItems || []).map((x: any) => String(x.imei)));
 
     let insertedImeis = 0;
     let skippedExistingImeis = 0;
     let createdBoxes = 0;
     let reusedBoxes = 0;
 
+    const nowIso = new Date().toISOString();
+
     for (const raw of labels as LabelPayload[]) {
-      const deviceName = String(raw.device || "").trim();
-      const boxCode = String(raw.box_no || "").trim();
+      const device_id = String(raw.device_id).trim();
+      const box_code = String(raw.box_no || "").trim();
+      const floor = String(raw.floor || "").trim();
       const imeis = Array.from(
         new Set(
           (raw.imeis || [])
@@ -101,17 +95,17 @@ export async function POST(req: Request) {
         )
       );
 
-      if (!deviceName || !boxCode || imeis.length === 0) continue;
+      if (!device_id || !box_code || imeis.length === 0) continue;
 
-      const device_id = deviceIdByName[deviceName];
-
-      // 🔹 Find or create box (using REAL columns)
-      const { data: existingBox } = await supabase
+      // Find or create box (your schema: boxes.id + boxes.bin_id + boxes.box_code)
+      const { data: existingBox, error: findBoxErr } = await supabase
         .from("boxes")
         .select("id")
         .eq("bin_id", device_id)
-        .eq("box_code", boxCode)
+        .eq("box_code", box_code)
         .maybeSingle();
+
+      if (findBoxErr) throw findBoxErr;
 
       let box_id: string;
 
@@ -122,8 +116,9 @@ export async function POST(req: Request) {
         const { data: newBox, error: newBoxErr } = await supabase
           .from("boxes")
           .insert({
-            box_code: boxCode,
+            box_code,
             bin_id: device_id,
+            // floor: floor,  // only if you have it on boxes table
           })
           .select("id")
           .single();
@@ -134,6 +129,7 @@ export async function POST(req: Request) {
         createdBoxes += 1;
       }
 
+      // Insert items
       const itemsToInsert: any[] = [];
 
       for (const imei of imeis) {
@@ -141,7 +137,6 @@ export async function POST(req: Request) {
           skippedExistingImeis += 1;
           continue;
         }
-
         existingSet.add(imei);
 
         itemsToInsert.push({
@@ -149,24 +144,28 @@ export async function POST(req: Request) {
           device_id,
           box_id,
           status: "IN",
+          imported_at: nowIso,
         });
 
         insertedImeis += 1;
       }
 
       if (itemsToInsert.length > 0) {
-        const { error: insErr } = await supabase
-          .from("items")
-          .insert(itemsToInsert);
-
+        const { error: insErr } = await supabase.from("items").insert(itemsToInsert);
         if (insErr) throw insErr;
 
+        // Movements (your schema: movements has item_id, box_id, batch_id, actor...)
+        // Here item_id is unknown unless you re-select inserted rows.
+        // If you need item_id, we can do a select after insert.
         const movements = itemsToInsert.map((it) => ({
           type: "IN",
           box_id: it.box_id,
-          item_id: null, // optional if not used
+          item_id: null,
+          qty: 1,
+          notes: floor ? `floor=${floor}` : null,
           batch_id: batch.batch_id,
           actor: actor || "unknown",
+          created_at: nowIso,
         }));
 
         await supabase.from("movements").insert(movements);
@@ -176,6 +175,7 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       batch_id: batch.batch_id,
+      created_at: batch.created_at,
       totals: {
         inserted_imeis: insertedImeis,
         skipped_existing_imeis: skippedExistingImeis,

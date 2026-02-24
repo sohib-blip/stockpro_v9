@@ -1,89 +1,32 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-
-type Row = {
-  device_id: string;
-  device: string;
-  canonical_name: string;
-  imeis: number;
-  boxes: number;
-  floors: string[];
-  low_stock: boolean;
-};
-
-function floorColor(floor: string) {
-  switch (floor) {
-    case "00":
-      return "bg-blue-950/40 border-blue-500/40 text-blue-200";
-    case "1":
-      return "bg-purple-950/40 border-purple-500/40 text-purple-200";
-    case "6":
-      return "bg-indigo-950/40 border-indigo-500/40 text-indigo-200";
-    case "Cabinet":
-      return "bg-orange-950/40 border-orange-500/40 text-orange-200";
-    default:
-      return "bg-slate-950 border-slate-700 text-slate-300";
-  }
-}
-
-function StatusBadge({ imeis, low }: { imeis: number; low: boolean }) {
-  if (imeis === 0)
-    return (
-      <span className="px-3 py-1 text-xs font-semibold rounded-lg border border-rose-500/40 bg-rose-950/40 text-rose-200">
-        OUT
-      </span>
-    );
-
-  if (low)
-    return (
-      <span className="px-3 py-1 text-xs font-semibold rounded-lg border border-amber-500/40 bg-amber-950/40 text-amber-200">
-        LOW
-      </span>
-    );
-
-  return (
-    <span className="px-3 py-1 text-xs font-semibold rounded-lg border border-emerald-500/40 bg-emerald-950/40 text-emerald-200">
-      OK
-    </span>
-  );
-}
-
-function KPI({
-  title,
-  value,
-  sub,
-}: {
-  title: string;
-  value: string | number;
-  sub?: string;
-}) {
-  return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-      <div className="text-xs text-slate-500">{title}</div>
-      <div className="text-2xl font-semibold mt-1">{value}</div>
-      {sub && <div className="text-xs text-slate-400 mt-1">{sub}</div>}
-    </div>
-  );
-}
+import { useEffect, useState } from "react";
 
 export default function DashboardPage() {
-  const [loading, setLoading] = useState(true);
-  const [rows, setRows] = useState<Row[]>([]);
+  const [data, setData] = useState<any>(null);
   const [search, setSearch] = useState("");
-  const [selectedDevice, setSelectedDevice] = useState<string>("all");
+  const [onlyLow, setOnlyLow] = useState(false);
+
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [selectedDeviceName, setSelectedDeviceName] = useState<string | null>(null);
+  const [drillData, setDrillData] = useState<any[]>([]);
 
   async function load() {
-    setLoading(true);
-    try {
-      const res = await fetch("/api/dashboard/summary", { cache: "no-store" });
-      const json = await res.json();
-      if (!json.ok) throw new Error(json.error);
-      setRows(json.rows || []);
-    } catch {
-      setRows([]);
-    } finally {
-      setLoading(false);
+    const res = await fetch("/api/dashboard/overview", { cache: "no-store" });
+    const json = await res.json();
+    if (json.ok) setData(json);
+  }
+
+  async function loadDrill(deviceId: string, deviceName: string) {
+    const res = await fetch(
+      `/api/dashboard/drilldown?device=${encodeURIComponent(deviceId)}`
+    );
+    const json = await res.json();
+
+    if (json.ok) {
+      setSelectedDeviceId(deviceId);
+      setSelectedDeviceName(deviceName);
+      setDrillData(json.rows);
     }
   }
 
@@ -91,136 +34,141 @@ export default function DashboardPage() {
     load();
   }, []);
 
-  const filtered = useMemo(() => {
-    let data = rows;
+  if (!data) return <div className="p-6">Loading...</div>;
 
-    if (selectedDevice !== "all") {
-      data = data.filter((r) => r.device === selectedDevice);
-    }
-
-    if (search.trim()) {
-      const q = search.toLowerCase();
-      data = data.filter(
-        (r) =>
-          r.device.toLowerCase().includes(q) ||
-          r.canonical_name.toLowerCase().includes(q)
-      );
-    }
-
-    return data;
-  }, [rows, search, selectedDevice]);
-
-  const totals = useMemo(() => {
-    return filtered.reduce(
-      (acc, r) => {
-        acc.boxes += r.boxes;
-        acc.imeis += r.imeis;
-        acc.devices += 1;
-        return acc;
-      },
-      { boxes: 0, imeis: 0, devices: 0 }
+  const filteredDevices = data.deviceSummary
+    .filter((d: any) =>
+      d.device.toLowerCase().includes(search.toLowerCase())
+    )
+    .filter((d: any) =>
+      onlyLow ? d.level !== "ok" : true
     );
-  }, [filtered]);
 
-  const deviceOptions = useMemo(() => {
-    return Array.from(new Set(rows.map((r) => r.device))).sort();
-  }, [rows]);
+  const badgeColor = (level: string) => {
+    if (level === "empty") return "bg-rose-600";
+    if (level === "low") return "bg-amber-500";
+    return "bg-emerald-600";
+  };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-w-6xl">
 
-      {/* Header */}
-      <div className="flex justify-between items-center">
-  <div>
-    <div className="text-xs text-slate-500">Dashboard</div>
-    <h2 className="text-2xl font-semibold">Warehouse Overview</h2>
-  </div>
-
-  <a
-    href="/api/export/warehouse"
-    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold transition"
-  >
-    Export Excel
-  </a>
-</div>
-
-      {/* KPI SECTION */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <KPI title="Devices" value={totals.devices} />
-        <KPI title="Total Boxes" value={totals.boxes} />
-        <KPI title="Total IMEIs" value={totals.imeis} />
+      {/* HEADER */}
+      <div>
+        <div className="text-xs text-slate-500">Dashboard</div>
+        <h2 className="text-xl font-semibold">Stock Overview</h2>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-col md:flex-row gap-3">
-        <select
-          value={selectedDevice}
-          onChange={(e) => setSelectedDevice(e.target.value)}
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+      {/* EXPORT BUTTON */}
+      <div className="flex flex-wrap gap-3 items-center">
+        <button
+          onClick={() => window.open("/api/dashboard/export")}
+          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
         >
-          <option value="all">All Devices</option>
-          {deviceOptions.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
+          Export Full Stock Excel
+        </button>
 
-        <input
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search device…"
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm w-full md:w-[300px]"
-        />
+        <label className="text-sm flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={onlyLow}
+            onChange={() => setOnlyLow(!onlyLow)}
+            className="accent-indigo-600"
+          />
+          View only low / empty stock
+        </label>
       </div>
 
-      {/* Content */}
-      {loading ? (
-        <div className="text-sm text-slate-400">Loading…</div>
-      ) : (
-        <div className="grid gap-4">
-          {filtered.map((r) => (
-            <div
-              key={r.device_id}
-              className="rounded-2xl border border-slate-800 bg-slate-900 p-5 hover:border-slate-700 transition-all"
-            >
-              <div className="flex justify-between items-center">
-                <div>
-                  <div className="text-lg font-semibold">{r.device}</div>
-                  <div className="text-xs text-slate-500 mt-1">
-                    {r.boxes} boxes • {r.imeis} IMEIs
-                  </div>
-                </div>
+      {/* SEARCH */}
+      <input
+        placeholder="Search device..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+      />
 
-                <StatusBadge imeis={r.imeis} low={r.low_stock} />
-              </div>
+      {/* DEVICE TABLE */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+        <div className="font-semibold mb-4">Stock by Device</div>
 
-              <div className="mt-4 flex flex-wrap gap-2">
-                {r.floors.length > 0 ? (
-                  r.floors.map((f) => (
-                    <span
-                      key={f}
-                      className={`px-2 py-1 text-xs rounded-lg border ${floorColor(
-                        f
-                      )}`}
-                    >
-                      {f}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-xs text-slate-500">
-                    No floor assigned
+        <table className="w-full text-sm">
+          <thead>
+            <tr>
+              <th className="text-left">Device</th>
+              <th className="text-right">IN</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredDevices.map((d: any, i: number) => (
+              <tr
+                key={i}
+                className="cursor-pointer hover:bg-slate-800"
+                onClick={() => loadDrill(d.device_id, d.device)}
+              >
+                <td>{d.device}</td>
+                <td className="text-right">{d.total_in}</td>
+                <td>
+                  <span
+                    className={`px-2 py-1 text-xs rounded ${badgeColor(
+                      d.level
+                    )}`}
+                  >
+                    {d.level}
                   </span>
-                )}
-              </div>
-            </div>
-          ))}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
-          {filtered.length === 0 && (
-            <div className="text-sm text-slate-500">
-              No results.
+      {/* DRILLDOWN */}
+      {selectedDeviceId && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+          <div className="flex justify-between items-center mb-4">
+            <div className="font-semibold">
+              IMEIs IN — {selectedDeviceName}
             </div>
-          )}
+
+            <button
+              onClick={() => {
+                setSelectedDeviceId(null);
+                setSelectedDeviceName(null);
+                setDrillData([]);
+              }}
+              className="text-xs text-slate-400 hover:text-white"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="max-h-72 overflow-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
+                  <th className="text-left">IMEI</th>
+                  <th className="text-left">Box</th>
+                </tr>
+              </thead>
+              <tbody>
+                {drillData.map((r: any, i: number) => (
+                  <tr key={i}>
+                    <td>{r.imei}</td>
+                    <td>{r.boxes?.box_code || "—"}</td>
+                  </tr>
+                ))}
+
+                {drillData.length === 0 && (
+                  <tr>
+                    <td colSpan={2} className="text-slate-400">
+                      No IMEIs found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

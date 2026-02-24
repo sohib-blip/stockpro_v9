@@ -13,18 +13,24 @@ function sb() {
   });
 }
 
+function cleanImeis(arr: string[]): string[] {
+  return Array.from(
+    new Set(
+      (arr || [])
+        .map((i) => String(i).replace(/\D/g, ""))
+        .filter((i) => i.length === 15)
+    )
+  );
+}
+
 function extractImeisFromSheet(rows: any[][]): string[] {
   const imeis: string[] = [];
-
   for (const row of rows) {
     for (const cell of row) {
       const digits = String(cell ?? "").replace(/\D/g, "");
-      if (digits.length === 15) {
-        imeis.push(digits);
-      }
+      if (digits.length === 15) imeis.push(digits);
     }
   }
-
   return Array.from(new Set(imeis));
 }
 
@@ -35,7 +41,6 @@ export async function POST(req: Request) {
 
     let imeis: string[] = [];
 
-    // Excel mode
     if (contentType.includes("multipart/form-data")) {
       const form = await req.formData();
       const file = form.get("file") as File;
@@ -50,109 +55,87 @@ export async function POST(req: Request) {
       const rows = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
 
       imeis = extractImeisFromSheet(rows);
-    }
-
-    // Manual mode
-    else {
+    } else {
       const body = await req.json();
-      imeis = (body.imeis || [])
-        .map((i: string) => i.replace(/\D/g, ""))
-        .filter((i: string) => i.length === 15);
+      imeis = cleanImeis(body.imeis || []);
     }
 
     if (!imeis.length) {
       return NextResponse.json({ ok: false, error: "No IMEIs detected" });
     }
 
-    const { data: items } = await supabase
+    // 🔥 Charger UNIQUEMENT les IMEIs concernés
+    const { data: items, error } = await supabase
       .from("items")
-      .select("item_id, imei, device_id, box_id, status");
+      .select(`
+        item_id,
+        imei,
+        status,
+        device_id,
+        box_id,
+        devices (
+          device
+        ),
+        boxes (
+          box_no,
+          floor
+        )
+      `)
+      .in("imei", imeis);
 
-    const { data: devices } = await supabase
-      .from("devices")
-      .select("device_id, device");
+    if (error) throw error;
 
-    const { data: boxes } = await supabase
-      .from("boxes")
-      .select("box_id, box_no, floor");
+    const foundMap = new Map<string, any>();
+    items?.forEach((i: any) => foundMap.set(i.imei, i));
 
-    const deviceMap: Record<string, string> = {};
-    devices?.forEach((d: any) => {
-      deviceMap[d.device_id] = d.device;
-    });
-
-    const boxMap: Record<
-      string,
-      { box_no: string; floor: string }
-    > = {};
-    boxes?.forEach((b: any) => {
-      boxMap[b.box_id] = {
-        box_no: b.box_no,
-        floor: b.floor || "",
-      };
-    });
-
-    const summary: Record<
-      string,
-      {
-        device: string;
-        box_no: string;
-        floor: string;
-        detected: number;
-        remaining: number;
-        total: number;
-        percent_after: number;
-      }
-    > = {};
-
+    // ---------- SUMMARY ----------
+    const summaryMap: Record<string, any> = {};
     let totalDetected = 0;
 
     for (const imei of imeis) {
-      const item = items?.find((i: any) => i.imei === imei);
-
+      const item = foundMap.get(imei);
       if (!item || item.status !== "IN") continue;
 
       totalDetected++;
 
       const key = `${item.device_id}_${item.box_id}`;
 
-      const totalInBox =
-        items?.filter(
-          (i: any) => i.box_id === item.box_id
-        ).length ?? 0;
+      if (!summaryMap[key]) {
+        // calcul total et remaining
+        const { data: boxItems } = await supabase
+          .from("items")
+          .select("item_id, status")
+          .eq("box_id", item.box_id);
 
-      const remainingInBox =
-        items?.filter(
-          (i: any) =>
-            i.box_id === item.box_id &&
-            i.status === "IN"
-        ).length ?? 0;
+        const total = boxItems?.length ?? 0;
+        const remaining = boxItems?.filter((i: any) => i.status === "IN").length ?? 0;
 
-      if (!summary[key]) {
-        summary[key] = {
-          device: deviceMap[item.device_id] || "",
-          box_no: boxMap[item.box_id]?.box_no || "",
-          floor: boxMap[item.box_id]?.floor || "",
+        summaryMap[key] = {
+          device: item.devices?.device || "",
+          box_no: item.boxes?.box_no || "",
+          floor: item.boxes?.floor || "",
           detected: 0,
-          remaining: remainingInBox,
-          total: totalInBox,
+          remaining,
+          total,
           percent_after: 100,
         };
       }
 
-      summary[key].detected += 1;
-      summary[key].remaining -= 1;
-      summary[key].percent_after = Math.round(
-        (summary[key].remaining / summary[key].total) * 100
+      summaryMap[key].detected += 1;
+      summaryMap[key].remaining -= 1;
+
+      summaryMap[key].percent_after = Math.round(
+        (summaryMap[key].remaining / summaryMap[key].total) * 100
       );
     }
 
     return NextResponse.json({
       ok: true,
       totalDetected,
-      summary: Object.values(summary),
-      imeis,
+      summary: Object.values(summaryMap),
+      imeis, // 👈 IMPORTANT pour confirmOut
     });
+
   } catch (e: any) {
     return NextResponse.json({ ok: false, error: e.message });
   }

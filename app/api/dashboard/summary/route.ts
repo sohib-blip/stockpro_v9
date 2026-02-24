@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const runtime = "nodejs";
+
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
@@ -14,75 +16,96 @@ export async function GET() {
   try {
     const supabase = sb();
 
-    const { data: devices } = await supabase
-      .from("devices")
-      .select("device_id, device, canonical_name, min_stock, active");
-
+    // -------- GLOBAL COUNTS --------
     const { data: items } = await supabase
       .from("items")
-      .select("device_id, box_id");
+      .select("status, device_id, box_id");
+
+    const { data: devices } = await supabase
+      .from("devices")
+      .select("device_id, device, min_stock");
 
     const { data: boxes } = await supabase
       .from("boxes")
-      .select("box_id, floor");
+      .select("id, box_code, bin_id");
 
-    const boxFloorMap: Record<string, string> = {};
-    for (const b of boxes || []) {
-      boxFloorMap[String((b as any).box_id)] = (b as any).floor || "";
-    }
+    const totalIn = items?.filter(i => i.status === "IN").length ?? 0;
+    const totalOut = items?.filter(i => i.status === "OUT").length ?? 0;
 
-    const byDevice: Record<
-      string,
-      { boxes: Set<string>; imeis: number; floors: Set<string> }
-    > = {};
+    // -------- DEVICE SUMMARY --------
+    const deviceSummary = devices?.map(d => {
+      const inCount =
+        items?.filter(
+          i => i.device_id === d.device_id && i.status === "IN"
+        ).length ?? 0;
 
-    for (const it of items || []) {
-      const did = String((it as any).device_id);
-      const bid = String((it as any).box_id);
+      const outCount =
+        items?.filter(
+          i => i.device_id === d.device_id && i.status === "OUT"
+        ).length ?? 0;
 
-      if (!byDevice[did]) {
-        byDevice[did] = {
-          boxes: new Set(),
-          imeis: 0,
-          floors: new Set(),
-        };
-      }
+      let level: "ok" | "low" | "empty" = "ok";
 
-      byDevice[did].imeis += 1;
-      byDevice[did].boxes.add(bid);
+      if (inCount === 0) level = "empty";
+      else if (d.min_stock && inCount <= d.min_stock) level = "low";
 
-      const floor = boxFloorMap[bid];
-      if (floor) byDevice[did].floors.add(floor);
-    }
+      return {
+        device: d.device,
+        total_in: inCount,
+        total_out: outCount,
+        min_stock: d.min_stock ?? 0,
+        level,
+      };
+    }) ?? [];
 
-    const rows = (devices || [])
-      .filter((d: any) => d.active !== false)
-      .map((d: any) => {
-        const did = String(d.device_id);
-        const data = byDevice[did];
+    const alertCount = deviceSummary.filter(d => d.level !== "ok").length;
 
-        const imeis = data?.imeis ?? 0;
-        const boxesCount = data?.boxes.size ?? 0;
-        const floors = data ? Array.from(data.floors) : [];
+    // -------- BOX SUMMARY --------
+    const boxSummary = boxes?.map(b => {
+      const inCount =
+        items?.filter(
+          i => i.box_id === b.id && i.status === "IN"
+        ).length ?? 0;
 
-        const low = imeis < (d.min_stock || 0);
+      const total =
+        items?.filter(
+          i => i.box_id === b.id
+        ).length ?? 0;
 
-        return {
-          device_id: did,
-          device: d.device || d.canonical_name,
-          canonical_name: d.canonical_name,
-          imeis,
-          boxes: boxesCount,
-          floors,
-          low_stock: low,
-        };
-      });
+      const percent =
+        total > 0 ? Math.round((inCount / total) * 100) : 0;
 
-    return NextResponse.json({ ok: true, rows });
+      let level: "ok" | "low" | "empty" = "ok";
+
+      if (inCount === 0) level = "empty";
+      else if (percent < 30) level = "low";
+
+      const deviceName =
+        devices?.find(d => d.device_id === b.bin_id)?.device ?? "";
+
+      return {
+        device: deviceName,
+        box_code: b.box_code,
+        remaining: inCount,
+        total,
+        percent,
+        level,
+      };
+    }) ?? [];
+
+    return NextResponse.json({
+      ok: true,
+      kpis: {
+        total_in: totalIn,
+        total_out: totalOut,
+        total_devices: devices?.length ?? 0,
+        alerts: alertCount,
+      },
+      deviceSummary,
+      boxSummary,
+    });
+
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Summary failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: e.message });
   }
 }

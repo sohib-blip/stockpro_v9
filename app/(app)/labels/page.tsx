@@ -7,9 +7,9 @@ type DeviceRow = { device_id: string; device: string };
 
 type DraftLabel = {
   id: string;
-  device: string;
+  device_id: string;   // ✅ now UUID
   box: string;
-  imeisText: string; // raw textarea
+  imeisText: string;
 };
 
 function uuid() {
@@ -31,12 +31,11 @@ export default function LabelsPage() {
   const [devices, setDevices] = useState<DeviceRow[]>([]);
   const [msg, setMsg] = useState("");
 
-  // ZD220 default label size
   const [wMm, setWMm] = useState(100);
   const [hMm, setHMm] = useState(50);
 
   const [labels, setLabels] = useState<DraftLabel[]>([
-    { id: uuid(), device: "", box: "", imeisText: "" },
+    { id: uuid(), device_id: "", box: "", imeisText: "" },
   ]);
 
   useEffect(() => {
@@ -49,10 +48,14 @@ export default function LabelsPage() {
       if (!error) {
         const list = (data as any) || [];
         setDevices(list);
-        // default device for first label
+
         if (list.length > 0) {
           setLabels((prev) =>
-            prev.map((l, idx) => (idx === 0 && !l.device ? { ...l, device: list[0].device } : l))
+            prev.map((l, idx) =>
+              idx === 0 && !l.device_id
+                ? { ...l, device_id: list[0].device_id }
+                : l
+            )
           );
         }
       }
@@ -64,8 +67,11 @@ export default function LabelsPage() {
   }
 
   function addLabel() {
-    const defaultDevice = devices[0]?.device || "";
-    setLabels((prev) => [...prev, { id: uuid(), device: defaultDevice, box: "", imeisText: "" }]);
+    const defaultDeviceId = devices[0]?.device_id || "";
+    setLabels((prev) => [
+      ...prev,
+      { id: uuid(), device_id: defaultDeviceId, box: "", imeisText: "" },
+    ]);
   }
 
   function removeLabel(id: string) {
@@ -77,18 +83,17 @@ export default function LabelsPage() {
 
     const payloadLabels = labels
       .map((l) => ({
-        device: l.device.trim(),
+        device_id: l.device_id,   // ✅ UUID
         box: l.box.trim(),
         imeis: extractImeis(l.imeisText),
       }))
-      .filter((l) => l.device && l.box && l.imeis.length > 0);
+      .filter((l) => l.device_id && l.box && l.imeis.length > 0);
 
     if (payloadLabels.length === 0) {
       setMsg("❌ Ajoute au moins 1 label valide (device + box + au moins 1 IMEI).");
       return;
     }
 
-    // call API and download blob
     const res = await fetch("/api/labels/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -129,6 +134,7 @@ export default function LabelsPage() {
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-sm font-semibold">Label size</div>
+
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-400">W (mm)</span>
             <input
@@ -138,6 +144,7 @@ export default function LabelsPage() {
               className="w-24 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
             />
           </div>
+
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-400">H (mm)</span>
             <input
@@ -191,15 +198,17 @@ export default function LabelsPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <div className="text-xs text-slate-400">Device</div>
+                  <div className="text-xs text-slate-400">Bin / Device</div>
                   <select
-                    value={l.device}
-                    onChange={(e) => updateLabel(l.id, { device: e.target.value })}
+                    value={l.device_id}
+                    onChange={(e) =>
+                      updateLabel(l.id, { device_id: e.target.value })
+                    }
                     className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
                   >
-                    {devices.length === 0 && <option value="">No devices</option>}
+                    {devices.length === 0 && <option value="">No bins</option>}
                     {devices.map((d) => (
-                      <option key={d.device_id} value={d.device}>
+                      <option key={d.device_id} value={d.device_id}>
                         {d.device}
                       </option>
                     ))}
@@ -219,7 +228,7 @@ export default function LabelsPage() {
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-slate-400">IMEIs (scan or paste)</div>
+                  <div className="text-xs text-slate-400">IMEIs</div>
                   <div className="text-xs text-slate-400">
                     Detected: <b className="text-slate-200">{imeis.length}</b>
                   </div>
@@ -227,8 +236,10 @@ export default function LabelsPage() {
 
                 <textarea
                   value={l.imeisText}
-                  onChange={(e) => updateLabel(l.id, { imeisText: e.target.value })}
-                  placeholder="1 IMEI par ligne (ou scan). Le QR contiendra uniquement les IMEIs."
+                  onChange={(e) =>
+                    updateLabel(l.id, { imeisText: e.target.value })
+                  }
+                  placeholder="1 IMEI par ligne."
                   className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
                 />
               </div>

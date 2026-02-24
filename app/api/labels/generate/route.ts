@@ -1,8 +1,18 @@
 import { NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
+import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+function sb() {
+  return createClient(SUPABASE_URL, SERVICE_ROLE, {
+    auth: { persistSession: false },
+  });
+}
 
 function mmToPt(mm: number) {
   return (mm / 25.4) * 72;
@@ -19,7 +29,11 @@ async function qrPngBuffer(text: string): Promise<Buffer> {
 }
 
 type LabelInput = {
-  device: string;
+  // NEW SYSTEM (preferred)
+  device_id?: string; // bin_id uuid
+  // OLD SYSTEM fallback
+  device?: string; // string name
+
   box: string; // box id/no text
   imeis: string[];
 };
@@ -48,21 +62,54 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "No labels provided" }, { status: 400 });
     }
 
-    // Validate + clean
+    // --- Collect bin ids we need to resolve
+    const binIds = Array.from(
+      new Set(
+        labels
+          .map((l) => String(l?.device_id || "").trim())
+          .filter((x) => x.length > 0)
+      )
+    );
+
+    // --- Resolve bins -> name (only if device_id provided)
+    const binNameById: Record<string, string> = {};
+    if (binIds.length > 0) {
+      const supabase = sb();
+      const { data, error } = await supabase
+        .from("bins")
+        .select("id, name")
+        .in("id", binIds);
+
+      if (error) {
+        return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      }
+
+      for (const b of data || []) {
+        binNameById[String((b as any).id)] = String((b as any).name || "");
+      }
+    }
+
+    // Validate + clean + normalize
     const normalized: Array<{ device: string; box: string; imeis: string[] }> = [];
+
     for (const l of labels) {
-      const device = String(l?.device || "").trim();
+      const device_id = String(l?.device_id || "").trim();
+      const deviceFallback = String(l?.device || "").trim(); // old system
+      const deviceName = device_id ? (binNameById[device_id] || "") : deviceFallback;
+
       const box = String(l?.box || "").trim();
       const imeis = cleanImeis(l?.imeis);
 
-      if (!device || !box || imeis.length === 0) continue;
+      if (!deviceName) continue;
+      if (!box) continue;
+      if (imeis.length === 0) continue;
 
-      normalized.push({ device, box, imeis });
+      normalized.push({ device: deviceName, box, imeis });
     }
 
     if (normalized.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "No valid labels (need device, box, at least 1 valid 15-digit IMEI)" },
+        { ok: false, error: "No valid labels (need device_id or device, box, at least 1 valid 15-digit IMEI)" },
         { status: 400 }
       );
     }

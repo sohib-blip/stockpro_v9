@@ -18,9 +18,13 @@ type HistoryRow = {
 };
 
 type DeviceRow = {
-  device_id: string;
-  device: string;
+  device_id: string; // (on garde le nom pour pas toucher le UI)
+  device: string; // label affiché
 };
+
+function normName(s: any) {
+  return String(s ?? "").trim().toLowerCase();
+}
 
 export default function InboundPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -43,11 +47,14 @@ export default function InboundPage() {
   // Labels after confirm
   const [lastBatchId, setLastBatchId] = useState<string>("");
 
-  // Devices list (for manual dropdown)
+  // Devices list (for manual dropdown) => NOW BINS
   const [devices, setDevices] = useState<DeviceRow[]>([]);
 
+  // ✅ Map "bin name" -> "bin id" (used for Excel confirm)
+  const [binNameToId, setBinNameToId] = useState<Record<string, string>>({});
+
   // Manual import
-  const [manualDevice, setManualDevice] = useState<string>("");
+  const [manualDevice, setManualDevice] = useState<string>(""); // NOW = bin_id
   const [manualBox, setManualBox] = useState<string>("");
   const [manualFloor, setManualFloor] = useState<string>("00");
   const [manualImeis, setManualImeis] = useState<string>("");
@@ -67,29 +74,34 @@ export default function InboundPage() {
     })();
   }, [supabase]);
 
-async function loadDevices() {
-  // ✅ NEW SYSTEM: only ACTIVE bins
-  const { data, error } = await supabase
-    .from("bins")
-    .select("id, name, active")
-    .eq("active", true)
-    .order("name", { ascending: true });
+  async function loadDevices() {
+    // ✅ NEW SYSTEM: bins only
+    const { data, error } = await supabase
+      .from("bins")
+      .select("id, name, active")
+      .eq("active", true)
+      .order("name", { ascending: true });
 
-  if (!error) {
-    const list = (data as any) || [];
-    setDevices(
-      list.map((b: any) => ({
-        device_id: b.id,   // keep same field names to not touch UI too much
-        device: b.name,    // display name
-      }))
-    );
+    if (!error) {
+      const list = (data as any) || [];
+      const mapped: DeviceRow[] = list.map((b: any) => ({
+        device_id: String(b.id),
+        device: String(b.name),
+      }));
+      setDevices(mapped);
 
-    // default selection must be ID
-    if (!manualDevice && list.length > 0) {
-      setManualDevice(list[0].id);
+      // ✅ map name -> id (case-insensitive)
+      const map: Record<string, string> = {};
+      for (const b of list) {
+        map[normName(b.name)] = String(b.id);
+      }
+      setBinNameToId(map);
+
+      if (!manualDevice && mapped.length > 0) {
+        setManualDevice(mapped[0].device_id); // ✅ default = bin_id
+      }
     }
   }
-}
 
   async function loadHistory() {
     setLoadingHistory(true);
@@ -129,15 +141,32 @@ async function loadDevices() {
 
     setBusy(true);
     try {
-      // ✅ IMPORTANT: only ACTIVE devices for matching
-      const { data: devs, error: devErr } = await supabase
-        .from("devices")
-        .select("device_id,canonical_name,device,active,units_per_imei")
+      // ✅ NEW SYSTEM: bins
+      const { data: bins, error: binsErr } = await supabase
+        .from("bins")
+        .select("id, name, active")
         .eq("active", true);
 
-      if (devErr) throw devErr;
+      if (binsErr) throw binsErr;
 
-      const deviceMatches = toDeviceMatchList((devs as any) || []);
+      // refresh map for Excel confirm
+      const map: Record<string, string> = {};
+      for (const b of (bins as any[]) || []) {
+        map[normName(b.name)] = String(b.id);
+      }
+      setBinNameToId(map);
+
+      // keep parser compatible
+      const fakeDevices = ((bins as any[]) || []).map((b) => ({
+        device_id: b.id,
+        canonical_name: b.name,
+        device: b.name,
+        active: true,
+        units_per_imei: 1,
+      }));
+
+      const deviceMatches = toDeviceMatchList(fakeDevices as any);
+
       const bytes = new Uint8Array(await file.arrayBuffer());
       const parsed = parseVendorExcel(vendor, bytes, deviceMatches);
 
@@ -164,18 +193,34 @@ async function loadDevices() {
       return;
     }
 
+    // ✅ convert label.device (name) -> bin_id
+    const missingBins: string[] = [];
+    const labelsConverted = (result.labels || []).map((l: any) => {
+      const name = normName(l.device);
+      const bin_id = binNameToId[name];
+
+      if (!bin_id) missingBins.push(l.device);
+
+      return {
+        device: bin_id || "", // ✅ device field keeps same key but now contains bin_id
+        box_no: l.box_no,
+        floor: l.floor || floor,
+        imeis: l.imeis,
+      };
+    });
+
+    if (missingBins.length > 0) {
+      setErr(`Import blocked: bins not found -> ${Array.from(new Set(missingBins)).join(", ")}`);
+      return;
+    }
+
     setBusy(true);
     setErr("");
     setManualMsg("");
 
     try {
       const payload = {
-        labels: result.labels.map((l: any) => ({
-          device: l.device,
-          box_no: l.box_no,
-          floor: l.floor || floor,
-          imeis: l.imeis,
-        })),
+        labels: labelsConverted,
         actor,
         vendor,
       };
@@ -252,7 +297,7 @@ async function loadDevices() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device: manualDevice,
+          device: manualDevice, // ✅ bin_id
           box_no: manualBox.trim(),
           floor: manualFloor,
           imeis,
@@ -289,7 +334,7 @@ async function loadDevices() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device: manualDevice,
+          device: manualDevice, // ✅ bin_id
           box_no: manualBox.trim(),
           floor: manualFloor,
           imeis: imeisToInsert,
@@ -334,7 +379,7 @@ async function loadDevices() {
     return (h.vendor || "").toLowerCase() !== "manual";
   });
 
-  return (
+    return (
     <div className="space-y-8 max-w-5xl">
       {/* HEADER */}
       <div className="flex items-center justify-between gap-3">
@@ -348,7 +393,9 @@ async function loadDevices() {
 
         {lastBatchId && (
           <a
-            href={`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`}
+            href={`/api/inbound/labels?batch_id=${encodeURIComponent(
+              lastBatchId
+            )}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
           >
             Download QR labels (ZD220 PDF)
@@ -373,7 +420,7 @@ async function loadDevices() {
           >
             {devices.length === 0 && <option value="">No active devices found</option>}
             {devices.map((d) => (
-              <option key={d.device_id} value={d.device}>
+              <option key={d.device_id} value={d.device_id}>
                 {d.device}
               </option>
             ))}
@@ -433,7 +480,8 @@ async function loadDevices() {
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm space-y-2">
             <div className="font-semibold">Manual Preview</div>
             <div>
-              Scanned: <b>{manualPreview.total_scanned}</b> • New: <b>{manualPreview.valid_new}</b> • Duplicates:{" "}
+              Scanned: <b>{manualPreview.total_scanned}</b> • New:{" "}
+              <b>{manualPreview.valid_new}</b> • Duplicates:{" "}
               <b>{manualPreview.duplicates}</b>
             </div>
           </div>
@@ -522,7 +570,9 @@ async function loadDevices() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="font-semibold">Inbound history</div>
-            <div className="text-xs text-slate-500">Filter Excel vs Manual, download Excel export + QR labels anytime.</div>
+            <div className="text-xs text-slate-500">
+              Filter Excel vs Manual, download Excel export + QR labels anytime.
+            </div>
           </div>
 
           <div className="flex gap-2">
@@ -557,6 +607,7 @@ async function loadDevices() {
                 <th className="p-2 border-b border-slate-800 text-right">Labels</th>
               </tr>
             </thead>
+
             <tbody>
               {filteredHistory.map((h) => (
                 <tr key={h.batch_id} className="hover:bg-slate-950/40">
@@ -564,6 +615,7 @@ async function loadDevices() {
                   <td className="p-2 border-b border-slate-800">{h.actor}</td>
                   <td className="p-2 border-b border-slate-800">{h.vendor}</td>
                   <td className="p-2 border-b border-slate-800 text-right font-semibold">{h.qty}</td>
+
                   <td className="p-2 border-b border-slate-800 text-right">
                     <a
                       href={`/api/inbound/export?batch_id=${encodeURIComponent(h.batch_id)}`}
@@ -572,6 +624,7 @@ async function loadDevices() {
                       Excel
                     </a>
                   </td>
+
                   <td className="p-2 border-b border-slate-800 text-right">
                     <a
                       href={`/api/inbound/labels?batch_id=${encodeURIComponent(h.batch_id)}&w_mm=100&h_mm=50`}
@@ -585,7 +638,9 @@ async function loadDevices() {
 
               {filteredHistory.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-3 text-slate-400">No inbound batches for this filter.</td>
+                  <td colSpan={6} className="p-3 text-slate-400">
+                    No inbound batches for this filter.
+                  </td>
                 </tr>
               )}
             </tbody>

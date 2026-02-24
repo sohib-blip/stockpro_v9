@@ -16,11 +16,11 @@ export async function POST(req: Request) {
   try {
     const { device, box_no, floor, imeis } = await req.json();
 
-    if (!device || !box_no || !Array.isArray(imeis)) {
-      return NextResponse.json(
-        { ok: false, error: "Missing fields" },
-        { status: 400 }
-      );
+    const bin_id = String(device || "").trim(); // ✅ device = bin_id
+    const box_code = String(box_no || "").trim();
+
+    if (!bin_id || !box_code || !Array.isArray(imeis)) {
+      return NextResponse.json({ ok: false, error: "Missing fields" }, { status: 400 });
     }
 
     const cleaned = Array.from(
@@ -32,30 +32,37 @@ export async function POST(req: Request) {
     );
 
     if (cleaned.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "No valid 15-digit IMEIs found" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "No valid 15-digit IMEIs found" }, { status: 400 });
     }
 
     const supabase = sb();
+
+    // ✅ Optional: check bin exists
+    const { data: bin, error: binErr } = await supabase
+      .from("bins")
+      .select("id, name")
+      .eq("id", bin_id)
+      .maybeSingle();
+
+    if (binErr || !bin?.id) {
+      return NextResponse.json({ ok: false, error: "Bin not found" }, { status: 400 });
+    }
 
     const { data: existing } = await supabase
       .from("items")
       .select("imei")
       .in("imei", cleaned);
 
-    const existingSet = new Set(
-      (existing || []).map((x: any) => String(x.imei))
-    );
+    const existingSet = new Set((existing || []).map((x: any) => String(x.imei)));
 
     const duplicates = cleaned.filter((i) => existingSet.has(i));
     const newOnes = cleaned.filter((i) => !existingSet.has(i));
 
     return NextResponse.json({
       ok: true,
-      device,
-      box_no,
+      bin_id,
+      bin_name: bin.name,
+      box_code,
       floor,
       total_scanned: cleaned.length,
       valid_new: newOnes.length,
@@ -64,9 +71,6 @@ export async function POST(req: Request) {
       preview_imeis: newOnes,
     });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Preview failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: e?.message || "Preview failed" }, { status: 500 });
   }
 }

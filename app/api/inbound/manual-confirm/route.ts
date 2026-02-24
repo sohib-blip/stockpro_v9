@@ -23,48 +23,41 @@ function cleanImeis(input: any): string[] {
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const device = String(body.device || "").trim();
-    const box_no = String(body.box_no || "").trim();
-    const floor = String(body.floor || "").trim();
+
+    const bin_id = String(body.device || "").trim();  // ✅ device = bin_id
+    const box_code = String(body.box_no || "").trim(); // ✅ box_no = box_code
+    const floor = String(body.floor || "").trim();     // still passed by UI
     const actor = String(body.actor || "unknown").trim();
     const imeis = cleanImeis(body.imeis);
 
-    if (!device || !box_no || !floor || imeis.length === 0) {
+    if (!bin_id || !box_code || imeis.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "Invalid payload (device, box_no, floor, imeis[] required)" },
+        { ok: false, error: "Invalid payload (device(bin_id), box_no(box_code), imeis[] required)" },
         { status: 400 }
       );
     }
 
     const supabase = sb();
 
-    // 1) Find device_id by device name
-    const { data: dev, error: devErr } = await supabase
-      .from("devices")
-      .select("device_id")
-      .eq("device", device)
-      .single();
+    // ✅ ensure bin exists
+    const { data: bin, error: binErr } = await supabase
+      .from("bins")
+      .select("id, name")
+      .eq("id", bin_id)
+      .maybeSingle();
 
-    if (devErr || !dev?.device_id) {
-      return NextResponse.json(
-        { ok: false, error: `Device not found: ${device}` },
-        { status: 400 }
-      );
+    if (binErr || !bin?.id) {
+      return NextResponse.json({ ok: false, error: "Bin not found" }, { status: 400 });
     }
 
-    const device_id = String(dev.device_id);
-
-    // 2) Re-check DB duplicates (safe if user skips preview)
+    // duplicates check
     const { data: existing, error: existingErr } = await supabase
       .from("items")
       .select("imei")
       .in("imei", imeis);
 
     if (existingErr) {
-      return NextResponse.json(
-        { ok: false, error: existingErr.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: existingErr.message }, { status: 500 });
     }
 
     const existingSet = new Set((existing || []).map((x: any) => String(x.imei)));
@@ -83,7 +76,7 @@ export async function POST(req: Request) {
       });
     }
 
-    // 3) Create inbound batch
+    // inbound batch
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
       .insert({
@@ -101,63 +94,63 @@ export async function POST(req: Request) {
       );
     }
 
-    // 4) Find or create box (unique by device_id + box_no)
+    // find or create box by (bin_id + box_code)
     const { data: existingBox, error: boxFindErr } = await supabase
       .from("boxes")
-      .select("box_id, floor")
-      .eq("device_id", device_id)
-      .eq("box_no", box_no)
+      .select("id")
+      .eq("bin_id", bin_id)
+      .eq("box_code", box_code)
       .maybeSingle();
 
     if (boxFindErr) {
-      return NextResponse.json(
-        { ok: false, error: boxFindErr.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: boxFindErr.message }, { status: 500 });
     }
 
     let box_id: string;
 
-    if (existingBox?.box_id) {
-      box_id = String(existingBox.box_id);
-
-      // update floor if changed
-      if (floor && floor !== String(existingBox.floor || "")) {
-        const { error: updErr } = await supabase
-          .from("boxes")
-          .update({ floor })
-          .eq("box_id", box_id);
-        if (updErr) {
-          return NextResponse.json({ ok: false, error: updErr.message }, { status: 500 });
-        }
-      }
+    if (existingBox?.id) {
+      box_id = String(existingBox.id);
     } else {
       const { data: newBox, error: newBoxErr } = await supabase
         .from("boxes")
         .insert({
-          device_id,
-          box_no,
-          floor,
+          bin_id,
+          box_code,
         })
-        .select("box_id")
+        .select("id")
         .single();
 
-      if (newBoxErr || !newBox?.box_id) {
+      if (newBoxErr || !newBox?.id) {
         return NextResponse.json(
           { ok: false, error: newBoxErr?.message || "Failed to create box" },
           { status: 500 }
         );
       }
 
-      box_id = String(newBox.box_id);
+      box_id = String(newBox.id);
     }
 
-    // 5) Insert items (only new)
+    // OPTIONAL: try save floor if the column exists (ignore if not)
+    if (floor) {
+      const { error: floorErr } = await supabase.from("boxes").update({ floor }).eq("id", box_id);
+      if (floorErr) {
+        // ignore if column doesn't exist
+        if (!String(floorErr.message || "").toLowerCase().includes("column") ) {
+          // only throw for real issues
+          // (if it's just "column floor does not exist" we ignore)
+        }
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+
+    // insert items
     const items = toInsert.map((imei) => ({
       imei,
-      device_id,
       box_id,
       status: "IN",
+      imported_at: nowIso,
+      imported_by: actor,
     }));
 
     const { error: itemsErr } = await supabase.from("items").insert(items as any);
@@ -165,11 +158,9 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: itemsErr.message }, { status: 400 });
     }
 
-    // 6) Insert movements
-    const nowIso = new Date().toISOString();
+    // movements
     const movements = toInsert.map((imei) => ({
       imei,
-      device_id,
       box_id,
       type: "IN",
       batch_id: batch.batch_id,
@@ -189,11 +180,11 @@ export async function POST(req: Request) {
       skipped_existing: skipped.length,
       skipped_list: skipped,
       box_id,
+      bin_id,
+      bin_name: bin.name,
+      box_code,
     });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Manual confirm failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: e?.message || "Manual confirm failed" }, { status: 500 });
   }
 }

@@ -61,43 +61,44 @@ export default function AppShell({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    async function loadPermissions() {
-      const { data: sessionData } = await supabase.auth.getSession();
-      const user = sessionData.session?.user;
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (!session?.user) {
+          setReady(true);
+          return;
+        }
 
-      if (!user) {
+        const user = session.user;
+        setEmail(user.email ?? "");
+
+        const { data: p } = await supabase
+          .from("user_permissions")
+          .select(
+            "can_dashboard,can_inbound,can_outbound,can_labels,can_devices,can_admin"
+          )
+          .eq("user_id", user.id)
+          .maybeSingle();
+
+        if (p) {
+          setPerms({
+            can_dashboard: !!p.can_dashboard,
+            can_inbound: !!p.can_inbound,
+            can_outbound: !!p.can_outbound,
+            can_labels: !!p.can_labels,
+            can_devices: !!p.can_devices,
+            can_admin: !!p.can_admin,
+          });
+        }
+
         setReady(true);
-        return;
       }
+    );
 
-      setEmail(user.email ?? "");
-
-      const { data: p } = await supabase
-        .from("user_permissions")
-        .select(
-          "can_dashboard,can_inbound,can_outbound,can_labels,can_devices,can_admin"
-        )
-        .eq("user_id", user.id)
-        .maybeSingle();
-
-      if (p) {
-        setPerms({
-          can_dashboard: !!p.can_dashboard,
-          can_inbound: !!p.can_inbound,
-          can_outbound: !!p.can_outbound,
-          can_labels: !!p.can_labels,
-          can_devices: !!p.can_devices,
-          can_admin: !!p.can_admin,
-        });
-      }
-
-      setReady(true);
-    }
-
-    loadPermissions();
+    return () => {
+      listener.subscription.unsubscribe();
+    };
   }, [supabase]);
 
-  // ⏳ Attente chargement
   if (!ready) {
     return (
       <div className="min-h-screen bg-slate-950 flex items-center justify-center text-slate-400">
@@ -106,34 +107,13 @@ export default function AppShell({ children }: { children: ReactNode }) {
     );
   }
 
-  // 🔒 PAGE BLOCKER PROPRE (ordre important)
-  const blocked = (() => {
-    if (pathname.startsWith("/admin/devices")) {
-      return !perms.can_devices;
-    }
-
-    if (pathname.startsWith("/admin")) {
-      return !perms.can_admin;
-    }
-
-    if (pathname.startsWith("/dashboard")) {
-      return !perms.can_dashboard;
-    }
-
-    if (pathname.startsWith("/inbound")) {
-      return !perms.can_inbound;
-    }
-
-    if (pathname.startsWith("/outbound")) {
-      return !perms.can_outbound;
-    }
-
-    if (pathname.startsWith("/labels")) {
-      return !perms.can_labels;
-    }
-
-    return false;
-  })();
+  const blocked =
+    (pathname.startsWith("/dashboard") && !perms.can_dashboard) ||
+    (pathname.startsWith("/inbound") && !perms.can_inbound) ||
+    (pathname.startsWith("/outbound") && !perms.can_outbound) ||
+    (pathname.startsWith("/labels") && !perms.can_labels) ||
+    (pathname.startsWith("/admin/devices") && !perms.can_devices) ||
+    (pathname.startsWith("/admin") && !perms.can_admin);
 
   if (blocked) {
     return (
@@ -152,7 +132,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="min-h-screen flex bg-slate-950 text-slate-100">
-      {/* SIDEBAR */}
       <aside
         className={[
           "h-screen sticky top-0 shrink-0",
@@ -160,7 +139,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
           collapsed ? "w-[72px]" : "w-[268px]",
         ].join(" ")}
       >
-        {/* LOGO */}
         <div className="h-14 flex items-center justify-between px-3 border-b border-slate-800/80">
           <div className="flex items-center gap-2">
             <div className="h-9 w-9 rounded-xl bg-indigo-600 grid place-items-center">
@@ -181,7 +159,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        {/* MAIN NAV */}
         <nav className="px-2 py-4 space-y-1 text-sm">
           {MAIN_NAV.filter((item) => perms[item.permission]).map((item) => {
             const Icon = item.icon;
@@ -198,7 +175,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
           })}
         </nav>
 
-        {/* CONTROL TOWER */}
         {(perms.can_admin || perms.can_devices) && (
           <>
             <div className="px-3 mt-4 mb-2 text-[11px] uppercase tracking-wider text-slate-500">
@@ -225,13 +201,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </>
         )}
 
-        {/* FOOTER */}
         <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-slate-800/80 text-xs text-slate-500">
           {!collapsed && <div>Signed in as {email}</div>}
         </div>
       </aside>
 
-      {/* CONTENT */}
       <section className="flex-1 p-6">{children}</section>
     </div>
   );

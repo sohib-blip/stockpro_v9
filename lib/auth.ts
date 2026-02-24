@@ -1,9 +1,10 @@
 import { createClient } from "@supabase/supabase-js";
 
 export type Permissions = {
+  can_dashboard: boolean;
   can_inbound: boolean;
   can_outbound: boolean;
-  can_export: boolean;
+  can_labels: boolean;
   can_admin: boolean;
   can_stock_alerts?: boolean;
 };
@@ -34,27 +35,29 @@ export async function requireUserFromBearer(req: Request) {
 
 export async function getPermissions(userId: string) {
   const sb = supabaseService();
+
   const { data, error } = await sb
     .from("user_permissions")
-    .select("can_inbound,can_outbound,can_export,can_admin,can_stock_alerts")
+    .select("can_dashboard,can_inbound,can_outbound,can_labels,can_admin,can_stock_alerts")
     .eq("user_id", userId)
     .maybeSingle();
 
   if (error || !data) {
-    // Default: allow basic usage, block admin/export unless explicitly granted
     return {
+      can_dashboard: true,
       can_inbound: true,
       can_outbound: true,
-      can_export: false,
+      can_labels: true,
       can_admin: false,
       can_stock_alerts: false,
     } satisfies Permissions;
   }
 
   return {
+    can_dashboard: !!data.can_dashboard,
     can_inbound: !!data.can_inbound,
     can_outbound: !!data.can_outbound,
-    can_export: !!data.can_export,
+    can_labels: !!data.can_labels,
     can_admin: !!data.can_admin,
     can_stock_alerts: !!(data as any).can_stock_alerts,
   } satisfies Permissions;

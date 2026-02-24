@@ -67,21 +67,29 @@ export default function InboundPage() {
     })();
   }, [supabase]);
 
-  async function loadDevices() {
-    // ✅ IMPORTANT: only ACTIVE devices
-    const { data, error } = await supabase
-      .from("devices")
-      .select("device_id, device")
-      .eq("active", true)
-      .order("device", { ascending: true });
+async function loadDevices() {
+  // ✅ NEW SYSTEM: only ACTIVE bins
+  const { data, error } = await supabase
+    .from("bins")
+    .select("id, name, active")
+    .eq("active", true)
+    .order("name", { ascending: true });
 
-    if (!error) {
-      setDevices((data as any) || []);
-      if (!manualDevice && data && data.length > 0) {
-        setManualDevice((data as any)[0].device);
-      }
+  if (!error) {
+    const list = (data as any) || [];
+    setDevices(
+      list.map((b: any) => ({
+        device_id: b.id,   // keep same field names to not touch UI too much
+        device: b.name,    // display name
+      }))
+    );
+
+    // default selection must be ID
+    if (!manualDevice && list.length > 0) {
+      setManualDevice(list[0].id);
     }
   }
+}
 
   async function loadHistory() {
     setLoadingHistory(true);

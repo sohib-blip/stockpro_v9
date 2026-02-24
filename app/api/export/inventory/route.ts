@@ -35,7 +35,8 @@ export async function GET(req: Request) {
   if (!u.ok) return NextResponse.json({ ok: false, error: u.error }, { status: 401 });
 
   const perms = await getPermissions(u.user.id);
-  if (!perms.can_export) return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
+  if (!perms.can_admin)
+  return NextResponse.json({ ok: false, error: "Forbidden" }, { status: 403 });
 
   try {
     const rows = await fetchAllInventory();

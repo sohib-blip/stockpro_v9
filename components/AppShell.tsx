@@ -17,6 +17,7 @@ const NAV = [
   { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
   { href: "/labels", label: "Labels", icon: Tag },
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
+  { href: "/bins", label: "Bins", icon: Package },
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {

@@ -17,10 +17,9 @@ type HistoryRow = {
   qty: number;
 };
 
-type BinRow = {
+type DeviceRow = {
   device_id: string;
   device: string;
-  canonical_name?: string | null;
 };
 
 export default function InboundPage() {
@@ -44,11 +43,11 @@ export default function InboundPage() {
   // Labels after confirm
   const [lastBatchId, setLastBatchId] = useState<string>("");
 
-  // Bins list (devices table)
-  const [bins, setBins] = useState<BinRow[]>([]);
+  // Devices list (for manual dropdown)
+  const [devices, setDevices] = useState<DeviceRow[]>([]);
 
-  // Manual import (now uses device_id)
-  const [manualDeviceId, setManualDeviceId] = useState<string>("");
+  // Manual import
+  const [manualDevice, setManualDevice] = useState<string>("");
   const [manualBox, setManualBox] = useState<string>("");
   const [manualFloor, setManualFloor] = useState<string>("00");
   const [manualImeis, setManualImeis] = useState<string>("");
@@ -68,18 +67,18 @@ export default function InboundPage() {
     })();
   }, [supabase]);
 
-  async function loadBins() {
+  async function loadDevices() {
+    // ✅ IMPORTANT: only ACTIVE devices
     const { data, error } = await supabase
       .from("devices")
-      .select("device_id,device,canonical_name")
+      .select("device_id, device")
+      .eq("active", true)
       .order("device", { ascending: true });
 
     if (!error) {
-      const rows = (data as any as BinRow[]) || [];
-      setBins(rows);
-
-      if (!manualDeviceId && rows.length > 0) {
-        setManualDeviceId(rows[0].device_id);
+      setDevices((data as any) || []);
+      if (!manualDevice && data && data.length > 0) {
+        setManualDevice((data as any)[0].device);
       }
     }
   }
@@ -98,7 +97,7 @@ export default function InboundPage() {
 
   useEffect(() => {
     loadHistory();
-    loadBins();
+    loadDevices();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -122,50 +121,26 @@ export default function InboundPage() {
 
     setBusy(true);
     try {
-      // bins/devices = source of truth
+      // ✅ IMPORTANT: only ACTIVE devices for matching
       const { data: devs, error: devErr } = await supabase
         .from("devices")
-        .select("device_id,canonical_name,device,active,units_per_imei");
+        .select("device_id,canonical_name,device,active,units_per_imei")
+        .eq("active", true);
 
       if (devErr) throw devErr;
 
       const deviceMatches = toDeviceMatchList((devs as any) || []);
-
-      // parse vendor excel -> gives labels with .device (name)
       const bytes = new Uint8Array(await file.arrayBuffer());
       const parsed = parseVendorExcel(vendor, bytes, deviceMatches);
 
-      if (!parsed?.ok) {
-        setResult(parsed);
-        return;
-      }
-
-      // map parsed.device(name) -> device_id
-      const mapByName = new Map<string, string>();
-      for (const d of (devs as any) || []) {
-        mapByName.set(String(d.device), String(d.device_id));
-      }
-
-      const unknown: string[] = [];
-
-      const labelsWithIds = (parsed.labels || []).map((l: any) => {
-        const name = String(l.device || "").trim();
-        const id = mapByName.get(name);
-
-        if (!id && name) unknown.push(name);
-
-        return {
+      if (parsed?.ok) {
+        parsed.labels = parsed.labels.map((l: any) => ({
           ...l,
-          device_id: id || null,
           floor,
-        };
-      });
+        }));
+      }
 
-      setResult({
-        ...parsed,
-        labels: labelsWithIds,
-        unknown_devices: Array.from(new Set([...(parsed.unknown_devices || []), ...unknown])),
-      });
+      setResult(parsed);
     } catch (e: any) {
       setErr(e?.message || "Parse failed");
     } finally {
@@ -188,8 +163,7 @@ export default function InboundPage() {
     try {
       const payload = {
         labels: result.labels.map((l: any) => ({
-          device_id: l.device_id, // ✅ now ID
-          device: l.device, // keep for debug (optional)
+          device: l.device,
           box_no: l.box_no,
           floor: l.floor || floor,
           imeis: l.imeis,
@@ -260,7 +234,7 @@ export default function InboundPage() {
 
     const imeis = extractManualImeis(manualImeis);
 
-    if (!manualDeviceId) return setManualMsg("❌ Select a bin/device.");
+    if (!manualDevice) return setManualMsg("❌ Select a device.");
     if (!manualBox.trim()) return setManualMsg("❌ Enter box number.");
     if (imeis.length === 0) return setManualMsg("❌ No valid 15-digit IMEIs found.");
 
@@ -270,7 +244,7 @@ export default function InboundPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device_id: manualDeviceId, // ✅ ID
+          device: manualDevice,
           box_no: manualBox.trim(),
           floor: manualFloor,
           imeis,
@@ -307,7 +281,7 @@ export default function InboundPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device_id: manualDeviceId, // ✅ ID
+          device: manualDevice,
           box_no: manualBox.trim(),
           floor: manualFloor,
           imeis: imeisToInsert,
@@ -366,7 +340,7 @@ export default function InboundPage() {
 
         {lastBatchId && (
           <a
-            href={`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=100&h_mm=50`}
+            href={`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
           >
             Download QR labels (ZD220 PDF)
@@ -385,14 +359,14 @@ export default function InboundPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <select
-            value={manualDeviceId}
-            onChange={(e) => setManualDeviceId(e.target.value)}
+            value={manualDevice}
+            onChange={(e) => setManualDevice(e.target.value)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           >
-            {bins.length === 0 && <option value="">No bins/devices found</option>}
-            {bins.map((b) => (
-              <option key={b.device_id} value={b.device_id}>
-                {b.device}
+            {devices.length === 0 && <option value="">No active devices found</option>}
+            {devices.map((d) => (
+              <option key={d.device_id} value={d.device}>
+                {d.device}
               </option>
             ))}
           </select>
@@ -451,8 +425,7 @@ export default function InboundPage() {
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm space-y-2">
             <div className="font-semibold">Manual Preview</div>
             <div>
-              Scanned: <b>{manualPreview.total_scanned}</b> • New:{" "}
-              <b>{manualPreview.valid_new}</b> • Duplicates:{" "}
+              Scanned: <b>{manualPreview.total_scanned}</b> • New: <b>{manualPreview.valid_new}</b> • Duplicates:{" "}
               <b>{manualPreview.duplicates}</b>
             </div>
           </div>
@@ -541,9 +514,7 @@ export default function InboundPage() {
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="font-semibold">Inbound history</div>
-            <div className="text-xs text-slate-500">
-              Filter Excel vs Manual, download Excel export + QR labels anytime.
-            </div>
+            <div className="text-xs text-slate-500">Filter Excel vs Manual, download Excel export + QR labels anytime.</div>
           </div>
 
           <div className="flex gap-2">
@@ -606,9 +577,7 @@ export default function InboundPage() {
 
               {filteredHistory.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-3 text-slate-400">
-                    No inbound batches for this filter.
-                  </td>
+                  <td colSpan={6} className="p-3 text-slate-400">No inbound batches for this filter.</td>
                 </tr>
               )}
             </tbody>

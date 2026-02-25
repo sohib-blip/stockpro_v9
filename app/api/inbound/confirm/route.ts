@@ -30,29 +30,33 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
-    // Validate device_id exists
-    const { data: bins, error: binsErr } = await supabase
-      .from("devices")
-      .select("device_id");
+// Validate bin_id exists (NEW SYSTEM)
+const { data: bins, error: binsErr } = await supabase
+  .from("bins")
+  .select("id");
 
-    if (binsErr) throw binsErr;
+if (binsErr) throw binsErr;
 
-    const binSet = new Set((bins || []).map((b: any) => String(b.device_id)));
+const binSet = new Set((bins || []).map((b: any) => String(b.id)));
 
-    const unknownIds = Array.from(
-      new Set(
-        (labels as LabelPayload[])
-          .map((l) => String(l.device_id || "").trim())
-          .filter((id) => !id || !binSet.has(id))
-      )
-    );
+const unknownIds = Array.from(
+  new Set(
+    (labels as LabelPayload[])
+      .map((l) => String(l.device_id || "").trim())
+      .filter((id) => !id || !binSet.has(id))
+  )
+);
 
-    if (unknownIds.length > 0) {
-      return NextResponse.json(
-        { ok: false, error: "Unknown bins/device_id. Import blocked.", unknown_device_ids: unknownIds },
-        { status: 400 }
-      );
-    }
+if (unknownIds.length > 0) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "Unknown bin_id. Import blocked.",
+      unknown_device_ids: unknownIds,
+    },
+    { status: 400 }
+  );
+}
 
     // Create batch
     const { data: batch, error: batchErr } = await supabase

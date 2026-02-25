@@ -3,68 +3,151 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  { auth: { persistSession: false } }
-);
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+
+function sb() {
+  return createClient(SUPABASE_URL, SERVICE_ROLE, {
+    auth: { persistSession: false },
+  });
+}
+
+type Level = "ok" | "low" | "empty";
+
+function computeLevel(totalIn: number, minStock: number): Level {
+  if (totalIn <= 0) return "empty";
+  if (minStock > 0 && totalIn <= minStock) return "low";
+  return "ok";
+}
 
 export async function GET() {
   try {
-    const { data: bins } = await supabase
+    const supabase = sb();
+
+    // ======================
+    // LOAD BINS
+    // ======================
+    const { data: bins, error: binsErr } = await supabase
       .from("bins")
       .select("id, name, min_stock, active");
 
-    const { data: boxes } = await supabase
+    if (binsErr) throw binsErr;
+
+    // ======================
+    // LOAD BOXES
+    // ======================
+    const { data: boxes, error: boxErr } = await supabase
       .from("boxes")
-      .select("id, box_code, floor, bin_id");
+      .select("id, bin_id, box_code, floor");
 
-    const { data: items } = await supabase
+    if (boxErr) throw boxErr;
+
+    // ======================
+    // LOAD ITEMS
+    // ======================
+    const { data: items, error: itemErr } = await supabase
       .from("items")
-      .select("imei, status, device_id, box_id, imported_at, imported_by");
+      .select("imei, box_id, status");
 
-    const imeisIn = items?.filter(i => i.status === "IN") ?? [];
+    if (itemErr) throw itemErr;
 
-    const kpi = {
-      devices: bins?.length ?? 0,
-      boxes: boxes?.length ?? 0,
-      imeis_in: imeisIn.length,
-      low_stock_devices: 0
-    };
+    // ======================
+    // BUILD MAPS
+    // ======================
+    const boxMap = new Map<string, any>();
+    for (const b of boxes || []) {
+      boxMap.set(String(b.id), b);
+    }
 
-    const binRows = (bins ?? []).map(bin => {
-      const binItems = imeisIn.filter(i => i.device_id === bin.id);
-      const binBoxes = boxes?.filter(b => b.bin_id === bin.id) ?? [];
+    const binTotals: Record<string, number> = {};
+    const binOutTotals: Record<string, number> = {};
+    const boxTotals: Record<string, number> = {};
 
-      const floors = [
-        ...new Set(binBoxes.map(b => b.floor).filter(Boolean))
-      ];
+    for (const it of items || []) {
+      const box = boxMap.get(String(it.box_id));
+      if (!box) continue;
 
-      const isLow =
-        bin.min_stock &&
-        binItems.length <= bin.min_stock &&
-        binItems.length > 0;
+      const bin_id = String(box.bin_id);
 
-      if (isLow) kpi.low_stock_devices++;
+      if (it.status === "IN") {
+        binTotals[bin_id] = (binTotals[bin_id] || 0) + 1;
+        boxTotals[String(box.id)] = (boxTotals[String(box.id)] || 0) + 1;
+      }
+
+      if (it.status === "OUT") {
+        binOutTotals[bin_id] = (binOutTotals[bin_id] || 0) + 1;
+      }
+    }
+
+    // ======================
+    // DEVICE SUMMARY (BINS)
+    // ======================
+    const deviceSummary = (bins || []).map((b) => {
+      const bin_id = String(b.id);
+      const total_in = binTotals[bin_id] || 0;
+      const total_out = binOutTotals[bin_id] || 0;
+      const min_stock = Number(b.min_stock ?? 0);
+
+      const level = computeLevel(total_in, min_stock);
 
       return {
-        device_id: bin.id,
-        device: bin.name,
-        min_stock: bin.min_stock,
-        imeis_in: binItems.length,
-        boxes_count: binBoxes.length,
-        floors,
-        is_low: isLow
+        device_id: bin_id,
+        device: b.name,
+        total_in,
+        total_out,
+        min_stock,
+        level,
       };
     });
 
-    return NextResponse.json({
-      ok: true,
-      kpi,
-      bins: binRows
+    // ======================
+    // BOX SUMMARY
+    // ======================
+    const boxSummary = (boxes || []).map((b) => {
+      const remaining = boxTotals[String(b.id)] || 0;
+      const total = remaining; // simple version (ever count can be extended)
+
+      const percent = total > 0 ? 100 : 0;
+
+      return {
+        box_id: String(b.id),
+        device_id: String(b.bin_id),
+        device: bins?.find((x) => String(x.id) === String(b.bin_id))?.name || "",
+        box_code: b.box_code,
+        floor: b.floor,
+        remaining,
+        total,
+        percent,
+        level: remaining === 0 ? "empty" : "ok",
+      };
     });
 
+    // ======================
+    // KPIs
+    // ======================
+    const total_in = Object.values(binTotals).reduce((a, b) => a + b, 0);
+    const total_out = Object.values(binOutTotals).reduce((a, b) => a + b, 0);
+
+    const alerts = deviceSummary.filter((d) => d.level !== "ok").length;
+
+    const kpis = {
+      total_in,
+      total_out,
+      total_devices: bins?.length || 0,
+      total_boxes: boxes?.length || 0,
+      alerts,
+    };
+
+    return NextResponse.json({
+      ok: true,
+      kpis,
+      deviceSummary,
+      boxSummary,
+    });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e.message });
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Dashboard failed" },
+      { status: 500 }
+    );
   }
 }

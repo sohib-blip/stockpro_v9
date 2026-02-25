@@ -152,7 +152,7 @@ export default function InboundPage() {
       // refresh map for Excel confirm
       const map: Record<string, string> = {};
       for (const b of (bins as any[]) || []) {
-        map[normName(b.name)] = String(b.id);
+        map[normName(String(b.name).replace(/\s+/g, ""))] = String(b.id);
       }
       setBinNameToId(map);
 
@@ -246,7 +246,7 @@ for (const l of parsed.labels || []) {
     // ✅ convert label.device (name) -> bin_id
     const missingBins: string[] = [];
     const labelsConverted = (result.labels || []).map((l: any) => {
-      const name = normName(l.device);
+      const name = normName(String(l.device || "").replace(/\s+/g, ""));
       const bin_id = binNameToId[name];
 
       if (!bin_id) missingBins.push(l.device);

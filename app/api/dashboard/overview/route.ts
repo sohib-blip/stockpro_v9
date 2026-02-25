@@ -37,6 +37,16 @@ export async function GET() {
     if (binsErr) throw binsErr;
 
     // ======================
+    // COUNT ITEMS PER BOX (ONLY IN STOCK)
+    // ======================
+    const { data: boxCounts, error: boxCountErr } = await supabase
+      .from("items")
+      .select("box_id, status")
+      .eq("status", "IN");
+
+    if (boxCountErr) throw boxCountErr;
+
+    // ======================
     // LOAD BOXES
     // ======================
     const { data: boxes, error: boxErr } = await supabase
@@ -46,38 +56,19 @@ export async function GET() {
     if (boxErr) throw boxErr;
 
     // ======================
-    // LOAD ITEMS
+    // COUNT LOGIC
     // ======================
-    const { data: items, error: itemErr } = await supabase
-      .from("items")
-      .select("imei, box_id, status");
-
-    if (itemErr) throw itemErr;
-
-    // ======================
-    // MAP BOXES
-    // ======================
-    const boxMap = new Map<string, any>();
-    for (const b of boxes || []) boxMap.set(String(b.id), b);
+    const boxTotals: Record<string, number> = {};
+    for (const it of boxCounts || []) {
+      boxTotals[String(it.box_id)] =
+        (boxTotals[String(it.box_id)] || 0) + 1;
+    }
 
     const binTotals: Record<string, number> = {};
-    const binOutTotals: Record<string, number> = {};
-    const boxTotals: Record<string, number> = {};
-
-    for (const it of items || []) {
-      const box = boxMap.get(String(it.box_id));
-      if (!box) continue;
-
-      const bin_id = String(box.bin_id);
-
-      if (it.status === "IN") {
-        binTotals[bin_id] = (binTotals[bin_id] || 0) + 1;
-        boxTotals[String(box.id)] = (boxTotals[String(box.id)] || 0) + 1;
-      }
-
-      if (it.status === "OUT") {
-        binOutTotals[bin_id] = (binOutTotals[bin_id] || 0) + 1;
-      }
+    for (const box of boxes || []) {
+      const count = boxTotals[String(box.id)] || 0;
+      binTotals[String(box.bin_id)] =
+        (binTotals[String(box.bin_id)] || 0) + count;
     }
 
     // ======================
@@ -86,16 +77,20 @@ export async function GET() {
     const deviceSummary = (bins || []).map((b) => {
       const bin_id = String(b.id);
       const total_in = binTotals[bin_id] || 0;
-      const total_out = binOutTotals[bin_id] || 0;
       const min_stock = Number(b.min_stock ?? 0);
 
-      const level = computeLevel(total_in, min_stock);
+      const level =
+        total_in <= 0
+          ? "empty"
+          : min_stock > 0 && total_in <= min_stock
+          ? "low"
+          : "ok";
 
       return {
         device_id: bin_id,
         device: b.name,
         total_in,
-        total_out,
+        total_out: 0, // simplified
         min_stock,
         level,
       };
@@ -105,12 +100,11 @@ export async function GET() {
     // BOX SUMMARY
     // ======================
     const binNameById = new Map<string, string>();
-    for (const b of bins || []) binNameById.set(String(b.id), String(b.name || ""));
+    for (const b of bins || [])
+      binNameById.set(String(b.id), String(b.name || ""));
 
     const boxSummary = (boxes || []).map((b) => {
       const remaining = boxTotals[String(b.id)] || 0;
-      const total = remaining;
-      const percent = total > 0 ? 100 : 0;
 
       return {
         box_id: String(b.id),
@@ -119,8 +113,8 @@ export async function GET() {
         box_code: String(b.box_code || ""),
         floor: b.floor ?? null,
         remaining,
-        total,
-        percent,
+        total: remaining,
+        percent: remaining > 0 ? 100 : 0,
         level: remaining === 0 ? "empty" : "ok",
       };
     });
@@ -128,13 +122,18 @@ export async function GET() {
     // ======================
     // KPIs
     // ======================
-    const total_in = Object.values(binTotals).reduce((a, b) => a + b, 0);
-    const total_out = Object.values(binOutTotals).reduce((a, b) => a + b, 0);
-    const alerts = deviceSummary.filter((d) => d.level !== "ok").length;
+    const total_in = Object.values(binTotals).reduce(
+      (a, b) => a + b,
+      0
+    );
+
+    const alerts = deviceSummary.filter(
+      (d) => d.level !== "ok"
+    ).length;
 
     const kpis = {
       total_in,
-      total_out,
+      total_out: 0,
       total_devices: bins?.length || 0,
       total_boxes: boxes?.length || 0,
       alerts,
@@ -144,8 +143,8 @@ export async function GET() {
       { ok: true, kpis, deviceSummary, boxSummary },
       {
         headers: {
-          // 🔥 kill ALL caches
-          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0, s-maxage=0",
+          "Cache-Control":
+            "no-store, no-cache, must-revalidate, max-age=0, s-maxage=0",
           Pragma: "no-cache",
           Expires: "0",
         },
@@ -154,14 +153,7 @@ export async function GET() {
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Dashboard failed" },
-      {
-        status: 500,
-        headers: {
-          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0, s-maxage=0",
-          Pragma: "no-cache",
-          Expires: "0",
-        },
-      }
+      { status: 500 }
     );
   }
 }

@@ -25,19 +25,6 @@ function sheetToRows(bytes: Uint8Array): any[][] {
 }
 
 /**
- * Quick vendor-specific cleanup:
- * - ONLY for CV200: if string contains CV200 anywhere => use CV200
- */
-function normalizeQuicklinkDevice(raw: any): string | null {
-  const s = String(raw ?? "").toUpperCase();
-  if (!s) return null;
-
-  if (s.includes("CV200")) return "CV200";
-
-  return null;
-}
-
-/**
  * Find best IMEI column by scanning rows:
  * returns column index that contains most "IMEI-like" values (14-17 digits).
  */
@@ -329,8 +316,7 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
   }
 
   const deviceDisplay =
-    resolveDeviceDisplay(normalizeQuicklinkDevice(deviceRawBest) ?? deviceRawBest, devices) ??
-    resolveDeviceDisplay(deviceRawBest, devices);
+  resolveDeviceDisplay(deviceRawBest, devices);
 
   if (!deviceDisplay) {
     unknown.push(deviceRawBest);

@@ -243,11 +243,11 @@ export default function InboundPage() {
       if (!bin_id) missingBins.push(l.device);
 
       return {
-        device: bin_id || "", // now contains bin_id
-        box_no: l.box_no,
-        floor: l.floor || floor,
-        imeis: l.imeis,
-      };
+  device_id: bin_id || "",
+  box_no: l.box_no,
+  floor: l.floor || floor,
+  imeis: l.imeis,
+};
     });
 
     if (missingBins.length > 0) {

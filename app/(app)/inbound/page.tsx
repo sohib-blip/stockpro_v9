@@ -220,7 +220,13 @@ export default function InboundPage() {
           .sort((a, b) => a.box_no.localeCompare(b.box_no, undefined, { numeric: true }));
       }
 
-      setResult(parsed);
+      if (!parsed?.ok) {
+  setErr(parsed?.error || "Parse failed");
+  console.log("PARSE DEBUG:", parsed?.debug);
+  return;
+}
+
+setResult(parsed);
     } catch (e: any) {
       setErr(e?.message || "Parse failed");
     } finally {

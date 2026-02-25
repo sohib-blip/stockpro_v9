@@ -45,12 +45,17 @@ export type ParseFail = {
 export type ParseResult = ParseOk | ParseFail;
 
 export function toDeviceMatchList(rows: DevicesDbRow[]): DeviceMatch[] {
-  return (rows || []).map((d) => ({
-    canonical: String(d.canonical_name || ""),
-    display: String(d.device || d.canonical_name || ""),
-    active: d.active !== false,
-    units_per_imei: Number(d.units_per_imei ?? 1) || 1,
-  }));
+  return (rows || []).map((d) => {
+    const display = String(d.device || d.canonical_name || "");
+    const canonicalRaw = String(d.canonical_name || display || "");
+
+    return {
+      canonical: canonicalize(canonicalRaw), // ✅ IMPORTANT
+      display,
+      active: d.active !== false,
+      units_per_imei: Number(d.units_per_imei ?? 1) || 1,
+    };
+  });
 }
 
 export function norm(v: any): string {

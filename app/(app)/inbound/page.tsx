@@ -175,6 +175,44 @@ export default function InboundPage() {
           ...l,
           floor,
         }));
+
+        // ✅ NEW: Preview details (devices found + IMEIs per box)
+        const devicesFound = new Set<string>();
+        const boxMap: Record<string, number> = {};
+
+        for (const l of parsed.labels || []) {
+          const deviceName = String(l.device || "").trim();
+          const boxNo = String(l.box_no || "").trim();
+          const imeiCount = Array.isArray(l.imeis) ? l.imeis.length : 0;
+
+          if (deviceName) devicesFound.add(deviceName);
+
+          if (boxNo) {
+            boxMap[boxNo] = (boxMap[boxNo] || 0) + imeiCount;
+          }
+        }
+
+        // ✅ detect unknown bins directly in preview
+const unknownBins: string[] = [];
+
+for (const l of parsed.labels || []) {
+  const deviceName = String(l.device || "").trim();
+  const key = normName(deviceName);
+
+  if (deviceName && !map[key]) {
+    unknownBins.push(deviceName);
+  }
+}
+
+(parsed as any).unknown_bins_preview = Array.from(new Set(unknownBins));
+
+        // ✅ FIX TS: cast parsed to any
+        (parsed as any).devices_found = Array.from(devicesFound);
+
+        (parsed as any).box_breakdown = Object.entries(boxMap).map(([box_no, imeis]) => ({
+          box_no,
+          imeis,
+        }));
       }
 
       setResult(parsed);
@@ -202,7 +240,7 @@ export default function InboundPage() {
       if (!bin_id) missingBins.push(l.device);
 
       return {
-        device: bin_id || "", // ✅ device field keeps same key but now contains bin_id
+        device: bin_id || "", // ✅ now contains bin_id
         box_no: l.box_no,
         floor: l.floor || floor,
         imeis: l.imeis,
@@ -379,7 +417,7 @@ export default function InboundPage() {
     return (h.vendor || "").toLowerCase() !== "manual";
   });
 
-    return (
+  return (
     <div className="space-y-8 max-w-5xl">
       {/* HEADER */}
       <div className="flex items-center justify-between gap-3">
@@ -393,9 +431,7 @@ export default function InboundPage() {
 
         {lastBatchId && (
           <a
-            href={`/api/inbound/labels?batch_id=${encodeURIComponent(
-              lastBatchId
-            )}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`}
+            href={`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
           >
             Download QR labels (ZD220 PDF)
@@ -480,8 +516,7 @@ export default function InboundPage() {
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm space-y-2">
             <div className="font-semibold">Manual Preview</div>
             <div>
-              Scanned: <b>{manualPreview.total_scanned}</b> • New:{" "}
-              <b>{manualPreview.valid_new}</b> • Duplicates:{" "}
+              Scanned: <b>{manualPreview.total_scanned}</b> • New: <b>{manualPreview.valid_new}</b> • Duplicates:{" "}
               <b>{manualPreview.duplicates}</b>
             </div>
           </div>
@@ -543,6 +578,35 @@ export default function InboundPage() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="font-semibold">
               Preview: {excelTotals.boxes} boxes • {excelTotals.imeis} IMEIs
+
+              {result?.devices_found?.length > 0 && (
+                <div className="text-xs text-slate-400 mt-2">
+                  <b>Devices detected:</b> {result.devices_found.join(", ")}
+                </div>
+              )}
+
+{result?.unknown_bins_preview?.length > 0 && (
+  <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-xs text-rose-200 mt-3">
+    <div className="font-semibold">Unknown bins detected</div>
+    <div className="mt-1">
+      {result.unknown_bins_preview.join(", ")}
+    </div>
+  </div>
+)}
+
+              {result?.box_breakdown?.length > 0 && (
+                <div className="mt-3 text-xs text-slate-400 space-y-1">
+                  <b>Boxes detected:</b>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
+                    {result.box_breakdown.map((b: any) => (
+                      <div key={b.box_no} className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1">
+                        <span className="font-semibold">{b.box_no}</span>
+                        <span className="ml-2 text-slate-500">{b.imeis} IMEIs</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             <button

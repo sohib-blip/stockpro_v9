@@ -209,10 +209,12 @@ for (const l of parsed.labels || []) {
         // ✅ FIX TS: cast parsed to any
         (parsed as any).devices_found = Array.from(devicesFound);
 
-        (parsed as any).box_breakdown = Object.entries(boxMap).map(([box_no, imeis]) => ({
-          box_no,
-          imeis,
-        }));
+        (parsed as any).box_breakdown = Object.entries(boxMap)
+  .map(([box_no, imeis]) => ({
+    box_no,
+    imeis,
+  }))
+  .sort((a, b) => a.box_no.localeCompare(b.box_no, undefined, { numeric: true }));
       }
 
       setResult(parsed);
@@ -576,8 +578,22 @@ for (const l of parsed.labels || []) {
       {result?.ok && (
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="font-semibold">
-              Preview: {excelTotals.boxes} boxes • {excelTotals.imeis} IMEIs
+            <div className="flex items-center gap-3 font-semibold">
+  <div className="flex items-center gap-3">
+  <div className="font-semibold">
+    Preview: {excelTotals.boxes} boxes • {excelTotals.imeis} IMEIs
+  </div>
+
+  {((result?.unknown_devices?.length ?? 0) > 0) ? (
+    <span className="px-2 py-1 text-xs rounded-lg bg-rose-900/60 text-rose-200 border border-rose-800">
+      ERROR
+    </span>
+  ) : (
+    <span className="px-2 py-1 text-xs rounded-lg bg-emerald-900/60 text-emerald-200 border border-emerald-800">
+      OK
+    </span>
+  )}
+</div>
 
               {result?.devices_found?.length > 0 && (
                 <div className="text-xs text-slate-400 mt-2">

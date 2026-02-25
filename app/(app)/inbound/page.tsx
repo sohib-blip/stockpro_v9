@@ -30,6 +30,7 @@ export default function InboundPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [actor, setActor] = useState("unknown");
+  const [actorId, setActorId] = useState<string>(""); // ✅ NEW
 
   // Excel import
   const [vendor, setVendor] = useState<Vendor>("teltonika");
@@ -70,7 +71,9 @@ export default function InboundPage() {
     (async () => {
       const { data } = await supabase.auth.getUser();
       const email = data?.user?.email;
+      const id = data?.user?.id; // ✅ NEW
       if (email) setActor(email);
+      if (id) setActorId(id); // ✅ NEW
     })();
   }, [supabase]);
 
@@ -221,12 +224,12 @@ export default function InboundPage() {
       }
 
       if (!parsed?.ok) {
-  setErr(parsed?.error || "Parse failed");
-  console.log("PARSE DEBUG:", parsed?.debug);
-  return;
-}
+        setErr(parsed?.error || "Parse failed");
+        console.log("PARSE DEBUG:", parsed?.debug);
+        return;
+      }
 
-setResult(parsed);
+      setResult(parsed);
     } catch (e: any) {
       setErr(e?.message || "Parse failed");
     } finally {
@@ -249,11 +252,11 @@ setResult(parsed);
       if (!bin_id) missingBins.push(l.device);
 
       return {
-  device_id: bin_id || "",
-  box_no: l.box_no,
-  floor: l.floor || floor,
-  imeis: l.imeis,
-};
+        device_id: bin_id || "",
+        box_no: l.box_no,
+        floor: l.floor || floor,
+        imeis: l.imeis,
+      };
     });
 
     if (missingBins.length > 0) {
@@ -269,6 +272,7 @@ setResult(parsed);
       const payload = {
         labels: labelsConverted,
         actor,
+        actor_id: actorId, // ✅ NEW
         vendor,
       };
 
@@ -386,6 +390,7 @@ setResult(parsed);
           floor: manualFloor,
           imeis: imeisToInsert,
           actor,
+          actor_id: actorId, // ✅ NEW
         }),
       });
 
@@ -661,7 +666,9 @@ setResult(parsed);
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="font-semibold">Inbound history</div>
-            <div className="text-xs text-slate-500">Filter Excel vs Manual, download Excel export + QR labels anytime.</div>
+            <div className="text-xs text-slate-500">
+              Filter Excel vs Manual, download Excel export + QR labels anytime.
+            </div>
           </div>
 
           <div className="flex gap-2">

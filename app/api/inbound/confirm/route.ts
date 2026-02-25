@@ -14,29 +14,35 @@ function sb() {
 
 type LabelPayload = {
   device_id: string; // bin_id
-  device?: string; // optional (debug)
-  box_no: string; // box_code
-  floor: string;
+  box_no: string;    // box_code
+  floor?: string;
   imeis: string[];
 };
 
 export async function POST(req: Request) {
   try {
-    const { labels, actor, vendor } = await req.json();
+    const { labels, actor, actor_id, vendor } = await req.json();
 
     if (!Array.isArray(labels) || labels.length === 0) {
       return NextResponse.json({ ok: false, error: "No labels provided" }, { status: 400 });
     }
 
+    if (!actor_id) {
+      return NextResponse.json(
+        { ok: false, error: "actor_id is required (uuid) for movements.created_by" },
+        { status: 400 }
+      );
+    }
+
     const supabase = sb();
 
-    // ✅ Validate bin_id exists
+    // ✅ Validate bin ids exist
     const { data: bins, error: binsErr } = await supabase.from("bins").select("id");
     if (binsErr) throw binsErr;
 
     const binSet = new Set((bins || []).map((b: any) => String(b.id)));
 
-    const unknownIds = Array.from(
+    const unknownBinIds = Array.from(
       new Set(
         (labels as LabelPayload[])
           .map((l) => String(l.device_id || "").trim())
@@ -44,13 +50,9 @@ export async function POST(req: Request) {
       )
     );
 
-    if (unknownIds.length > 0) {
+    if (unknownBinIds.length > 0) {
       return NextResponse.json(
-        {
-          ok: false,
-          error: "Unknown bin_id. Import blocked.",
-          unknown_device_ids: unknownIds,
-        },
+        { ok: false, error: "Unknown bin_id. Import blocked.", unknown_bin_ids: unknownBinIds },
         { status: 400 }
       );
     }
@@ -68,29 +70,28 @@ export async function POST(req: Request) {
 
     if (batchErr) throw batchErr;
 
-    // ✅ Existing IMEIs in DB
+    // ✅ Load existing IMEIs (DB)
     const { data: existingItems, error: exErr } = await supabase.from("items").select("imei");
     if (exErr) throw exErr;
 
     const existingSet = new Set((existingItems || []).map((x: any) => String(x.imei)));
 
+    // ✅ Track duplicates across the whole file/import
+    const seenInThisBatch = new Set<string>();
+
     let insertedImeis = 0;
     let skippedExistingImeis = 0;
-    let skippedDuplicateInFile = 0; // ✅ NEW
+    let skippedDuplicateInFile = 0;
     let createdBoxes = 0;
     let reusedBoxes = 0;
 
     const nowIso = new Date().toISOString();
 
-    // ✅ NEW: track duplicates across the WHOLE import batch (all boxes)
-    const seenInThisBatch = new Set<string>();
-
     for (const raw of labels as LabelPayload[]) {
-      const bin_id = String(raw.device_id).trim();
+      const bin_id = String(raw.device_id || "").trim();
       const box_code = String(raw.box_no || "").trim();
       const floor = String(raw.floor || "").trim();
 
-      // uniq only inside current label
       const imeis = Array.from(
         new Set(
           (raw.imeis || [])
@@ -101,7 +102,7 @@ export async function POST(req: Request) {
 
       if (!bin_id || !box_code || imeis.length === 0) continue;
 
-      // Find or create box
+      // ✅ Find or create box
       const { data: existingBox, error: findBoxErr } = await supabase
         .from("boxes")
         .select("id")
@@ -120,35 +121,32 @@ export async function POST(req: Request) {
         const { data: newBox, error: newBoxErr } = await supabase
           .from("boxes")
           .insert({
-            box_code,
             bin_id,
-            // floor, // si tu ajoutes la colonne plus tard
+            box_code,
+            // floor, // si colonne existe sur boxes
           })
           .select("id")
           .single();
 
         if (newBoxErr) throw newBoxErr;
-
         box_id = String(newBox.id);
         createdBoxes += 1;
       }
 
+      // ✅ Build items
       const itemsToInsert: any[] = [];
 
       for (const imei of imeis) {
-        // ✅ duplicate INSIDE the same import file (appears in another box)
         if (seenInThisBatch.has(imei)) {
           skippedDuplicateInFile += 1;
           continue;
         }
         seenInThisBatch.add(imei);
 
-        // ✅ already in DB
         if (existingSet.has(imei)) {
           skippedExistingImeis += 1;
           continue;
         }
-
         existingSet.add(imei);
 
         itemsToInsert.push({
@@ -156,7 +154,6 @@ export async function POST(req: Request) {
           box_id,
           status: "IN",
           imported_at: nowIso,
-          // device_id: bin_id, // optionnel: ton dashboard n’en a pas besoin car il passe via boxes.bin_id
         });
 
         insertedImeis += 1;
@@ -166,6 +163,7 @@ export async function POST(req: Request) {
         const { error: insErr } = await supabase.from("items").insert(itemsToInsert);
         if (insErr) throw insErr;
 
+        // ✅ movements (created_by is UUID NOT NULL)
         const movements = itemsToInsert.map(() => ({
           type: "IN",
           box_id,
@@ -173,7 +171,8 @@ export async function POST(req: Request) {
           qty: 1,
           notes: floor ? `floor=${floor}` : null,
           batch_id: batch.batch_id,
-          actor: actor || "unknown",
+          created_by: actor_id,          // ✅ UUID
+          actor: actor || "unknown",     // ✅ text
           created_at: nowIso,
         }));
 
@@ -189,15 +188,12 @@ export async function POST(req: Request) {
       totals: {
         inserted_imeis: insertedImeis,
         skipped_existing_imeis: skippedExistingImeis,
-        skipped_duplicate_in_file: skippedDuplicateInFile, // ✅ NEW
+        skipped_duplicate_in_file: skippedDuplicateInFile,
         created_boxes: createdBoxes,
         reused_boxes: reusedBoxes,
       },
     });
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e?.message || "Inbound confirm failed" },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: e?.message || "Inbound confirm failed" }, { status: 500 });
   }
 }

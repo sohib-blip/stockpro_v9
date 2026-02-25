@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic"; // 🔥 IMPORTANT: no caching in production
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -29,7 +30,8 @@ export async function GET() {
     // ======================
     const { data: bins, error: binsErr } = await supabase
       .from("bins")
-      .select("id, name, min_stock, active");
+      .select("id, name, min_stock, active")
+      .eq("active", true);
 
     if (binsErr) throw binsErr;
 
@@ -80,7 +82,7 @@ export async function GET() {
     }
 
     // ======================
-    // DEVICE SUMMARY (BINS)
+    // DEVICE SUMMARY
     // ======================
     const deviceSummary = (bins || []).map((b) => {
       const bin_id = String(b.id);
@@ -105,16 +107,17 @@ export async function GET() {
     // ======================
     const boxSummary = (boxes || []).map((b) => {
       const remaining = boxTotals[String(b.id)] || 0;
-      const total = remaining; // simple version (ever count can be extended)
+      const total = remaining;
 
       const percent = total > 0 ? 100 : 0;
 
       return {
         box_id: String(b.id),
         device_id: String(b.bin_id),
-        device: bins?.find((x) => String(x.id) === String(b.bin_id))?.name || "",
+        device:
+          bins?.find((x) => String(x.id) === String(b.bin_id))?.name || "",
         box_code: b.box_code,
-        floor: b.floor,
+        floor: b.floor ?? null,
         remaining,
         total,
         percent,

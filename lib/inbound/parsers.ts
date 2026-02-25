@@ -296,7 +296,7 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     const s = String(carton ?? "").toUpperCase();
     if (!s) return null;
 
-    if (s.includes("CV200")) return "CV200";
+    if (s.includes("CV200")) return "CNHYCV200XEU";
 
     const m = s.match(/\b([A-Z]{2,}\d{2,}[A-Z0-9]{0,})\b/);
     return m ? m[1] : null;

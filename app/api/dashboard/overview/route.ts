@@ -27,57 +27,60 @@ export async function GET() {
     const supabase = sb();
 
     // ======================
-    // LOAD BINS (ACTIVE)
+    // LOAD AGGREGATED STOCK
     // ======================
-    const { data: bins, error: binsErr } = await supabase
-      .from("bins")
-      .select("id, name, min_stock, active")
-      .eq("active", true);
+    const { data, error } = await supabase
+      .from("dashboard_stock_view")
+      .select("*");
 
-    if (binsErr) throw binsErr;
-
-    // ======================
-    // COUNT ITEMS PER BOX (ONLY IN STOCK)
-    // ======================
-    const { data: boxCounts, error: boxCountErr } = await supabase
-      .from("items")
-      .select("box_id, status")
-      .eq("status", "IN");
-
-    if (boxCountErr) throw boxCountErr;
-
-    // ======================
-    // LOAD BOXES
-    // ======================
-    const { data: boxes, error: boxErr } = await supabase
-      .from("boxes")
-      .select("id, bin_id, box_code, floor");
-
-    if (boxErr) throw boxErr;
-
-    // ======================
-    // COUNT LOGIC
-    // ======================
-    const boxTotals: Record<string, number> = {};
-    for (const it of boxCounts || []) {
-      boxTotals[String(it.box_id)] =
-        (boxTotals[String(it.box_id)] || 0) + 1;
-    }
+    if (error) throw error;
 
     const binTotals: Record<string, number> = {};
-    for (const box of boxes || []) {
-      const count = boxTotals[String(box.id)] || 0;
-      binTotals[String(box.bin_id)] =
-        (binTotals[String(box.bin_id)] || 0) + count;
+    const deviceSummary: any[] = [];
+    const boxSummary: any[] = [];
+
+    for (const row of data || []) {
+      const bin_id = String(row.bin_id);
+      const total_in = Number(row.total_in || 0);
+      const min_stock = Number(row.min_stock || 0);
+
+      // accumulate per bin
+      binTotals[bin_id] =
+        (binTotals[bin_id] || 0) + total_in;
+
+      // box summary
+      if (row.box_id) {
+        boxSummary.push({
+          box_id: String(row.box_id),
+          device_id: bin_id,
+          device: row.bin_name,
+          box_code: row.box_code,
+          floor: row.floor,
+          remaining: total_in,
+          total: total_in,
+          percent: total_in > 0 ? 100 : 0,
+          level: total_in === 0 ? "empty" : "ok",
+        });
+      }
     }
 
-    // ======================
-    // DEVICE SUMMARY
-    // ======================
-    const deviceSummary = (bins || []).map((b) => {
-      const bin_id = String(b.id);
+    // build device summary
+    const uniqueBins = new Map<string, any>();
+
+    for (const row of data || []) {
+      const bin_id = String(row.bin_id);
+      if (!uniqueBins.has(bin_id)) {
+        uniqueBins.set(bin_id, {
+          device_id: bin_id,
+          device: row.bin_name,
+          min_stock: Number(row.min_stock || 0),
+        });
+      }
+    }
+
+    for (const [bin_id, info] of uniqueBins.entries()) {
       const total_in = binTotals[bin_id] || 0;
-      const min_stock = Number(b.min_stock ?? 0);
+      const min_stock = info.min_stock;
 
       const level =
         total_in <= 0
@@ -86,43 +89,17 @@ export async function GET() {
           ? "low"
           : "ok";
 
-      return {
+      deviceSummary.push({
         device_id: bin_id,
-        device: b.name,
+        device: info.device,
         total_in,
-        total_out: 0, // simplified
+        total_out: 0,
         min_stock,
         level,
-      };
-    });
+      });
+    }
 
-    // ======================
-    // BOX SUMMARY
-    // ======================
-    const binNameById = new Map<string, string>();
-    for (const b of bins || [])
-      binNameById.set(String(b.id), String(b.name || ""));
-
-    const boxSummary = (boxes || []).map((b) => {
-      const remaining = boxTotals[String(b.id)] || 0;
-
-      return {
-        box_id: String(b.id),
-        device_id: String(b.bin_id),
-        device: binNameById.get(String(b.bin_id)) || "",
-        box_code: String(b.box_code || ""),
-        floor: b.floor ?? null,
-        remaining,
-        total: remaining,
-        percent: remaining > 0 ? 100 : 0,
-        level: remaining === 0 ? "empty" : "ok",
-      };
-    });
-
-    // ======================
-    // KPIs
-    // ======================
-    const total_in = Object.values(binTotals).reduce(
+    const total_in_all = Object.values(binTotals).reduce(
       (a, b) => a + b,
       0
     );
@@ -132,10 +109,10 @@ export async function GET() {
     ).length;
 
     const kpis = {
-      total_in,
+      total_in: total_in_all,
       total_out: 0,
-      total_devices: bins?.length || 0,
-      total_boxes: boxes?.length || 0,
+      total_devices: deviceSummary.length,
+      total_boxes: boxSummary.length,
       alerts,
     };
 
@@ -144,9 +121,7 @@ export async function GET() {
       {
         headers: {
           "Cache-Control":
-            "no-store, no-cache, must-revalidate, max-age=0, s-maxage=0",
-          Pragma: "no-cache",
-          Expires: "0",
+            "no-store, no-cache, must-revalidate, max-age=0",
         },
       }
     );

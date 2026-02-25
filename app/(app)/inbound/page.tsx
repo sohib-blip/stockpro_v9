@@ -301,6 +301,7 @@ export default function InboundPage() {
       );
 
       await loadHistory();
+      window.location.reload();
     } catch (e: any) {
       setErr(e?.message || "Confirm failed");
     } finally {
@@ -417,6 +418,7 @@ export default function InboundPage() {
       setManualMsg(`✅ Manual inbound saved (${json.inserted} IMEIs). Skipped existing: ${skipped}`);
 
       await loadHistory();
+      window.location.reload();
     } catch (e: any) {
       setManualMsg("❌ " + (e?.message || "Manual confirm failed"));
     } finally {

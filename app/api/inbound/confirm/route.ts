@@ -13,9 +13,9 @@ function sb() {
 }
 
 type LabelPayload = {
-  device_id: string;
+  device_id: string; // bin_id
   device?: string; // optional (debug)
-  box_no: string;
+  box_no: string; // box_code
   floor: string;
   imeis: string[];
 };
@@ -30,35 +30,32 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
-// Validate bin_id exists (NEW SYSTEM)
-const { data: bins, error: binsErr } = await supabase
-  .from("bins")
-  .select("id");
+    // ✅ Validate bin_id exists
+    const { data: bins, error: binsErr } = await supabase.from("bins").select("id");
+    if (binsErr) throw binsErr;
 
-if (binsErr) throw binsErr;
+    const binSet = new Set((bins || []).map((b: any) => String(b.id)));
 
-const binSet = new Set((bins || []).map((b: any) => String(b.id)));
+    const unknownIds = Array.from(
+      new Set(
+        (labels as LabelPayload[])
+          .map((l) => String(l.device_id || "").trim())
+          .filter((id) => !id || !binSet.has(id))
+      )
+    );
 
-const unknownIds = Array.from(
-  new Set(
-    (labels as LabelPayload[])
-      .map((l) => String(l.device_id || "").trim())
-      .filter((id) => !id || !binSet.has(id))
-  )
-);
+    if (unknownIds.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Unknown bin_id. Import blocked.",
+          unknown_device_ids: unknownIds,
+        },
+        { status: 400 }
+      );
+    }
 
-if (unknownIds.length > 0) {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "Unknown bin_id. Import blocked.",
-      unknown_device_ids: unknownIds,
-    },
-    { status: 400 }
-  );
-}
-
-    // Create batch
+    // ✅ Create batch
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
       .insert({
@@ -71,26 +68,29 @@ if (unknownIds.length > 0) {
 
     if (batchErr) throw batchErr;
 
-    // Existing IMEIs
-    const { data: existingItems, error: exErr } = await supabase
-      .from("items")
-      .select("imei");
-
+    // ✅ Existing IMEIs in DB
+    const { data: existingItems, error: exErr } = await supabase.from("items").select("imei");
     if (exErr) throw exErr;
 
     const existingSet = new Set((existingItems || []).map((x: any) => String(x.imei)));
 
     let insertedImeis = 0;
     let skippedExistingImeis = 0;
+    let skippedDuplicateInFile = 0; // ✅ NEW
     let createdBoxes = 0;
     let reusedBoxes = 0;
 
     const nowIso = new Date().toISOString();
 
+    // ✅ NEW: track duplicates across the WHOLE import batch (all boxes)
+    const seenInThisBatch = new Set<string>();
+
     for (const raw of labels as LabelPayload[]) {
-      const device_id = String(raw.device_id).trim();
+      const bin_id = String(raw.device_id).trim();
       const box_code = String(raw.box_no || "").trim();
       const floor = String(raw.floor || "").trim();
+
+      // uniq only inside current label
       const imeis = Array.from(
         new Set(
           (raw.imeis || [])
@@ -99,13 +99,13 @@ if (unknownIds.length > 0) {
         )
       );
 
-      if (!device_id || !box_code || imeis.length === 0) continue;
+      if (!bin_id || !box_code || imeis.length === 0) continue;
 
-      // Find or create box (your schema: boxes.id + boxes.bin_id + boxes.box_code)
+      // Find or create box
       const { data: existingBox, error: findBoxErr } = await supabase
         .from("boxes")
         .select("id")
-        .eq("bin_id", device_id)
+        .eq("bin_id", bin_id)
         .eq("box_code", box_code)
         .maybeSingle();
 
@@ -121,8 +121,8 @@ if (unknownIds.length > 0) {
           .from("boxes")
           .insert({
             box_code,
-            bin_id: device_id,
-            // floor: floor,  // only if you have it on boxes table
+            bin_id,
+            // floor, // si tu ajoutes la colonne plus tard
           })
           .select("id")
           .single();
@@ -133,22 +133,30 @@ if (unknownIds.length > 0) {
         createdBoxes += 1;
       }
 
-      // Insert items
       const itemsToInsert: any[] = [];
 
       for (const imei of imeis) {
+        // ✅ duplicate INSIDE the same import file (appears in another box)
+        if (seenInThisBatch.has(imei)) {
+          skippedDuplicateInFile += 1;
+          continue;
+        }
+        seenInThisBatch.add(imei);
+
+        // ✅ already in DB
         if (existingSet.has(imei)) {
           skippedExistingImeis += 1;
           continue;
         }
+
         existingSet.add(imei);
 
         itemsToInsert.push({
           imei,
-          device_id,
           box_id,
           status: "IN",
           imported_at: nowIso,
+          // device_id: bin_id, // optionnel: ton dashboard n’en a pas besoin car il passe via boxes.bin_id
         });
 
         insertedImeis += 1;
@@ -158,12 +166,9 @@ if (unknownIds.length > 0) {
         const { error: insErr } = await supabase.from("items").insert(itemsToInsert);
         if (insErr) throw insErr;
 
-        // Movements (your schema: movements has item_id, box_id, batch_id, actor...)
-        // Here item_id is unknown unless you re-select inserted rows.
-        // If you need item_id, we can do a select after insert.
-        const movements = itemsToInsert.map((it) => ({
+        const movements = itemsToInsert.map(() => ({
           type: "IN",
-          box_id: it.box_id,
+          box_id,
           item_id: null,
           qty: 1,
           notes: floor ? `floor=${floor}` : null,
@@ -172,7 +177,8 @@ if (unknownIds.length > 0) {
           created_at: nowIso,
         }));
 
-        await supabase.from("movements").insert(movements);
+        const { error: movErr } = await supabase.from("movements").insert(movements);
+        if (movErr) throw movErr;
       }
     }
 
@@ -183,6 +189,7 @@ if (unknownIds.length > 0) {
       totals: {
         inserted_imeis: insertedImeis,
         skipped_existing_imeis: skippedExistingImeis,
+        skipped_duplicate_in_file: skippedDuplicateInFile, // ✅ NEW
         created_boxes: createdBoxes,
         reused_boxes: reusedBoxes,
       },

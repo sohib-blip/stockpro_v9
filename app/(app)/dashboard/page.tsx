@@ -78,7 +78,7 @@ export default function DashboardPage() {
     setErr("");
 
     try {
-      const res = await fetch("/api/dashboard/overview", { cache: "no-store" });
+      const res = await fetch(`/api/dashboard/overview?t=${Date.now()}`, { cache: "no-store" });
       const json = await res.json();
 
       if (!res.ok || !json?.ok) {

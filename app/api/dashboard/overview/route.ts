@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic"; // 🔥 IMPORTANT: no caching in production
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -26,7 +27,7 @@ export async function GET() {
     const supabase = sb();
 
     // ======================
-    // LOAD BINS
+    // LOAD BINS (ACTIVE)
     // ======================
     const { data: bins, error: binsErr } = await supabase
       .from("bins")
@@ -54,12 +55,10 @@ export async function GET() {
     if (itemErr) throw itemErr;
 
     // ======================
-    // BUILD MAPS
+    // MAP BOXES
     // ======================
     const boxMap = new Map<string, any>();
-    for (const b of boxes || []) {
-      boxMap.set(String(b.id), b);
-    }
+    for (const b of boxes || []) boxMap.set(String(b.id), b);
 
     const binTotals: Record<string, number> = {};
     const binOutTotals: Record<string, number> = {};
@@ -105,18 +104,19 @@ export async function GET() {
     // ======================
     // BOX SUMMARY
     // ======================
+    const binNameById = new Map<string, string>();
+    for (const b of bins || []) binNameById.set(String(b.id), String(b.name || ""));
+
     const boxSummary = (boxes || []).map((b) => {
       const remaining = boxTotals[String(b.id)] || 0;
       const total = remaining;
-
       const percent = total > 0 ? 100 : 0;
 
       return {
         box_id: String(b.id),
         device_id: String(b.bin_id),
-        device:
-          bins?.find((x) => String(x.id) === String(b.bin_id))?.name || "",
-        box_code: b.box_code,
+        device: binNameById.get(String(b.bin_id)) || "",
+        box_code: String(b.box_code || ""),
         floor: b.floor ?? null,
         remaining,
         total,
@@ -130,7 +130,6 @@ export async function GET() {
     // ======================
     const total_in = Object.values(binTotals).reduce((a, b) => a + b, 0);
     const total_out = Object.values(binOutTotals).reduce((a, b) => a + b, 0);
-
     const alerts = deviceSummary.filter((d) => d.level !== "ok").length;
 
     const kpis = {
@@ -141,16 +140,28 @@ export async function GET() {
       alerts,
     };
 
-    return NextResponse.json({
-      ok: true,
-      kpis,
-      deviceSummary,
-      boxSummary,
-    });
+    return NextResponse.json(
+      { ok: true, kpis, deviceSummary, boxSummary },
+      {
+        headers: {
+          // 🔥 kill ALL caches
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0, s-maxage=0",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Dashboard failed" },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0, s-maxage=0",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
     );
   }
 }

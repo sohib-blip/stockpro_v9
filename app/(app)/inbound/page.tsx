@@ -178,19 +178,26 @@ export default function InboundPage() {
 
         // ✅ NEW: Preview details (devices found + IMEIs per box)
         const devicesFound = new Set<string>();
-        const boxMap: Record<string, number> = {};
+        const boxMap: Record<string, { imeis: number; device: string }> = {};
 
-        for (const l of parsed.labels || []) {
-          const deviceName = String(l.device || "").trim();
-          const boxNo = String(l.box_no || "").trim();
-          const imeiCount = Array.isArray(l.imeis) ? l.imeis.length : 0;
+for (const l of parsed.labels || []) {
+  const deviceName = String(l.device || "").trim();
+  const boxNo = String(l.box_no || "").trim();
+  const imeiCount = Array.isArray(l.imeis) ? l.imeis.length : 0;
 
-          if (deviceName) devicesFound.add(deviceName);
+  if (deviceName) devicesFound.add(deviceName);
 
-          if (boxNo) {
-            boxMap[boxNo] = (boxMap[boxNo] || 0) + imeiCount;
-          }
-        }
+  if (boxNo) {
+    if (!boxMap[boxNo]) {
+      boxMap[boxNo] = {
+        imeis: 0,
+        device: deviceName,
+      };
+    }
+
+    boxMap[boxNo].imeis += imeiCount;
+  }
+}
 
         // ✅ detect unknown bins directly in preview
 const unknownBins: string[] = [];
@@ -210,11 +217,14 @@ for (const l of parsed.labels || []) {
         (parsed as any).devices_found = Array.from(devicesFound);
 
         (parsed as any).box_breakdown = Object.entries(boxMap)
-  .map(([box_no, imeis]) => ({
+  .map(([box_no, data]) => ({
     box_no,
-    imeis,
+    imeis: data.imeis,
+    device: data.device,
   }))
-  .sort((a, b) => a.box_no.localeCompare(b.box_no, undefined, { numeric: true }));
+  .sort((a, b) =>
+    a.box_no.localeCompare(b.box_no, undefined, { numeric: true })
+  );
       }
 
       setResult(parsed);
@@ -615,11 +625,15 @@ for (const l of parsed.labels || []) {
                   <b>Boxes detected:</b>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-1">
                     {result.box_breakdown.map((b: any) => (
-                      <div key={b.box_no} className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1">
-                        <span className="font-semibold">{b.box_no}</span>
-                        <span className="ml-2 text-slate-500">{b.imeis} IMEIs</span>
-                      </div>
-                    ))}
+  <div
+    key={b.box_no}
+    className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1"
+  >
+    <div className="font-semibold">{b.box_no}</div>
+    <div className="text-[11px] text-slate-400">{b.device}</div>
+    <div className="text-xs text-slate-500">{b.imeis} IMEIs</div>
+  </div>
+))}
                   </div>
                 </div>
               )}

@@ -391,13 +391,20 @@ export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[
     if (!imei) continue;
 
     const rawDevice = String(row[idxProd] ?? "").trim();
-    if (!rawDevice) continue;
+if (!rawDevice) continue;
 
-    const deviceDisplay = resolveDeviceDisplay(rawDevice, devices);
-    if (!deviceDisplay) {
-      unknown.push(rawDevice);
-      continue;
-    }
+// 🔥 Mapping DigitalMatter vers nouveaux noms bins
+let normalizedRaw = rawDevice;
+
+if (rawDevice.toUpperCase().includes("BARRA-GPS-4G")) {
+  normalizedRaw = "BarraGps";
+}
+
+const deviceDisplay = resolveDeviceDisplay(normalizedRaw, devices);
+if (!deviceDisplay) {
+  unknown.push(normalizedRaw);
+  continue;
+}
 
     const boxNo = String(row[idxBoxid] ?? "").trim();
     if (!boxNo) continue;
@@ -475,7 +482,7 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
 
   const debug: Record<string, any> = { header, idxImei };
 
-  const forcedDeviceRaw = "Neon-R T7";
+  const forcedDeviceRaw = "Neon-R";
   const deviceDisplay = resolveDeviceDisplay(forcedDeviceRaw, devices);
 
   if (!deviceDisplay) {

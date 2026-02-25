@@ -39,7 +39,6 @@ export default function DashboardPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [actor, setActor] = useState("unknown");
-
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
 
@@ -75,7 +74,11 @@ export default function DashboardPage() {
     setErr("");
 
     try {
-      const res = await fetch(`/api/dashboard/overview?t=${Date.now()}`, { cache: "no-store" });
+      const res = await fetch(
+        `/api/dashboard/overview?t=${Date.now()}`,
+        { cache: "no-store" }
+      );
+
       const json = await res.json();
 
       if (!res.ok || !json?.ok) {
@@ -129,13 +132,13 @@ export default function DashboardPage() {
     loadOverview();
   }, []);
 
-  // 🔥 GLOBAL FILTER ALSO APPLIES TO BOXES
+  // 🔥 GLOBAL FILTER APPLIES TO BOXES ALSO
   const filteredBoxes = boxes.filter((b) => {
     const s = q.trim().toLowerCase();
     if (!s) return true;
     return (
-      (b.device || "").toLowerCase().includes(s) ||
-      (b.box_code || "").toLowerCase().includes(s)
+      b.device.toLowerCase().includes(s) ||
+      b.box_code.toLowerCase().includes(s)
     );
   });
 
@@ -143,10 +146,10 @@ export default function DashboardPage() {
     const s = q.trim().toLowerCase();
     if (lowOnly && d.level === "ok") return false;
     if (!s) return true;
-    return (d.device || "").toLowerCase().includes(s);
+    return d.device.toLowerCase().includes(s);
   });
 
-  // 🔥 FLOORS WITH REAL COUNTS
+  // 🔥 FLOOR WITH REAL COUNTS
   function floorsForDevice(device_id: string) {
     const map: Record<string, { boxes: number; imeis: number }> = {};
 
@@ -164,79 +167,35 @@ export default function DashboardPage() {
     }
 
     return Object.entries(map)
-      .map(([floor, info]) => ({
-        floor,
-        boxes: info.boxes,
-        imeis: info.imeis,
-      }))
-      .sort((a, b) => a.floor.localeCompare(b.floor));
+      .map(([floor, info]) => `${floor} (${info.boxes} boxes / ${info.imeis} IMEIs)`)
+      .join(", ");
   }
 
   function boxesCountForDevice(device_id: string): number {
-    const set = new Set<string>();
-    for (const b of filteredBoxes) {
-      if (b.device_id === device_id) set.add(b.box_id);
-    }
-    return set.size;
-  }
-
-  function startEditMinStock(row: DeviceSummaryRow) {
-    setEditingDeviceId(row.device_id);
-    setMinStockDraft(String(row.min_stock ?? ""));
-  }
-
-  async function saveMinStock(device_id: string) {
-    const v = minStockDraft.trim();
-    const num = v === "" ? null : Number(v);
-
-    if (v !== "" && (Number.isNaN(num) || (num as number) < 0)) {
-      alert("min_stock must be >= 0 (or empty)");
-      return;
-    }
-
-    const res = await fetch("/api/dashboard/update-minstock", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ device_id, min_stock: num, actor }),
-    });
-
-    const json = await res.json();
-    if (!json.ok) {
-      alert("❌ " + (json.error || "Failed to update min_stock"));
-      return;
-    }
-
-    setEditingDeviceId(null);
-    setMinStockDraft("");
-    await loadOverview();
+    return filteredBoxes.filter(b => b.device_id === device_id).length;
   }
 
   async function exportExcel() {
-    const res = await fetch("/api/dashboard/export", { cache: "no-store" });
-    const blob = await res.blob();
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `stock_export_${new Date().toISOString().slice(0, 10)}.xlsx`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    window.URL.revokeObjectURL(url);
+    setErr("");
+    try {
+      const res = await fetch("/api/dashboard/export", { cache: "no-store" });
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `stock_export_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (e: any) {
+      setErr(e?.message || "Export failed");
+    }
   }
-
-  const openDevice = openDeviceId
-    ? devices.find((d) => d.device_id === openDeviceId) || null
-    : null;
-
-  const drillBoxes = openDeviceId
-    ? filteredBoxes
-        .filter((b) => b.device_id === openDeviceId)
-        .sort((a, b) => (a.box_code || "").localeCompare(b.box_code || ""))
-    : [];
 
   return (
     <div className="space-y-6 max-w-6xl">
-      {/* TON LAYOUT RESTE IDENTIQUE */}
+      {/* TOUT TON LAYOUT RESTE EXACTEMENT IDENTIQUE */}
     </div>
   );
 }

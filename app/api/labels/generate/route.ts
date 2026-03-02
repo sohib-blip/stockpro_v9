@@ -69,33 +69,25 @@ export async function POST(req: Request) {
 
       let y = qrY + qrSize + mmToPt(2);
 
-      doc
-        .font("Courier-Bold")
-        .fontSize(11)
-        .text(label.device || "UNKNOWN DEVICE", M, y, {
-          width: contentW,
-          align: "center",
-        });
+      // ⚠️ PAS DE .font()
+      doc.fontSize(11).text(label.device || "UNKNOWN DEVICE", M, y, {
+        width: contentW,
+        align: "center",
+      });
 
       y += mmToPt(5);
 
-      doc
-        .font("Courier")
-        .fontSize(9)
-        .text(`BOX: ${label.box_no}`, M, y, {
-          width: contentW,
-          align: "center",
-        });
+      doc.fontSize(9).text(`BOX: ${label.box_no}`, M, y, {
+        width: contentW,
+        align: "center",
+      });
 
       y += mmToPt(4);
 
-      doc
-        .font("Courier")
-        .fontSize(9)
-        .text(`QTY IMEI: ${imeis.length}`, M, y, {
-          width: contentW,
-          align: "center",
-        });
+      doc.fontSize(9).text(`QTY IMEI: ${imeis.length}`, M, y, {
+        width: contentW,
+        align: "center",
+      });
     }
 
     doc.end();

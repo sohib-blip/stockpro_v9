@@ -117,17 +117,23 @@ export default function InboundPage() {
   }
 
   async function loadHistory() {
-    setLoadingHistory(true);
-    try {
-      const res = await fetch("/api/inbound/history", { cache: "no-store" });
-      const json = await res.json();
+  setLoadingHistory(true);
+  try {
+    const res = await fetch("/api/inbound/history", {
+      method: "GET",
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache",
+      },
+    });
 
-      if (json.ok) setHistory(json.rows || []);
-      else setHistory([]);
-    } finally {
-      setLoadingHistory(false);
-    }
+    const json = await res.json();
+    if (json.ok) setHistory(json.rows || []);
+    else setHistory([]);
+  } finally {
+    setLoadingHistory(false);
   }
+}
 
   useEffect(() => {
     loadHistory();

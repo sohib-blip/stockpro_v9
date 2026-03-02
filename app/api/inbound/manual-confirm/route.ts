@@ -67,27 +67,9 @@ export async function POST(req: Request) {
       box_id = newBox.id;
     }
 
-    // 3️⃣ Resolve real device_id from bin
-const { data: bin } = await supabase
-  .from("bins")
-  .select("name")
-  .eq("id", device)
-  .single();
-
-if (!bin) throw new Error("Bin not found");
-
-const { data: realDevice } = await supabase
-  .from("devices")
-  .select("device_id")
-  .ilike("canonical_name", bin.name)
-  .single();
-
-if (!realDevice) throw new Error("Device not found for bin");
-
-// 3️⃣ Insert items (FIXED)
-const itemsToInsert = imeis.map((imei: string) => ({
+    const itemsToInsert = imeis.map((imei: string) => ({
   imei,
-  device_id: realDevice.device_id, // ✅ FIXED
+  device_id: device, // ← on garde le bin_id
   box_id,
   status: "IN",
   imported_at: nowIso,

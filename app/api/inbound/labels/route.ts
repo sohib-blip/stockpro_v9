@@ -30,7 +30,10 @@ export async function GET(req: Request) {
     const batch_id = url.searchParams.get("batch_id");
 
     if (!batch_id) {
-      return NextResponse.json({ ok: false, error: "batch_id required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "batch_id required" },
+        { status: 400 }
+      );
     }
 
     const supabase = sb();
@@ -42,25 +45,57 @@ export async function GET(req: Request) {
       .eq("batch_id", batch_id);
 
     if (!movs || movs.length === 0) {
-      return NextResponse.json({ ok: false, error: "No movements found" }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: "No movements found" },
+        { status: 404 }
+      );
     }
 
     const itemIds = movs.map((m: any) => m.item_id);
+    const boxIds = movs.map((m: any) => m.box_id);
 
     const { data: items } = await supabase
       .from("items")
       .select("item_id, imei, device_id")
       .in("item_id", itemIds);
 
-    const grouped: Record<string, { device: string; imeis: string[] }> = {};
+    const { data: boxes } = await supabase
+      .from("boxes")
+      .select("id, box_code, bin_id")
+      .in("id", boxIds);
+
+    const boxMap: Record<string, any> = {};
+    for (const b of boxes || []) {
+      boxMap[String((b as any).id)] = b;
+    }
+
+    const binIds = boxes?.map((b: any) => b.bin_id) || [];
+
+    const { data: bins } = await supabase
+      .from("bins")
+      .select("id, name")
+      .in("id", binIds);
+
+    const binMap: Record<string, string> = {};
+    for (const b of bins || []) {
+      binMap[String((b as any).id)] = String((b as any).name);
+    }
+
+    const grouped: Record<
+      string,
+      { device: string; box: string; imeis: string[] }
+    > = {};
 
     for (const m of movs as any[]) {
       const it = items?.find((i: any) => i.item_id === m.item_id);
-      if (!it) continue;
+      const bx = boxMap[String(m.box_id)];
+
+      if (!it || !bx) continue;
 
       if (!grouped[m.box_id]) {
         grouped[m.box_id] = {
-          device: it.device_id || "",
+          device: binMap[String(bx.bin_id)] || "UNKNOWN",
+          box: bx.box_code || "",
           imeis: [],
         };
       }
@@ -69,7 +104,7 @@ export async function GET(req: Request) {
     }
 
     const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     const PAGE_W = mmToPt(105);
     const PAGE_H = mmToPt(155);
@@ -84,35 +119,32 @@ export async function GET(req: Request) {
       const qrBytes = await qrBuffer(qrContent);
       const qrImage = await pdfDoc.embedPng(qrBytes);
 
-      const qrSize = PAGE_W * 0.6;
+      const qrSize = PAGE_W * 0.65;
 
+      // QR centré
       page.drawImage(qrImage, {
         x: (PAGE_W - qrSize) / 2,
-        y: PAGE_H - qrSize - 20,
+        y: PAGE_H - qrSize - 40,
         width: qrSize,
         height: qrSize,
       });
 
-      page.drawText(data.device, {
-        x: 20,
-        y: 40,
-        size: 14,
-        font,
-      });
+      // Texte centré
+      const centerText = (text: string, y: number, size: number) => {
+        const textWidth = font.widthOfTextAtSize(text, size);
+        const x = (PAGE_W - textWidth) / 2;
+        page.drawText(text, { x, y, size, font });
+      };
 
-      page.drawText(`BOX: ${boxId}`, {
-        x: 20,
-        y: 25,
-        size: 12,
-        font,
-      });
+      let yStart = PAGE_H - qrSize - 70;
 
-      page.drawText(`QTY IMEI: ${imeis.length}`, {
-        x: 20,
-        y: 10,
-        size: 12,
-        font,
-      });
+      centerText(data.device, yStart, 18);
+      yStart -= 25;
+
+      centerText(`BOX ID: ${data.box}`, yStart, 14);
+      yStart -= 20;
+
+      centerText(`QTY IMEI: ${imeis.length}`, yStart, 14);
     }
 
     const pdfBytes = await pdfDoc.save();

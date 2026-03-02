@@ -11,72 +11,70 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { item_ids, target_box_id, actor, actor_id } = await req.json();
+    const { items, target_floor, actor, actor_id } = await req.json();
 
-    if (!Array.isArray(item_ids) || item_ids.length === 0) {
-      return NextResponse.json({ ok: false, error: "No items provided" });
-    }
+    if (!Array.isArray(items) || items.length === 0)
+      return NextResponse.json({ ok: false, error: "No items" });
 
-    if (!target_box_id) {
-      return NextResponse.json({ ok: false, error: "Target box required" });
-    }
-
-    if (!actor_id) {
-      return NextResponse.json({
-        ok: false,
-        error: "actor_id required (uuid)"
-      });
-    }
+    if (!target_floor)
+      return NextResponse.json({ ok: false, error: "Target floor required" });
 
     const nowIso = new Date().toISOString();
+    let moved = 0;
 
-    // 1️⃣ Update items
-    const { error: updateErr } = await supabase
-      .from("items")
-      .update({ box_id: target_box_id })
-      .in("item_id", item_ids);
+    for (const row of items) {
+      const { item_id, box_code, bin_id } = row;
 
-    if (updateErr) throw updateErr;
+      // 1️⃣ Find or create box on target floor
+      let { data: targetBox } = await supabase
+        .from("boxes")
+        .select("id")
+        .eq("box_code", box_code)
+        .eq("bin_id", bin_id)
+        .eq("floor", target_floor)
+        .maybeSingle();
 
-    // 2️⃣ Create transfer batch
-    const { data: batch, error: batchErr } = await supabase
-      .from("transfer_batches")
-      .insert({
-        actor: actor || "unknown",
-      })
-      .select("batch_id")
-      .single();
+      if (!targetBox) {
+        const { data: newBox, error } = await supabase
+          .from("boxes")
+          .insert({
+            box_code,
+            bin_id,
+            floor: target_floor,
+          })
+          .select("id")
+          .single();
 
-    if (batchErr) throw batchErr;
+        if (error) throw error;
+        targetBox = newBox;
+      }
 
-    // 3️⃣ Insert movement logs
-    const movements = item_ids.map((item_id: string) => ({
-      type: "TRANSFER",
-      item_id,
-      box_id: target_box_id,
-      qty: 1,
-      batch_id: batch.batch_id,
-      created_by: actor_id,
-      actor: actor || "unknown",
-      created_at: nowIso,
-    }));
+      // 2️⃣ Update item
+      const { error: updErr } = await supabase
+        .from("items")
+        .update({ box_id: targetBox.id })
+        .eq("item_id", item_id);
 
-    const { error: movErr } = await supabase
-      .from("movements")
-      .insert(movements);
+      if (updErr) throw updErr;
 
-    if (movErr) throw movErr;
+      // 3️⃣ Movement log
+      await supabase.from("movements").insert({
+        type: "TRANSFER",
+        item_id,
+        box_id: targetBox.id,
+        qty: 1,
+        created_by: actor_id,
+        actor,
+        notes: `floor_transfer_to_${target_floor}`,
+        created_at: nowIso,
+      });
 
-    return NextResponse.json({
-      ok: true,
-      moved: item_ids.length,
-      batch_id: batch.batch_id
-    });
+      moved++;
+    }
+
+    return NextResponse.json({ ok: true, moved });
 
   } catch (e: any) {
-    return NextResponse.json({
-      ok: false,
-      error: e?.message || "Transfer failed"
-    });
+    return NextResponse.json({ ok: false, error: e.message });
   }
 }

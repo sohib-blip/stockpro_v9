@@ -41,8 +41,8 @@ export async function GET(req: Request) {
       );
     }
 
-    const w_mm = Number(url.searchParams.get("w_mm") || "100");
-    const h_mm = Number(url.searchParams.get("h_mm") || "50");
+    const w_mm = Number(url.searchParams.get("w_mm") || "105");
+    const h_mm = Number(url.searchParams.get("h_mm") || "155");
 
     if (!Number.isFinite(w_mm) || !Number.isFinite(h_mm) || w_mm <= 0 || h_mm <= 0) {
       return NextResponse.json(

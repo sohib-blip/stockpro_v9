@@ -77,9 +77,9 @@ export async function POST(req: Request) {
           device
         ),
         boxes (
-          box_no,
-          floor
-        )
+  box_code,
+  floor
+)
       `)
       .in("imei", imeis);
 
@@ -112,7 +112,7 @@ export async function POST(req: Request) {
 
         summaryMap[key] = {
           device: item.devices?.device || "",
-          box_no: item.boxes?.box_no || "",
+          box_no: item.boxes?.box_code || "",
           floor: item.boxes?.floor || "",
           detected: 0,
           remaining,

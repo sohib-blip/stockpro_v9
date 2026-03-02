@@ -163,6 +163,12 @@ export default function OutboundPage() {
         >
           Preview Manual
         </button>
+
+        {preview && (
+  <div className="mt-4 bg-slate-800 p-4 rounded text-xs text-white">
+    <pre>{JSON.stringify(preview, null, 2)}</pre>
+  </div>
+)}
       </div>
 
       {/* EXCEL */}

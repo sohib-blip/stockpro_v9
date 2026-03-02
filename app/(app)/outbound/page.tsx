@@ -164,11 +164,80 @@ export default function OutboundPage() {
           Preview Manual
         </button>
 
-        {preview && (
-  <div className="mt-4 bg-slate-800 p-4 rounded text-xs text-white">
-    <pre>{JSON.stringify(preview, null, 2)}</pre>
+{preview?.ok && (
+  <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+    <div className="flex justify-between items-center">
+      <div className="font-semibold text-lg">
+        Preview Summary
+      </div>
+      <div className="text-sm text-slate-400">
+        {preview.totalDetected} IMEIs detected
+      </div>
+    </div>
+
+    <div className="overflow-auto">
+      <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+        <thead className="bg-slate-950/60">
+          <tr>
+            <th className="p-3 text-left border-b border-slate-800">Device</th>
+            <th className="p-3 text-left border-b border-slate-800">Box</th>
+            <th className="p-3 text-left border-b border-slate-800">Floor</th>
+            <th className="p-3 text-right border-b border-slate-800">Detected</th>
+            <th className="p-3 text-right border-b border-slate-800">Remaining</th>
+            <th className="p-3 text-right border-b border-slate-800">Total</th>
+            <th className="p-3 text-right border-b border-slate-800">% After</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {preview.summary.map((row: any, idx: number) => (
+            <tr key={idx} className="hover:bg-slate-950/40">
+              <td className="p-3 border-b border-slate-800 font-semibold">
+                {row.device || "—"}
+              </td>
+
+              <td className="p-3 border-b border-slate-800">
+                {row.box_no}
+              </td>
+
+              <td className="p-3 border-b border-slate-800">
+                {row.floor || "—"}
+              </td>
+
+              <td className="p-3 border-b border-slate-800 text-right text-indigo-400 font-semibold">
+                {row.detected}
+              </td>
+
+              <td className="p-3 border-b border-slate-800 text-right">
+                {row.remaining}
+              </td>
+
+              <td className="p-3 border-b border-slate-800 text-right">
+                {row.total}
+              </td>
+
+              <td className="p-3 border-b border-slate-800 text-right">
+                <span
+                  className={
+                    "px-2 py-1 rounded-full text-xs font-semibold " +
+                    (row.percent_after <= 20
+                      ? "bg-rose-900/40 text-rose-300"
+                      : row.percent_after <= 40
+                      ? "bg-amber-900/40 text-amber-300"
+                      : "bg-emerald-900/40 text-emerald-300")
+                  }
+                >
+                  {row.percent_after}%
+                </span>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   </div>
 )}
+
       </div>
 
       {/* EXCEL */}

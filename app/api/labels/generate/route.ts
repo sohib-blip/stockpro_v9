@@ -21,7 +21,7 @@ async function qrBuffer(text: string): Promise<Uint8Array> {
 
 export async function POST(req: Request) {
   try {
-    const { labels, w_mm = 100, h_mm = 50 } = await req.json();
+    const { labels, w_mm = 105, h_mm = 155 } = await req.json();
 
     if (!Array.isArray(labels) || labels.length === 0) {
       return NextResponse.json(

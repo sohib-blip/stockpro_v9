@@ -66,8 +66,8 @@ export async function GET(req: Request) {
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
-    const PAGE_W = mmToPt(100);
-    const PAGE_H = mmToPt(50);
+    const PAGE_W = mmToPt(105);
+    const PAGE_H = mmToPt(155);
 
     for (const key of Object.keys(grouped)) {
       const data = grouped[key];

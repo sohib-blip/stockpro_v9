@@ -18,10 +18,11 @@ export default function OutboundPage() {
   const [actor, setActor] = useState<string>("unknown");
   const [shipmentRef, setShipmentRef] = useState("");
   const [imeiInput, setImeiInput] = useState("");
-
   const [file, setFile] = useState<File | null>(null);
 
   const [preview, setPreview] = useState<any>(null);
+  const [previewSource, setPreviewSource] = useState<"manual" | "excel" | null>(null);
+
   const [message, setMessage] = useState("");
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -50,6 +51,9 @@ export default function OutboundPage() {
     loadHistory();
   }, []);
 
+  // =====================
+  // PREVIEW MANUAL
+  // =====================
   async function previewManual() {
     setMessage("");
     setPreview(null);
@@ -59,6 +63,11 @@ export default function OutboundPage() {
       .map((i) => i.replace(/\D/g, ""))
       .filter((i) => i.length === 15);
 
+    if (imeis.length === 0) {
+      setMessage("❌ No valid 15-digit IMEIs detected.");
+      return;
+    }
+
     const res = await fetch("/api/outbound/eod-preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -67,13 +76,20 @@ export default function OutboundPage() {
 
     const json = await res.json();
     setPreview(json);
+    setPreviewSource("manual");
   }
 
+  // =====================
+  // PREVIEW EXCEL
+  // =====================
   async function previewExcel() {
     setMessage("");
     setPreview(null);
 
-    if (!file) return;
+    if (!file) {
+      setMessage("❌ Select an Excel file.");
+      return;
+    }
 
     const form = new FormData();
     form.append("file", file);
@@ -85,12 +101,16 @@ export default function OutboundPage() {
 
     const json = await res.json();
     setPreview(json);
+    setPreviewSource("excel");
   }
 
-  async function confirmOut(source: "manual" | "excel") {
+  // =====================
+  // CONFIRM (UNIQUE)
+  // =====================
+  async function confirmOut() {
     setMessage("");
 
-    if (!preview?.ok) return;
+    if (!preview?.ok || !previewSource) return;
 
     const res = await fetch("/api/outbound/eod-confirm", {
       method: "POST",
@@ -99,7 +119,7 @@ export default function OutboundPage() {
         imeis: preview.imeis,
         shipment_ref: shipmentRef || null,
         actor,
-        source,
+        source: previewSource,
       }),
     });
 
@@ -108,8 +128,10 @@ export default function OutboundPage() {
     if (json.ok) {
       setMessage(`✅ Stock OUT confirmed (${json.shipped_count} IMEIs)`);
       setPreview(null);
+      setPreviewSource(null);
       setImeiInput("");
       setShipmentRef("");
+      setFile(null);
       await loadHistory();
     } else {
       setMessage("❌ " + (json.error || "Confirm failed"));
@@ -118,8 +140,7 @@ export default function OutboundPage() {
 
   function fmtDateTime(iso: string) {
     try {
-      const d = new Date(iso);
-      return d.toLocaleString();
+      return new Date(iso).toLocaleString();
     } catch {
       return iso;
     }
@@ -135,7 +156,7 @@ export default function OutboundPage() {
         </p>
       </div>
 
-      {/* Shipment ref */}
+      {/* Shipment reference */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
         <div className="font-semibold">Shipment reference (optional)</div>
         <input
@@ -146,7 +167,7 @@ export default function OutboundPage() {
         />
       </div>
 
-      {/* MANUAL */}
+      {/* MANUAL CARD */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
         <div className="font-semibold">Manual Scan</div>
 
@@ -163,84 +184,9 @@ export default function OutboundPage() {
         >
           Preview Manual
         </button>
-
-{preview?.ok && (
-  <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-    <div className="flex justify-between items-center">
-      <div className="font-semibold text-lg">
-        Preview Summary
-      </div>
-      <div className="text-sm text-slate-400">
-        {preview.totalDetected} IMEIs detected
-      </div>
-    </div>
-
-    <div className="overflow-auto">
-      <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-        <thead className="bg-slate-950/60">
-          <tr>
-            <th className="p-3 text-left border-b border-slate-800">Device</th>
-            <th className="p-3 text-left border-b border-slate-800">Box</th>
-            <th className="p-3 text-left border-b border-slate-800">Floor</th>
-            <th className="p-3 text-right border-b border-slate-800">Detected</th>
-            <th className="p-3 text-right border-b border-slate-800">Remaining</th>
-            <th className="p-3 text-right border-b border-slate-800">Total</th>
-            <th className="p-3 text-right border-b border-slate-800">% After</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {preview.summary.map((row: any, idx: number) => (
-            <tr key={idx} className="hover:bg-slate-950/40">
-              <td className="p-3 border-b border-slate-800 font-semibold">
-                {row.device || "—"}
-              </td>
-
-              <td className="p-3 border-b border-slate-800">
-                {row.box_no}
-              </td>
-
-              <td className="p-3 border-b border-slate-800">
-                {row.floor || "—"}
-              </td>
-
-              <td className="p-3 border-b border-slate-800 text-right text-indigo-400 font-semibold">
-                {row.detected}
-              </td>
-
-              <td className="p-3 border-b border-slate-800 text-right">
-                {row.remaining}
-              </td>
-
-              <td className="p-3 border-b border-slate-800 text-right">
-                {row.total}
-              </td>
-
-              <td className="p-3 border-b border-slate-800 text-right">
-                <span
-                  className={
-                    "px-2 py-1 rounded-full text-xs font-semibold " +
-                    (row.percent_after <= 20
-                      ? "bg-rose-900/40 text-rose-300"
-                      : row.percent_after <= 40
-                      ? "bg-amber-900/40 text-amber-300"
-                      : "bg-emerald-900/40 text-emerald-300")
-                  }
-                >
-                  {row.percent_after}%
-                </span>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  </div>
-)}
-
       </div>
 
-      {/* EXCEL */}
+      {/* EXCEL CARD */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
         <div className="font-semibold">Import End Of Day Report</div>
 
@@ -248,7 +194,6 @@ export default function OutboundPage() {
           type="file"
           accept=".xlsx,.xls"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="block"
         />
 
         <button
@@ -259,15 +204,15 @@ export default function OutboundPage() {
         </button>
       </div>
 
-      {/* PREVIEW */}
+      {/* GLOBAL PREVIEW (UNIQUE) */}
       {preview?.ok && (
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="font-semibold">
-              Preview: {preview.totalDetected} IMEIs detected (IN only)
+          <div className="flex justify-between items-center">
+            <div className="font-semibold text-lg">
+              Preview ({previewSource})
             </div>
-            <div className="text-xs text-slate-400">
-              IMEIs not found / already OUT are ignored automatically.
+            <div className="text-sm text-slate-400">
+              {preview.totalDetected} IMEIs detected
             </div>
           </div>
 
@@ -279,40 +224,33 @@ export default function OutboundPage() {
                   <th className="p-2 border-b border-slate-800 text-left">Box</th>
                   <th className="p-2 border-b border-slate-800 text-left">Floor</th>
                   <th className="p-2 border-b border-slate-800 text-right">Detected OUT</th>
-                  <th className="p-2 border-b border-slate-800 text-right">Remaining after</th>
-                  <th className="p-2 border-b border-slate-800 text-right">% after</th>
+                  <th className="p-2 border-b border-slate-800 text-right">Remaining</th>
+                  <th className="p-2 border-b border-slate-800 text-right">% After</th>
                 </tr>
               </thead>
               <tbody>
-                {preview.summary.map((s: any, idx: number) => (
+                {preview.summary.map((row: any, idx: number) => (
                   <tr key={idx} className="hover:bg-slate-950/40">
-                    <td className="p-2 border-b border-slate-800 font-semibold">{s.device}</td>
-                    <td className="p-2 border-b border-slate-800">{s.box_no}</td>
-                    <td className="p-2 border-b border-slate-800">{s.floor || "—"}</td>
-                    <td className="p-2 border-b border-slate-800 text-right">{s.detected}</td>
-                    <td className="p-2 border-b border-slate-800 text-right">{s.remaining}</td>
-                    <td className="p-2 border-b border-slate-800 text-right">{s.percent_after ?? "—"}%</td>
+                    <td className="p-2 border-b border-slate-800 font-semibold">{row.device}</td>
+                    <td className="p-2 border-b border-slate-800">{row.box_no}</td>
+                    <td className="p-2 border-b border-slate-800">{row.floor || "—"}</td>
+                    <td className="p-2 border-b border-slate-800 text-right">{row.detected}</td>
+                    <td className="p-2 border-b border-slate-800 text-right">{row.remaining}</td>
+                    <td className="p-2 border-b border-slate-800 text-right">
+                      {row.percent_after ?? "—"}%
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={() => confirmOut("manual")}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold"
-            >
-              Confirm Stock Out (Manual)
-            </button>
-
-            <button
-              onClick={() => confirmOut("excel")}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold"
-            >
-              Confirm Stock Out (Excel)
-            </button>
-          </div>
+          <button
+            onClick={confirmOut}
+            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold"
+          >
+            Confirm Stock Out
+          </button>
         </div>
       )}
 
@@ -324,14 +262,8 @@ export default function OutboundPage() {
 
       {/* HISTORY */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="font-semibold">Out of stock history</div>
-            <div className="text-xs text-slate-500">
-              Each line = one stock-out batch. Download Excel to trace device/box/IMEI.
-            </div>
-          </div>
-
+        <div className="flex items-center justify-between">
+          <div className="font-semibold">Out of stock history</div>
           <button
             onClick={loadHistory}
             className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
@@ -340,47 +272,28 @@ export default function OutboundPage() {
           </button>
         </div>
 
-        <div className="overflow-auto">
-          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="p-2 border-b border-slate-800 text-left">Date/Time</th>
-                <th className="p-2 border-b border-slate-800 text-left">User</th>
-                <th className="p-2 border-b border-slate-800 text-left">Source</th>
-                <th className="p-2 border-b border-slate-800 text-left">Shipment ref</th>
-                <th className="p-2 border-b border-slate-800 text-right">Qty</th>
-                <th className="p-2 border-b border-slate-800 text-right">Excel</th>
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <thead className="bg-slate-950/50">
+            <tr>
+              <th className="p-2 border-b border-slate-800 text-left">Date/Time</th>
+              <th className="p-2 border-b border-slate-800 text-left">User</th>
+              <th className="p-2 border-b border-slate-800 text-left">Source</th>
+              <th className="p-2 border-b border-slate-800 text-left">Shipment ref</th>
+              <th className="p-2 border-b border-slate-800 text-right">Qty</th>
+            </tr>
+          </thead>
+          <tbody>
+            {history.map((h) => (
+              <tr key={h.batch_id}>
+                <td className="p-2 border-b border-slate-800">{fmtDateTime(h.created_at)}</td>
+                <td className="p-2 border-b border-slate-800">{h.actor}</td>
+                <td className="p-2 border-b border-slate-800">{h.source}</td>
+                <td className="p-2 border-b border-slate-800">{h.shipment_ref || "—"}</td>
+                <td className="p-2 border-b border-slate-800 text-right font-semibold">{h.qty}</td>
               </tr>
-            </thead>
-            <tbody>
-              {history.map((h) => (
-                <tr key={h.batch_id} className="hover:bg-slate-950/40">
-                  <td className="p-2 border-b border-slate-800">{fmtDateTime(h.created_at)}</td>
-                  <td className="p-2 border-b border-slate-800">{h.actor}</td>
-                  <td className="p-2 border-b border-slate-800">{h.source || "—"}</td>
-                  <td className="p-2 border-b border-slate-800">{h.shipment_ref || "—"}</td>
-                  <td className="p-2 border-b border-slate-800 text-right font-semibold">{h.qty}</td>
-                  <td className="p-2 border-b border-slate-800 text-right">
-                    <a
-                      href={`/api/outbound/export?batch_id=${encodeURIComponent(h.batch_id)}`}
-                      className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
-                    >
-                      Excel
-                    </a>
-                  </td>
-                </tr>
-              ))}
-
-              {history.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="p-3 text-slate-400">
-                    No outbound batches yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

@@ -29,8 +29,9 @@ export default function TransferPage() {
     target_floor: string;
   } | null>(null);
 
-  // Box transfer
+  // BOX transfer
   const [boxCodeInput, setBoxCodeInput] = useState("");
+  const [boxTargetFloor, setBoxTargetFloor] = useState("00");
   const [boxPreview, setBoxPreview] = useState<any>(null);
 
   const [message, setMessage] = useState("");
@@ -41,14 +42,12 @@ export default function TransferPage() {
   const [historyFilter, setHistoryFilter] = useState<"all" | "today">("all");
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // 🔹 Load user
+  // Load user
   useEffect(() => {
     (async () => {
       const { data } = await supabase.auth.getUser();
-      const email = data?.user?.email;
-      const id = data?.user?.id;
-      if (email) setActor(email);
-      if (id) setActorId(id);
+      if (data?.user?.email) setActor(data.user.email);
+      if (data?.user?.id) setActorId(data.user.id);
     })();
   }, [supabase]);
 
@@ -71,14 +70,12 @@ export default function TransferPage() {
     setPreview(null);
 
     const imeis = extractImeis(imeiInput);
-
     if (!imeis.length) {
       setMessage("❌ No valid IMEIs detected.");
       return;
     }
 
     setBusy(true);
-
     try {
       const res = await fetch("/api/transfer/preview", {
         method: "POST",
@@ -87,7 +84,6 @@ export default function TransferPage() {
       });
 
       const json = await res.json();
-
       if (!json.ok) {
         setMessage("❌ " + json.error);
         return;
@@ -101,9 +97,6 @@ export default function TransferPage() {
     }
   }
 
-  // ================================
-  // CONFIRM IMEI TRANSFER
-  // ================================
   async function confirmTransfer() {
     if (!preview?.payload) return;
 
@@ -123,7 +116,6 @@ export default function TransferPage() {
       });
 
       const json = await res.json();
-
       if (!json.ok) {
         setMessage("❌ " + json.error);
         return;
@@ -141,7 +133,7 @@ export default function TransferPage() {
   }
 
   // ================================
-  // PREVIEW BOX TRANSFER (NEW)
+  // PREVIEW BOX TRANSFER
   // ================================
   async function previewBoxTransfer() {
     setMessage("");
@@ -153,19 +145,17 @@ export default function TransferPage() {
     }
 
     setBusy(true);
-
     try {
       const res = await fetch("/api/transfer/box-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           box_code: boxCodeInput.trim(),
-          target_floor: targetFloor,
+          target_floor: boxTargetFloor,
         }),
       });
 
       const json = await res.json();
-
       if (!json.ok) {
         setMessage("❌ " + json.error);
         return;
@@ -179,9 +169,6 @@ export default function TransferPage() {
     }
   }
 
-  // ================================
-  // CONFIRM BOX TRANSFER (UPDATED)
-  // ================================
   async function confirmBoxTransfer() {
     if (!boxPreview) return;
 
@@ -193,15 +180,14 @@ export default function TransferPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          box_code: boxPreview.box_code,
-          target_floor: boxPreview.to_floor,
+          box_code: boxCodeInput.trim(),
+          target_floor: boxTargetFloor,
           actor,
           actor_id: actorId,
         }),
       });
 
       const json = await res.json();
-
       if (!json.ok) {
         setMessage("❌ " + json.error);
         return;
@@ -223,17 +209,12 @@ export default function TransferPage() {
   // ================================
   async function loadHistory() {
     setLoadingHistory(true);
-
     const res = await fetch(
       `/api/transfer/history?filter=${historyFilter}`,
       { cache: "no-store" }
     );
-
     const json = await res.json();
-
-    if (json.ok) setHistory(json.rows);
-    else setHistory([]);
-
+    setHistory(json.ok ? json.rows : []);
     setLoadingHistory(false);
   }
 
@@ -245,9 +226,7 @@ export default function TransferPage() {
     <div className="space-y-8 max-w-5xl">
       <div>
         <div className="text-xs text-slate-500">Transfer</div>
-        <h2 className="text-xl font-semibold">
-          Move IMEIs Between Floors
-        </h2>
+        <h2 className="text-xl font-semibold">Move IMEIs Between Floors</h2>
         <p className="text-sm text-slate-400 mt-1">
           User: <b>{actor}</b>
         </p>
@@ -279,7 +258,7 @@ export default function TransferPage() {
           <button
             onClick={previewTransfer}
             disabled={busy}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
+            className="rounded-xl bg-indigo-600 px-4 py-2 font-semibold"
           >
             Preview
           </button>
@@ -287,25 +266,18 @@ export default function TransferPage() {
           <button
             onClick={confirmTransfer}
             disabled={!preview || busy}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
+            className="rounded-xl bg-emerald-600 px-4 py-2 font-semibold"
           >
             Confirm
           </button>
         </div>
 
-        {message && (
-          <div className="text-sm text-slate-300">{message}</div>
-        )}
+        {message && <div className="text-sm">{message}</div>}
       </div>
 
       {/* BOX TRANSFER */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-        <div>
-          <div className="font-semibold">Transfer Entire Box</div>
-          <div className="text-xs text-slate-500">
-            Move all IN IMEIs from one box to another floor.
-          </div>
-        </div>
+        <div className="font-semibold">Transfer Entire Box</div>
 
         <input
           value={boxCodeInput}
@@ -314,37 +286,44 @@ export default function TransferPage() {
           className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
         />
 
+        <select
+          value={boxTargetFloor}
+          onChange={(e) => setBoxTargetFloor(e.target.value)}
+          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+        >
+          <option value="00">Floor 00</option>
+          <option value="1">Floor 1</option>
+          <option value="6">Floor 6</option>
+          <option value="Cabinet">Cabinet</option>
+        </select>
+
         <button
           onClick={previewBoxTransfer}
           disabled={busy}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
+          className="rounded-xl bg-indigo-600 px-4 py-2 font-semibold"
         >
           Preview Box Transfer
         </button>
 
         {boxPreview && (
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 space-y-2">
+          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
             <div>
               <b>{boxPreview.total}</b> IMEIs will move
             </div>
             <div>
               From floor <b>{boxPreview.from_floor}</b> → To floor{" "}
-              <b>{boxPreview.to_floor}</b>
+              <b>{boxTargetFloor}</b>
             </div>
 
             <button
               onClick={confirmBoxTransfer}
-              disabled={busy}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold"
+              className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 font-semibold"
             >
               Confirm Box Transfer
             </button>
           </div>
         )}
       </div>
-
-      {/* HISTORY (unchanged) */}
-      ...
     </div>
   );
 }

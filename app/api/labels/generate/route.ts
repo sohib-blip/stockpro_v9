@@ -21,21 +21,18 @@ async function qrBuffer(text: string): Promise<Uint8Array> {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
-    const labels = body.labels;
-    const w_mm = Number(body.w_mm ?? 100);
-    const h_mm = Number(body.h_mm ?? 50);
+    const { labels, w_mm = 100, h_mm = 50 } = await req.json();
 
     if (!Array.isArray(labels) || labels.length === 0) {
-      return NextResponse.json({ ok: false, error: "No labels provided" }, { status: 400 });
-    }
-
-    if (!Number.isFinite(w_mm) || !Number.isFinite(h_mm) || w_mm <= 0 || h_mm <= 0) {
-      return NextResponse.json({ ok: false, error: "Invalid w_mm / h_mm" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No labels provided" },
+        { status: 400 }
+      );
     }
 
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     const PAGE_W = mmToPt(w_mm);
     const PAGE_H = mmToPt(h_mm);
@@ -49,22 +46,20 @@ export async function POST(req: Request) {
         )
       );
 
-      if (imeis.length === 0) continue;
+      if (!imeis.length) continue;
 
       const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
 
-      // QR contient UNIQUEMENT les IMEIs ligne par ligne
       const qrContent = imeis.join("\n");
       const qrBytes = await qrBuffer(qrContent);
       const qrImage = await pdfDoc.embedPng(qrBytes);
 
-      const M = mmToPt(3);
-      const contentW = PAGE_W - M * 2;
-      const contentH = PAGE_H - M * 2;
+      const margin = mmToPt(5);
+      const contentWidth = PAGE_W - margin * 2;
 
-      const qrSize = Math.min(contentW, contentH * 0.6);
+      const qrSize = Math.min(contentWidth, PAGE_H * 0.6);
       const qrX = (PAGE_W - qrSize) / 2;
-      const qrY = PAGE_H - M - qrSize;
+      const qrY = PAGE_H - qrSize - margin;
 
       page.drawImage(qrImage, {
         x: qrX,
@@ -73,42 +68,47 @@ export async function POST(req: Request) {
         height: qrSize,
       });
 
-      // Text sous le QR : device, box id, qty
-      let y = qrY - mmToPt(3);
+      let y = qrY - 20;
 
-      const deviceName = String(label.device || "UNKNOWN DEVICE");
-      const boxNo = String(label.box_no || label.boxNo || label.box || "");
+      // 🔥 FIX DEVICE NAME
+      const deviceName =
+        label.device ||
+        label.device_name ||
+        label.deviceName ||
+        label.bin_id ||
+        "UNKNOWN DEVICE";
+
+      const boxNo =
+        label.box_no ||
+        label.boxNo ||
+        label.box ||
+        "";
+
       const qty = imeis.length;
 
-      page.drawText(deviceName, {
-        x: M,
-        y,
-        size: 11,
-        font,
-      });
+      // Centered text helper
+      function drawCentered(text: string, size: number, usedFont: any) {
+        const textWidth = usedFont.widthOfTextAtSize(text, size);
+        const x = (PAGE_W - textWidth) / 2;
 
+        page.drawText(text, {
+          x,
+          y,
+          size,
+          font: usedFont,
+        });
+      }
+
+      drawCentered(deviceName, 12, fontBold);
+      y -= 16;
+
+      drawCentered(`BOX: ${boxNo}`, 10, font);
       y -= 14;
 
-      page.drawText(`BOX: ${boxNo}`, {
-        x: M,
-        y,
-        size: 9,
-        font,
-      });
-
-      y -= 14;
-
-      page.drawText(`QTY IMEI: ${qty}`, {
-        x: M,
-        y,
-        size: 9,
-        font,
-      });
+      drawCentered(`QTY IMEI: ${qty}`, 10, font);
     }
 
     const pdfBytes = await pdfDoc.save();
-
-    // ✅ FIX: convertir Uint8Array -> Buffer pour NextResponse (plus d’erreur rouge)
     const pdfBuffer = Buffer.from(pdfBytes);
 
     return new NextResponse(pdfBuffer, {

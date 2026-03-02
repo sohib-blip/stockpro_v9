@@ -88,12 +88,16 @@ export default function LabelsPage() {
     setMsg("");
 
     const payloadLabels = labels
-      .map((l) => ({
-        device_id: l.device_id, // ✅ bin_id
-        box: l.box.trim(),
-        imeis: extractImeis(l.imeisText),
-      }))
-      .filter((l) => l.device_id && l.box && l.imeis.length > 0);
+  .map((l) => {
+    const selected = devices.find((d) => d.device_id === l.device_id);
+
+    return {
+      device: selected?.device || "",   // 🔥 ENVOIE LE NOM
+      box_no: l.box.trim(),             // 🔥 aligné avec backend
+      imeis: extractImeis(l.imeisText),
+    };
+  })
+  .filter((l) => l.device && l.box_no && l.imeis.length > 0);
 
     if (payloadLabels.length === 0) {
       setMsg("❌ Ajoute au moins 1 label valide (bin + box + au moins 1 IMEI).");

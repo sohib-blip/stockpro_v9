@@ -33,14 +33,6 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
 
-    const batch_id = url.searchParams.get("batch_id");
-    if (!batch_id) {
-      return NextResponse.json(
-        { ok: false, error: "batch_id required" },
-        { status: 400 }
-      );
-    }
-
     const w_mm = Number(url.searchParams.get("w_mm") || "100");
     const h_mm = Number(url.searchParams.get("h_mm") || "50");
 
@@ -50,30 +42,30 @@ export async function GET(req: Request) {
 
     const supabase = sb();
 
-    const { data: movs, error: movErr } = await supabase
-      .from("movements")
+    // 🔥 ON LIT LES IMEIS DEPUIS ITEMS (pas movements)
+    const { data: items, error } = await supabase
+      .from("items")
       .select("imei, box_id")
-      .eq("type", "IN")
-      .eq("batch_id", batch_id);
+      .eq("status", "IN");
 
-    if (movErr) throw movErr;
+    if (error) throw error;
 
-    if (!movs || movs.length === 0) {
+    if (!items || items.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "No IN movements found" },
+        { ok: false, error: "No IN items found" },
         { status: 404 }
       );
     }
 
-    // 🔹 Grouper IMEIs par box
+    // Grouper par box
     const byBox: Record<string, string[]> = {};
 
-    for (const m of movs as any[]) {
-      const box_id = String(m.box_id);
+    for (const item of items as any[]) {
+      const box_id = String(item.box_id);
       if (!box_id) continue;
 
       if (!byBox[box_id]) byBox[box_id] = [];
-      byBox[box_id].push(String(m.imei));
+      byBox[box_id].push(String(item.imei));
     }
 
     const doc = new PDFDocument({
@@ -109,9 +101,8 @@ export async function GET(req: Request) {
 
       let y = qrY + qrSize + mmToPt(2);
 
-      // ⚠️ PAS de Helvetica
       doc
-        .font("Courier")   // ← safe pour Vercel
+        .font("Courier")
         .fontSize(9)
         .text(`BOX ID: ${box_id}`, M, y, {
           width: contentW,
@@ -136,16 +127,15 @@ export async function GET(req: Request) {
     const pdfBuffer = Buffer.concat(chunks);
 
     return new NextResponse(pdfBuffer, {
-      status: 200,
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="ZD220_labels_${batch_id}.pdf"`,
+        "Content-Disposition": `attachment; filename=ZD220_labels.pdf`,
       },
     });
 
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Labels generation failed" },
+      { ok: false, error: e?.message || "Generation failed" },
       { status: 500 }
     );
   }

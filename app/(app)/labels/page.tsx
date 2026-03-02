@@ -32,8 +32,8 @@ export default function LabelsPage() {
   const [msg, setMsg] = useState("");
 
   // ZD220 default label size
-  const [wMm, setWMm] = useState(100);
-  const [hMm, setHMm] = useState(50);
+  const [wMm, setWMm] = useState(105);
+  const [hMm, setHMm] = useState(155);
 
   const [labels, setLabels] = useState<DraftLabel[]>([
     { id: uuid(), device_id: "", box: "", imeisText: "" },

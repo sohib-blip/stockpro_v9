@@ -189,7 +189,7 @@ export async function GET(req: Request) {
       const contentH = PAGE_H - M * 2;
 
       // QR size + center
-      const qrSize = Math.min(contentW, contentH * 0.62);
+      const qrSize = Math.min(contentW * 0.9, contentH * 0.7);
       const qrX = (PAGE_W - qrSize) / 2;
       const qrY = PAGE_H - M - qrSize;
 

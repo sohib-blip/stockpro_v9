@@ -65,7 +65,7 @@ export default function InboundPage() {
   const [manualPreview, setManualPreview] = useState<any>(null);
   const [manualMsg, setManualMsg] = useState<string>("");
 
-  // Zebra label size (default 100x50mm)
+  // Zebra label size (default 105x155mm)
   const LABEL_W = 105;
   const LABEL_H = 155;
 

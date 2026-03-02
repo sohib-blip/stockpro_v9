@@ -29,7 +29,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const batch_id = url.searchParams.get("batch_id");
 
-    if (!batch_id) {
+    if (!batch_id || batch_id === "null" || batch_id === "undefined") {
       return NextResponse.json({ ok: false, error: "batch_id required" }, { status: 400 });
     }
 

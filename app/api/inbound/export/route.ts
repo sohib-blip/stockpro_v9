@@ -23,7 +23,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const batch_id = url.searchParams.get("batch_id");
 
-    if (!batch_id) {
+    if (!batch_id || batch_id === "null" || batch_id === "undefined") {
       return NextResponse.json(
         { ok: false, error: "batch_id required" },
         { status: 400 }
@@ -32,7 +32,6 @@ export async function GET(req: Request) {
 
     const supabase = sb();
 
-    // batch info
     const { data: batch, error: bErr } = await supabase
       .from("inbound_batches")
       .select("batch_id, created_at, actor, vendor")
@@ -41,7 +40,6 @@ export async function GET(req: Request) {
 
     if (bErr) throw bErr;
 
-    // movements for this batch
     const { data: movs, error: mErr } = await supabase
       .from("movements")
       .select("item_id, box_id")
@@ -64,7 +62,6 @@ export async function GET(req: Request) {
       );
     }
 
-    // items
     const { data: items, error: iErr } = await supabase
       .from("items")
       .select("item_id, imei, device_id, imported_at, imported_by")
@@ -75,7 +72,6 @@ export async function GET(req: Request) {
     const itemMap: Record<string, any> = {};
     for (const it of items || []) itemMap[String((it as any).item_id)] = it;
 
-    // boxes
     const { data: boxes, error: boxErr } = await supabase
       .from("boxes")
       .select("id, box_code, bin_id")
@@ -86,7 +82,6 @@ export async function GET(req: Request) {
     const boxMap: Record<string, any> = {};
     for (const b of boxes || []) boxMap[String((b as any).id)] = b;
 
-    // bins (device names)
     const binIds = Array.from(
       new Set((boxes || []).map((b: any) => String(b.bin_id)).filter(Boolean))
     );
@@ -98,15 +93,13 @@ export async function GET(req: Request) {
         .select("id, name")
         .in("id", binIds);
 
-      if (!binErr) {
-        binMap = {};
-        for (const bn of bins || []) {
-          binMap[String((bn as any).id)] = String((bn as any).name);
-        }
+      if (binErr) throw binErr;
+
+      for (const bn of bins || []) {
+        binMap[String((bn as any).id)] = String((bn as any).name);
       }
     }
 
-    // Build CSV rows (one row per movement/item)
     const header = [
       "batch_id",
       "batch_created_at",

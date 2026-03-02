@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import PDFDocument from "pdfkit";
 import QRCode from "qrcode";
+import { PDFDocument, StandardFonts } from "pdf-lib";
 
 export const runtime = "nodejs";
 
@@ -18,14 +18,15 @@ function mmToPt(mm: number) {
   return (mm / 25.4) * 72;
 }
 
-async function qrPngBuffer(text: string): Promise<Buffer> {
-  const dataUrl = await QRCode.toDataURL(text, {
+async function qrPngBytes(text: string): Promise<Uint8Array> {
+  // PNG buffer
+  const buf = await QRCode.toBuffer(text, {
     errorCorrectionLevel: "M",
     margin: 1,
-    scale: 6,
+    scale: 10, // un peu plus net sur ZD220
+    type: "png",
   });
-  const base64 = dataUrl.split(",")[1];
-  return Buffer.from(base64, "base64");
+  return new Uint8Array(buf);
 }
 
 export async function GET(req: Request) {
@@ -33,7 +34,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
 
     const batch_id = url.searchParams.get("batch_id");
-    if (!batch_id) {
+    if (!batch_id || batch_id === "null" || batch_id === "undefined") {
       return NextResponse.json(
         { ok: false, error: "batch_id required" },
         { status: 400 }
@@ -56,9 +57,10 @@ export async function GET(req: Request) {
 
     const supabase = sb();
 
+    // 1) movements -> item_id + box_id
     const { data: movs, error: movErr } = await supabase
       .from("movements")
-      .select("imei, box_id, device_id")
+      .select("item_id, box_id")
       .eq("type", "IN")
       .eq("batch_id", batch_id);
 
@@ -71,100 +73,166 @@ export async function GET(req: Request) {
       );
     }
 
-    const { data: devices } = await supabase
-      .from("devices")
-      .select("device_id, device");
+    const itemIds = Array.from(
+      new Set((movs as any[]).map((m) => String(m.item_id)).filter(Boolean))
+    );
+    const boxIds = Array.from(
+      new Set((movs as any[]).map((m) => String(m.box_id)).filter(Boolean))
+    );
 
-    const deviceMap: Record<string, string> = {};
-    for (const d of devices || []) {
-      deviceMap[String((d as any).device_id)] = String((d as any).device);
+    if (itemIds.length === 0 || boxIds.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "Batch has no valid item_id/box_id" },
+        { status: 404 }
+      );
     }
 
-    const byBox: Record<string, { device_id: string; imeis: string[] }> = {};
+    // 2) items -> imei + device_id
+    const { data: items, error: itemsErr } = await supabase
+      .from("items")
+      .select("item_id, imei, device_id")
+      .in("item_id", itemIds);
+
+    if (itemsErr) throw itemsErr;
+
+    const itemMap: Record<string, any> = {};
+    for (const it of items || []) itemMap[String((it as any).item_id)] = it;
+
+    // 3) boxes -> box_code + bin_id
+    const { data: boxes, error: boxErr } = await supabase
+      .from("boxes")
+      .select("id, box_code, bin_id")
+      .in("id", boxIds);
+
+    if (boxErr) throw boxErr;
+
+    const boxMap: Record<string, any> = {};
+    for (const b of boxes || []) boxMap[String((b as any).id)] = b;
+
+    // 4) bins -> name (device)
+    const binIds = Array.from(
+      new Set((boxes || []).map((b: any) => String(b.bin_id)).filter(Boolean))
+    );
+
+    let binMap: Record<string, string> = {};
+    if (binIds.length > 0) {
+      const { data: bins, error: binsErr } = await supabase
+        .from("bins")
+        .select("id, name")
+        .in("id", binIds);
+
+      if (binsErr) throw binsErr;
+
+      for (const bn of bins || []) {
+        binMap[String((bn as any).id)] = String((bn as any).name);
+      }
+    }
+
+    // 5) group imeis by box_id
+    const byBox: Record<
+      string,
+      { bin_id: string; box_code: string; imeis: string[] }
+    > = {};
 
     for (const m of movs as any[]) {
-      const box_id = String(m.box_id);
-      if (!box_id) continue;
+      const box_id = String(m.box_id || "");
+      const item_id = String(m.item_id || "");
+      if (!box_id || !item_id) continue;
+
+      const it = itemMap[item_id];
+      const bx = boxMap[box_id];
+
+      if (!it || !bx) continue;
+
+      const imei = String(it.imei || "");
+      if (!imei) continue;
 
       if (!byBox[box_id]) {
         byBox[box_id] = {
-          device_id: String(m.device_id),
+          bin_id: String(bx.bin_id || it.device_id || ""),
+          box_code: String(bx.box_code || ""),
           imeis: [],
         };
       }
-
-      byBox[box_id].imeis.push(String(m.imei));
+      byBox[box_id].imeis.push(imei);
     }
 
-    const doc = new PDFDocument({
-      autoFirstPage: false,
-      size: [PAGE_W, PAGE_H],
-      margin: 0,
-    });
+    const boxKeys = Object.keys(byBox);
+    if (boxKeys.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No printable labels found (no IMEIs)" },
+        { status: 404 }
+      );
+    }
 
-    const chunks: Uint8Array[] = [];
-    doc.on("data", (c) => chunks.push(c));
+    // ===== PDF (pdf-lib) =====
+    const pdfDoc = await PDFDocument.create();
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const boxIds = Object.keys(byBox);
-
-    for (const box_id of boxIds) {
-      const deviceName = deviceMap[byBox[box_id].device_id] || "UNKNOWN";
-      const imeis = byBox[box_id].imeis;
+    for (const box_id of boxKeys) {
+      const box = byBox[box_id];
+      const imeis = Array.from(new Set(box.imeis)); // unique
       const qty = imeis.length;
 
-      const qrContent = imeis.join("\n");
-      const qrBuf = await qrPngBuffer(qrContent);
+      const deviceName = binMap[box.bin_id] || "UNKNOWN DEVICE";
+      const boxCode = box.box_code || box_id;
 
-      doc.addPage({ size: [PAGE_W, PAGE_H], margin: 0 });
+      // QR content = imeis line by line
+      const qrContent = imeis.join("\n");
+      const qrBytes = await qrPngBytes(qrContent);
+      const qrImg = await pdfDoc.embedPng(qrBytes);
+
+      const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
 
       const contentW = PAGE_W - M * 2;
       const contentH = PAGE_H - M * 2;
 
-      const qrSize = Math.min(contentW, contentH * 0.58);
+      // QR size + center
+      const qrSize = Math.min(contentW, contentH * 0.62);
       const qrX = (PAGE_W - qrSize) / 2;
-      const qrY = M;
+      const qrY = PAGE_H - M - qrSize;
 
-      doc.image(qrBuf, qrX, qrY, {
-        width: qrSize,
-        height: qrSize,
-      });
+      page.drawImage(qrImg, { x: qrX, y: qrY, width: qrSize, height: qrSize });
 
-      let y = qrY + qrSize + mmToPt(1.5);
+      // Text block (centered)
+      const lineGap = 12;
+      const textYStart = qrY - 18; // juste sous le QR
 
-      // ❌ PAS DE .font("Helvetica")
-      doc
-        .fontSize(Math.max(9, Math.min(12, PAGE_H / 10)))
-        .fillColor("#111111")
-        .text(deviceName, M, y, { width: contentW, align: "center" });
+      const lines = [
+        { text: deviceName, size: 12, bold: true },
+        { text: `BOX: ${boxCode}`, size: 10, bold: false },
+        { text: `QTY IMEI: ${qty}`, size: 10, bold: false },
+      ];
 
-      y += mmToPt(5);
+      let y = textYStart;
 
-      doc
-        .fontSize(Math.max(7, Math.min(9, PAGE_H / 14)))
-        .fillColor("#111111")
-        .text(`BOX ID: ${box_id}`, M, y, { width: contentW, align: "center" });
+      for (const ln of lines) {
+        const f = ln.bold ? fontBold : font;
+        const width = f.widthOfTextAtSize(ln.text, ln.size);
+        const x = (PAGE_W - width) / 2;
 
-      y += mmToPt(4.5);
+        page.drawText(ln.text, {
+          x,
+          y,
+          size: ln.size,
+          font: f,
+        });
 
-      doc
-        .fontSize(Math.max(8, Math.min(11, PAGE_H / 12)))
-        .fillColor("#111111")
-        .text(`QTY IMEI: ${qty}`, M, y, { width: contentW, align: "center" });
+        y -= lineGap;
+      }
     }
 
-    doc.end();
+    const pdfBytes = await pdfDoc.save();
+const body = Buffer.from(pdfBytes);
 
-    await new Promise<void>((resolve) => doc.on("end", resolve));
-
-    const pdfBuffer = Buffer.concat(chunks);
-
-    return new NextResponse(pdfBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": `attachment; filename="ZD220_labels_${batch_id}_${w_mm}x${h_mm}mm.pdf"`,
-      },
-    });
+return new NextResponse(body, {
+  status: 200,
+  headers: {
+    "Content-Type": "application/pdf",
+    "Content-Disposition": `attachment; filename="ZD220_labels_${batch_id}.pdf"`,
+  },
+});
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Labels generation failed" },

@@ -14,7 +14,6 @@ async function qrBuffer(text: string): Promise<Buffer> {
     margin: 1,
     scale: 6,
   });
-
   const base64 = dataUrl.split(",")[1];
   return Buffer.from(base64, "base64");
 }
@@ -38,6 +37,7 @@ export async function POST(req: Request) {
       autoFirstPage: false,
       size: [PAGE_W, PAGE_H],
       margin: 0,
+      font: "Courier" // 🔥 force built-in safe font
     });
 
     const chunks: Uint8Array[] = [];
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       const qrContent = imeis.join("\n");
       const qr = await qrBuffer(qrContent);
 
-      doc.addPage({ size: [PAGE_W, PAGE_H], margin: 0 });
+      doc.addPage();
 
       const contentW = PAGE_W - M * 2;
       const contentH = PAGE_H - M * 2;
@@ -69,7 +69,6 @@ export async function POST(req: Request) {
 
       let y = qrY + qrSize + mmToPt(2);
 
-      // ⚠️ PAS DE .font()
       doc.fontSize(11).text(label.device || "UNKNOWN DEVICE", M, y, {
         width: contentW,
         align: "center",

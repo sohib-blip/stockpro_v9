@@ -28,12 +28,18 @@ export async function POST(req: Request) {
 
     let imeis: string[] = [];
 
+    // ===============================
+    // READ INPUT
+    // ===============================
     if (req.headers.get("content-type")?.includes("multipart/form-data")) {
       const form = await req.formData();
       const file = form.get("file") as File;
 
       if (!file) {
-        return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
+        return NextResponse.json(
+          { ok: false, error: "No file uploaded" },
+          { status: 400 }
+        );
       }
 
       const text = await file.text();
@@ -56,12 +62,16 @@ export async function POST(req: Request) {
       });
     }
 
+    // ===============================
+    // FETCH ITEMS
+    // ===============================
     const { data: items } = await supabase
       .from("items")
       .select(`
         item_id,
         imei,
         status,
+        box_id,
         boxes (
           box_code,
           floor,
@@ -92,21 +102,61 @@ export async function POST(req: Request) {
       valid.push(item);
     }
 
+    // ===============================
+    // GET TOTAL IN PER BOX (ONCE)
+    // ===============================
+    const boxIds = Array.from(new Set(valid.map((v) => v.box_id)));
+
+    const { data: totals } = await supabase
+      .from("items")
+      .select("box_id")
+      .eq("status", "IN")
+      .in("box_id", boxIds);
+
+    const totalMap: Record<string, number> = {};
+
+    for (const t of totals || []) {
+      totalMap[t.box_id] = (totalMap[t.box_id] || 0) + 1;
+    }
+
+    // ===============================
+    // BUILD SUMMARY
+    // ===============================
     const summaryMap: Record<string, any> = {};
 
     for (const item of valid) {
-      const key = item.boxes?.box_code;
+      const boxCode = item.boxes?.box_code;
+      const boxId = item.box_id;
 
-      if (!summaryMap[key]) {
-        summaryMap[key] = {
+      if (!summaryMap[boxCode]) {
+        const totalInBox = totalMap[boxId] || 0;
+
+        summaryMap[boxCode] = {
           device: item.boxes?.bins?.name || "—",
-          box_no: item.boxes?.box_code,
+          box_no: boxCode,
           floor: item.boxes?.floor,
           detected: 0,
+          total: totalInBox,
+          remaining: 0,
+          percent_after: 0,
         };
       }
 
-      summaryMap[key].detected += 1;
+      summaryMap[boxCode].detected += 1;
+    }
+
+    // ===============================
+    // CALCULATE REMAINING + %
+    // ===============================
+    for (const key in summaryMap) {
+      const row = summaryMap[key];
+
+      row.remaining = row.total - row.detected;
+
+      row.percent_after =
+        row.total > 0
+          ? Math.round((row.remaining / row.total) * 100)
+          : 0;
     }
 
     const summary = Object.values(summaryMap);

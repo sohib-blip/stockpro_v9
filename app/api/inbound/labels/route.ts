@@ -14,7 +14,6 @@ function sb() {
   });
 }
 
-// mm -> PDF points (72 points / inch)
 function mmToPt(mm: number) {
   return (mm / 25.4) * 72;
 }
@@ -35,25 +34,28 @@ export async function GET(req: Request) {
 
     const batch_id = url.searchParams.get("batch_id");
     if (!batch_id) {
-      return NextResponse.json({ ok: false, error: "batch_id required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "batch_id required" },
+        { status: 400 }
+      );
     }
 
-    // ✅ Default label size for Zebra ZD220 stock labels
-    // Common: 100x50mm (you can change via URL params)
     const w_mm = Number(url.searchParams.get("w_mm") || "100");
     const h_mm = Number(url.searchParams.get("h_mm") || "50");
 
     if (!Number.isFinite(w_mm) || !Number.isFinite(h_mm) || w_mm <= 0 || h_mm <= 0) {
-      return NextResponse.json({ ok: false, error: "Invalid w_mm / h_mm" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Invalid w_mm / h_mm" },
+        { status: 400 }
+      );
     }
 
     const PAGE_W = mmToPt(w_mm);
     const PAGE_H = mmToPt(h_mm);
-    const M = mmToPt(3); // margin ~3mm
+    const M = mmToPt(3);
 
     const supabase = sb();
 
-    // Get all IN movements for this inbound batch
     const { data: movs, error: movErr } = await supabase
       .from("movements")
       .select("imei, box_id, device_id")
@@ -69,23 +71,31 @@ export async function GET(req: Request) {
       );
     }
 
-    // Device map
-    const { data: devices } = await supabase.from("devices").select("device_id, device");
+    const { data: devices } = await supabase
+      .from("devices")
+      .select("device_id, device");
+
     const deviceMap: Record<string, string> = {};
     for (const d of devices || []) {
       deviceMap[String((d as any).device_id)] = String((d as any).device);
     }
 
-    // Group IMEIs by box_id
     const byBox: Record<string, { device_id: string; imeis: string[] }> = {};
+
     for (const m of movs as any[]) {
       const box_id = String(m.box_id);
       if (!box_id) continue;
-      if (!byBox[box_id]) byBox[box_id] = { device_id: String(m.device_id), imeis: [] };
+
+      if (!byBox[box_id]) {
+        byBox[box_id] = {
+          device_id: String(m.device_id),
+          imeis: [],
+        };
+      }
+
       byBox[box_id].imeis.push(String(m.imei));
     }
 
-    // PDF
     const doc = new PDFDocument({
       autoFirstPage: false,
       size: [PAGE_W, PAGE_H],
@@ -102,7 +112,6 @@ export async function GET(req: Request) {
       const imeis = byBox[box_id].imeis;
       const qty = imeis.length;
 
-      // QR content: ONLY imeis
       const qrContent = imeis.join("\n");
       const qrBuf = await qrPngBuffer(qrContent);
 
@@ -111,37 +120,33 @@ export async function GET(req: Request) {
       const contentW = PAGE_W - M * 2;
       const contentH = PAGE_H - M * 2;
 
-      // Layout sizing (responsive to label size)
-      // QR takes ~55% height for 100x50mm; fits nicely
       const qrSize = Math.min(contentW, contentH * 0.58);
       const qrX = (PAGE_W - qrSize) / 2;
       const qrY = M;
 
-      doc.image(qrBuf, qrX, qrY, { width: qrSize, height: qrSize });
+      doc.image(qrBuf, qrX, qrY, {
+        width: qrSize,
+        height: qrSize,
+      });
 
       let y = qrY + qrSize + mmToPt(1.5);
 
-      // Device name
+      // ❌ PAS DE .font("Helvetica")
       doc
-        .font("Helvetica-Bold")
         .fontSize(Math.max(9, Math.min(12, PAGE_H / 10)))
         .fillColor("#111111")
         .text(deviceName, M, y, { width: contentW, align: "center" });
 
       y += mmToPt(5);
 
-      // Box ID
       doc
-        .font("Helvetica")
         .fontSize(Math.max(7, Math.min(9, PAGE_H / 14)))
         .fillColor("#111111")
         .text(`BOX ID: ${box_id}`, M, y, { width: contentW, align: "center" });
 
       y += mmToPt(4.5);
 
-      // Qty
       doc
-        .font("Helvetica-Bold")
         .fontSize(Math.max(8, Math.min(11, PAGE_H / 12)))
         .fillColor("#111111")
         .text(`QTY IMEI: ${qty}`, M, y, { width: contentW, align: "center" });

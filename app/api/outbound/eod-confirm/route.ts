@@ -14,7 +14,15 @@ function sb() {
 
 export async function POST(req: Request) {
   try {
-    const { imeis, shipment_ref, actor, source } = await req.json();
+    const { imeis, shipment_ref, actor, actor_id, source } =
+      await req.json();
+
+    if (!actor_id) {
+      return NextResponse.json(
+        { ok: false, error: "Missing actor_id" },
+        { status: 400 }
+      );
+    }
 
     if (!Array.isArray(imeis) || imeis.length === 0) {
       return NextResponse.json(
@@ -25,34 +33,16 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
-    // 🔥 GET USER FROM AUTH HEADER
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json(
-        { ok: false, error: "User not authenticated" },
-        { status: 401 }
-      );
-    }
-
-    const actor_id = user.id;
-    const actor_email = user.email || actor || "unknown";
-
-    // ===============================
-    // LOAD ITEMS
-    // ===============================
+    // 🔎 Charger les items concernés
     const { data: items, error: itemsErr } = await supabase
       .from("items")
-      .select("item_id, imei, box_id, status")
+      .select("item_id, imei, device_id, box_id, status")
       .in("imei", imeis);
 
     if (itemsErr) throw itemsErr;
 
-    const validItems = (items || []).filter(
-      (i: any) => i.status === "IN"
-    );
+    const validItems =
+      items?.filter((i: any) => i.status === "IN") || [];
 
     if (validItems.length === 0) {
       return NextResponse.json(
@@ -61,17 +51,15 @@ export async function POST(req: Request) {
       );
     }
 
-    // ===============================
-    // CREATE OUTBOUND BATCH
-    // ===============================
+    // 📦 Créer batch outbound
     const { data: batch, error: batchErr } = await supabase
       .from("outbound_batches")
       .insert({
-        actor: actor_email,
+        actor: actor || "unknown",
         shipment_ref: shipment_ref || null,
         source: source || "manual",
       })
-      .select("batch_id")
+      .select("batch_id, created_at")
       .single();
 
     if (batchErr) throw batchErr;
@@ -79,9 +67,7 @@ export async function POST(req: Request) {
     const nowIso = new Date().toISOString();
     const validImeis = validItems.map((i: any) => i.imei);
 
-    // ===============================
-    // UPDATE ITEMS → OUT
-    // ===============================
+    // 🔄 Update items → OUT
     const { error: updErr } = await supabase
       .from("items")
       .update({
@@ -93,20 +79,19 @@ export async function POST(req: Request) {
 
     if (updErr) throw updErr;
 
-    // ===============================
-    // INSERT MOVEMENTS (FIXED)
-    // ===============================
+    // 📊 Insert movements
     const movements = validItems.map((i: any) => ({
-  type: "OUT",
-  box_id: i.box_id,
-  item_id: i.item_id,
-  qty: 1,
-  notes: shipment_ref || null,
-  batch_id: batch.batch_id,
-  actor: actor_email,
-  created_by: actor_id,
-  created_at: nowIso,
-}));
+      type: "OUT",
+      box_id: i.box_id,
+      item_id: i.item_id,
+      qty: 1,
+      notes: shipment_ref || null,
+      batch_id: batch.batch_id,
+      actor: actor || "unknown",
+      created_by: actor_id, // 🔥 IMPORTANT (NOT NULL)
+      created_at: nowIso,
+    }));
+
     const { error: movErr } = await supabase
       .from("movements")
       .insert(movements);

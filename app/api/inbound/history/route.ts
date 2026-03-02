@@ -24,35 +24,50 @@ export async function GET() {
 
     if (bErr) throw bErr;
 
+    const batchIds = (batches || []).map((b: any) => b.batch_id);
+    if (batchIds.length === 0) return NextResponse.json({ ok: true, rows: [] });
+
+    // ✅ fetch movements for those batches only
     const { data: movs, error: mErr } = await supabase
       .from("movements")
-      .select("batch_id, box_id, item_id")
-      .eq("type", "IN");
+      .select("batch_id, box_id, qty")
+      .eq("type", "IN")
+      .in("batch_id", batchIds);
 
     if (mErr) throw mErr;
 
-    const imeiCounts: Record<string, number> = {};
-    const boxSets: Record<string, Set<string>> = {};
+    const agg: Record<
+      string,
+      { imeis: number; boxes: Set<string> }
+    > = {};
 
     for (const m of movs || []) {
-      const id = String(m.batch_id || "");
+      const id = String((m as any).batch_id || "");
       if (!id) continue;
 
-      imeiCounts[id] = (imeiCounts[id] || 0) + 1;
+      if (!agg[id]) agg[id] = { imeis: 0, boxes: new Set<string>() };
 
-      if (!boxSets[id]) boxSets[id] = new Set();
-      boxSets[id].add(String(m.box_id));
+      const box_id = String((m as any).box_id || "");
+      if (box_id) agg[id].boxes.add(box_id);
+
+      const q = Number((m as any).qty || 0);
+      agg[id].imeis += Number.isFinite(q) ? q : 0;
     }
 
-    const rows = (batches || []).map((b: any) => ({
-      batch_id: b.batch_id,
-      created_at: b.created_at,
-      actor: b.actor || "unknown",
-      vendor: b.vendor || "unknown",
-      source: b.source || "",
-      total_imeis: imeiCounts[String(b.batch_id)] || 0,
-      total_boxes: boxSets[String(b.batch_id)]?.size || 0,
-    }));
+    const rows = (batches || []).map((b: any) => {
+      const id = String(b.batch_id);
+      const a = agg[id];
+
+      return {
+        batch_id: b.batch_id,
+        created_at: b.created_at,
+        actor: b.actor || "unknown",
+        vendor: b.vendor || "unknown",
+        source: b.source || "",
+        qty_imeis: a?.imeis || 0,
+        qty_boxes: a?.boxes ? a.boxes.size : 0,
+      };
+    });
 
     return NextResponse.json({ ok: true, rows });
   } catch (e: any) {

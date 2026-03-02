@@ -12,83 +12,40 @@ function sb() {
   });
 }
 
-function cleanImeis(input: any): string[] {
-  const arr = Array.isArray(input) ? input : [];
-  const cleaned = arr
-    .map((x) => String(x ?? "").replace(/\D/g, ""))
-    .filter((x) => x.length === 15);
-  return Array.from(new Set(cleaned));
-}
-
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const { device, box_no, floor, imeis, actor, actor_id } =
+      await req.json();
 
-    const bin_id = String(body.device || "").trim();
-    const box_code = String(body.box_no || "").trim();
-    const floor = String(body.floor || "").trim();
-    const actor = String(body.actor || "unknown").trim();
-    const imeis = cleanImeis(body.imeis);
-
-    if (!bin_id || !box_code || imeis.length === 0) {
+    if (!device || !box_no || !Array.isArray(imeis) || imeis.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "Invalid payload" },
+        { ok: false, error: "Invalid input" },
         { status: 400 }
       );
     }
 
     const supabase = sb();
+    const nowIso = new Date().toISOString();
 
-    // Check bin exists
-    const { data: bin } = await supabase
-      .from("bins")
-      .select("id, name")
-      .eq("id", bin_id)
-      .maybeSingle();
-
-    if (!bin?.id) {
-      return NextResponse.json({ ok: false, error: "Bin not found" }, { status: 400 });
-    }
-
-    // Duplicate check
-    const { data: existing } = await supabase
-      .from("items")
-      .select("imei")
-      .in("imei", imeis);
-
-    const existingSet = new Set((existing || []).map((x: any) => x.imei));
-    const toInsert = imeis.filter((i) => !existingSet.has(i));
-    const skipped = imeis.filter((i) => existingSet.has(i));
-
-    if (toInsert.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        inserted: 0,
-        skipped_existing: skipped.length,
-      });
-    }
-
-    // Create batch
+    // 1️⃣ Create inbound batch
     const { data: batch } = await supabase
       .from("inbound_batches")
       .insert({
-        actor,
+        actor: actor || "unknown",
         vendor: "manual",
         source: "manual",
       })
-      .select("batch_id, created_at")
+      .select("batch_id")
       .single();
 
-    if (!batch?.batch_id) {
-      return NextResponse.json({ ok: false, error: "Batch creation failed" }, { status: 500 });
-    }
+    if (!batch) throw new Error("Batch creation failed");
 
-    // Find or create box
-    const { data: existingBox } = await supabase
+    // 2️⃣ Find or create box
+    let { data: existingBox } = await supabase
       .from("boxes")
       .select("id")
-      .eq("bin_id", bin_id)
-      .eq("box_code", box_code)
+      .eq("bin_id", device)
+      .eq("box_code", box_no)
       .maybeSingle();
 
     let box_id: string;
@@ -99,56 +56,57 @@ export async function POST(req: Request) {
       const { data: newBox } = await supabase
         .from("boxes")
         .insert({
-          bin_id,
-          box_code,
+          bin_id: device,
+          box_code: box_no,
+          floor: floor || null,
         })
         .select("id")
         .single();
 
-      if (!newBox?.id) {
-        return NextResponse.json({ ok: false, error: "Box creation failed" }, { status: 500 });
-      }
-
+      if (!newBox) throw new Error("Box creation failed");
       box_id = newBox.id;
     }
 
-    const nowIso = new Date().toISOString();
-
-    // Insert items (NO imported_by UUID now)
-    const items = toInsert.map((imei) => ({
+    // 3️⃣ Insert items (IMPORTANT PART)
+    const itemsToInsert = imeis.map((imei: string) => ({
       imei,
-      device_id: bin_id,   // IMPORTANT
+      device_id: device,          // 🔥 IMPORTANT
       box_id,
       status: "IN",
       imported_at: nowIso,
-      imported_by: null,   // FIX UUID ERROR
+      imported_by: actor_id,
+      import_id: batch.batch_id,  // 🔥 IMPORTANT
     }));
 
-    await supabase.from("items").insert(items);
+    const { data: insertedItems } = await supabase
+      .from("items")
+      .insert(itemsToInsert)
+      .select("item_id");
 
-    // Insert movements (respect schema)
-    const movements = toInsert.map(() => ({
+    if (!insertedItems) throw new Error("Item insert failed");
+
+    // 4️⃣ Insert movements
+    const movements = insertedItems.map((it: any) => ({
       type: "IN",
-      box_id,
-      item_id: null,       // optional if not needed
-      qty: 1,
       batch_id: batch.batch_id,
-      actor,
+      item_id: it.item_id,
+      box_id,
+      qty: 1,
+      created_by: actor_id,
+      actor: actor || "unknown",
       created_at: nowIso,
-      created_by: null,    // FIX UUID ERROR
     }));
 
     await supabase.from("movements").insert(movements);
 
     return NextResponse.json({
       ok: true,
+      inserted: insertedItems.length,
       batch_id: batch.batch_id,
-      inserted: toInsert.length,
-      skipped_existing: skipped.length,
     });
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Manual confirm failed" },
+      { ok: false, error: e.message || "Manual confirm failed" },
       { status: 500 }
     );
   }

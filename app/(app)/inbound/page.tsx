@@ -63,6 +63,7 @@ export default function InboundPage() {
   const [manualImeis, setManualImeis] = useState<string>("");
 
   const [manualPreview, setManualPreview] = useState<any>(null);
+  const [manualReadyToImport, setManualReadyToImport] = useState(false);
   const [manualMsg, setManualMsg] = useState<string>("");
 
   // Zebra label size (default 105x155mm)
@@ -356,6 +357,7 @@ export default function InboundPage() {
     setLastBatchId("");
     setErr("");
     setResult(null);
+    setManualReadyToImport(false);
 
     const imeis = extractManualImeis(manualImeis);
 
@@ -379,12 +381,13 @@ export default function InboundPage() {
       const json = await res.json();
 
       if (!json.ok) {
-        setManualMsg("❌ " + (json.error || "Manual preview failed"));
-        return;
-      }
+  setManualMsg("❌ " + (json.error || "Manual preview failed"));
+  return;
+}
 
-      setManualPreview(json);
-      setManualMsg("");
+setManualPreview(json);
+setManualReadyToImport(true); // 🔥 AJOUTE ICI
+setManualMsg("");
     } catch (e: any) {
       setManualMsg("❌ " + (e?.message || "Manual preview failed"));
     } finally {
@@ -394,6 +397,10 @@ export default function InboundPage() {
 
   async function confirmManualImport() {
     setManualMsg("");
+
+    if (!manualReadyToImport) {
+    return setManualMsg("❌ Please preview before importing.");
+  }
 
     if (!manualPreview?.ok) return setManualMsg("❌ No preview available.");
 
@@ -542,23 +549,24 @@ export default function InboundPage() {
         />
 
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={previewManualImport}
-            disabled={busy}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
-          >
-            Preview Manual Import
-          </button>
+  <button
+    onClick={previewManualImport}
+    disabled={busy}
+    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
+  >
+    Preview Manual Import
+  </button>
 
-          <button
-            onClick={confirmManualImport}
-            disabled={busy || !manualPreview?.ok}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
-          >
-            Confirm Manual Import
-          </button>
-        </div>
-
+  {manualReadyToImport && (
+    <button
+      onClick={confirmManualImport}
+      disabled={busy}
+      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
+    >
+      Import (Save)
+    </button>
+  )}
+</div>
         {manualMsg && (
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm">
             {manualMsg}
@@ -772,7 +780,7 @@ export default function InboundPage() {
                     <a
                       href={`/api/inbound/labels?batch_id=${encodeURIComponent(
                         h.batch_id
-                      )}&w_mm=100&h_mm=50`}
+                      )}&w_mm=105&h_mm=155`}
                       className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
                     >
                       ZD220 PDF

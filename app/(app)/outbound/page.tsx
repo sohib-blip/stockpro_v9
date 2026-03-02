@@ -136,7 +136,6 @@ export default function OutboundPage() {
       setFile(null);
       setSuccess(true);
       await loadHistory();
-
       setTimeout(() => setSuccess(false), 2500);
     } else {
       setErrorMsg(json.error || "Confirm failed");
@@ -152,71 +151,90 @@ export default function OutboundPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-5xl relative">
+    <div className="space-y-10 max-w-6xl relative">
 
       {/* LOADER */}
       {loading && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-slate-950 border border-slate-800 px-6 py-5 rounded-2xl flex items-center gap-3">
-            <div className="h-5 w-5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />
-            <div className="font-semibold text-sm">Processing...</div>
+          <div className="bg-slate-950 border border-slate-800 px-8 py-6 rounded-2xl flex items-center gap-4 shadow-xl">
+            <div className="h-6 w-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+            <div className="font-semibold">Processing...</div>
           </div>
         </div>
       )}
 
-      {/* SUCCESS TOAST */}
+      {/* SUCCESS */}
       {success && (
-        <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-2xl animate-bounce">
-          Stock OUT confirmed successfully ✅
+        <div className="fixed bottom-6 right-6 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-6 py-4 rounded-2xl shadow-2xl animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <div className="h-6 w-6 bg-white/20 rounded-full flex items-center justify-center">
+              ✓
+            </div>
+            <div className="font-semibold">
+              Stock OUT confirmed successfully
+            </div>
+          </div>
         </div>
       )}
 
-      <div>
-        <div className="text-xs text-slate-500">Outbound</div>
-        <h2 className="text-xl font-semibold">Stock Out</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          User: <b>{actor}</b>
-        </p>
+      {/* HEADER */}
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-slate-500">
+            Outbound
+          </div>
+          <h2 className="text-2xl font-bold text-white">
+            Stock Out
+          </h2>
+          <p className="text-sm text-slate-400 mt-1">
+            Logged as <span className="font-semibold text-indigo-400">{actor}</span>
+          </p>
+        </div>
       </div>
 
-      {/* Shipment */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-        <div className="font-semibold">Shipment reference</div>
+      {/* SHIPMENT */}
+      <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-7 shadow-xl">
+        <div className="font-semibold text-white mb-3">
+          Shipment Reference
+        </div>
         <input
           value={shipmentRef}
           onChange={(e) => setShipmentRef(e.target.value)}
-          className="w-full mt-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
       </div>
 
       {/* MANUAL */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-        <div className="font-semibold">Manual Scan</div>
+      <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-7 shadow-xl">
+        <div className="font-semibold text-white mb-3">
+          Manual Scan
+        </div>
         <textarea
           value={imeiInput}
           onChange={(e) => setImeiInput(e.target.value)}
-          className="w-full h-32 mt-3 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
+          className="w-full h-36 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
         <button
           onClick={previewManual}
-          className="mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-5 py-2.5 font-semibold shadow-lg shadow-indigo-600/20"
         >
           Preview Manual
         </button>
       </div>
 
       {/* EXCEL */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-        <div className="font-semibold">Excel Import</div>
+      <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-7 shadow-xl">
+        <div className="font-semibold text-white mb-3">
+          Excel Import
+        </div>
         <input
           type="file"
           accept=".xlsx,.xls"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          className="mt-3"
         />
         <button
           onClick={previewExcel}
-          className="mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
+          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-5 py-2.5 font-semibold shadow-lg shadow-indigo-600/20"
         >
           Preview Excel
         </button>
@@ -224,90 +242,82 @@ export default function OutboundPage() {
 
       {/* PREVIEW */}
       {preview?.ok && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-          <div className="font-semibold text-lg">
-            Preview ({previewSource})
+        <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-7 shadow-xl space-y-6">
+          <div className="flex justify-between items-center">
+            <div className="text-lg font-semibold text-white">
+              Preview ({previewSource})
+            </div>
+            <div className="px-3 py-1 rounded-full bg-indigo-600/20 text-indigo-400 text-xs font-semibold">
+              {preview.totalDetected} IMEIs
+            </div>
           </div>
 
-          <div className="overflow-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr>
-                  <th>Device</th>
-                  <th>Box</th>
-                  <th>Floor</th>
-                  <th>Detected</th>
-                  <th>Remaining</th>
-                  <th>% After</th>
+          <table className="w-full text-sm border border-slate-800 rounded-2xl overflow-hidden bg-slate-950">
+            <thead className="bg-slate-900">
+              <tr>
+                <th className="p-3 text-left">Device</th>
+                <th className="p-3 text-left">Box</th>
+                <th className="p-3 text-left">Floor</th>
+                <th className="p-3 text-right">Detected</th>
+                <th className="p-3 text-right">Remaining</th>
+                <th className="p-3 text-right">% After</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.summary.map((row: any, idx: number) => (
+                <tr key={idx} className="hover:bg-slate-900/60 transition">
+                  <td className="p-3">{row.device}</td>
+                  <td className="p-3">{row.box_no}</td>
+                  <td className="p-3">{row.floor || "-"}</td>
+                  <td className="p-3 text-right">{row.detected}</td>
+                  <td className="p-3 text-right">{row.remaining}</td>
+                  <td className="p-3 text-right">{row.percent_after ?? "-"}%</td>
                 </tr>
-              </thead>
-              <tbody>
-                {preview.summary.map((row: any, idx: number) => (
-                  <tr key={idx}>
-                    <td>{row.device}</td>
-                    <td>{row.box_no}</td>
-                    <td>{row.floor || "-"}</td>
-                    <td>{row.detected}</td>
-                    <td>{row.remaining}</td>
-                    <td>{row.percent_after ?? "-"}%</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </table>
 
           <button
             onClick={confirmOut}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold"
+            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-6 py-3 font-semibold shadow-lg shadow-emerald-600/20"
           >
             Confirm Stock Out
           </button>
         </div>
       )}
 
-      {errorMsg && (
-        <div className="text-rose-400 text-sm">{errorMsg}</div>
-      )}
-
       {/* HISTORY */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
-        <div className="flex justify-between mb-4">
-          <div className="font-semibold">Outbound history</div>
+      <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-7 shadow-xl">
+        <div className="flex justify-between mb-5">
+          <div className="font-semibold text-white">
+            Outbound History
+          </div>
           <button
             onClick={loadHistory}
-            className="text-sm text-slate-400"
+            className="text-sm text-slate-400 hover:text-white"
           >
             {loadingHistory ? "Refreshing..." : "Refresh"}
           </button>
         </div>
 
         <table className="w-full text-sm">
-          <thead>
+          <thead className="text-slate-400">
             <tr>
-              <th>Date</th>
-              <th>User</th>
-              <th>Source</th>
-              <th>Shipment</th>
-              <th>Qty</th>
-              <th>Excel</th>
+              <th className="text-left p-2">Date</th>
+              <th className="text-left p-2">User</th>
+              <th className="text-left p-2">Source</th>
+              <th className="text-left p-2">Shipment</th>
+              <th className="text-right p-2">Qty</th>
             </tr>
           </thead>
           <tbody>
             {history.map((h) => (
-              <tr key={h.batch_id}>
-                <td>{fmtDateTime(h.created_at)}</td>
-                <td>{h.actor}</td>
-                <td>{h.source}</td>
-                <td>{h.shipment_ref || "-"}</td>
-                <td>{h.qty}</td>
-                <td>
-                  <a
-                    href={`/api/outbound/export?batch_id=${h.batch_id}`}
-                    className="text-indigo-400"
-                  >
-                    Excel
-                  </a>
-                </td>
+              <tr key={h.batch_id} className="hover:bg-slate-900/50">
+                <td className="p-2">{fmtDateTime(h.created_at)}</td>
+                <td className="p-2">{h.actor}</td>
+                <td className="p-2">{h.source}</td>
+                <td className="p-2">{h.shipment_ref || "-"}</td>
+                <td className="p-2 text-right">{h.qty}</td>
               </tr>
             ))}
           </tbody>

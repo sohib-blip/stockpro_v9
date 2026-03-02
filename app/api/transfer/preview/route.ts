@@ -1,0 +1,84 @@
+import { NextResponse } from "next/server";
+import { createClient } from "@supabase/supabase-js";
+
+export const runtime = "nodejs";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false } }
+);
+
+export async function POST(req: Request) {
+  try {
+    const { imeis, box_code } = await req.json();
+
+    if (!Array.isArray(imeis) || imeis.length === 0) {
+      return NextResponse.json({ ok: false, error: "No IMEIs provided" });
+    }
+
+    if (!box_code) {
+      return NextResponse.json({ ok: false, error: "Target box required" });
+    }
+
+    // 🔎 1️⃣ Find target box
+    const { data: targetBox, error: boxErr } = await supabase
+      .from("boxes")
+      .select("id, box_code, floor")
+      .eq("box_code", box_code)
+      .maybeSingle();
+
+    if (boxErr) throw boxErr;
+
+    if (!targetBox) {
+      return NextResponse.json({ ok: false, error: "Target box not found" });
+    }
+
+    // 🔎 2️⃣ Load items (ONLY IN stock)
+    const { data: items, error: itemsErr } = await supabase
+      .from("items")
+      .select(`
+        item_id,
+        imei,
+        status,
+        box_id,
+        boxes (
+          box_code,
+          floor
+        )
+      `)
+      .in("imei", imeis)
+      .eq("status", "IN");
+
+    if (itemsErr) throw itemsErr;
+
+    if (!items || items.length === 0) {
+      return NextResponse.json({ ok: false, error: "No valid IN items found" });
+    }
+
+    // 🔎 3️⃣ Build preview rows
+    const rows = items.map((item: any) => ({
+      imei: item.imei,
+      from_box: item.boxes?.box_code || "—",
+      from_floor: item.boxes?.floor || null,
+      to_box: targetBox.box_code,
+      to_floor: targetBox.floor || null,
+      item_id: item.item_id,
+    }));
+
+    return NextResponse.json({
+      ok: true,
+      rows,
+      payload: {
+        item_ids: items.map((i: any) => i.item_id),
+        target_box_id: targetBox.id,
+      },
+    });
+
+  } catch (e: any) {
+    return NextResponse.json({
+      ok: false,
+      error: e?.message || "Transfer preview failed",
+    });
+  }
+}

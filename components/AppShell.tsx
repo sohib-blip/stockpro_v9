@@ -10,6 +10,7 @@ import {
   Tag,
   Menu,
   Package,
+  Repeat,
 } from "lucide-react";
 
 const NAV = [
@@ -17,6 +18,7 @@ const NAV = [
   { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
   { href: "/labels", label: "Labels", icon: Tag },
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
+  { href: "/transfer", label: "Transfer", icon: Repeat }, // ✅ NEW
   { href: "/bins", label: "Bins", icon: Package },
 ];
 

@@ -23,118 +23,52 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const batch_id = url.searchParams.get("batch_id");
 
-    if (!batch_id || batch_id === "null" || batch_id === "undefined") {
-      return NextResponse.json(
-        { ok: false, error: "batch_id required" },
-        { status: 400 }
-      );
+    if (!batch_id) {
+      return NextResponse.json({ ok: false, error: "batch_id required" }, { status: 400 });
     }
 
     const supabase = sb();
 
-    const { data: batch, error: bErr } = await supabase
-      .from("inbound_batches")
-      .select("batch_id, created_at, actor, vendor")
-      .eq("batch_id", batch_id)
-      .single();
-
-    if (bErr) throw bErr;
-
-    const { data: movs, error: mErr } = await supabase
+    // movements
+    const { data: movs } = await supabase
       .from("movements")
       .select("item_id, box_id")
       .eq("type", "IN")
       .eq("batch_id", batch_id);
 
-    if (mErr) throw mErr;
-
-    const itemIds = Array.from(
-      new Set((movs || []).map((m: any) => String(m.item_id)).filter(Boolean))
-    );
-    const boxIds = Array.from(
-      new Set((movs || []).map((m: any) => String(m.box_id)).filter(Boolean))
-    );
-
-    if (itemIds.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "No items in this batch" },
-        { status: 404 }
-      );
+    if (!movs || movs.length === 0) {
+      return NextResponse.json({ ok: false, error: "No movements found" }, { status: 404 });
     }
 
-    const { data: items, error: iErr } = await supabase
+    const itemIds = movs.map((m: any) => m.item_id);
+
+    // items
+    const { data: items } = await supabase
       .from("items")
-      .select("item_id, imei, device_id, imported_at, imported_by")
+      .select("item_id, imei, device_id, import_id, imported_at")
       .in("item_id", itemIds);
-
-    if (iErr) throw iErr;
-
-    const itemMap: Record<string, any> = {};
-    for (const it of items || []) itemMap[String((it as any).item_id)] = it;
-
-    const { data: boxes, error: boxErr } = await supabase
-      .from("boxes")
-      .select("id, box_code, bin_id")
-      .in("id", boxIds);
-
-    if (boxErr) throw boxErr;
-
-    const boxMap: Record<string, any> = {};
-    for (const b of boxes || []) boxMap[String((b as any).id)] = b;
-
-    const binIds = Array.from(
-      new Set((boxes || []).map((b: any) => String(b.bin_id)).filter(Boolean))
-    );
-
-    let binMap: Record<string, string> = {};
-    if (binIds.length > 0) {
-      const { data: bins, error: binErr } = await supabase
-        .from("bins")
-        .select("id, name")
-        .in("id", binIds);
-
-      if (binErr) throw binErr;
-
-      for (const bn of bins || []) {
-        binMap[String((bn as any).id)] = String((bn as any).name);
-      }
-    }
 
     const header = [
       "batch_id",
-      "batch_created_at",
-      "actor",
-      "vendor",
-      "device",
-      "box_code",
+      "device_id",
+      "box_id",
       "imei",
       "imported_at",
-      "imported_by",
     ];
 
     const lines: string[] = [];
     lines.push(header.map(csvEscape).join(","));
 
     for (const m of movs as any[]) {
-      const it = itemMap[String(m.item_id)];
-      const bx = boxMap[String(m.box_id)];
-
-      const deviceName =
-        (bx?.bin_id && binMap[String(bx.bin_id)]) ||
-        (it?.device_id && binMap[String(it.device_id)]) ||
-        "UNKNOWN";
+      const it = items?.find((i: any) => i.item_id === m.item_id);
 
       lines.push(
         [
-          batch.batch_id,
-          batch.created_at,
-          batch.actor || "unknown",
-          batch.vendor || "unknown",
-          deviceName,
-          bx?.box_code || "",
+          batch_id,
+          it?.device_id || "",
+          m.box_id || "",
           it?.imei || "",
           it?.imported_at || "",
-          it?.imported_by || "",
         ]
           .map(csvEscape)
           .join(",")
@@ -144,9 +78,8 @@ export async function GET(req: Request) {
     const csv = lines.join("\n");
 
     return new NextResponse(csv, {
-      status: 200,
       headers: {
-        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Type": "text/csv",
         "Content-Disposition": `attachment; filename="inbound_${batch_id}.csv"`,
       },
     });

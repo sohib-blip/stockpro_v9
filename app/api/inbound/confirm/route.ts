@@ -138,7 +138,7 @@ export async function POST(req: Request) {
         itemsToInsert.push({
           imei,
           box_id,
-          device_id: bin_id, // ✅ SUPER IMPORTANT
+          device_id: null, // ✅ SUPER IMPORTANT
           status: "IN",
           imported_at: nowIso,
           imported_by: actor_id,

@@ -26,16 +26,22 @@ export async function GET() {
 
     const { data: movs, error: mErr } = await supabase
       .from("movements")
-      .select("batch_id")
+      .select("batch_id, box_id, item_id")
       .eq("type", "IN");
 
     if (mErr) throw mErr;
 
-    const counts: Record<string, number> = {};
+    const imeiCounts: Record<string, number> = {};
+    const boxSets: Record<string, Set<string>> = {};
+
     for (const m of movs || []) {
-      const id = String((m as any).batch_id || "");
+      const id = String(m.batch_id || "");
       if (!id) continue;
-      counts[id] = (counts[id] || 0) + 1;
+
+      imeiCounts[id] = (imeiCounts[id] || 0) + 1;
+
+      if (!boxSets[id]) boxSets[id] = new Set();
+      boxSets[id].add(String(m.box_id));
     }
 
     const rows = (batches || []).map((b: any) => ({
@@ -44,7 +50,8 @@ export async function GET() {
       actor: b.actor || "unknown",
       vendor: b.vendor || "unknown",
       source: b.source || "",
-      qty: counts[String(b.batch_id)] || 0,
+      total_imeis: imeiCounts[String(b.batch_id)] || 0,
+      total_boxes: boxSets[String(b.batch_id)]?.size || 0,
     }));
 
     return NextResponse.json({ ok: true, rows });

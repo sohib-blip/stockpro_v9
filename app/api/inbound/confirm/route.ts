@@ -13,8 +13,8 @@ function sb() {
 }
 
 type LabelPayload = {
-  device_id: string; // bin_id
-  box_no: string;    // box_code
+  device_id: string;   // bin_id
+  box_no: string;      // box_code
   floor?: string;
   imeis: string[];
 };
@@ -24,7 +24,10 @@ export async function POST(req: Request) {
     const { labels, actor, actor_id, vendor } = await req.json();
 
     if (!Array.isArray(labels) || labels.length === 0) {
-      return NextResponse.json({ ok: false, error: "No labels provided" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No labels provided" },
+        { status: 400 }
+      );
     }
 
     if (!actor_id) {
@@ -35,8 +38,9 @@ export async function POST(req: Request) {
     }
 
     const supabase = sb();
+    const nowIso = new Date().toISOString();
 
-    // Create batch
+    // 🔹 CREATE INBOUND BATCH
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
       .insert({
@@ -49,16 +53,21 @@ export async function POST(req: Request) {
 
     if (batchErr) throw batchErr;
 
-    const nowIso = new Date().toISOString();
-
     let insertedImeis = 0;
     let skippedExistingImeis = 0;
     let createdBoxes = 0;
     let reusedBoxes = 0;
 
-    const { data: existingItems } = await supabase.from("items").select("imei");
-    const existingSet = new Set((existingItems || []).map((x: any) => String(x.imei)));
+    // 🔹 LOAD EXISTING IMEIS TO AVOID DUPLICATES
+    const { data: existingItems } = await supabase
+      .from("items")
+      .select("imei");
 
+    const existingSet = new Set(
+      (existingItems || []).map((x: any) => String(x.imei))
+    );
+
+    // 🔹 PROCESS EACH LABEL GROUP
     for (const raw of labels as LabelPayload[]) {
       const bin_id = String(raw.device_id || "").trim();
       const box_code = String(raw.box_no || "").trim();
@@ -74,7 +83,7 @@ export async function POST(req: Request) {
 
       if (!bin_id || !box_code || imeis.length === 0) continue;
 
-      // 🔹 Find or create box
+      // 🔹 FIND OR CREATE BOX
       const { data: existingBox } = await supabase
         .from("boxes")
         .select("id, floor")
@@ -86,9 +95,8 @@ export async function POST(req: Request) {
 
       if (existingBox?.id) {
         box_id = String(existingBox.id);
-        reusedBoxes += 1;
+        reusedBoxes++;
 
-        // ✅ UPDATE FLOOR IF PROVIDED
         if (floor && existingBox.floor !== floor) {
           await supabase
             .from("boxes")
@@ -102,21 +110,22 @@ export async function POST(req: Request) {
           .insert({
             bin_id,
             box_code,
-            floor: floor || null,   // ✅ FLOOR WRITTEN HERE
+            floor: floor || null,
           })
           .select("id")
           .single();
 
         if (newBoxErr) throw newBoxErr;
+
         box_id = String(newBox.id);
-        createdBoxes += 1;
+        createdBoxes++;
       }
 
       const itemsToInsert: any[] = [];
 
       for (const imei of imeis) {
         if (existingSet.has(imei)) {
-          skippedExistingImeis += 1;
+          skippedExistingImeis++;
           continue;
         }
 
@@ -127,25 +136,38 @@ export async function POST(req: Request) {
           box_id,
           status: "IN",
           imported_at: nowIso,
+          imported_by: actor_id,
         });
 
-        insertedImeis += 1;
+        insertedImeis++;
       }
 
       if (itemsToInsert.length > 0) {
-        await supabase.from("items").insert(itemsToInsert);
+        // 🔹 INSERT ITEMS
+        const { data: insertedItems, error: itemsErr } = await supabase
+          .from("items")
+          .insert(itemsToInsert)
+          .select("item_id");
 
-        await supabase.from("movements").insert(
-          itemsToInsert.map(() => ({
-            type: "IN",
-            box_id,
-            qty: 1,
-            batch_id: batch.batch_id,
-            created_by: actor_id,
-            actor: actor || "unknown",
-            created_at: nowIso,
-          }))
-        );
+        if (itemsErr) throw itemsErr;
+
+        // 🔹 INSERT MOVEMENTS (1 per item)
+        const movements = (insertedItems || []).map((item: any) => ({
+          type: "IN",
+          box_id,
+          item_id: item.item_id,
+          qty: 1,
+          batch_id: batch.batch_id,
+          created_by: actor_id,
+          actor: actor || "unknown",
+          created_at: nowIso,
+        }));
+
+        const { error: movErr } = await supabase
+          .from("movements")
+          .insert(movements);
+
+        if (movErr) throw movErr;
       }
     }
 

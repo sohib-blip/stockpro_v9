@@ -24,54 +24,49 @@ export async function GET(req: Request) {
 
     const supabase = sb();
 
-    const { data: movs, error: movErr } = await supabase
+    const { data: rows, error } = await supabase
       .from("movements")
-      .select("imei, device_id, box_id, actor, created_at")
-      .eq("type", "IN")
-      .eq("batch_id", batch_id);
+      .select(`
+        created_at,
+        actor,
+        batch_id,
+        items ( imei ),
+        boxes ( box_code, bin_id ),
+        boxes:boxes (
+          box_code,
+          bins ( name )
+        )
+      `)
+      .eq("batch_id", batch_id)
+      .eq("type", "IN");
 
-    if (movErr) throw movErr;
+    if (error) throw error;
 
-    const { data: devices } = await supabase.from("devices").select("device_id, device");
-    const { data: boxes } = await supabase.from("boxes").select("box_id, box_no, floor");
-
-    const deviceMap: Record<string, string> = {};
-    for (const d of devices || []) deviceMap[String((d as any).device_id)] = (d as any).device;
-
-    const boxMap: Record<string, { box_no: string; floor: string }> = {};
-    for (const b of boxes || []) {
-      boxMap[String((b as any).box_id)] = {
-        box_no: (b as any).box_no,
-        floor: (b as any).floor || "",
-      };
-    }
-
-    const rows = (movs || []).map((m: any) => ({
-      DateTime: m.created_at,
-      User: m.actor || "unknown",
-      Device: deviceMap[String(m.device_id)] || "",
-      Box_ID: m.box_id || "",
-      Box_No: boxMap[String(m.box_id)]?.box_no || "",
-      Floor: boxMap[String(m.box_id)]?.floor || "",
-      IMEI: m.imei || "",
+    const formatted = (rows || []).map((r: any) => ({
+      Date: r.created_at,
+      Actor: r.actor,
+      Batch: r.batch_id,
+      Device: r.boxes?.bins?.name || "",
+      Box: r.boxes?.box_code || "",
+      IMEI: r.items?.imei || "",
     }));
 
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const ws = XLSX.utils.json_to_sheet(formatted);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Inbound");
 
     const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
 
     return new NextResponse(buffer, {
-      status: 200,
       headers: {
-        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename="inbound_${batch_id}.xlsx"`,
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename=inbound_${batch_id}.xlsx`,
       },
     });
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Inbound export failed" },
+      { ok: false, error: e?.message || "Export failed" },
       { status: 500 }
     );
   }

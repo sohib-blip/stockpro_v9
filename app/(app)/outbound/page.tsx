@@ -208,13 +208,32 @@ export default function OutboundPage() {
       {preview?.ok && (
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
           <div className="flex justify-between items-center">
-            <div className="font-semibold text-lg">
-              Preview ({previewSource})
-            </div>
-            <div className="text-sm text-slate-400">
-              {preview.totalDetected} IMEIs detected
-            </div>
-          </div>
+  <div className="font-semibold text-lg">
+    Preview ({previewSource})
+  </div>
+  <div className="text-sm text-slate-400">
+    {preview.totalDetected} IMEIs detected
+  </div>
+</div>
+
+{/* 👇 AJOUTE ICI */}
+{preview.unknown_imeis?.length > 0 && (
+  <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-xs text-rose-200">
+    <div className="font-semibold">Unknown IMEIs</div>
+    <div className="mt-1 break-all">
+      {preview.unknown_imeis.join(", ")}
+    </div>
+  </div>
+)}
+
+{preview.already_out?.length > 0 && (
+  <div className="rounded-xl border border-amber-900/60 bg-amber-950/40 p-3 text-xs text-amber-200">
+    <div className="font-semibold">Already OUT</div>
+    <div className="mt-1 break-all">
+      {preview.already_out.join(", ")}
+    </div>
+  </div>
+)}
 
           <div className="overflow-auto">
             <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">

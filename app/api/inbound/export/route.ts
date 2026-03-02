@@ -24,12 +24,29 @@ export async function GET(req: Request) {
     const batch_id = url.searchParams.get("batch_id");
 
     if (!batch_id) {
-      return NextResponse.json({ ok: false, error: "batch_id required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "batch_id required" },
+        { status: 400 }
+      );
     }
 
     const supabase = sb();
 
-    // movements
+    // 1️⃣ Batch info
+    const { data: batch } = await supabase
+      .from("inbound_batches")
+      .select("batch_id, created_at, actor, vendor")
+      .eq("batch_id", batch_id)
+      .single();
+
+    if (!batch) {
+      return NextResponse.json(
+        { ok: false, error: "Batch not found" },
+        { status: 404 }
+      );
+    }
+
+    // 2️⃣ Movements
     const { data: movs } = await supabase
       .from("movements")
       .select("item_id, box_id")
@@ -37,23 +54,55 @@ export async function GET(req: Request) {
       .eq("batch_id", batch_id);
 
     if (!movs || movs.length === 0) {
-      return NextResponse.json({ ok: false, error: "No movements found" }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: "No movements found" },
+        { status: 404 }
+      );
     }
 
     const itemIds = movs.map((m: any) => m.item_id);
+    const boxIds = movs.map((m: any) => m.box_id);
 
-    // items
+    // 3️⃣ Items
     const { data: items } = await supabase
       .from("items")
-      .select("item_id, imei, device_id, import_id, imported_at")
+      .select("item_id, imei, device_id, imported_at, imported_by")
       .in("item_id", itemIds);
 
+    // 4️⃣ Boxes
+    const { data: boxes } = await supabase
+      .from("boxes")
+      .select("id, box_code, bin_id")
+      .in("id", boxIds);
+
+    const boxMap: Record<string, any> = {};
+    for (const b of boxes || []) {
+      boxMap[String((b as any).id)] = b;
+    }
+
+    // 5️⃣ Device names (bins)
+    const binIds = boxes?.map((b: any) => b.bin_id) || [];
+
+    const { data: bins } = await supabase
+      .from("bins")
+      .select("id, name")
+      .in("id", binIds);
+
+    const binMap: Record<string, string> = {};
+    for (const b of bins || []) {
+      binMap[String((b as any).id)] = String((b as any).name);
+    }
+
+    // 6️⃣ Build CSV
     const header = [
       "batch_id",
-      "device_id",
+      "import_date",
+      "import_time",
+      "imported_by",
+      "vendor",
+      "device",
       "box_id",
       "imei",
-      "imported_at",
     ];
 
     const lines: string[] = [];
@@ -61,14 +110,25 @@ export async function GET(req: Request) {
 
     for (const m of movs as any[]) {
       const it = items?.find((i: any) => i.item_id === m.item_id);
+      const bx = boxMap[String(m.box_id)];
+
+      const deviceName =
+        (bx?.bin_id && binMap[String(bx.bin_id)]) || "UNKNOWN";
+
+      const dateObj = new Date(batch.created_at);
+      const importDate = dateObj.toLocaleDateString();
+      const importTime = dateObj.toLocaleTimeString();
 
       lines.push(
         [
-          batch_id,
-          it?.device_id || "",
-          m.box_id || "",
+          batch.batch_id,
+          importDate,
+          importTime,
+          batch.actor || "",
+          batch.vendor || "",
+          deviceName,
+          bx?.box_code || "",
           it?.imei || "",
-          it?.imported_at || "",
         ]
           .map(csvEscape)
           .join(",")
@@ -79,7 +139,7 @@ export async function GET(req: Request) {
 
     return new NextResponse(csv, {
       headers: {
-        "Content-Type": "text/csv",
+        "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="inbound_${batch_id}.csv"`,
       },
     });

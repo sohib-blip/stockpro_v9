@@ -25,6 +25,21 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
+    // 🔥 GET USER FROM AUTH HEADER
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) {
+      return NextResponse.json(
+        { ok: false, error: "User not authenticated" },
+        { status: 401 }
+      );
+    }
+
+    const actor_id = user.id;
+    const actor_email = user.email || actor || "unknown";
+
     // ===============================
     // LOAD ITEMS
     // ===============================
@@ -52,7 +67,7 @@ export async function POST(req: Request) {
     const { data: batch, error: batchErr } = await supabase
       .from("outbound_batches")
       .insert({
-        actor: actor || "unknown",
+        actor: actor_email,
         shipment_ref: shipment_ref || null,
         source: source || "manual",
       })
@@ -82,16 +97,16 @@ export async function POST(req: Request) {
     // INSERT MOVEMENTS (FIXED)
     // ===============================
     const movements = validItems.map((i: any) => ({
-      type: "OUT",
-      box_id: i.box_id,
-      item_id: i.item_id,
-      qty: 1,
-      notes: shipment_ref || null,
-      batch_id: batch.batch_id,
-      actor: actor || "unknown",
-      created_at: nowIso,
-    }));
-
+  type: "OUT",
+  box_id: i.box_id,
+  item_id: i.item_id,
+  qty: 1,
+  notes: shipment_ref || null,
+  batch_id: batch.batch_id,
+  actor: actor_email,
+  created_by: actor_id,
+  created_at: nowIso,
+}));
     const { error: movErr } = await supabase
       .from("movements")
       .insert(movements);

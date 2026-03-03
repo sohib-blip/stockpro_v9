@@ -29,49 +29,85 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const batch_id = url.searchParams.get("batch_id");
 
-    if (!batch_id || batch_id === "null" || batch_id === "undefined") {
-      return NextResponse.json({ ok: false, error: "batch_id required" }, { status: 400 });
+    if (!batch_id) {
+      return NextResponse.json(
+        { ok: false, error: "batch_id required" },
+        { status: 400 }
+      );
     }
 
     const supabase = sb();
 
-    const { data: movs } = await supabase
+    // ✅ IMPORTANT: movements contient déjà l’imei
+    const { data: movs, error: movErr } = await supabase
       .from("movements")
-      .select(`
+      .select(
+        `
         box_id,
-        items ( imei ),
-        boxes ( box_code, bins ( name ) )
-      `)
-      .eq("batch_id", batch_id)
-      .eq("type", "IN");
+        imei,
+        boxes ( id, box_code, bin_id, bins ( id, name ) )
+      `
+      )
+      .eq("type", "IN")
+      .eq("batch_id", batch_id);
+
+    if (movErr) throw movErr;
 
     if (!movs || movs.length === 0) {
-      return NextResponse.json({ ok: false, error: "No data" }, { status: 404 });
+      return NextResponse.json(
+        { ok: false, error: "No movements found" },
+        { status: 404 }
+      );
     }
 
-    const grouped: Record<string, any> = {};
+    const grouped: Record<
+      string,
+      { device: string; box: string; imeis: string[] }
+    > = {};
 
     for (const m of movs as any[]) {
-      const boxId = m.box_id;
+      const boxId = String(m.box_id ?? "");
+      if (!boxId) continue;
+
+      const deviceName =
+        m.boxes?.bins?.name ||
+        "UNKNOWN";
+
+      const boxCode =
+        m.boxes?.box_code ||
+        "";
+
       if (!grouped[boxId]) {
         grouped[boxId] = {
-          device: m.boxes?.bins?.name || "",
-          box: m.boxes?.box_code || "",
+          device: deviceName,
+          box: boxCode,
           imeis: [],
         };
       }
-      grouped[boxId].imeis.push(m.items?.imei);
+
+      const im = String(m.imei ?? "").replace(/\D/g, "");
+      if (im.length === 15) grouped[boxId].imeis.push(im);
+    }
+
+    const totalImeis = Object.values(grouped).reduce((a, g) => a + g.imeis.length, 0);
+    if (totalImeis === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No IMEIs found in movements.imei for this batch." },
+        { status: 404 }
+      );
     }
 
     const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     const PAGE_W = mmToPt(105);
     const PAGE_H = mmToPt(155);
 
-    for (const key of Object.keys(grouped)) {
-      const data = grouped[key];
-      const imeis = data.imeis.filter(Boolean);
+    for (const boxId of Object.keys(grouped)) {
+      const data = grouped[boxId];
+      const imeis = data.imeis;
+
+      if (imeis.length === 0) continue;
 
       const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
 
@@ -79,40 +115,30 @@ export async function GET(req: Request) {
       const qrBytes = await qrBuffer(qrContent);
       const qrImage = await pdfDoc.embedPng(qrBytes);
 
-      const qrSize = PAGE_H * 0.6;
+      const qrSize = PAGE_W * 0.65;
+
       page.drawImage(qrImage, {
         x: (PAGE_W - qrSize) / 2,
-        y: PAGE_H - qrSize - 10,
+        y: PAGE_H - qrSize - 40,
         width: qrSize,
         height: qrSize,
       });
 
-      let y = PAGE_H - qrSize - 25;
+      const centerText = (text: string, y: number, size: number) => {
+        const textWidth = font.widthOfTextAtSize(text, size);
+        const x = (PAGE_W - textWidth) / 2;
+        page.drawText(text, { x, y, size, font });
+      };
 
-      page.drawText(data.device, {
-        x: 20,
-        y,
-        size: 12,
-        font,
-      });
+      let yStart = PAGE_H - qrSize - 70;
 
-      y -= 14;
+      centerText(data.device, yStart, 18);
+      yStart -= 25;
 
-      page.drawText(`BOX: ${data.box}`, {
-        x: 20,
-        y,
-        size: 10,
-        font,
-      });
+      centerText(`BOX: ${data.box}`, yStart, 14);
+      yStart -= 20;
 
-      y -= 14;
-
-      page.drawText(`QTY IMEI: ${imeis.length}`, {
-        x: 20,
-        y,
-        size: 10,
-        font,
-      });
+      centerText(`QTY IMEI: ${imeis.length}`, yStart, 14);
     }
 
     const pdfBytes = await pdfDoc.save();

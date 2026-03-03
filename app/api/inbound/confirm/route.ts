@@ -142,18 +142,18 @@ export async function POST(req: Request) {
           status: "IN",
           imported_at: nowIso,
           imported_by: actor_id,
-          import_id: batch.batch_id, // ✅ si ta colonne import_id existe (chez toi oui)
+          import_id: batch.batch_id,
         });
 
         insertedImeis += 1;
       }
 
       if (itemsToInsert.length > 0) {
-        // ✅ insert items and get item_id back
+        // ✅ insert items and get item_id + imei back
         const { data: insertedItems, error: itemsErr } = await supabase
           .from("items")
           .insert(itemsToInsert)
-          .select("item_id");
+          .select("item_id, imei");
 
         if (itemsErr) throw itemsErr;
 
@@ -162,6 +162,7 @@ export async function POST(req: Request) {
           batch_id: batch.batch_id,
           item_id: it.item_id,
           box_id,
+          imei: it.imei, // ✅ IMPORTANT: pour export + labels
           qty: 1,
           created_by: actor_id,
           actor: actor || "unknown",

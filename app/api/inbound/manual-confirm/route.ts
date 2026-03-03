@@ -68,19 +68,19 @@ export async function POST(req: Request) {
     }
 
     const itemsToInsert = imeis.map((imei: string) => ({
-  imei,
-  device_id: device, // ← on garde le bin_id
-  box_id,
-  status: "IN",
-  imported_at: nowIso,
-  imported_by: actor_id,
-  import_id: batch.batch_id,
-}));
+      imei,
+      device_id: device, // ← on garde le bin_id
+      box_id,
+      status: "IN",
+      imported_at: nowIso,
+      imported_by: actor_id,
+      import_id: batch.batch_id,
+    }));
 
     const { data: insertedItems } = await supabase
       .from("items")
       .insert(itemsToInsert)
-      .select("item_id");
+      .select("item_id, imei");
 
     if (!insertedItems) throw new Error("Item insert failed");
 
@@ -90,6 +90,7 @@ export async function POST(req: Request) {
       batch_id: batch.batch_id,
       item_id: it.item_id,
       box_id,
+      imei: it.imei, // ✅ IMPORTANT: pour export + labels
       qty: 1,
       created_by: actor_id,
       actor: actor || "unknown",

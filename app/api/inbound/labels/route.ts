@@ -29,7 +29,7 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const batch_id = url.searchParams.get("batch_id");
 
-    if (!batch_id) {
+    if (!batch_id || batch_id === "null" || batch_id === "undefined") {
       return NextResponse.json(
         { ok: false, error: "batch_id required" },
         { status: 400 }
@@ -38,47 +38,23 @@ export async function GET(req: Request) {
 
     const supabase = sb();
 
-    const { data: movs } = await supabase
+    // ✅ IMPORTANT: on prend l’IMEI depuis movements.imei (plus de join items)
+    const { data: movs, error: movErr } = await supabase
       .from("movements")
-      .select("item_id, box_id")
-      .eq("type", "IN")
-      .eq("batch_id", batch_id);
+      .select(
+        `
+        box_id,
+        imei,
+        boxes ( box_code, floor, bins ( name ) )
+      `
+      )
+      .eq("batch_id", batch_id)
+      .eq("type", "IN");
+
+    if (movErr) throw movErr;
 
     if (!movs || movs.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "No movements found" },
-        { status: 404 }
-      );
-    }
-
-    const itemIds = movs.map((m: any) => m.item_id);
-    const boxIds = movs.map((m: any) => m.box_id);
-
-    const { data: items } = await supabase
-      .from("items")
-      .select("item_id, imei, device_id")
-      .in("item_id", itemIds);
-
-    const { data: boxes } = await supabase
-      .from("boxes")
-      .select("id, box_code, bin_id")
-      .in("id", boxIds);
-
-    const boxMap: Record<string, any> = {};
-    for (const b of boxes || []) {
-      boxMap[String((b as any).id)] = b;
-    }
-
-    const binIds = boxes?.map((b: any) => b.bin_id) || [];
-
-    const { data: bins } = await supabase
-      .from("bins")
-      .select("id, name")
-      .in("id", binIds);
-
-    const binMap: Record<string, string> = {};
-    for (const b of bins || []) {
-      binMap[String((b as any).id)] = String((b as any).name);
+      return NextResponse.json({ ok: false, error: "No data" }, { status: 404 });
     }
 
     const grouped: Record<
@@ -87,31 +63,45 @@ export async function GET(req: Request) {
     > = {};
 
     for (const m of movs as any[]) {
-      const it = items?.find((i: any) => i.item_id === m.item_id);
-      const bx = boxMap[String(m.box_id)];
+      const boxId = String(m.box_id ?? "");
+      if (!boxId) continue;
 
-      if (!it || !bx) continue;
-
-      if (!grouped[m.box_id]) {
-        grouped[m.box_id] = {
-          device: binMap[String(bx.bin_id)] || "UNKNOWN",
-          box: bx.box_code || "",
+      if (!grouped[boxId]) {
+        grouped[boxId] = {
+          device: m.boxes?.bins?.name || "UNKNOWN",
+          box: m.boxes?.box_code || "",
           imeis: [],
         };
       }
 
-      grouped[m.box_id].imeis.push(it.imei);
+      const im = String(m.imei ?? "").replace(/\D/g, "");
+      if (im.length === 15) grouped[boxId].imeis.push(im);
+    }
+
+    // si jamais tout est vide côté imei (ex: mouvements anciens sans colonne imei)
+    const totalImeis = Object.values(grouped).reduce((a, g) => a + g.imeis.length, 0);
+    if (totalImeis === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "No IMEIs found in movements.imei for this batch. (Old data?)",
+        },
+        { status: 404 }
+      );
     }
 
     const pdfDoc = await PDFDocument.create();
-    const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+    const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
 
     const PAGE_W = mmToPt(105);
     const PAGE_H = mmToPt(155);
 
-    for (const boxId of Object.keys(grouped)) {
-      const data = grouped[boxId];
+    for (const key of Object.keys(grouped)) {
+      const data = grouped[key];
       const imeis = data.imeis;
+
+      if (imeis.length === 0) continue;
 
       const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
 
@@ -119,32 +109,40 @@ export async function GET(req: Request) {
       const qrBytes = await qrBuffer(qrContent);
       const qrImage = await pdfDoc.embedPng(qrBytes);
 
-      const qrSize = PAGE_W * 0.65;
-
-      // QR centré
+      const qrSize = PAGE_H * 0.6;
       page.drawImage(qrImage, {
         x: (PAGE_W - qrSize) / 2,
-        y: PAGE_H - qrSize - 40,
+        y: PAGE_H - qrSize - 10,
         width: qrSize,
         height: qrSize,
       });
 
-      // Texte centré
-      const centerText = (text: string, y: number, size: number) => {
-        const textWidth = font.widthOfTextAtSize(text, size);
-        const x = (PAGE_W - textWidth) / 2;
-        page.drawText(text, { x, y, size, font });
-      };
+      let y = PAGE_H - qrSize - 25;
 
-      let yStart = PAGE_H - qrSize - 70;
+      page.drawText(data.device, {
+        x: 20,
+        y,
+        size: 12,
+        font,
+      });
 
-      centerText(data.device, yStart, 18);
-      yStart -= 25;
+      y -= 14;
 
-      centerText(`BOX ID: ${data.box}`, yStart, 14);
-      yStart -= 20;
+      page.drawText(`BOX: ${data.box}`, {
+        x: 20,
+        y,
+        size: 10,
+        font,
+      });
 
-      centerText(`QTY IMEI: ${imeis.length}`, yStart, 14);
+      y -= 14;
+
+      page.drawText(`QTY IMEI: ${imeis.length}`, {
+        x: 20,
+        y,
+        size: 10,
+        font,
+      });
     }
 
     const pdfBytes = await pdfDoc.save();

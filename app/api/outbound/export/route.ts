@@ -41,20 +41,19 @@ export async function GET(req: Request) {
       );
     }
 
-    // Load movements + joins
+    // 🔥 JOIN via items
     const { data: movements, error: movErr } = await supabase
       .from("movements")
       .select(`
         created_at,
-        item_id,
         items (
-          imei
-        ),
-        box_id,
-        boxes (
-          box_code,
-          bins (
-            name
+          imei,
+          boxes (
+            box_code,
+            floor,
+            bins (
+              name
+            )
           )
         )
       `)
@@ -75,14 +74,14 @@ export async function GET(req: Request) {
       );
     }
 
-    // Build Excel rows
     const rows = movements.map((m: any) => ({
       "Date / Time": new Date(batch.created_at).toLocaleString(),
       "User": batch.actor || "",
       "Shipment Ref": batch.shipment_ref || "",
       "Source": batch.source || "",
-      "Device": m.boxes?.bins?.name || "",
-      "Box ID": m.boxes?.box_code || "",
+      "Device": m.items?.boxes?.bins?.name || "",
+      "Box ID": m.items?.boxes?.box_code || "",
+      "Floor": m.items?.boxes?.floor || "",
       "IMEI": m.items?.imei || "",
       "Batch ID": batch.batch_id,
     }));

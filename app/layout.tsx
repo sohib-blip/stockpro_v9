@@ -1,17 +1,16 @@
-import "./globals.css";
-import type { Metadata } from "next";
-import ToastProvider from "@/components/ToastProvider";
-
-export const metadata: Metadata = {
-  title: "StockPro",
-  description: "Stock management for trackers",
-};
-
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
     <html lang="en">
-      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased">
-        <ToastProvider>{children}</ToastProvider>
+      <body className="bg-slate-950 text-slate-100">
+        <div className="min-h-screen flex justify-center">
+          <div className="w-full max-w-7xl px-6">
+            {children}
+          </div>
+        </div>
       </body>
     </html>
   );

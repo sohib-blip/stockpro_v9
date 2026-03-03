@@ -51,10 +51,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1️⃣ Load boxes
+    // 1️⃣ Load boxes (FIXED HERE)
     const { data: boxes, error: loadError } = await supabase
       .from("boxes")
-      .select("box_id, box_code, floor")
+      .select("id, box_code, floor")   // ✅ id au lieu de box_id
       .in("box_code", box_codes);
 
     if (loadError) throw loadError;
@@ -77,9 +77,9 @@ export async function POST(req: Request) {
     // 3️⃣ Insert movements (FIXED 🔥)
     const movements = boxes.map((box) => ({
       type: "TRANSFER",
-      box_id: box.box_id,
+      box_id: box.id,            // ✅ box.id au lieu de box.box_id
       actor: user.email,
-      created_by: user.id,   // 🔥 IMPORTANT
+      created_by: user.id,
       created_at: new Date().toISOString(),
     }));
 

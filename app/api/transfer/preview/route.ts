@@ -23,9 +23,9 @@ export async function POST(req: Request) {
 
     // Load boxes
     const { data: boxes, error } = await supabase
-      .from("boxes")
-      .select("box_id, box_code, floor")
-      .in("box_code", box_codes);
+  .from("boxes")
+  .select("id, box_code, floor")
+  .in("box_code", box_codes);
 
     if (error) throw error;
 
@@ -49,7 +49,7 @@ export async function POST(req: Request) {
       const { count } = await supabase
         .from("items")
         .select("*", { count: "exact", head: true })
-        .eq("box_id", box.box_id)
+        .eq("box_id", box.id)
         .eq("status", "IN");
 
       if (!count || count === 0) {

@@ -30,7 +30,7 @@ export async function POST(req: Request) {
     // Load boxes
     const { data: boxes, error } = await supabase
       .from("boxes")
-      .select("box_id, box_code, floor")
+      .select("id, box_code, floor")
       .in("box_code", box_codes);
 
     if (error) throw error;
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     // Log movements
     const movements = boxes.map((box) => ({
       type: "TRANSFER",
-      box_id: box.box_id,
+      box_id: box.id,
       actor: actor || "unknown",
       created_at: new Date().toISOString(),
     }));

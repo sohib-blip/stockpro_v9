@@ -1,329 +1,256 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
 
-type PreviewRow = {
-  imei: string;
-  from_box: string;
-  from_floor: string | null;
-  to_floor: string;
-  box_code: string;
-  bin_id: string;
-  item_id: string;
+type HistoryRow = {
+  created_at: string;
+  actor: string;
+  box_id: string;
+  boxes: {
+    box_code: string;
+    floor: string;
+  };
 };
 
 export default function TransferPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
-
-  const [actor, setActor] = useState("unknown");
-  const [actorId, setActorId] = useState("");
-
-  // IMEI transfer
-  const [imeiInput, setImeiInput] = useState("");
+  const [boxCode, setBoxCode] = useState("");
   const [targetFloor, setTargetFloor] = useState("00");
-  const [preview, setPreview] = useState<{
-    ok: boolean;
-    rows: PreviewRow[];
-    payload: any[];
-    target_floor: string;
-  } | null>(null);
+  const [preview, setPreview] = useState<any>(null);
 
-  // BOX transfer
-  const [boxCodeInput, setBoxCodeInput] = useState("");
-  const [boxTargetFloor, setBoxTargetFloor] = useState("00");
-  const [boxPreview, setBoxPreview] = useState<any>(null);
-
-  const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState(false);
-
-  // History
-  const [history, setHistory] = useState<any[]>([]);
-  const [historyFilter, setHistoryFilter] = useState<"all" | "today">("all");
+  const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  // Load user
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user?.email) setActor(data.user.email);
-      if (data?.user?.id) setActorId(data.user.id);
-    })();
-  }, [supabase]);
+  const [searchBox, setSearchBox] = useState("");
+  const [filterFloor, setFilterFloor] = useState("all");
 
-  function extractImeis(text: string): string[] {
-    return Array.from(
-      new Set(
-        text
-          .split(/\s+/g)
-          .map((x) => x.replace(/\D/g, ""))
-          .filter((x) => x.length === 15)
-      )
-    );
-  }
+  const [busy, setBusy] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [errorMsg, setErrorMsg] = useState("");
 
-  // ================================
-  // PREVIEW IMEI TRANSFER
-  // ================================
-  async function previewTransfer() {
-    setMessage("");
-    setPreview(null);
-
-    const imeis = extractImeis(imeiInput);
-    if (!imeis.length) {
-      setMessage("❌ No valid IMEIs detected.");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const res = await fetch("/api/transfer/preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imeis, target_floor: targetFloor }),
-      });
-
-      const json = await res.json();
-      if (!json.ok) {
-        setMessage("❌ " + json.error);
-        return;
-      }
-
-      setPreview(json);
-    } catch (e: any) {
-      setMessage("❌ " + (e?.message || "Preview failed"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function confirmTransfer() {
-    if (!preview?.payload) return;
-
-    setBusy(true);
-    setMessage("");
-
-    try {
-      const res = await fetch("/api/transfer/confirm", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: preview.payload,
-          target_floor: preview.target_floor,
-          actor,
-          actor_id: actorId,
-        }),
-      });
-
-      const json = await res.json();
-      if (!json.ok) {
-        setMessage("❌ " + json.error);
-        return;
-      }
-
-      setMessage(`✅ ${json.moved} IMEIs moved to floor ${targetFloor}`);
-      setPreview(null);
-      setImeiInput("");
-      loadHistory();
-    } catch (e: any) {
-      setMessage("❌ " + (e?.message || "Transfer failed"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // ================================
-  // PREVIEW BOX TRANSFER
-  // ================================
-  async function previewBoxTransfer() {
-    setMessage("");
-    setBoxPreview(null);
-
-    if (!boxCodeInput.trim()) {
-      setMessage("❌ Box code required");
-      return;
-    }
-
-    setBusy(true);
-    try {
-      const res = await fetch("/api/transfer/box-preview", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          box_code: boxCodeInput.trim(),
-          target_floor: boxTargetFloor,
-        }),
-      });
-
-      const json = await res.json();
-      if (!json.ok) {
-        setMessage("❌ " + json.error);
-        return;
-      }
-
-      setBoxPreview(json);
-    } catch (e: any) {
-      setMessage("❌ " + (e?.message || "Box preview failed"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function confirmBoxTransfer() {
-    if (!boxPreview) return;
-
-    setBusy(true);
-    setMessage("");
-
-    try {
-      const res = await fetch("/api/transfer/box", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          box_code: boxCodeInput.trim(),
-          target_floor: boxTargetFloor,
-          actor,
-          actor_id: actorId,
-        }),
-      });
-
-      const json = await res.json();
-      if (!json.ok) {
-        setMessage("❌ " + json.error);
-        return;
-      }
-
-      setMessage(`✅ Entire box moved (${json.moved} IMEIs)`);
-      setBoxPreview(null);
-      setBoxCodeInput("");
-      loadHistory();
-    } catch (e: any) {
-      setMessage("❌ " + (e?.message || "Box transfer failed"));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  // ================================
-  // HISTORY
-  // ================================
+  // ================= HISTORY =================
   async function loadHistory() {
     setLoadingHistory(true);
-    const res = await fetch(
-      `/api/transfer/history?filter=${historyFilter}`,
-      { cache: "no-store" }
-    );
+
+    const res = await fetch("/api/transfer/history", {
+      cache: "no-store",
+    });
+
     const json = await res.json();
-    setHistory(json.ok ? json.rows : []);
+    if (json.ok) setHistory(json.rows || []);
     setLoadingHistory(false);
   }
 
   useEffect(() => {
     loadHistory();
-  }, [historyFilter]);
+  }, []);
+
+  // ================= PREVIEW =================
+  async function previewTransfer() {
+    setBusy(true);
+    setErrorMsg("");
+    setPreview(null);
+
+    const res = await fetch("/api/transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ box_code: boxCode, target_floor: targetFloor }),
+    });
+
+    const json = await res.json();
+    setBusy(false);
+
+    if (json.ok) setPreview(json);
+    else setErrorMsg(json.error);
+  }
+
+  // ================= CONFIRM =================
+  async function confirmTransfer() {
+    setBusy(true);
+
+    const res = await fetch("/api/transfer", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        box_code: boxCode,
+        target_floor: targetFloor,
+        confirm: true,
+      }),
+    });
+
+    const json = await res.json();
+    setBusy(false);
+
+    if (json.ok) {
+      setSuccess(true);
+      setPreview(null);
+      await loadHistory();
+      setTimeout(() => setSuccess(false), 2500);
+    } else {
+      setErrorMsg(json.error);
+    }
+  }
+
+  function fmtDate(iso: string) {
+    return new Date(iso).toLocaleString();
+  }
+
+  // ================= FILTER LOGIC =================
+  const filteredHistory = history.filter((row) => {
+    const matchesSearch = row.boxes?.box_code
+      ?.toLowerCase()
+      .includes(searchBox.toLowerCase());
+
+    const matchesFloor =
+      filterFloor === "all" ||
+      row.boxes?.floor === filterFloor;
+
+    return matchesSearch && matchesFloor;
+  });
 
   return (
-    <div className="space-y-8 max-w-5xl">
+    <div className="space-y-10 max-w-5xl">
+
+      {/* LOADER */}
+      {busy && (
+        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
+          <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl flex items-center gap-3 shadow-xl">
+            <div className="h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+            <div className="text-sm font-semibold">Processing...</div>
+          </div>
+        </div>
+      )}
+
+      {/* SUCCESS */}
+      {success && (
+        <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
+          ✅ Transfer completed
+        </div>
+      )}
+
+      {/* HEADER */}
       <div>
         <div className="text-xs text-slate-500">Transfer</div>
-        <h2 className="text-xl font-semibold">Move IMEIs Between Floors</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          User: <b>{actor}</b>
-        </p>
+        <h2 className="text-xl font-semibold">Move Entire Box</h2>
       </div>
 
-      {/* IMEI TRANSFER */}
+      {/* TRANSFER CARD */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-        <div className="font-semibold">Transfer Specific IMEIs</div>
-
-        <textarea
-          value={imeiInput}
-          onChange={(e) => setImeiInput(e.target.value)}
-          placeholder="Scan or paste IMEIs (15 digits)"
-          className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
+        <input
+          value={boxCode}
+          onChange={(e) => setBoxCode(e.target.value)}
+          placeholder="Enter box code (ex: 026-003)"
+          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
         />
 
         <select
           value={targetFloor}
           onChange={(e) => setTargetFloor(e.target.value)}
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
         >
           <option value="00">Floor 00</option>
           <option value="1">Floor 1</option>
+          <option value="2">Floor 2</option>
           <option value="6">Floor 6</option>
-          <option value="Cabinet">Cabinet</option>
-        </select>
-
-        <div className="flex gap-2">
-          <button
-            onClick={previewTransfer}
-            disabled={busy}
-            className="rounded-xl bg-indigo-600 px-4 py-2 font-semibold"
-          >
-            Preview
-          </button>
-
-          <button
-            onClick={confirmTransfer}
-            disabled={!preview || busy}
-            className="rounded-xl bg-emerald-600 px-4 py-2 font-semibold"
-          >
-            Confirm
-          </button>
-        </div>
-
-        {message && <div className="text-sm">{message}</div>}
-      </div>
-
-      {/* BOX TRANSFER */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-        <div className="font-semibold">Transfer Entire Box</div>
-
-        <input
-          value={boxCodeInput}
-          onChange={(e) => setBoxCodeInput(e.target.value)}
-          placeholder="Enter box code"
-          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-        />
-
-        <select
-          value={boxTargetFloor}
-          onChange={(e) => setBoxTargetFloor(e.target.value)}
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-        >
-          <option value="00">Floor 00</option>
-          <option value="1">Floor 1</option>
-          <option value="6">Floor 6</option>
-          <option value="Cabinet">Cabinet</option>
         </select>
 
         <button
-          onClick={previewBoxTransfer}
-          disabled={busy}
-          className="rounded-xl bg-indigo-600 px-4 py-2 font-semibold"
+          onClick={previewTransfer}
+          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
         >
-          Preview Box Transfer
+          Preview Transfer
         </button>
+      </div>
 
-        {boxPreview && (
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4">
-            <div>
-              <b>{boxPreview.total}</b> IMEIs will move
-            </div>
-            <div>
-              From floor <b>{boxPreview.from_floor}</b> → To floor{" "}
-              <b>{boxTargetFloor}</b>
-            </div>
+      {/* PREVIEW */}
+      {preview?.preview && (
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
+          <div>
+            <b>{preview.total_items}</b> IMEIs will move
+          </div>
+          <div>
+            From <b>{preview.current_floor}</b> → To <b>{preview.target_floor}</b>
+          </div>
+
+          <button
+            onClick={confirmTransfer}
+            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold"
+          >
+            Confirm Transfer
+          </button>
+        </div>
+      )}
+
+      {errorMsg && (
+        <div className="text-red-500 text-sm">{errorMsg}</div>
+      )}
+
+      {/* HISTORY */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+
+        <div className="flex flex-wrap gap-3 justify-between items-center">
+          <div className="font-semibold">Transfer History</div>
+
+          <div className="flex flex-wrap gap-2 items-center">
+
+            <input
+              value={searchBox}
+              onChange={(e) => setSearchBox(e.target.value)}
+              placeholder="Search box..."
+              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            />
+
+            <select
+              value={filterFloor}
+              onChange={(e) => setFilterFloor(e.target.value)}
+              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            >
+              <option value="all">All floors</option>
+              <option value="00">Floor 00</option>
+              <option value="1">Floor 1</option>
+              <option value="2">Floor 2</option>
+              <option value="6">Floor 6</option>
+            </select>
 
             <button
-              onClick={confirmBoxTransfer}
-              className="mt-3 rounded-xl bg-emerald-600 px-4 py-2 font-semibold"
+              onClick={loadHistory}
+              className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm hover:bg-slate-800"
             >
-              Confirm Box Transfer
+              {loadingHistory ? "Refreshing..." : "Refresh"}
             </button>
+
           </div>
-        )}
+        </div>
+
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <thead className="bg-slate-950/50">
+            <tr>
+              <th className="p-2 text-left">Date</th>
+              <th className="p-2 text-left">User</th>
+              <th className="p-2 text-left">Box</th>
+              <th className="p-2 text-left">Floor</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredHistory.map((h, i) => (
+              <tr key={i} className="hover:bg-slate-950/40">
+                <td className="p-2">{fmtDate(h.created_at)}</td>
+                <td className="p-2">{h.actor}</td>
+                <td className="p-2 font-semibold">{h.boxes?.box_code}</td>
+                <td className="p-2">{h.boxes?.floor}</td>
+              </tr>
+            ))}
+
+            {filteredHistory.length === 0 && (
+              <tr>
+                <td colSpan={4} className="p-3 text-slate-400">
+                  No transfers found.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
+
     </div>
   );
 }

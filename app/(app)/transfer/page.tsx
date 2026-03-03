@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type HistoryRow = {
   created_at: string;
@@ -12,6 +13,9 @@ type HistoryRow = {
 };
 
 export default function TransferPage() {
+
+  const supabase = createSupabaseBrowserClient();
+
   const [boxInput, setBoxInput] = useState("");
   const [targetFloor, setTargetFloor] = useState("00");
   const [preview, setPreview] = useState<any>(null);
@@ -90,16 +94,32 @@ export default function TransferPage() {
 
   // ================= CONFIRM =================
   async function confirmTransfer() {
+
     const box_codes = boxInput
       .split("\n")
       .map((b) => b.trim())
       .filter(Boolean);
 
+    if (box_codes.length === 0) return;
+
     setLoadingConfirm(true);
+
+    // 🔐 Récupération session utilisateur
+    const { data } = await supabase.auth.getSession();
+    const token = data.session?.access_token;
+
+    if (!token) {
+      setErrorMsg("User session not found.");
+      setLoadingConfirm(false);
+      return;
+    }
 
     const res = await fetch("/api/transfer/confirm", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
       body: JSON.stringify({
         box_codes,
         target_floor: targetFloor,

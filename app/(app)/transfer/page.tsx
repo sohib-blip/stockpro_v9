@@ -210,10 +210,11 @@ export default function TransferPage() {
             />
 
             <select
-  value={targetFloor}
-  onChange={(e) => setTargetFloor(e.target.value)}
+  value={filterFloor}
+  onChange={(e) => setFilterFloor(e.target.value)}
   className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
 >
+  <option value="all">All floors</option>
   <option value="00">Floor 00</option>
   <option value="1">Floor 1</option>
   <option value="6">Floor 6</option>

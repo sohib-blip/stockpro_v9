@@ -29,6 +29,7 @@ export default function TransferPage() {
 
   // ================= HISTORY =================
   async function loadHistory() {
+  try {
     setLoadingHistory(true);
 
     const res = await fetch("/api/transfer/history", {
@@ -36,9 +37,18 @@ export default function TransferPage() {
     });
 
     const json = await res.json();
-    if (json.ok) setHistory(json.rows || []);
+
+    if (json.ok) {
+      setHistory(json.rows || []);
+    } else {
+      setHistory([]);
+    }
+  } catch (err) {
+    setHistory([]);
+  } finally {
     setLoadingHistory(false);
   }
+}
 
   useEffect(() => {
     loadHistory();

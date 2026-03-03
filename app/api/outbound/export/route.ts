@@ -27,33 +27,46 @@ export async function GET(req: Request) {
 
     const supabase = sb();
 
-    // Charger batch info
-    const { data: batch } = await supabase
+    // Load batch
+    const { data: batch, error: batchErr } = await supabase
       .from("outbound_batches")
-      .select("batch_id, created_at, actor, shipment_ref, source")
+      .select("*")
       .eq("batch_id", batch_id)
       .single();
 
-    if (!batch) {
+    if (batchErr || !batch) {
       return NextResponse.json(
         { ok: false, error: "Batch not found" },
         { status: 404 }
       );
     }
 
-    // Charger mouvements OUT liés au batch
-    const { data: movements } = await supabase
+    // Load movements + joins
+    const { data: movements, error: movErr } = await supabase
       .from("movements")
       .select(`
-        imei,
+        created_at,
+        item_id,
+        items (
+          imei
+        ),
         box_id,
         boxes (
           box_code,
-          bins ( name )
+          bins (
+            name
+          )
         )
       `)
       .eq("batch_id", batch_id)
       .eq("type", "OUT");
+
+    if (movErr) {
+      return NextResponse.json(
+        { ok: false, error: movErr.message },
+        { status: 500 }
+      );
+    }
 
     if (!movements || movements.length === 0) {
       return NextResponse.json(
@@ -62,19 +75,18 @@ export async function GET(req: Request) {
       );
     }
 
-    // Construire lignes Excel
+    // Build Excel rows
     const rows = movements.map((m: any) => ({
       "Date / Time": new Date(batch.created_at).toLocaleString(),
-      "User": batch.actor,
+      "User": batch.actor || "",
       "Shipment Ref": batch.shipment_ref || "",
       "Source": batch.source || "",
       "Device": m.boxes?.bins?.name || "",
       "Box ID": m.boxes?.box_code || "",
-      "IMEI": m.imei,
+      "IMEI": m.items?.imei || "",
       "Batch ID": batch.batch_id,
     }));
 
-    // Créer workbook
     const worksheet = XLSX.utils.json_to_sheet(rows);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Outbound");

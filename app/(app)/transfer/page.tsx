@@ -207,8 +207,8 @@ export default function TransferPage() {
               <option value="all">All floors</option>
               <option value="00">Floor 00</option>
               <option value="1">Floor 1</option>
-              <option value="2">Floor 6</option>
-              <option value="6">Cabinet</option>
+              <option value="6">Floor 6</option>
+              <option value="Cabinet">Cabinet</option>
             </select>
 
             <button

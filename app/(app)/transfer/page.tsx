@@ -51,60 +51,65 @@ export default function TransferPage() {
 
   // ================= PREVIEW =================
   async function previewTransfer() {
-    setErrorMsg("");
-    setPreview(null);
+  setErrorMsg("");
+  setPreview(null);
 
-    const box_codes = boxInput
-      .split("\n")
-      .map((b) => b.trim())
-      .filter(Boolean);
+  const box_codes = boxInput
+    .split("\n")
+    .map((b) => b.trim())
+    .filter(Boolean);
 
-    if (box_codes.length === 0) {
-      setErrorMsg("Enter at least one box code.");
-      return;
-    }
-
-    const res = await fetch("/api/transfer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ box_codes, target_floor: targetFloor }),
-    });
-
-    const json = await res.json();
-
-    if (json.ok) setPreview(json);
-    else setErrorMsg(json.error);
+  if (box_codes.length === 0) {
+    setErrorMsg("Enter at least one box code.");
+    return;
   }
+
+  const res = await fetch("/api/transfer/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      box_codes,
+      target_floor: targetFloor,
+    }),
+  });
+
+  const json = await res.json();
+
+  if (json.ok) {
+    setPreview(json);
+  } else {
+    setErrorMsg(json.error);
+  }
+}
 
   // ================= CONFIRM =================
   async function confirmTransfer() {
-    const box_codes = boxInput
-      .split("\n")
-      .map((b) => b.trim())
-      .filter(Boolean);
+  const box_codes = boxInput
+    .split("\n")
+    .map((b) => b.trim())
+    .filter(Boolean);
 
-    const res = await fetch("/api/transfer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        box_codes,
-        target_floor: targetFloor,
-        confirm: true,
-      }),
-    });
+  const res = await fetch("/api/transfer/confirm", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      box_codes,
+      target_floor: targetFloor,
+    }),
+  });
 
-    const json = await res.json();
+  const json = await res.json();
 
-    if (json.ok) {
-      setSuccess(true);
-      setPreview(null);
-      setBoxInput("");
-      await loadHistory();
-      setTimeout(() => setSuccess(false), 2500);
-    } else {
-      setErrorMsg(json.error);
-    }
+  if (json.ok) {
+    setSuccess(true);
+    setPreview(null);
+    setBoxInput("");
+    await loadHistory();
+    setTimeout(() => setSuccess(false), 2500);
+  } else {
+    setErrorMsg(json.error);
   }
+}
 
   function fmtDate(iso: string) {
     return new Date(iso).toLocaleString();

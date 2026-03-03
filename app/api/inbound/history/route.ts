@@ -25,11 +25,17 @@ export async function GET() {
 
     if (error) throw error;
 
+    const rows = (data || []).map((r: any) => ({
+      ...r,
+      // ✅ Front expects qty_boxes / qty_imeis
+      qty_boxes: r.qty_boxes ?? r.boxes ?? 0,
+      qty_imeis: r.qty_imeis ?? r.imeis ?? 0,
+    }));
+
     return NextResponse.json({
       ok: true,
-      rows: data || [],
+      rows,
     });
-
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "History failed" },

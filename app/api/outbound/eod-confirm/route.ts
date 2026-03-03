@@ -102,11 +102,7 @@ export async function POST(req: Request) {
     // 🔥 AUTO DELETE EMPTY BOXES (SQL VERSION)
     // ============================
 
-    // 1️⃣ Delete only transfer (ADJUST) movements of empty boxes
-    await supabase.rpc("delete_adjust_for_empty_boxes");
-
-    // 2️⃣ Delete empty boxes
-    await supabase.rpc("delete_empty_boxes");
+    await supabase.rpc("full_cleanup_empty_boxes");
 
     return NextResponse.json({
       ok: true,

@@ -21,10 +21,11 @@ export async function GET() {
       .select(`
         created_at,
         actor,
-        box_id,
-        boxes (
-          box_code,
-          floor
+        items (
+          boxes (
+            box_code,
+            floor
+          )
         )
       `)
       .eq("type", "TRANSFER")
@@ -32,9 +33,17 @@ export async function GET() {
 
     if (error) throw error;
 
+    const rows =
+      data?.map((row: any) => ({
+        created_at: row.created_at,
+        actor: row.actor,
+        box_code: row.items?.boxes?.box_code,
+        floor: row.items?.boxes?.floor,
+      })) || [];
+
     return NextResponse.json({
       ok: true,
-      rows: data || [],
+      rows,
     });
   } catch (e: any) {
     return NextResponse.json(

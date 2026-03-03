@@ -447,7 +447,7 @@ export default function DashboardPage() {
       {/* DRILLDOWN MODAL */}
       {openDeviceId && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-5xl rounded-2xl border border-slate-800 bg-slate-950 overflow-hidden">
+          <div className="w-full max-w-5xl max-h-[85vh] rounded-2xl border border-slate-800 bg-slate-950 overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-slate-800">
               <div>
                 <div className="text-xs text-slate-500">Drilldown</div>
@@ -469,7 +469,7 @@ export default function DashboardPage() {
               </button>
             </div>
 
-            <div className="p-4 space-y-4">
+            <div className="p-4 space-y-4 overflow-y-auto">
               {drillBoxes.length === 0 ? (
                 <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
                   No boxes for this device (with current filters).

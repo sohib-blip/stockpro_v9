@@ -18,6 +18,7 @@ export async function GET() {
   try {
     const supabase = sb();
 
+    // 🔥 Important: only export items currently IN stock
     const { data, error } = await supabase
       .from("items")
       .select(`
@@ -32,11 +33,19 @@ export async function GET() {
             name
           )
         )
-      `);
+      `)
+      .eq("status", "IN");
 
     if (error) throw error;
 
-    const rows = (data || []).map((r: any) => ({
+    if (!data || data.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No stock data found." },
+        { status: 404 }
+      );
+    }
+
+    const rows = data.map((r: any) => ({
       bin_id: r.boxes?.bins?.id || "",
       bin_name: r.boxes?.bins?.name || "",
       box_id: r.boxes?.id || "",
@@ -60,6 +69,7 @@ export async function GET() {
         "Content-Disposition": "attachment; filename=dashboard-stock.xlsx",
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Cache-Control": "no-store",
       },
     });
   } catch (e: any) {

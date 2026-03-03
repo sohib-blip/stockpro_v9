@@ -37,9 +37,9 @@ export default function TransferPage() {
     try {
       setLoadingHistory(true);
 
-      const res = await fetch("/api/transfer/history", {
-        cache: "no-store",
-      });
+      const res = await fetch("/api/transfer/history?ts=" + Date.now(), {
+  cache: "no-store",
+});
 
       const json = await res.json();
 

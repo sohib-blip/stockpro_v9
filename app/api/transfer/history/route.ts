@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic"; // 🔥 IMPORTANT
+export const dynamic = "force-dynamic"; // 🔥 force dynamique
+export const revalidate = 0;            // 🔥 aucune revalidation cache
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -17,7 +18,6 @@ export async function GET() {
   try {
     const supabase = sb();
 
-    // ✅ Corrigé ici (ADJUST au lieu de TRANSFER)
     const { data, error } = await supabase
       .from("movements")
       .select("created_at, actor, box_id")
@@ -27,12 +27,19 @@ export async function GET() {
     if (error) throw error;
 
     if (!data || data.length === 0) {
-      return NextResponse.json({ ok: true, rows: [] });
+      return new NextResponse(
+        JSON.stringify({ ok: true, rows: [] }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+          },
+        }
+      );
     }
 
     const boxIds = [...new Set(data.map((d) => d.box_id))];
 
-    // ✅ Corrigé ici (id au lieu de box_id)
     const { data: boxes } = await supabase
       .from("boxes")
       .select("id, box_code, floor")
@@ -51,15 +58,32 @@ export async function GET() {
       },
     }));
 
-    return NextResponse.json({
-      ok: true,
-      rows,
-    });
+    return new NextResponse(
+      JSON.stringify({
+        ok: true,
+        rows,
+      }),
+      {
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        },
+      }
+    );
 
   } catch (e: any) {
-    return NextResponse.json(
-      { ok: false, error: e.message },
-      { status: 500 }
+    return new NextResponse(
+      JSON.stringify({
+        ok: false,
+        error: e.message,
+      }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+        },
+      }
     );
   }
 }

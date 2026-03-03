@@ -33,7 +33,7 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
-    // 🔎 Charger les items concernés
+    // 🔎 Load items
     const { data: items, error: itemsErr } = await supabase
       .from("items")
       .select("item_id, imei, device_id, box_id, status")
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 📦 Créer batch outbound
+    // 📦 Create outbound batch
     const { data: batch, error: batchErr } = await supabase
       .from("outbound_batches")
       .insert({
@@ -79,7 +79,7 @@ export async function POST(req: Request) {
 
     if (updErr) throw updErr;
 
-    // 📊 Insert movements
+    // 📊 Insert movements (OUT history stays)
     const movements = validItems.map((i: any) => ({
       type: "OUT",
       box_id: i.box_id,
@@ -99,36 +99,14 @@ export async function POST(req: Request) {
     if (movErr) throw movErr;
 
     // ============================
-    // 🔥 AUTO DELETE EMPTY BOXES
-    // (REMOVE ONLY TRANSFER HISTORY)
+    // 🔥 AUTO DELETE EMPTY BOXES (SQL VERSION)
     // ============================
 
-    const affectedBoxIds = [
-      ...new Set(validItems.map((i: any) => i.box_id)),
-    ];
+    // 1️⃣ Delete only transfer (ADJUST) movements of empty boxes
+    await supabase.rpc("delete_adjust_for_empty_boxes");
 
-    for (const boxId of affectedBoxIds) {
-      const { count } = await supabase
-        .from("items")
-        .select("*", { count: "exact", head: true })
-        .eq("box_id", boxId)
-        .eq("status", "IN");
-
-      if ((count ?? 0) === 0) {
-        // 🗑 Delete only transfer movements
-        await supabase
-          .from("movements")
-          .delete()
-          .eq("box_id", boxId)
-          .eq("type", "ADJUST");
-
-        // 🗑 Delete box
-        await supabase
-          .from("boxes")
-          .delete()
-          .eq("box_id", boxId);
-      }
-    }
+    // 2️⃣ Delete empty boxes
+    await supabase.rpc("delete_empty_boxes");
 
     return NextResponse.json({
       ok: true,

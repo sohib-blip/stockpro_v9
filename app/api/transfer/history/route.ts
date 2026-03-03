@@ -16,10 +16,11 @@ export async function GET() {
   try {
     const supabase = sb();
 
+    // ✅ Corrigé ici (ADJUST au lieu de TRANSFER)
     const { data, error } = await supabase
       .from("movements")
       .select("created_at, actor, box_id")
-      .eq("type", "TRANSFER")
+      .eq("type", "ADJUST")
       .order("created_at", { ascending: false });
 
     if (error) throw error;
@@ -28,23 +29,25 @@ export async function GET() {
       return NextResponse.json({ ok: true, rows: [] });
     }
 
-    // 🔥 Charger les boxes séparément (évite problème relation)
     const boxIds = [...new Set(data.map((d) => d.box_id))];
 
+    // ✅ Corrigé ici (id au lieu de box_id)
     const { data: boxes } = await supabase
       .from("boxes")
-      .select("box_id, box_code, floor")
-      .in("box_id", boxIds);
+      .select("id, box_code, floor")
+      .in("id", boxIds);
 
     const boxMap = new Map(
-      boxes?.map((b) => [b.box_id, b]) || []
+      boxes?.map((b) => [b.id, b]) || []
     );
 
     const rows = data.map((row) => ({
       created_at: row.created_at,
       actor: row.actor,
-      box_code: boxMap.get(row.box_id)?.box_code || "-",
-      floor: boxMap.get(row.box_id)?.floor || "-",
+      boxes: {
+        box_code: boxMap.get(row.box_id)?.box_code || "-",
+        floor: boxMap.get(row.box_id)?.floor || "-",
+      },
     }));
 
     return NextResponse.json({

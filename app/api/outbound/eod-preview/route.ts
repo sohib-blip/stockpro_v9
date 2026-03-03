@@ -23,7 +23,6 @@ function cleanImeis(list: string[]) {
 export async function POST(req: Request) {
   try {
     const supabase = sb();
-
     let rawImeis: string[] = [];
 
     // ============================
@@ -41,16 +40,30 @@ export async function POST(req: Request) {
       }
 
       const buffer = Buffer.from(await file.arrayBuffer());
-      const workbook = XLSX.read(buffer, { type: "buffer" });
 
-      // Lire toutes les sheets
+      const workbook = XLSX.read(buffer, {
+        type: "buffer",
+        raw: false,
+      });
+
       workbook.SheetNames.forEach((sheetName) => {
         const sheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json<any>(sheet, { header: 1 });
 
-        json.forEach((row: any[]) => {
-          row.forEach((cell) => {
-            if (cell) rawImeis.push(String(cell));
+        const json = XLSX.utils.sheet_to_json<any>(sheet, {
+          raw: false,
+          defval: "",
+        });
+
+        json.forEach((row: any) => {
+          Object.values(row).forEach((value: any) => {
+            if (!value) return;
+
+            const str = String(value).trim();
+
+            // Ignore scientific notation style 3.53E+14
+            if (str.includes("E+")) return;
+
+            rawImeis.push(str);
           });
         });
       });
@@ -159,7 +172,7 @@ export async function POST(req: Request) {
     // Calcul remaining
     const { data: totals } = await supabase
       .from("items")
-      .select("box_id, status")
+      .select("box_id")
       .eq("status", "IN");
 
     const totalMap: Record<string, number> = {};
@@ -169,10 +182,11 @@ export async function POST(req: Request) {
     });
 
     Object.values(summaryMap).forEach((row: any) => {
-      const boxId = items?.find(
+      const relatedItem = valid.find(
         (i: any) => i.boxes?.box_code === row.box_no
-      )?.box_id;
+      );
 
+      const boxId = relatedItem?.box_id;
       const totalInBox = totalMap[boxId] || 0;
 
       row.remaining = totalInBox - row.detected;
@@ -191,6 +205,7 @@ export async function POST(req: Request) {
       totalDetected: cleaned.length,
       summary: Object.values(summaryMap),
     });
+
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e.message || "Preview failed" },

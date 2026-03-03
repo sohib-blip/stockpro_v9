@@ -88,7 +88,7 @@ export async function POST(req: Request) {
       notes: shipment_ref || null,
       batch_id: batch.batch_id,
       actor: actor || "unknown",
-      created_by: actor_id, // 🔥 IMPORTANT (NOT NULL)
+      created_by: actor_id,
       created_at: nowIso,
     }));
 
@@ -97,6 +97,38 @@ export async function POST(req: Request) {
       .insert(movements);
 
     if (movErr) throw movErr;
+
+    // ============================
+    // 🔥 AUTO DELETE EMPTY BOXES
+    // (REMOVE ONLY TRANSFER HISTORY)
+    // ============================
+
+    const affectedBoxIds = [
+      ...new Set(validItems.map((i: any) => i.box_id)),
+    ];
+
+    for (const boxId of affectedBoxIds) {
+      const { count } = await supabase
+        .from("items")
+        .select("*", { count: "exact", head: true })
+        .eq("box_id", boxId)
+        .eq("status", "IN");
+
+      if ((count ?? 0) === 0) {
+        // 🗑 Delete only transfer movements
+        await supabase
+          .from("movements")
+          .delete()
+          .eq("box_id", boxId)
+          .eq("type", "ADJUST");
+
+        // 🗑 Delete box
+        await supabase
+          .from("boxes")
+          .delete()
+          .eq("box_id", boxId);
+      }
+    }
 
     return NextResponse.json({
       ok: true,

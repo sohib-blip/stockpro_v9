@@ -52,18 +52,26 @@ export default function OutboundPage() {
 
   // ================= HISTORY =================
   async function loadHistory() {
-    setLoadingHistory(true);
-    try {
-      const res = await fetch("/api/outbound/history", {
+  setLoadingHistory(true);
+  try {
+    const res = await fetch(
+      `/api/outbound/history?t=${Date.now()}`, // 🔥 cache buster
+      {
+        method: "GET",
         cache: "no-store",
-      });
-      const json = await res.json();
-      if (json.ok) setHistory(json.rows || []);
-      else setHistory([]);
-    } finally {
-      setLoadingHistory(false);
-    }
+        headers: {
+          "Cache-Control": "no-cache",
+        },
+      }
+    );
+
+    const json = await res.json();
+    if (json.ok) setHistory(json.rows || []);
+    else setHistory([]);
+  } finally {
+    setLoadingHistory(false);
   }
+}
 
   useEffect(() => {
     loadHistory();

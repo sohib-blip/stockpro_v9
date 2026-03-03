@@ -29,7 +29,7 @@ export default function OutboundPage() {
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -64,9 +64,9 @@ export default function OutboundPage() {
 
   // ================= PREVIEW MANUAL =================
   async function previewManual() {
+    setBusy(true);
     setErrorMsg("");
     setPreview(null);
-    setLoading(true);
 
     const imeis = imeiInput
       .split("\n")
@@ -82,16 +82,16 @@ export default function OutboundPage() {
     const json = await res.json();
     setPreview(json);
     setPreviewSource("manual");
-    setLoading(false);
+    setBusy(false);
   }
 
   // ================= PREVIEW EXCEL =================
   async function previewExcel() {
-    setErrorMsg("");
-    setPreview(null);
     if (!file) return;
 
-    setLoading(true);
+    setBusy(true);
+    setErrorMsg("");
+    setPreview(null);
 
     const form = new FormData();
     form.append("file", file);
@@ -104,15 +104,14 @@ export default function OutboundPage() {
     const json = await res.json();
     setPreview(json);
     setPreviewSource("excel");
-    setLoading(false);
+    setBusy(false);
   }
 
   // ================= CONFIRM =================
   async function confirmOut() {
     if (!preview?.ok || !previewSource || !actorId) return;
 
-    setLoading(true);
-    setErrorMsg("");
+    setBusy(true);
 
     const res = await fetch("/api/outbound/eod-confirm", {
       method: "POST",
@@ -127,14 +126,14 @@ export default function OutboundPage() {
     });
 
     const json = await res.json();
-    setLoading(false);
+    setBusy(false);
 
     if (json.ok) {
+      setSuccess(true);
       setPreview(null);
       setShipmentRef("");
       setImeiInput("");
       setFile(null);
-      setSuccess(true);
       await loadHistory();
       setTimeout(() => setSuccess(false), 2500);
     } else {
@@ -151,135 +150,125 @@ export default function OutboundPage() {
   }
 
   return (
-    <div className="space-y-10 max-w-6xl relative">
+    <div className="space-y-10 max-w-6xl">
 
-      {/* LOADER */}
-      {loading && (
+      {/* OVERLAY LOADER */}
+      {busy && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-slate-950 border border-slate-800 px-8 py-6 rounded-2xl flex items-center gap-4 shadow-xl">
-            <div className="h-6 w-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-            <div className="font-semibold">Processing...</div>
+          <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl flex items-center gap-3 shadow-xl">
+            <div className="h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+            <div className="font-semibold text-sm">Processing...</div>
           </div>
         </div>
       )}
 
-      {/* SUCCESS */}
+      {/* SUCCESS TOAST */}
       {success && (
-        <div className="fixed bottom-6 right-6 bg-gradient-to-r from-emerald-500 to-emerald-600 text-white px-6 py-4 rounded-2xl shadow-2xl animate-fadeIn">
-          <div className="flex items-center gap-3">
-            <div className="h-6 w-6 bg-white/20 rounded-full flex items-center justify-center">
-              ✓
-            </div>
-            <div className="font-semibold">
-              Stock OUT confirmed successfully
-            </div>
-          </div>
+        <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
+          ✅ Stock OUT confirmed
         </div>
       )}
 
       {/* HEADER */}
-      <div className="flex items-center justify-between">
-        <div>
-          <div className="text-xs uppercase tracking-wider text-slate-500">
-            Outbound
-          </div>
-          <h2 className="text-2xl font-bold text-white">
-            Stock Out
-          </h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Logged as <span className="font-semibold text-indigo-400">{actor}</span>
-          </p>
-        </div>
+      <div>
+        <div className="text-xs text-slate-500">Outbound</div>
+        <h2 className="text-xl font-semibold">Stock Out</h2>
+        <p className="text-sm text-slate-400 mt-1">
+          User: <b>{actor}</b>
+        </p>
       </div>
 
-      {/* SHIPMENT */}
-      <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-7 shadow-xl">
-        <div className="font-semibold text-white mb-3">
-          Shipment Reference
-        </div>
+      {/* SHIPMENT CARD */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
+        <div className="font-semibold">Shipment reference (optional)</div>
         <input
           value={shipmentRef}
           onChange={(e) => setShipmentRef(e.target.value)}
-          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
         />
       </div>
 
-      {/* MANUAL */}
-      <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-7 shadow-xl">
-        <div className="font-semibold text-white mb-3">
-          Manual Scan
-        </div>
+      {/* MANUAL CARD */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+        <div className="font-semibold">Manual Scan</div>
+
         <textarea
           value={imeiInput}
           onChange={(e) => setImeiInput(e.target.value)}
-          className="w-full h-36 rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          placeholder="Scan or paste IMEIs (1 per line)"
+          className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
         />
+
         <button
           onClick={previewManual}
-          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-5 py-2.5 font-semibold shadow-lg shadow-indigo-600/20"
+          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
         >
           Preview Manual
         </button>
       </div>
 
-      {/* EXCEL */}
-      <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-7 shadow-xl">
-        <div className="font-semibold text-white mb-3">
-          Excel Import
-        </div>
+      {/* EXCEL CARD */}
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+        <div className="font-semibold">Import End Of Day Report</div>
+
         <input
           type="file"
           accept=".xlsx,.xls"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
+
         <button
           onClick={previewExcel}
-          className="mt-5 inline-flex items-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 transition px-5 py-2.5 font-semibold shadow-lg shadow-indigo-600/20"
+          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
         >
           Preview Excel
         </button>
       </div>
 
-      {/* PREVIEW */}
+      {/* GLOBAL PREVIEW */}
       {preview?.ok && (
-        <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-7 shadow-xl space-y-6">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
           <div className="flex justify-between items-center">
-            <div className="text-lg font-semibold text-white">
+            <div className="font-semibold">
               Preview ({previewSource})
             </div>
-            <div className="px-3 py-1 rounded-full bg-indigo-600/20 text-indigo-400 text-xs font-semibold">
-              {preview.totalDetected} IMEIs
+            <div className="text-xs text-slate-400">
+              {preview.totalDetected} IMEIs detected
             </div>
           </div>
 
-          <table className="w-full text-sm border border-slate-800 rounded-2xl overflow-hidden bg-slate-950">
-            <thead className="bg-slate-900">
-              <tr>
-                <th className="p-3 text-left">Device</th>
-                <th className="p-3 text-left">Box</th>
-                <th className="p-3 text-left">Floor</th>
-                <th className="p-3 text-right">Detected</th>
-                <th className="p-3 text-right">Remaining</th>
-                <th className="p-3 text-right">% After</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.summary.map((row: any, idx: number) => (
-                <tr key={idx} className="hover:bg-slate-900/60 transition">
-                  <td className="p-3">{row.device}</td>
-                  <td className="p-3">{row.box_no}</td>
-                  <td className="p-3">{row.floor || "-"}</td>
-                  <td className="p-3 text-right">{row.detected}</td>
-                  <td className="p-3 text-right">{row.remaining}</td>
-                  <td className="p-3 text-right">{row.percent_after ?? "-"}%</td>
+          <div className="overflow-auto">
+            <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+              <thead className="bg-slate-950/50">
+                <tr>
+                  <th className="p-2 text-left">Device</th>
+                  <th className="p-2 text-left">Box</th>
+                  <th className="p-2 text-left">Floor</th>
+                  <th className="p-2 text-right">Detected</th>
+                  <th className="p-2 text-right">Remaining</th>
+                  <th className="p-2 text-right">% After</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {preview.summary.map((row: any, idx: number) => (
+                  <tr key={idx} className="hover:bg-slate-950/40">
+                    <td className="p-2">{row.device}</td>
+                    <td className="p-2">{row.box_no}</td>
+                    <td className="p-2">{row.floor || "-"}</td>
+                    <td className="p-2 text-right">{row.detected}</td>
+                    <td className="p-2 text-right">{row.remaining}</td>
+                    <td className="p-2 text-right">
+                      {row.percent_after ?? "-"}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <button
             onClick={confirmOut}
-            className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 transition px-6 py-3 font-semibold shadow-lg shadow-emerald-600/20"
+            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold"
           >
             Confirm Stock Out
           </button>
@@ -287,42 +276,50 @@ export default function OutboundPage() {
       )}
 
       {/* HISTORY */}
-      <div className="rounded-3xl border border-slate-800 bg-gradient-to-br from-slate-900 to-slate-950 p-7 shadow-xl">
-        <div className="flex justify-between mb-5">
-          <div className="font-semibold text-white">
-            Outbound History
-          </div>
+      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
+        <div className="flex justify-between">
+          <div className="font-semibold">Outbound history</div>
           <button
             onClick={loadHistory}
-            className="text-sm text-slate-400 hover:text-white"
+            className="text-sm text-slate-400"
           >
-            {loadingHistory ? "Refreshing..." : "Refresh"}
+            {loadingHistory ? "Refreshing…" : "Refresh"}
           </button>
         </div>
 
-        <table className="w-full text-sm">
-          <thead className="text-slate-400">
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <thead className="bg-slate-950/50">
             <tr>
-              <th className="text-left p-2">Date</th>
-              <th className="text-left p-2">User</th>
-              <th className="text-left p-2">Source</th>
-              <th className="text-left p-2">Shipment</th>
-              <th className="text-right p-2">Qty</th>
+              <th className="p-2 text-left">Date/Time</th>
+              <th className="p-2 text-left">User</th>
+              <th className="p-2 text-left">Source</th>
+              <th className="p-2 text-left">Shipment ref</th>
+              <th className="p-2 text-right">Qty</th>
+              <th className="p-2 text-right">Excel</th>
             </tr>
           </thead>
           <tbody>
             {history.map((h) => (
-              <tr key={h.batch_id} className="hover:bg-slate-900/50">
+              <tr key={h.batch_id}>
                 <td className="p-2">{fmtDateTime(h.created_at)}</td>
                 <td className="p-2">{h.actor}</td>
                 <td className="p-2">{h.source}</td>
                 <td className="p-2">{h.shipment_ref || "-"}</td>
-                <td className="p-2 text-right">{h.qty}</td>
+                <td className="p-2 text-right font-semibold">{h.qty}</td>
+                <td className="p-2 text-right">
+  <a
+    href={`/api/outbound/export?batch_id=${encodeURIComponent(h.batch_id)}`}
+    className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
+  >
+    Excel
+  </a>
+</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
     </div>
   );
 }

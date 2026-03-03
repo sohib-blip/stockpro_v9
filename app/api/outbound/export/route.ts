@@ -18,38 +18,71 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const batch_id = url.searchParams.get("batch_id");
 
+    if (!batch_id) {
+      return NextResponse.json(
+        { ok: false, error: "batch_id required" },
+        { status: 400 }
+      );
+    }
+
     const supabase = sb();
 
-    const { data } = await supabase
+    // Charger batch info
+    const { data: batch } = await supabase
+      .from("outbound_batches")
+      .select("batch_id, created_at, actor, shipment_ref, source")
+      .eq("batch_id", batch_id)
+      .single();
+
+    if (!batch) {
+      return NextResponse.json(
+        { ok: false, error: "Batch not found" },
+        { status: 404 }
+      );
+    }
+
+    // Charger mouvements OUT liés au batch
+    const { data: movements } = await supabase
       .from("movements")
       .select(`
-        created_at,
-        actor,
-        items (
-          imei,
-          boxes (
-            box_code,
-            bins ( name )
-          )
+        imei,
+        box_id,
+        boxes (
+          box_code,
+          bins ( name )
         )
       `)
       .eq("batch_id", batch_id)
       .eq("type", "OUT");
 
-    const rows =
-      data?.map((r: any) => ({
-        date: r.created_at,
-        actor: r.actor,
-        device: r.items?.boxes?.bins?.name,
-        box: r.items?.boxes?.box_code,
-        imei: r.items?.imei,
-      })) || [];
+    if (!movements || movements.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No data for this batch" },
+        { status: 404 }
+      );
+    }
 
-    const ws = XLSX.utils.json_to_sheet(rows);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Outbound");
+    // Construire lignes Excel
+    const rows = movements.map((m: any) => ({
+      "Date / Time": new Date(batch.created_at).toLocaleString(),
+      "User": batch.actor,
+      "Shipment Ref": batch.shipment_ref || "",
+      "Source": batch.source || "",
+      "Device": m.boxes?.bins?.name || "",
+      "Box ID": m.boxes?.box_code || "",
+      "IMEI": m.imei,
+      "Batch ID": batch.batch_id,
+    }));
 
-    const buffer = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+    // Créer workbook
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Outbound");
+
+    const buffer = XLSX.write(workbook, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
 
     return new NextResponse(buffer, {
       headers: {
@@ -60,7 +93,7 @@ export async function GET(req: Request) {
     });
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e.message },
+      { ok: false, error: e.message || "Export failed" },
       { status: 500 }
     );
   }

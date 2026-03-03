@@ -27,10 +27,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // Load boxes
     const { data: boxes, error } = await supabase
       .from("boxes")
-      .select("id, box_code, floor")
+      .select("id, box_code")
       .in("box_code", box_codes);
 
     if (error) throw error;
@@ -42,7 +41,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Update floors
     const { error: updateErr } = await supabase
       .from("boxes")
       .update({ floor: target_floor })
@@ -50,7 +48,6 @@ export async function POST(req: Request) {
 
     if (updateErr) throw updateErr;
 
-    // Log movements
     const movements = boxes.map((box) => ({
       type: "TRANSFER",
       box_id: box.id,

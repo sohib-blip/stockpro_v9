@@ -21,11 +21,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Target floor required." });
     }
 
-    // Load boxes
     const { data: boxes, error } = await supabase
-  .from("boxes")
-  .select("id, box_code, floor")
-  .in("box_code", box_codes);
+      .from("boxes")
+      .select(`
+        id,
+        box_code,
+        floor,
+        bins (
+          name
+        )
+      `)
+      .in("box_code", box_codes);
 
     if (error) throw error;
 
@@ -36,7 +42,8 @@ export async function POST(req: Request) {
       });
     }
 
-    let totalItems = 0;
+    let totalGlobal = 0;
+    const result = [];
 
     for (const box of boxes) {
       if (box.floor === target_floor) {
@@ -52,25 +59,31 @@ export async function POST(req: Request) {
         .eq("box_id", box.id)
         .eq("status", "IN");
 
-      if (!count || count === 0) {
+      const total = count || 0;
+
+      if (total === 0) {
         return NextResponse.json({
           ok: false,
           error: `Box ${box.box_code} is empty.`,
         });
       }
 
-      totalItems += count;
+      totalGlobal += total;
+
+      result.push({
+        box_code: box.box_code,
+        device: (box as any).bins?.name || "Unknown",
+        current_floor: box.floor,
+        imei_count: total,
+      });
     }
 
     return NextResponse.json({
       ok: true,
       preview: true,
-      total_boxes: boxes.length,
-      total_items: totalItems,
-      current_floors: boxes.map((b) => ({
-        box: b.box_code,
-        floor: b.floor,
-      })),
+      boxes: result,
+      total_boxes: result.length,
+      total_items: totalGlobal,
       target_floor,
     });
 

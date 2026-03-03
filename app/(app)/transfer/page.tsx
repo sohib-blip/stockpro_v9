@@ -22,6 +22,9 @@ export default function TransferPage() {
   const [searchBox, setSearchBox] = useState("");
   const [filterFloor, setFilterFloor] = useState("all");
 
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [loadingConfirm, setLoadingConfirm] = useState(false);
+
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -51,65 +54,71 @@ export default function TransferPage() {
 
   // ================= PREVIEW =================
   async function previewTransfer() {
-  setErrorMsg("");
-  setPreview(null);
+    setErrorMsg("");
+    setPreview(null);
 
-  const box_codes = boxInput
-    .split("\n")
-    .map((b) => b.trim())
-    .filter(Boolean);
+    const box_codes = boxInput
+      .split("\n")
+      .map((b) => b.trim())
+      .filter(Boolean);
 
-  if (box_codes.length === 0) {
-    setErrorMsg("Enter at least one box code.");
-    return;
+    if (box_codes.length === 0) {
+      setErrorMsg("Enter at least one box code.");
+      return;
+    }
+
+    setLoadingPreview(true);
+
+    const res = await fetch("/api/transfer/preview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        box_codes,
+        target_floor: targetFloor,
+      }),
+    });
+
+    const json = await res.json();
+    setLoadingPreview(false);
+
+    if (json.ok) {
+      setPreview(json);
+    } else {
+      setErrorMsg(json.error);
+    }
   }
-
-  const res = await fetch("/api/transfer/preview", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      box_codes,
-      target_floor: targetFloor,
-    }),
-  });
-
-  const json = await res.json();
-
-  if (json.ok) {
-    setPreview(json);
-  } else {
-    setErrorMsg(json.error);
-  }
-}
 
   // ================= CONFIRM =================
   async function confirmTransfer() {
-  const box_codes = boxInput
-    .split("\n")
-    .map((b) => b.trim())
-    .filter(Boolean);
+    const box_codes = boxInput
+      .split("\n")
+      .map((b) => b.trim())
+      .filter(Boolean);
 
-  const res = await fetch("/api/transfer/confirm", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      box_codes,
-      target_floor: targetFloor,
-    }),
-  });
+    setLoadingConfirm(true);
 
-  const json = await res.json();
+    const res = await fetch("/api/transfer/confirm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        box_codes,
+        target_floor: targetFloor,
+      }),
+    });
 
-  if (json.ok) {
-    setSuccess(true);
-    setPreview(null);
-    setBoxInput("");
-    await loadHistory();
-    setTimeout(() => setSuccess(false), 2500);
-  } else {
-    setErrorMsg(json.error);
+    const json = await res.json();
+    setLoadingConfirm(false);
+
+    if (json.ok) {
+      setSuccess(true);
+      setPreview(null);
+      setBoxInput("");
+      await loadHistory();
+      setTimeout(() => setSuccess(false), 2500);
+    } else {
+      setErrorMsg(json.error);
+    }
   }
-}
 
   function fmtDate(iso: string) {
     return new Date(iso).toLocaleString();
@@ -165,28 +174,55 @@ export default function TransferPage() {
 
         <button
           onClick={previewTransfer}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
+          disabled={loadingPreview}
+          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
         >
-          Preview Transfer
+          {loadingPreview ? "Loading..." : "Preview Transfer"}
         </button>
       </div>
 
-      {/* PREVIEW */}
+      {/* PREVIEW DETAIL */}
       {preview?.preview && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
-          <div>
-            <b>{preview.total_boxes}</b> boxes will move
+        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-5">
+
+          <div className="flex justify-between items-center">
+            <div className="font-semibold text-lg">
+              Transfer Preview
+            </div>
+            <div className="text-sm text-slate-400">
+              {preview.total_boxes} boxes • {preview.total_items} IMEIs
+            </div>
           </div>
-          <div>
-            <b>{preview.total_items}</b> IMEIs total
-          </div>
+
+          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+            <thead className="bg-slate-950/50">
+              <tr>
+                <th className="p-2 text-left">Box</th>
+                <th className="p-2 text-left">Device</th>
+                <th className="p-2 text-left">Current Floor</th>
+                <th className="p-2 text-right">IMEIs</th>
+              </tr>
+            </thead>
+            <tbody>
+              {preview.boxes.map((b: any, i: number) => (
+                <tr key={i} className="hover:bg-slate-950/40">
+                  <td className="p-2 font-semibold">{b.box_code}</td>
+                  <td className="p-2">{b.device}</td>
+                  <td className="p-2">{b.current_floor}</td>
+                  <td className="p-2 text-right">{b.imei_count}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
 
           <button
             onClick={confirmTransfer}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold"
+            disabled={loadingConfirm}
+            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
           >
-            Confirm Transfer
+            {loadingConfirm ? "Transferring..." : "Confirm Transfer"}
           </button>
+
         </div>
       )}
 
@@ -225,7 +261,7 @@ export default function TransferPage() {
               onClick={loadHistory}
               className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm hover:bg-slate-800"
             >
-              Refresh
+              {loadingHistory ? "Refreshing..." : "Refresh"}
             </button>
 
           </div>
@@ -260,6 +296,7 @@ export default function TransferPage() {
           </tbody>
         </table>
       </div>
+
     </div>
   );
 }

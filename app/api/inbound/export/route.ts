@@ -9,7 +9,9 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 function sb() {
-  return createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+  return createClient(SUPABASE_URL, SERVICE_ROLE, {
+    auth: { persistSession: false },
+  });
 }
 
 export async function GET(req: Request) {
@@ -22,33 +24,62 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "Missing batch_id" }, { status: 400 });
     }
 
-    const { data, error } = await supabase
+    // 1) movements (NO JOIN)
+    const { data: movs, error: movErr } = await supabase
       .from("movements")
-      .select(`
-        created_at,
-        actor,
-        imei,
-        box_id,
-        boxes (
-          box_code,
-          floor,
-          bins ( name )
-        )
-      `)
+      .select("created_at, actor, imei, box_id, batch_id")
       .eq("type", "IN")
       .eq("batch_id", batch_id)
       .order("created_at", { ascending: true });
 
-    if (error) throw error;
+    if (movErr) throw movErr;
 
-    const rows = (data || []).map((r: any) => ({
-      date_time: r.created_at,
-      user: r.actor || "",
-      device: r.boxes?.bins?.name || "",
-      box_code: r.boxes?.box_code || "",
-      floor: r.boxes?.floor || "",
-      imei: r.imei || "", // ✅ vient de movements
-    }));
+    if (!movs || movs.length === 0) {
+      return NextResponse.json({ ok: false, error: "No movements found" }, { status: 404 });
+    }
+
+    const boxIds = Array.from(new Set(movs.map((m: any) => String(m.box_id)).filter(Boolean)));
+
+    // 2) boxes (NO JOIN)
+    const { data: boxes, error: boxErr } = await supabase
+      .from("boxes")
+      .select("id, box_code, floor, bin_id")
+      .in("id", boxIds);
+
+    if (boxErr) throw boxErr;
+
+    const boxMap: Record<string, any> = {};
+    for (const b of boxes || []) boxMap[String((b as any).id)] = b;
+
+    const binIds = Array.from(
+      new Set((boxes || []).map((b: any) => String(b.bin_id)).filter(Boolean))
+    );
+
+    // 3) bins
+    const { data: bins, error: binErr } = await supabase
+      .from("bins")
+      .select("id, name")
+      .in("id", binIds);
+
+    if (binErr) throw binErr;
+
+    const binMap: Record<string, string> = {};
+    for (const b of bins || []) binMap[String((b as any).id)] = String((b as any).name);
+
+    // 4) build rows
+    const rows = (movs || []).map((m: any) => {
+      const bx = boxMap[String(m.box_id)];
+      const deviceName = bx?.bin_id ? (binMap[String(bx.bin_id)] || "") : "";
+      return {
+        date_time: m.created_at,
+        user: m.actor || "",
+        vendor: "", // optionnel si tu veux l’ajouter depuis inbound_batches
+        device: deviceName,
+        box_code: bx?.box_code || "",
+        floor: bx?.floor || "",
+        imei: m.imei || "",
+      };
+    });
 
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -63,6 +94,9 @@ export async function GET(req: Request) {
       },
     });
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Export failed" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Export failed" },
+      { status: 500 }
+    );
   }
 }

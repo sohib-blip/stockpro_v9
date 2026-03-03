@@ -3,17 +3,16 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 
-function createServerClient() {
-  return createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  { auth: { persistSession: false } }
+);
 
 export async function POST(req: Request) {
   try {
-    const { box_codes, target_floor } = await req.json();
+    const body = await req.json();
+    const { box_codes, target_floor } = body;
 
     if (!Array.isArray(box_codes) || box_codes.length === 0) {
       return NextResponse.json(
@@ -29,14 +28,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = createServerClient();
-
-    // 🔐 Get authenticated user
+    // 🔐 Lire user depuis Authorization header
     const authHeader = req.headers.get("authorization");
-
     if (!authHeader) {
       return NextResponse.json(
-        { ok: false, error: "Not authenticated." },
+        { ok: false, error: "Unauthorized." },
         { status: 401 }
       );
     }
@@ -50,18 +46,18 @@ export async function POST(req: Request) {
 
     if (userError || !user) {
       return NextResponse.json(
-        { ok: false, error: "Invalid user session." },
+        { ok: false, error: "Invalid session." },
         { status: 401 }
       );
     }
 
-    // 📦 Load boxes
-    const { data: boxes, error } = await supabase
+    // 1️⃣ Load boxes
+    const { data: boxes, error: loadError } = await supabase
       .from("boxes")
-      .select("id, box_code, floor")
+      .select("box_id, box_code, floor")
       .in("box_code", box_codes);
 
-    if (error) throw error;
+    if (loadError) throw loadError;
 
     if (!boxes || boxes.length !== box_codes.length) {
       return NextResponse.json(
@@ -70,20 +66,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 🚫 Prevent transfer to same floor
-    for (const box of boxes) {
-      if (box.floor === target_floor) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: `Box ${box.box_code} already on floor ${target_floor}`,
-          },
-          { status: 400 }
-        );
-      }
-    }
-
-    // 🔄 Update floors
+    // 2️⃣ Update floors
     const { error: updateErr } = await supabase
       .from("boxes")
       .update({ floor: target_floor })
@@ -91,12 +74,12 @@ export async function POST(req: Request) {
 
     if (updateErr) throw updateErr;
 
-    // 📝 Log movements
+    // 3️⃣ Insert movements (FIXED 🔥)
     const movements = boxes.map((box) => ({
       type: "TRANSFER",
-      box_id: box.id,
-      created_by: user.id,        // ✅ proper user id
-      actor: user.email,          // ✅ readable email
+      box_id: box.box_id,
+      actor: user.email,
+      created_by: user.id,   // 🔥 IMPORTANT
       created_at: new Date().toISOString(),
     }));
 

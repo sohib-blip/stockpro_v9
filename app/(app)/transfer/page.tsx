@@ -5,7 +5,6 @@ import { useEffect, useState } from "react";
 type HistoryRow = {
   created_at: string;
   actor: string;
-  box_id: string;
   boxes: {
     box_code: string;
     floor: string;
@@ -13,7 +12,7 @@ type HistoryRow = {
 };
 
 export default function TransferPage() {
-  const [boxCode, setBoxCode] = useState("");
+  const [boxInput, setBoxInput] = useState("");
   const [targetFloor, setTargetFloor] = useState("00");
   const [preview, setPreview] = useState<any>(null);
 
@@ -23,32 +22,28 @@ export default function TransferPage() {
   const [searchBox, setSearchBox] = useState("");
   const [filterFloor, setFilterFloor] = useState("all");
 
-  const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   // ================= HISTORY =================
   async function loadHistory() {
-  try {
-    setLoadingHistory(true);
+    try {
+      setLoadingHistory(true);
 
-    const res = await fetch("/api/transfer/history", {
-      cache: "no-store",
-    });
+      const res = await fetch("/api/transfer/history", {
+        cache: "no-store",
+      });
 
-    const json = await res.json();
+      const json = await res.json();
 
-    if (json.ok) {
-      setHistory(json.rows || []);
-    } else {
+      if (json.ok) setHistory(json.rows || []);
+      else setHistory([]);
+    } catch {
       setHistory([]);
+    } finally {
+      setLoadingHistory(false);
     }
-  } catch (err) {
-    setHistory([]);
-  } finally {
-    setLoadingHistory(false);
   }
-}
 
   useEffect(() => {
     loadHistory();
@@ -56,18 +51,26 @@ export default function TransferPage() {
 
   // ================= PREVIEW =================
   async function previewTransfer() {
-    setBusy(true);
     setErrorMsg("");
     setPreview(null);
+
+    const box_codes = boxInput
+      .split("\n")
+      .map((b) => b.trim())
+      .filter(Boolean);
+
+    if (box_codes.length === 0) {
+      setErrorMsg("Enter at least one box code.");
+      return;
+    }
 
     const res = await fetch("/api/transfer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ box_code: boxCode, target_floor: targetFloor }),
+      body: JSON.stringify({ box_codes, target_floor: targetFloor }),
     });
 
     const json = await res.json();
-    setBusy(false);
 
     if (json.ok) setPreview(json);
     else setErrorMsg(json.error);
@@ -75,24 +78,27 @@ export default function TransferPage() {
 
   // ================= CONFIRM =================
   async function confirmTransfer() {
-    setBusy(true);
+    const box_codes = boxInput
+      .split("\n")
+      .map((b) => b.trim())
+      .filter(Boolean);
 
     const res = await fetch("/api/transfer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        box_code: boxCode,
+        box_codes,
         target_floor: targetFloor,
         confirm: true,
       }),
     });
 
     const json = await res.json();
-    setBusy(false);
 
     if (json.ok) {
       setSuccess(true);
       setPreview(null);
+      setBoxInput("");
       await loadHistory();
       setTimeout(() => setSuccess(false), 2500);
     } else {
@@ -104,7 +110,7 @@ export default function TransferPage() {
     return new Date(iso).toLocaleString();
   }
 
-  // ================= FILTER LOGIC =================
+  // ================= FILTER =================
   const filteredHistory = history.filter((row) => {
     const matchesSearch = row.boxes?.box_code
       ?.toLowerCase()
@@ -120,48 +126,37 @@ export default function TransferPage() {
   return (
     <div className="space-y-10 max-w-5xl">
 
-      {/* LOADER */}
-      {busy && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-          <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl flex items-center gap-3 shadow-xl">
-            <div className="h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-            <div className="text-sm font-semibold">Processing...</div>
-          </div>
-        </div>
-      )}
-
-      {/* SUCCESS */}
       {success && (
         <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
           ✅ Transfer completed
         </div>
       )}
 
-      {/* HEADER */}
       <div>
         <div className="text-xs text-slate-500">Transfer</div>
-        <h2 className="text-xl font-semibold">Move Entire Box</h2>
+        <h2 className="text-xl font-semibold">Move Multiple Boxes</h2>
       </div>
 
       {/* TRANSFER CARD */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
-        <input
-          value={boxCode}
-          onChange={(e) => setBoxCode(e.target.value)}
-          placeholder="Enter box code (ex: 026-003)"
-          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
+
+        <textarea
+          value={boxInput}
+          onChange={(e) => setBoxInput(e.target.value)}
+          placeholder="Enter box codes (1 per line)"
+          className="w-full h-28 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3"
         />
 
         <select
-  value={targetFloor}
-  onChange={(e) => setTargetFloor(e.target.value)}
-  className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
->
-  <option value="00">Floor 00</option>
-  <option value="1">Floor 1</option>
-  <option value="6">Floor 6</option>
-  <option value="Cabinet">Cabinet</option>
-</select>
+          value={targetFloor}
+          onChange={(e) => setTargetFloor(e.target.value)}
+          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
+        >
+          <option value="00">Floor 00</option>
+          <option value="1">Floor 1</option>
+          <option value="6">Floor 6</option>
+          <option value="Cabinet">Cabinet</option>
+        </select>
 
         <button
           onClick={previewTransfer}
@@ -175,10 +170,10 @@ export default function TransferPage() {
       {preview?.preview && (
         <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
           <div>
-            <b>{preview.total_items}</b> IMEIs will move
+            <b>{preview.total_boxes}</b> boxes will move
           </div>
           <div>
-            From <b>{preview.current_floor}</b> → To <b>{preview.target_floor}</b>
+            <b>{preview.total_items}</b> IMEIs total
           </div>
 
           <button
@@ -210,22 +205,22 @@ export default function TransferPage() {
             />
 
             <select
-  value={filterFloor}
-  onChange={(e) => setFilterFloor(e.target.value)}
-  className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
->
-  <option value="all">All floors</option>
-  <option value="00">Floor 00</option>
-  <option value="1">Floor 1</option>
-  <option value="6">Floor 6</option>
-  <option value="Cabinet">Cabinet</option>
-</select>
+              value={filterFloor}
+              onChange={(e) => setFilterFloor(e.target.value)}
+              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
+            >
+              <option value="all">All floors</option>
+              <option value="00">Floor 00</option>
+              <option value="1">Floor 1</option>
+              <option value="6">Floor 6</option>
+              <option value="Cabinet">Cabinet</option>
+            </select>
 
             <button
               onClick={loadHistory}
               className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm hover:bg-slate-800"
             >
-              {loadingHistory ? "Refreshing..." : "Refresh"}
+              Refresh
             </button>
 
           </div>
@@ -260,7 +255,6 @@ export default function TransferPage() {
           </tbody>
         </table>
       </div>
-
     </div>
   );
 }

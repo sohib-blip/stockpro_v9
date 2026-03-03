@@ -18,7 +18,7 @@ export async function GET() {
   try {
     const supabase = sb();
 
-    // 1️⃣ get inbound batches
+    // 1️⃣ Get inbound batches
     const { data: batches, error: bErr } = await supabase
       .from("inbound_batches")
       .select("batch_id, created_at, actor, vendor")
@@ -27,38 +27,29 @@ export async function GET() {
 
     if (bErr) throw bErr;
 
-    // 2️⃣ aggregate directly from movements
-    const { data: aggData, error: aggErr } = await supabase
-      .from("movements")
-      .select("batch_id, box_id, item_id")
-      .eq("type", "IN");
+    // 2️⃣ Get aggregated stats directly from Postgres
+    const { data: stats, error: sErr } = await supabase
+      .rpc("get_inbound_batch_stats");
 
-    if (aggErr) throw aggErr;
+    if (sErr) throw sErr;
 
-    const agg: Record<
+    const statMap: Record<
       string,
-      { boxes: Set<string>; imeis: number }
+      { imeis: number; boxes: number }
     > = {};
 
-    for (const m of aggData || []) {
-      const bid = String((m as any).batch_id || "");
-      if (!bid) continue;
-
-      if (!agg[bid]) {
-        agg[bid] = {
-          boxes: new Set(),
-          imeis: 0,
-        };
-      }
-
-      agg[bid].boxes.add(String((m as any).box_id));
-      agg[bid].imeis += 1;
+    for (const row of stats || []) {
+      statMap[String((row as any).batch_id)] = {
+        imeis: Number((row as any).imeis || 0),
+        boxes: Number((row as any).boxes || 0),
+      };
     }
 
+    // 3️⃣ Merge
     const rows = (batches || []).map((b: any) => {
-      const data = agg[String(b.batch_id)] || {
-        boxes: new Set(),
+      const data = statMap[String(b.batch_id)] || {
         imeis: 0,
+        boxes: 0,
       };
 
       return {
@@ -66,8 +57,8 @@ export async function GET() {
         created_at: b.created_at,
         actor: b.actor || "unknown",
         vendor: b.vendor || "unknown",
-        qty_boxes: data.boxes.size,
-        qty_imeis: data.imeis,
+        boxes: data.boxes,
+        imeis: data.imeis,
       };
     });
 

@@ -28,7 +28,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // 🔐 Lire user depuis Authorization header
     const authHeader = req.headers.get("authorization");
     if (!authHeader) {
       return NextResponse.json(
@@ -51,10 +50,10 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1️⃣ Load boxes (FIXED HERE)
+    // 1️⃣ Load boxes AVANT update (important pour historique)
     const { data: boxes, error: loadError } = await supabase
       .from("boxes")
-      .select("id, box_code, floor")   // ✅ id au lieu de box_id
+      .select("id, box_code, floor")
       .in("box_code", box_codes);
 
     if (loadError) throw loadError;
@@ -74,12 +73,14 @@ export async function POST(req: Request) {
 
     if (updateErr) throw updateErr;
 
-    // 3️⃣ Insert movements (FIXED 🔥)
+    // 3️⃣ Insert movements avec historique réel
     const movements = boxes.map((box) => ({
       type: "ADJUST",
-      box_id: box.id,            // ✅ box.id au lieu de box.box_id
+      box_id: box.id,
       actor: user.email,
       created_by: user.id,
+      from_floor: box.floor,      // 🔥 ancien floor
+      to_floor: target_floor,     // 🔥 nouveau floor
       created_at: new Date().toISOString(),
     }));
 

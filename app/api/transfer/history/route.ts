@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic"; // 🔥 force dynamique
-export const revalidate = 0;            // 🔥 aucune revalidation cache
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -18,9 +18,10 @@ export async function GET() {
   try {
     const supabase = sb();
 
+    // 🔥 on ajoute to_floor
     const { data, error } = await supabase
       .from("movements")
-      .select("created_at, actor, box_id")
+      .select("created_at, actor, box_id, to_floor")
       .eq("type", "ADJUST")
       .order("created_at", { ascending: false });
 
@@ -42,7 +43,7 @@ export async function GET() {
 
     const { data: boxes } = await supabase
       .from("boxes")
-      .select("id, box_code, floor")
+      .select("id, box_code")
       .in("id", boxIds);
 
     const boxMap = new Map(
@@ -54,7 +55,7 @@ export async function GET() {
       actor: row.actor,
       boxes: {
         box_code: boxMap.get(row.box_id)?.box_code || "-",
-        floor: boxMap.get(row.box_id)?.floor || "-",
+        floor: row.to_floor || "-", // 🔥 historique réel
       },
     }));
 

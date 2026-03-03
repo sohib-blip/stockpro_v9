@@ -76,7 +76,7 @@ export async function POST(req: Request) {
 
     // 3️⃣ Insert movements (FIXED 🔥)
     const movements = boxes.map((box) => ({
-      type: "TRANSFER",
+      type: "ADJUST",
       box_id: box.id,            // ✅ box.id au lieu de box.box_id
       actor: user.email,
       created_by: user.id,

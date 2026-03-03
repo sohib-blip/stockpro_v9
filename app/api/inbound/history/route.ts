@@ -18,6 +18,7 @@ export async function GET() {
   try {
     const supabase = sb();
 
+    // 1️⃣ get inbound batches
     const { data: batches, error: bErr } = await supabase
       .from("inbound_batches")
       .select("batch_id, created_at, actor, vendor")
@@ -26,37 +27,20 @@ export async function GET() {
 
     if (bErr) throw bErr;
 
-    const { data: movs, error: mErr } = await supabase
+    // 2️⃣ aggregate directly from movements
+    const { data: aggData, error: aggErr } = await supabase
       .from("movements")
       .select("batch_id, box_id, item_id")
       .eq("type", "IN");
 
-    if (mErr) throw mErr;
-
-    const { data: boxes } = await supabase
-      .from("boxes")
-      .select("id, bin_id");
-
-    const { data: bins } = await supabase
-      .from("bins")
-      .select("id, name");
-
-    const boxMap: Record<string, string> = {};
-    for (const b of boxes || []) {
-      boxMap[String((b as any).id)] = String((b as any).bin_id);
-    }
-
-    const binMap: Record<string, string> = {};
-    for (const bn of bins || []) {
-      binMap[String((bn as any).id)] = String((bn as any).name);
-    }
+    if (aggErr) throw aggErr;
 
     const agg: Record<
       string,
-      { boxes: Set<string>; imeis: number; devices: Set<string> }
+      { boxes: Set<string>; imeis: number }
     > = {};
 
-    for (const m of movs || []) {
+    for (const m of aggData || []) {
       const bid = String((m as any).batch_id || "");
       if (!bid) continue;
 
@@ -64,24 +48,17 @@ export async function GET() {
         agg[bid] = {
           boxes: new Set(),
           imeis: 0,
-          devices: new Set(),
         };
       }
 
       agg[bid].boxes.add(String((m as any).box_id));
       agg[bid].imeis += 1;
-
-      const bin_id = boxMap[String((m as any).box_id)];
-      if (bin_id && binMap[bin_id]) {
-        agg[bid].devices.add(binMap[bin_id]);
-      }
     }
 
     const rows = (batches || []).map((b: any) => {
       const data = agg[String(b.batch_id)] || {
         boxes: new Set(),
         imeis: 0,
-        devices: new Set(),
       };
 
       return {
@@ -91,7 +68,6 @@ export async function GET() {
         vendor: b.vendor || "unknown",
         qty_boxes: data.boxes.size,
         qty_imeis: data.imeis,
-        devices: Array.from(data.devices).join(", "),
       };
     });
 

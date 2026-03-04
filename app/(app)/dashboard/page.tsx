@@ -347,32 +347,134 @@ const filteredAlerts = filteredDevices.filter(
   <div className="w-full h-64">
     <ResponsiveContainer>
       <LineChart data={chartData}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+  <defs>
+    <linearGradient id="inGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.9}/>
+      <stop offset="100%" stopColor="#38bdf8" stopOpacity={0}/>
+    </linearGradient>
 
-        <XAxis dataKey="date" stroke="#94a3b8" />
+    <linearGradient id="outGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stopColor="#a855f7" stopOpacity={0.9}/>
+      <stop offset="100%" stopColor="#a855f7" stopOpacity={0}/>
+    </linearGradient>
+  </defs>
 
-        <YAxis stroke="#94a3b8" />
+  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
 
-        <Tooltip />
+  <XAxis dataKey="date" stroke="#94a3b8"/>
+  <YAxis stroke="#94a3b8"/>
 
-        <Line
-          type="monotone"
-          dataKey="inbound"
-          stroke="#22c55e"
-          strokeWidth={2}
-          dot={false}
-        />
+  <Tooltip/>
 
-        <Line
-          type="monotone"
-          dataKey="outbound"
-          stroke="#ef4444"
-          strokeWidth={2}
-          dot={false}
-        />
-      </LineChart>
+  <Line
+    type="monotone"
+    dataKey="inbound"
+    stroke="#38bdf8"
+    strokeWidth={3}
+    dot={false}
+    fill="url(#inGradient)"
+  />
+
+  <Line
+    type="monotone"
+    dataKey="outbound"
+    stroke="#a855f7"
+    strokeWidth={3}
+    dot={false}
+    fill="url(#outGradient)"
+  />
+</LineChart>
     </ResponsiveContainer>
   </div>
+</div>
+
+{/* TOP DEVICES */}
+
+<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+  {/* LEFT SIDE */}
+
+  <div className="md:col-span-2">
+
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+
+      <div className="font-semibold mb-4">
+        Top Devices
+      </div>
+
+      <div className="space-y-4">
+
+        {filteredDevices.slice(0,5).map((d) => {
+
+          const percent = Math.min(100, Math.round((d.total_in / 2000) * 100))
+
+          return (
+
+            <div key={d.device_id}>
+
+              <div className="flex justify-between text-sm mb-1">
+                <span>{d.device}</span>
+                <span className="text-slate-400">{d.total_in}</span>
+              </div>
+
+              <div className="w-full bg-slate-800 rounded-full h-2">
+
+                <div
+                  className="h-2 rounded-full bg-gradient-to-r from-sky-400 to-indigo-500"
+                  style={{ width: `${percent}%` }}
+                />
+
+              </div>
+
+            </div>
+
+          )
+
+        })}
+
+      </div>
+
+    </div>
+
+  </div>
+
+
+  {/* RIGHT SIDE */}
+
+  <div>
+
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+
+      <div className="font-semibold mb-4">
+        Recent Activity
+      </div>
+
+      <div className="space-y-3 text-sm">
+
+        <div className="flex justify-between">
+          <span className="text-emerald-400">+120</span>
+          <span>Teltonika</span>
+          <span className="text-slate-500">2h</span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-rose-400">-95</span>
+          <span>Queclink</span>
+          <span className="text-slate-500">5h</span>
+        </div>
+
+        <div className="flex justify-between">
+          <span className="text-emerald-400">+60</span>
+          <span>DigitalMatter</span>
+          <span className="text-slate-500">1d</span>
+        </div>
+
+      </div>
+
+    </div>
+
+  </div>
+
 </div>
 
       {/* FILTERS */}

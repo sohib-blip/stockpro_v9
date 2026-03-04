@@ -116,8 +116,24 @@ export async function GET() {
       alerts,
     };
 
+    // ======================
+// LOAD RECENT MOVEMENTS
+// ======================
+
+const { data: movements } = await supabase
+  .from("movements")
+  .select("type, device, created_at")
+  .order("created_at", { ascending: false })
+  .limit(10);
+
     return NextResponse.json(
-      { ok: true, kpis, deviceSummary, boxSummary },
+  {
+    ok: true,
+    kpis,
+    deviceSummary,
+    boxSummary,
+    activity: movements
+  },
       {
         headers: {
           "Cache-Control":

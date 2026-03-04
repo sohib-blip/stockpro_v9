@@ -4,6 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Search, Download, AlertTriangle, Pencil, X } from "lucide-react";
 
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid
+} from "recharts";
+
 type Level = "ok" | "low" | "empty";
 
 type KPI = {
@@ -53,6 +63,7 @@ export default function DashboardPage() {
 
   const [devices, setDevices] = useState<DeviceSummaryRow[]>([]);
   const [boxes, setBoxes] = useState<BoxSummaryRow[]>([]);
+const [chartData, setChartData] = useState<any[]>([]);
 
   // UI filters
   const [q, setQ] = useState("");
@@ -116,9 +127,21 @@ export default function DashboardPage() {
       }));
 
       setKpi(kpis);
-      setDevices(devs);
-      setBoxes(bxs);
-    } catch (e: any) {
+setDevices(devs);
+setBoxes(bxs);
+
+// LOAD GRAPH 30 DAYS
+const graphRes = await fetch(`/api/dashboard/flow30?t=${Date.now()}`, {
+  cache: "no-store",
+});
+
+const graphJson = await graphRes.json();
+
+if (graphJson?.ok) {
+  setChartData(graphJson.rows || []);
+}
+
+} catch (e: any) {
       setErr(e?.message || "Failed to load dashboard");
       setKpi({ total_in: 0, total_out: 0, total_devices: 0, total_boxes: 0, alerts: 0 });
       setDevices([]);
@@ -287,13 +310,47 @@ export default function DashboardPage() {
       )}
 
       {/* KPI */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-        <KpiCard title="Devices (bins)" value={kpi.total_devices} />
-        <KpiCard title="Boxes" value={kpi.total_boxes} />
-        <KpiCard title="IMEIs IN" value={kpi.total_in} />
-        <KpiCard title="IMEIs OUT" value={kpi.total_out} />
-        <KpiCard title="Alerts" value={kpi.alerts} highlight={kpi.alerts > 0} />
-      </div>
+<div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+  <KpiCard title="Devices (bins)" value={kpi.total_devices} />
+  <KpiCard title="Boxes" value={kpi.total_boxes} />
+  <KpiCard title="IMEIs IN" value={kpi.total_in} />
+  <KpiCard title="Alerts" value={kpi.alerts} highlight={kpi.alerts > 0} />
+</div>
+
+{/* GRAPH 30 DAYS */}
+<div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+  <div className="font-semibold mb-4">Stock flow (last 30 days)</div>
+
+  <div className="w-full h-64">
+    <ResponsiveContainer>
+      <LineChart data={chartData}>
+        <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+
+        <XAxis dataKey="date" stroke="#94a3b8" />
+
+        <YAxis stroke="#94a3b8" />
+
+        <Tooltip />
+
+        <Line
+          type="monotone"
+          dataKey="inbound"
+          stroke="#22c55e"
+          strokeWidth={2}
+          dot={false}
+        />
+
+        <Line
+          type="monotone"
+          dataKey="outbound"
+          stroke="#ef4444"
+          strokeWidth={2}
+          dot={false}
+        />
+      </LineChart>
+    </ResponsiveContainer>
+  </div>
+</div>
 
       {/* FILTERS */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">

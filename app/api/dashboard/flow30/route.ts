@@ -18,32 +18,33 @@ export async function GET() {
 
   const { data } = await supabase
     .from("movements")
-    .select("created_at,type,device")
-    .gte("created_at", new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString());
+    .select("created_at,type")
+    .gte(
+      "created_at",
+      new Date(Date.now() - 1000 * 60 * 60 * 24 * 30).toISOString()
+    );
 
-  const map: Record<string, any> = {};
+  const map: Record<string, { inbound: number; outbound: number }> = {};
 
-for (const m of data || []) {
+  for (const m of data || []) {
 
-  const date = new Date(m.created_at).toISOString().slice(0,10);
-  const device = m.device || "unknown";
+    const date = new Date(m.created_at)
+      .toISOString()
+      .slice(0,10);
 
-  if (!map[date]) map[date] = { date };
+    if (!map[date]) {
+      map[date] = { inbound: 0, outbound: 0 };
+    }
 
-  const key = device + "_" + m.type;
+    if (m.type === "IN") map[date].inbound += 1;
+    if (m.type === "OUT") map[date].outbound += 1;
+  }
 
-  if (!map[date][key]) map[date][key] = 0;
-
-  map[date][key] += 1;
-}
-
-  const rows = Object.entries(map)
-    .map(([date, v]) => ({
-      date,
-      inbound: v.inbound,
-      outbound: v.outbound,
-    }))
-    .sort((a, b) => a.date.localeCompare(b.date));
+  const rows = Object.entries(map).map(([date,v]) => ({
+    date,
+    inbound: v.inbound,
+    outbound: v.outbound
+  }));
 
   return NextResponse.json({
     ok: true,

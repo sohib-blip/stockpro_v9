@@ -396,23 +396,18 @@ const filteredAlerts = filteredDevices.filter(
 
   <Tooltip/>
 
-  <Line
-    type="monotone"
-    dataKey="inbound"
-    stroke="#38bdf8"
-    strokeWidth={3}
-    dot={false}
-    fill="url(#inGradient)"
-  />
-
-  <Line
-    type="monotone"
-    dataKey="outbound"
-    stroke="#a855f7"
-    strokeWidth={3}
-    dot={false}
-    fill="url(#outGradient)"
-  />
+  {Object.keys(chartData[0] || {})
+  .filter(k => k !== "date")
+  .map((key,i) => (
+    <Line
+      key={key}
+      type="monotone"
+      dataKey={key}
+      strokeWidth={2}
+      dot={false}
+      stroke={`hsl(${i*60},70%,60%)`}
+    />
+))}
 </LineChart>
     </ResponsiveContainer>
   </div>

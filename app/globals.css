@@ -36,3 +36,71 @@ body {
 * {
   box-sizing: border-box;
 }
+
+/* ===== STOCKPRO MODERN UI THEME ===== */
+
+body{
+  background:
+    radial-gradient(circle at 20% 20%, rgba(59,130,246,0.15), transparent 40%),
+    radial-gradient(circle at 80% 0%, rgba(168,85,247,0.15), transparent 40%),
+    var(--background);
+}
+
+/* cards glow */
+.rounded-2xl{
+  background: linear-gradient(
+    180deg,
+    rgba(20,25,45,0.9),
+    rgba(10,14,30,0.95)
+  );
+
+  border:1px solid rgba(255,255,255,0.05);
+
+  box-shadow:
+    0 10px 30px rgba(0,0,0,0.6),
+    inset 0 0 0 1px rgba(255,255,255,0.02);
+
+  backdrop-filter: blur(12px);
+}
+
+/* sidebar modern */
+aside{
+  background: linear-gradient(
+    180deg,
+    rgba(12,16,35,0.95),
+    rgba(6,10,22,0.95)
+  );
+
+  backdrop-filter: blur(20px);
+}
+
+/* table style */
+table{
+  border-radius:16px;
+  overflow:hidden;
+}
+
+thead{
+  background:rgba(255,255,255,0.02);
+}
+
+tbody tr:hover{
+  background:rgba(255,255,255,0.03);
+}
+
+/* button hover effect */
+button{
+  transition:all .2s ease;
+}
+
+button:hover{
+  transform:translateY(-1px);
+  box-shadow:0 8px 20px rgba(0,0,0,0.4);
+}
+
+/* KPI numbers glow */
+.text-2xl{
+  background: linear-gradient(90deg,#e0f2fe,#ffffff);
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+}

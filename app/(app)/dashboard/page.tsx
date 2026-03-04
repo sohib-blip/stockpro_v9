@@ -178,6 +178,22 @@ if (graphJson?.ok) {
     return deviceMatchesSearch(d);
   });
 
+  // KPI filtered values
+const filteredDeviceIds = new Set(filteredDevices.map(d => d.device_id));
+
+const filteredBoxesForKpi = boxes.filter(b =>
+  filteredDeviceIds.has(b.device_id)
+);
+
+const filteredTotalIn = filteredDevices.reduce(
+  (sum, d) => sum + d.total_in,
+  0
+);
+
+const filteredAlerts = filteredDevices.filter(
+  d => d.level !== "ok"
+).length;
+
   // ✅ Filter boxes for "whole page filter"
   const filteredBoxes = boxes.filter((b) => boxMatchesSearch(b));
 
@@ -311,10 +327,17 @@ if (graphJson?.ok) {
 
       {/* KPI */}
 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-  <KpiCard title="Devices (bins)" value={kpi.total_devices} />
-  <KpiCard title="Boxes" value={kpi.total_boxes} />
-  <KpiCard title="IMEIs IN" value={kpi.total_in} />
-  <KpiCard title="Alerts" value={kpi.alerts} highlight={kpi.alerts > 0} />
+  <KpiCard title="Devices (bins)" value={filteredDevices.length} />
+
+  <KpiCard title="Boxes" value={filteredBoxesForKpi.length} />
+
+  <KpiCard title="IMEIs IN" value={filteredTotalIn} />
+
+  <KpiCard
+    title="Alerts"
+    value={filteredAlerts}
+    highlight={filteredAlerts > 0}
+  />
 </div>
 
 {/* GRAPH 30 DAYS */}

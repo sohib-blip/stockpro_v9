@@ -500,7 +500,7 @@ setManualMsg("");
       </div>
 
       {/* MANUAL IMPORT */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
         <div>
           <div className="font-semibold">Manual Import</div>
           <div className="text-xs text-slate-500">
@@ -586,7 +586,7 @@ setManualMsg("");
       </div>
 
       {/* EXCEL IMPORT */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
+      <div className="card-glow p-6 space-y-3">
         <div className="font-semibold">Excel Import</div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
@@ -636,7 +636,7 @@ setManualMsg("");
       </div>
 
             {result?.ok && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+        <div className="card-glow p-6 space-y-4 relative overflow-hidden">
           <div className="flex flex-wrap items-center justify-between gap-3">
             {/* LEFT */}
             <div className="space-y-2">
@@ -710,7 +710,7 @@ setManualMsg("");
       )}
 
       {/* HISTORY */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
+      <div className="card-glow p-6 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="font-semibold">Inbound history</div>

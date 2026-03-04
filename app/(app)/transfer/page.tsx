@@ -172,7 +172,7 @@ export default function TransferPage() {
       </div>
 
       {/* TRANSFER CARD */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+      <div className="card-glow p-6 space-y-4">
 
         <textarea
           value={boxInput}
@@ -203,7 +203,7 @@ export default function TransferPage() {
 
       {/* PREVIEW DETAIL */}
       {preview?.preview && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-5">
+        <div className="card-glow p-6 space-y-5">
 
           <div className="flex justify-between items-center">
             <div className="font-semibold text-lg">
@@ -251,7 +251,7 @@ export default function TransferPage() {
       )}
 
       {/* HISTORY */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+      <div className="card-glow p-6 space-y-4">
 
         <div className="flex flex-wrap gap-3 justify-between items-center">
           <div className="font-semibold">Transfer History</div>

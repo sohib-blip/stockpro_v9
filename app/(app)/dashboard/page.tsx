@@ -363,7 +363,7 @@ const filteredAlerts = filteredDevices.filter(
 </div>
 
 {/* GRAPH 30 DAYS */}
-<div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 relative overflow-hidden">
+<div className="card-glow p-6 relative overflow-hidden">
   <div className="absolute inset-0 opacity-30 pointer-events-none">
 
   <div className="absolute -top-40 left-1/4 w-96 h-96 bg-sky-500 blur-[120px]" />
@@ -421,7 +421,7 @@ const filteredAlerts = filteredDevices.filter(
 
   <div className="md:col-span-2">
 
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+    <div className="card-glow p-6 relative overflow-hidden">
 
       <div className="font-semibold mb-4">
         Top Devices
@@ -468,7 +468,7 @@ const filteredAlerts = filteredDevices.filter(
 
   <div>
 
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+    <div className="card-glow p-6 relative overflow-hidden">
 
       <div className="font-semibold mb-4">
         Recent Activity
@@ -503,7 +503,7 @@ const filteredAlerts = filteredDevices.filter(
 </div>
 
       {/* TABLE */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
+      <div className="card-glow p-6 space-y-3">
         <div>
           <div className="font-semibold">Bins</div>
           <div className="text-xs text-slate-500">Click a device to view boxes (drilldown).</div>
@@ -627,7 +627,7 @@ const filteredAlerts = filteredDevices.filter(
       {/* DRILLDOWN MODAL */}
       {openDeviceId && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="w-full max-w-5xl max-h-[85vh] rounded-2xl border border-slate-800 bg-slate-950 overflow-y-auto">
+          <div className="card-glow w-full max-w-5xl max-h-[85vh] overflow-y-auto">
             <div className="flex items-center justify-between p-4 border-b border-slate-800">
               <div>
                 <div className="text-xs text-slate-500">Drilldown</div>
@@ -657,7 +657,7 @@ const filteredAlerts = filteredDevices.filter(
               ) : (
                 <div className="space-y-3">
                   {drillBoxes.map((b) => (
-                    <div key={b.box_id} className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
+                    <div key={b.box_id} className="card-glow p-4">
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <div>
                           <div className="font-semibold">
@@ -707,7 +707,7 @@ function KpiCard({
   highlight?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 card-glow">
+    <div className="card-glow p-5">
       <div className="text-xs text-slate-500">{title}</div>
       <div className={"mt-2 text-3xl kpi-number " + (highlight ? "text-amber-200" : "")}>
         {value}

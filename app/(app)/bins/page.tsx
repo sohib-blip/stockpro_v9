@@ -46,15 +46,15 @@ export default function BinsPage() {
   }, []);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-4xl">
       <h1 className="text-xl font-semibold">Bins</h1>
 
-      <div className="flex gap-2">
+      <div className="card-glow p-6 flex gap-2 items-center">
         <input
           value={newBin}
           onChange={(e) => setNewBin(e.target.value)}
           placeholder="New bin name..."
-          className="bg-slate-900 border border-slate-700 px-3 py-2 rounded-xl text-sm w-64"
+          className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-64"
         />
         <button
           onClick={addBin}
@@ -65,7 +65,7 @@ export default function BinsPage() {
         </button>
       </div>
 
-      <div className="border border-slate-800 rounded-xl overflow-hidden">
+      <div className="card-glow p-0 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-slate-900">
             <tr>

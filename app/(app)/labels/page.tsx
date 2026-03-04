@@ -141,7 +141,7 @@ export default function LabelsPage() {
         </p>
       </div>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+      <div className="card-glow p-6 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-sm font-semibold">Label size</div>
 
@@ -195,7 +195,7 @@ export default function LabelsPage() {
           return (
             <div
               key={l.id}
-              className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4"
+              className="card-glow p-6 space-y-4"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="font-semibold">Label #{idx + 1}</div>

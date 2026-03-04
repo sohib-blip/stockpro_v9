@@ -194,7 +194,7 @@ export default function OutboundPage() {
       </div>
 
       {/* SHIPMENT */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+      <div className="card-glow p-6 relative overflow-hidden">
         <div className="font-semibold mb-2">Shipment reference</div>
         <input
           value={shipmentRef}
@@ -204,7 +204,7 @@ export default function OutboundPage() {
       </div>
 
       {/* MANUAL */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+      <div className="card-glow p-6 relative overflow-hidden">
         <div className="font-semibold mb-3">Manual Scan</div>
         <textarea
           value={imeiInput}
@@ -220,7 +220,7 @@ export default function OutboundPage() {
       </div>
 
       {/* EXCEL */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+      <div className="card-glow p-6 relative overflow-hidden">
         <div className="font-semibold mb-3">Import End Of Day Report</div>
         <input
           type="file"
@@ -237,7 +237,7 @@ export default function OutboundPage() {
 
       {/* PREVIEW */}
       {preview?.ok && (
-        <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+        <div className="card-glow p-6 space-y-4 relative overflow-hidden">
           <div className="flex justify-between">
             <div className="font-semibold">
               Preview ({previewSource})
@@ -284,7 +284,7 @@ export default function OutboundPage() {
       )}
 
       {/* HISTORY */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-4">
+      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
 
         <div className="flex items-center justify-between">
           <div className="font-semibold">Outbound history</div>

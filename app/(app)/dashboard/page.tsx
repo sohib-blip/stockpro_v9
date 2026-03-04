@@ -291,32 +291,54 @@ const filteredAlerts = filteredDevices.filter(
   return (
     <div className="space-y-6 max-w-6xl">
       {/* HEADER */}
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <div className="text-xs text-slate-500">Dashboard</div>
-          <h2 className="text-xl font-semibold">Stock overview</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            User: <b>{actor}</b>
-          </p>
-        </div>
+      <div className="flex items-center justify-between gap-6">
 
-        <div className="flex gap-2">
-          <button
-            onClick={loadOverview}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-          >
-            Refresh
-          </button>
+  {/* TITLE */}
+  <div>
+    <div className="text-xs text-slate-500">Dashboard</div>
+    <h2 className="text-xl font-semibold">Stock overview</h2>
+    <p className="text-sm text-slate-400 mt-1">
+      User: <b>{actor}</b>
+    </p>
+  </div>
 
-          <button
-            onClick={exportExcel}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold flex items-center gap-2"
-          >
-            <Download size={16} />
-            Export Excel
-          </button>
-        </div>
-      </div>
+  {/* RIGHT SIDE */}
+  <div className="flex items-center gap-3">
+
+    {/* SEARCH */}
+    <div className="relative">
+      <Search
+        className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500"
+        size={16}
+      />
+
+      <input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search device..."
+        className="w-[220px] rounded-xl border border-slate-800 bg-slate-950 pl-9 pr-3 py-2 text-sm text-slate-300 placeholder:text-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-700"
+      />
+    </div>
+
+    {/* REFRESH */}
+    <button
+      onClick={loadOverview}
+      className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+    >
+      Refresh
+    </button>
+
+    {/* EXPORT */}
+    <button
+      onClick={exportExcel}
+      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold flex items-center gap-2"
+    >
+      <Download size={16} />
+      Export
+    </button>
+
+  </div>
+</div>
 
       {/* ERROR */}
       {err && (
@@ -341,7 +363,15 @@ const filteredAlerts = filteredDevices.filter(
 </div>
 
 {/* GRAPH 30 DAYS */}
-<div className="rounded-2xl border border-slate-800 bg-slate-900 p-6">
+<div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 relative overflow-hidden">
+  <div className="absolute inset-0 opacity-30 pointer-events-none">
+
+  <div className="absolute -top-40 left-1/4 w-96 h-96 bg-sky-500 blur-[120px]" />
+
+  <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500 blur-[120px]" />
+
+</div>
+
   <div className="font-semibold mb-4">Stock flow (last 30 days)</div>
 
   <div className="w-full h-64">
@@ -476,33 +506,6 @@ const filteredAlerts = filteredDevices.filter(
   </div>
 
 </div>
-
-      {/* FILTERS */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4">
-        <div className="flex flex-col md:flex-row gap-3 md:items-center">
-          <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={16} />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search device…"
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 pl-9 pr-3 py-2 text-sm"
-            />
-          </div>
-
-          <label className="flex items-center gap-2 text-sm text-slate-300 select-none">
-            <input
-              type="checkbox"
-              checked={lowOnly}
-              onChange={(e) => setLowOnly(e.target.checked)}
-              className="h-4 w-4"
-            />
-            Low stock only
-          </label>
-
-          {loading && <div className="text-sm text-slate-400">Loading…</div>}
-        </div>
-      </div>
 
       {/* TABLE */}
       <div className="rounded-2xl border border-slate-800 bg-slate-900 p-6 space-y-3">
@@ -709,9 +712,9 @@ function KpiCard({
   highlight?: boolean;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
+    <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5 card-glow">
       <div className="text-xs text-slate-500">{title}</div>
-      <div className={"mt-2 text-2xl font-semibold " + (highlight ? "text-amber-200" : "")}>
+      <div className={"mt-2 text-3xl kpi-number " + (highlight ? "text-amber-200" : "")}>
         {value}
       </div>
     </div>

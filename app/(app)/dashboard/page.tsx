@@ -5,8 +5,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { Search, Download, AlertTriangle, Pencil, X } from "lucide-react";
 
 import {
-  LineChart,
-  Line,
+  BarChart,
+  Bar,
   XAxis,
   YAxis,
   Tooltip,
@@ -63,7 +63,7 @@ export default function DashboardPage() {
 
   const [devices, setDevices] = useState<DeviceSummaryRow[]>([]);
   const [boxes, setBoxes] = useState<BoxSummaryRow[]>([]);
-const [chartData, setChartData] = useState<any[]>([]);
+const [activity, setActivity] = useState<any[]>([]);
 
   // UI filters
   const [q, setQ] = useState("");
@@ -130,15 +130,14 @@ const [chartData, setChartData] = useState<any[]>([]);
 setDevices(devs);
 setBoxes(bxs);
 
-// LOAD GRAPH 30 DAYS
-const graphRes = await fetch(`/api/dashboard/flow30?t=${Date.now()}`, {
+const actRes = await fetch(`/api/dashboard/activity?t=${Date.now()}`, {
   cache: "no-store",
 });
 
-const graphJson = await graphRes.json();
+const actJson = await actRes.json();
 
-if (graphJson?.ok) {
-  setChartData(graphJson.rows || []);
+if (actJson?.ok) {
+  setActivity(actJson.rows || []);
 }
 
 } catch (e: any) {
@@ -155,6 +154,29 @@ if (graphJson?.ok) {
     loadOverview();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+
+  const channel = supabase
+    .channel("movements-live")
+    .on(
+      "postgres_changes",
+      {
+        event: "INSERT",
+        schema: "public",
+        table: "movements",
+      },
+      () => {
+        loadOverview();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+
+}, []);
 
   // ✅ GLOBAL FILTER HELPERS
   const search = q.trim().toLowerCase();
@@ -372,44 +394,37 @@ const filteredAlerts = filteredDevices.filter(
 
 </div>
 
-  <div className="font-semibold mb-4">Stock flow (last 30 days)</div>
+  <div className="font-semibold mb-4">Stock by device</div>
 
   <div className="w-full h-64">
-    <ResponsiveContainer>
-      <LineChart data={chartData}>
-  <defs>
-    <linearGradient id="inGradient" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#38bdf8" stopOpacity={0.9}/>
-      <stop offset="100%" stopColor="#38bdf8" stopOpacity={0}/>
-    </linearGradient>
+    <ResponsiveContainer width="100%" height="100%">
+  <BarChart data={filteredDevices}>
 
-    <linearGradient id="outGradient" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stopColor="#a855f7" stopOpacity={0.9}/>
-      <stop offset="100%" stopColor="#a855f7" stopOpacity={0}/>
-    </linearGradient>
-  </defs>
+    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
 
-  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
-
-  <XAxis dataKey="date" stroke="#94a3b8"/>
-  <YAxis stroke="#94a3b8"/>
-
-  <Tooltip/>
-
-  {Object.keys(chartData[0] || {})
-  .filter(k => k !== "date")
-  .map((key,i) => (
-    <Line
-      key={key}
-      type="monotone"
-      dataKey={key}
-      strokeWidth={2}
-      dot={false}
-      stroke={`hsl(${i*60},70%,60%)`}
+    <XAxis
+      dataKey="device"
+      stroke="#94a3b8"
     />
-))}
-</LineChart>
-    </ResponsiveContainer>
+
+    <YAxis stroke="#94a3b8"/>
+
+    <Tooltip/>
+
+    <Bar
+      dataKey="total_in"
+      fill="#38bdf8"
+      radius={[4,4,0,0]}
+    />
+
+    <Bar
+      dataKey="total_out"
+      fill="#a855f7"
+      radius={[4,4,0,0]}
+    />
+
+  </BarChart>
+</ResponsiveContainer>
   </div>
 </div>
 
@@ -476,25 +491,36 @@ const filteredAlerts = filteredDevices.filter(
 
       <div className="space-y-3 text-sm">
 
-        <div className="flex justify-between">
-          <span className="text-emerald-400">+120</span>
-          <span>Teltonika</span>
-          <span className="text-slate-500">2h</span>
-        </div>
+{activity.map((a,i)=>{
+  {activity.length === 0 && (
+  <div className="text-slate-500 text-sm">
+    No activity yet
+  </div>
+)}
 
-        <div className="flex justify-between">
-          <span className="text-rose-400">-95</span>
-          <span>Queclink</span>
-          <span className="text-slate-500">5h</span>
-        </div>
+  const inbound = a.type === "IN";
 
-        <div className="flex justify-between">
-          <span className="text-emerald-400">+60</span>
-          <span>DigitalMatter</span>
-          <span className="text-slate-500">1d</span>
-        </div>
+  return (
 
-      </div>
+    <div key={i} className="flex justify-between">
+
+      <span className={inbound ? "text-emerald-400" : "text-rose-400"}>
+        {inbound ? "+" : "-"}1
+      </span>
+
+      <span>{a.device}</span>
+
+      <span className="text-slate-500">
+        {new Date(a.created_at).toLocaleTimeString()}
+      </span>
+
+    </div>
+
+  );
+
+})}
+
+</div>
 
     </div>
 

@@ -12,22 +12,13 @@ export async function GET() {
 
   const { data } = await supabase
     .from("movements")
-    .select(`
-      type,
-      created_at,
-      bins(device)
-    `)
-    .order("created_at", { ascending:false })
+    .select("type, device, created_at")
+    .order("created_at", { ascending: false })
     .limit(20);
 
-  const rows = (data || []).map((m:any)=>({
-    type: m.type,
-    device: m.bins?.device || "Unknown",
-    created_at: m.created_at
-  }));
-
   return NextResponse.json({
-    ok:true,
-    rows
+    ok: true,
+    rows: data || []
   });
+
 }

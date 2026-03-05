@@ -10,7 +10,9 @@ export async function POST(req: Request) {
 
   const { email, role } = await req.json()
 
-  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email)
+  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+    redirectTo: "https://stockpro-v9.vercel.app"
+  })
 
   if (error) {
     return NextResponse.json({ error: error.message })

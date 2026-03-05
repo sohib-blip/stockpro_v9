@@ -15,8 +15,10 @@ export async function GET() {
     .select(`
       type,
       created_at,
-      bins (
-        device
+      boxes (
+        bins (
+          device
+        )
       )
     `)
     .order("created_at", { ascending: false })
@@ -24,7 +26,7 @@ export async function GET() {
 
   const rows = (data || []).map((m:any)=>({
     type: m.type,
-    device: m.bins?.device || "Unknown",
+    device: m.boxes?.bins?.device || "Unknown",
     created_at: m.created_at
   }));
 
@@ -32,5 +34,4 @@ export async function GET() {
     ok: true,
     rows
   });
-
 }

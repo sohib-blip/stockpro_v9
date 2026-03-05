@@ -12,13 +12,23 @@ export async function POST(req: Request) {
 
   const { data, error } = await supabase.auth.admin.inviteUserByEmail(email);
 
-  console.log("INVITE ERROR:", error);
-  console.log("USER DATA:", data);
-
   if (error) {
+    console.log(error);
     return NextResponse.json({ error: error.message });
   }
 
-  return NextResponse.json({ ok: true });
+  const userId = data.user?.id;
 
+  const { error: roleError } = await supabase
+    .from("user_roles")
+    .insert({
+      user_id: userId,
+      role
+    });
+
+  if (roleError) {
+    console.log(roleError);
+  }
+
+  return NextResponse.json({ ok: true });
 }

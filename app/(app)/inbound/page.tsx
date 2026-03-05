@@ -473,7 +473,7 @@ setManualMsg("");
               </div>
             </div>
             <div className="text-xs text-slate-400 mt-2">
-              Ne ferme pas l’onglet, ça arrive 👀
+              Don't close the tab 👀
             </div>
           </div>
         </div>
@@ -494,7 +494,7 @@ setManualMsg("");
             href={`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
           >
-            Download QR labels (ZD220 PDF)
+           QR labels 
           </a>
         )}
       </div>
@@ -504,7 +504,6 @@ setManualMsg("");
         <div>
           <div className="font-semibold">Manual Import</div>
           <div className="text-xs text-slate-500">
-            Manual imports are included in history (vendor=manual) + Excel export + QR labels.
           </div>
         </div>
 
@@ -715,7 +714,6 @@ setManualMsg("");
           <div>
             <div className="font-semibold">Inbound history</div>
             <div className="text-xs text-slate-500">
-              Filter Excel vs Manual, download Excel export + QR labels anytime.
             </div>
           </div>
 

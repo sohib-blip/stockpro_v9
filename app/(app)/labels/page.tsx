@@ -137,7 +137,6 @@ export default function LabelsPage() {
         <div className="text-xs text-slate-500">Labels</div>
         <h2 className="text-xl font-semibold">QR Label Generator (ZD220)</h2>
         <p className="text-sm text-slate-400 mt-1">
-          QR = IMEIs uniquement (1 par ligne). 1 page PDF = 1 label.
         </p>
       </div>
 
@@ -248,7 +247,7 @@ export default function LabelsPage() {
                 <textarea
                   value={l.imeisText}
                   onChange={(e) => updateLabel(l.id, { imeisText: e.target.value })}
-                  placeholder="1 IMEI par ligne."
+                  placeholder="IMEI"
                   className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
                 />
               </div>

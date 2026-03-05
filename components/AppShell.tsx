@@ -76,7 +76,11 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </nav>
       </aside>
 
-      <section className="flex-1 p-6">{children}</section>
+      <section className="flex-1 flex justify-center p-6">
+  <div className="w-full max-w-7xl">
+    {children}
+  </div>
+</section>
     </div>
   );
 }

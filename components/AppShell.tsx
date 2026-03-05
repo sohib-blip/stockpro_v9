@@ -1,8 +1,10 @@
 "use client";
 
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ReactNode, useState } from "react";
+import { ReactNode, useState, useEffect } from "react";
 import {
   LayoutDashboard,
   ArrowDownToLine,
@@ -11,6 +13,7 @@ import {
   Menu,
   Package,
   Repeat,
+  LogOut
 } from "lucide-react";
 
 const NAV = [
@@ -25,12 +28,30 @@ const NAV = [
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "";
   const [collapsed, setCollapsed] = useState(false);
+  const [email, setEmail] = useState<string | null>(null);
+
+  const supabase = createSupabaseBrowserClient();
+const router = useRouter();
+
+async function handleLogout() {
+  await supabase.auth.signOut();
+  router.push("/login");
+}
+
+useEffect(() => {
+  async function loadUser() {
+    const { data } = await supabase.auth.getUser();
+    setEmail(data?.user?.email || null);
+  }
+
+  loadUser();
+}, []);
 
   return (
     <div className="min-h-screen flex bg-slate-950 text-slate-100">
       <aside
   className={[
-    "h-screen sticky top-0 shrink-0",
+  "h-screen sticky top-0 shrink-0 relative",
     "bg-slate-950 border-r border-slate-800/80",
     "transition-all duration-300",
     collapsed ? "w-[72px]" : "w-[260px]",
@@ -78,8 +99,33 @@ export default function AppShell({ children }: { children: ReactNode }) {
               </Link>
             );
           })}
+
         </nav>
-      </aside>
+
+<div className="absolute bottom-4 left-0 w-full px-2 border-t border-slate-800 pt-3">
+
+  {!collapsed && email && (
+    <div className="px-3 py-2 text-xs text-slate-400 truncate">
+      {email}
+    </div>
+  )}
+
+  <button
+    onClick={handleLogout}
+    className={`
+      flex items-center gap-3 px-3 py-2 rounded-xl w-full
+      transition-all duration-200
+      ${collapsed ? "justify-center" : ""}
+      hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(239,68,68,0.2)]
+    `}
+  >
+    <LogOut size={18} />
+    {!collapsed && <span>Logout</span>}
+  </button>
+
+</div>
+
+</aside>
 
       <section className="flex-1 p-8">
   <div

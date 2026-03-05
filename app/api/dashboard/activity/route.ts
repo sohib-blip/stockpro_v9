@@ -4,34 +4,20 @@ import { createClient } from "@supabase/supabase-js";
 export const runtime = "nodejs";
 
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
+ process.env.NEXT_PUBLIC_SUPABASE_URL!,
+ process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
 export async function GET() {
 
-  const { data } = await supabase
-    .from("movements")
-    .select(`
-      type,
-      created_at,
-      boxes (
-        bins (
-          device
-        )
-      )
-    `)
-    .order("created_at", { ascending: false })
-    .limit(20);
+ const { data, error } = await supabase.rpc("recent_activity");
 
-  const rows = (data || []).map((m:any)=>({
-    type: m.type,
-    device: m.boxes?.bins?.device || "Unknown",
-    created_at: m.created_at
-  }));
+ if (error) {
+  return NextResponse.json({ ok:false, error:error.message });
+ }
 
-  return NextResponse.json({
-    ok: true,
-    rows
-  });
+ return NextResponse.json({
+  ok:true,
+  rows:data
+ });
 }

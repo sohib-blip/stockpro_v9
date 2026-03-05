@@ -398,32 +398,49 @@ const filteredAlerts = filteredDevices.filter(
 
   <div className="w-full h-64">
     <ResponsiveContainer width="100%" height="100%">
-  <BarChart data={filteredDevices}>
+  <BarChart
+  data={filteredDevices}
+  barCategoryGap="25%"
+>
 
-    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
+  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
 
-    <XAxis
-      dataKey="device"
-      stroke="#94a3b8"
-    />
+  <XAxis
+    dataKey="device"
+    stroke="#94a3b8"
+    angle={-45}
+    textAnchor="end"
+    interval={0}
+    height={80}
+  />
 
-    <YAxis stroke="#94a3b8"/>
+  <YAxis stroke="#94a3b8"/>
 
-    <Tooltip/>
+  <Tooltip
+    contentStyle={{
+      background: "#020617",
+      border: "1px solid #1e293b",
+      borderRadius: "10px",
+      color: "#e2e8f0"
+    }}
+    cursor={{ fill: "rgba(148,163,184,0.08)" }}
+  />
 
-    <Bar
-      dataKey="total_in"
-      fill="#38bdf8"
-      radius={[4,4,0,0]}
-    />
+  <Bar
+  dataKey="total_in"
+  name="Inbound"
+  fill="#38bdf8"
+  radius={[4,4,0,0]}
+/>
 
-    <Bar
-      dataKey="total_out"
-      fill="#a855f7"
-      radius={[4,4,0,0]}
-    />
+<Bar
+  dataKey="total_out"
+  name="Outbound"
+  fill="#a855f7"
+  radius={[4,4,0,0]}
+/>
 
-  </BarChart>
+</BarChart>
 </ResponsiveContainer>
   </div>
 </div>
@@ -491,12 +508,13 @@ const filteredAlerts = filteredDevices.filter(
 
       <div className="space-y-3 text-sm">
 
-{activity.map((a,i)=>{
-  {activity.length === 0 && (
+{activity.length === 0 && (
   <div className="text-slate-500 text-sm">
     No activity yet
   </div>
 )}
+
+{activity.map((a,i)=>{
 
   const inbound = a.type === "IN";
 

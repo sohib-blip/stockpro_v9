@@ -20,21 +20,20 @@ export async function GET() {
 
     // 🔥 Important: only export items currently IN stock
     const { data, error } = await supabase
-      .from("items")
-      .select(`
-        imei,
-        status,
-        boxes (
-          id,
-          box_code,
-          floor,
-          bins (
-            id,
-            name
-          )
-        )
-      `)
-      .eq("status", "IN");
+  .from("items")
+  .select(`
+    imei,
+    status,
+    boxes (
+      id,
+      box_code,
+      floor,
+      bins (
+        id,
+        name
+      )
+    )
+  `);
 
     if (error) throw error;
 

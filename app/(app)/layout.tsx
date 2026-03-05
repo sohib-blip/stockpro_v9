@@ -6,7 +6,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     <AppShell>
       <RouteGuard>
         <div className="flex justify-center w-full">
-          <div className="w-full max-w-7xl px-6">
+          <div className="w-full max-w-7xl mx-auto px-6 py-6">
             {children}
           </div>
         </div>

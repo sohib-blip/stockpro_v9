@@ -527,7 +527,7 @@ const filteredAlerts = filteredDevices.filter(
     <div key={i} className="flex justify-between">
 
       <span className={inbound ? "text-emerald-400" : "text-rose-400"}>
-        {inbound ? "+" : "-"}1
+        {inbound ? "+" : "-"}{a.qty}
       </span>
 
       <span>{a.device}</span>

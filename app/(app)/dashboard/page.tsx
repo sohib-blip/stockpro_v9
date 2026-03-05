@@ -310,6 +310,35 @@ const filteredAlerts = filteredDevices.filter(
         .sort((a, b) => (a.box_code || "").localeCompare(b.box_code || ""))
     : [];
 
+    function formatActivityTime(dateString: string) {
+
+  const d = new Date(dateString);
+  const now = new Date();
+
+  const isToday =
+    d.getDate() === now.getDate() &&
+    d.getMonth() === now.getMonth() &&
+    d.getFullYear() === now.getFullYear();
+
+  const yesterday = new Date();
+  yesterday.setDate(now.getDate() - 1);
+
+  const isYesterday =
+    d.getDate() === yesterday.getDate() &&
+    d.getMonth() === yesterday.getMonth() &&
+    d.getFullYear() === yesterday.getFullYear();
+
+  if (isToday) {
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  }
+
+  if (isYesterday) {
+    return "Yesterday";
+  }
+
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+
   return (
     <div className="space-y-6 max-w-6xl">
       {/* HEADER */}
@@ -533,8 +562,8 @@ const filteredAlerts = filteredDevices.filter(
       <span>{a.device}</span>
 
       <span className="text-slate-500">
-        {new Date(a.created_at).toLocaleTimeString()}
-      </span>
+  {formatActivityTime(a.created_at)}
+</span>
 
     </div>
 

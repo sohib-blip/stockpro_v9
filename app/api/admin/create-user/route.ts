@@ -10,11 +10,7 @@ export async function POST(req: Request) {
 
   const { email, role } = await req.json();
 
-  const { data, error } = await supabase.auth.admin.createUser({
-    email,
-    password: "TempPassword123!",
-    email_confirm: true
-  });
+  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email);
 
   if (error) {
     return NextResponse.json({ error: error.message });

@@ -24,7 +24,6 @@ const NAV = [
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
   { href: "/transfer", label: "Transfer", icon: Repeat },
   { href: "/bins", label: "Bins", icon: Package },
-  { href: "/settings", label: "Settings", icon: Settings }
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {

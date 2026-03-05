@@ -2,47 +2,51 @@
 
 import { useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useRouter } from "next/navigation";
 
 export default function ResetPasswordPage() {
-
   const supabase = createSupabaseBrowserClient();
-  const [password,setPassword] = useState("");
+  const router = useRouter();
 
-  async function updatePassword(){
+  const [password, setPassword] = useState("");
+  const [msg, setMsg] = useState("");
 
-    await supabase.auth.updateUser({
-      password
+  async function updatePassword() {
+    const { error } = await supabase.auth.updateUser({
+      password,
     });
 
-    alert("Password updated");
+    if (error) {
+      setMsg(error.message);
+      return;
+    }
+
+    setMsg("Password updated. You can login now.");
+    router.push("/login");
   }
 
   return (
-    <div className="flex items-center justify-center min-h-screen">
-
-      <div className="card-glow p-8 space-y-4 w-[400px]">
-
-        <h1 className="text-xl font-semibold">
-          Create your password
-        </h1>
+    <main className="min-h-screen flex items-center justify-center bg-slate-950 text-white">
+      <div className="bg-slate-900 p-6 rounded-xl w-[350px]">
+        <h1 className="text-xl font-bold mb-4">Set new password</h1>
 
         <input
           type="password"
           placeholder="New password"
+          className="w-full p-2 mb-4 rounded bg-slate-800"
           value={password}
-          onChange={(e)=>setPassword(e.target.value)}
-          className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2"
+          onChange={(e) => setPassword(e.target.value)}
         />
 
         <button
           onClick={updatePassword}
-          className="bg-indigo-600 px-4 py-2 rounded"
+          className="w-full bg-blue-600 p-2 rounded"
         >
           Update password
         </button>
 
+        <p className="mt-3 text-sm">{msg}</p>
       </div>
-
-    </div>
+    </main>
   );
 }

@@ -10,7 +10,9 @@ export async function POST(req: Request) {
 
   const { email, role } = await req.json();
 
-  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email);
+ const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
+  redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password`
+});
 
   if (error) {
     return NextResponse.json({ error: error.message });

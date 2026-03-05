@@ -81,10 +81,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </nav>
       </aside>
 
-      <section className="flex-1 flex justify-center p-6">
+      <section className="flex-1 p-8">
   <div
-    className={`w-full transition-all duration-300 ${
-      collapsed ? "max-w-[1600px]" : "max-w-7xl"
+    className={`mx-auto w-full transition-all duration-300 ${
+      collapsed ? "max-w-[1400px]" : "max-w-screen-xl"
     }`}
   >
     {children}

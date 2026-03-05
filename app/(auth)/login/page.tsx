@@ -40,32 +40,29 @@ export default function LoginPage() {
     router.push("/dashboard");
   }
 
-  async function signUp() {
-    // ✅ block empty submit (prevents anonymous attempt)
-    if (!email.trim() || !password) {
-      setMsg("❌ Please enter an email and a password");
-      return;
-    }
+async function resetPassword() {
 
-    setLoading(true);
-    setMsg(null);
-
-    console.log("SIGNUP DATA:", email.trim(), password ? "***" : "");
-
-    const { error } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      setMsg(error.message);
-      return;
-    }
-
-    setMsg("✅ Account created. You can sign in now.");
+  if (!email.trim()) {
+    setMsg("Enter your email first");
+    return;
   }
+
+  setLoading(true);
+  setMsg(null);
+
+  const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+    redirectTo: `${window.location.origin}/reset-password`,
+  });
+
+  setLoading(false);
+
+  if (error) {
+    setMsg(error.message);
+    return;
+  }
+
+  setMsg("📧 Password reset email sent");
+}
 
   return (
     <main className="min-h-screen p-6 flex items-center justify-center bg-slate-950 text-slate-100">
@@ -91,30 +88,27 @@ export default function LoginPage() {
           placeholder="min 6 characters"
         />
 
-        <div className="flex gap-2">
-          <button
-            onClick={signIn}
-            disabled={loading}
-            className="flex-1 rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 px-4 py-2 font-semibold disabled:opacity-50"
-          >
-            {loading ? "..." : "Sign in"}
-          </button>
+        <div className="flex flex-col gap-2">
 
-          <button
-            onClick={signUp}
-            disabled={loading}
-            className="flex-1 rounded-lg bg-slate-800 text-slate-100 px-4 py-2 font-semibold border border-slate-700 disabled:opacity-50"
-          >
-            {loading ? "..." : "Sign up"}
-          </button>
-        </div>
+  <button
+    onClick={signIn}
+    disabled={loading}
+    className="w-full rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 px-4 py-2 font-semibold disabled:opacity-50"
+  >
+    {loading ? "..." : "Sign in"}
+  </button>
+
+  <button
+    onClick={resetPassword}
+    className="text-xs text-slate-400 hover:text-slate-200"
+  >
+    Forgot password?
+  </button>
+
+</div>
 
         {msg && <p className="mt-4 text-sm text-slate-200">{msg}</p>}
 
-        <p className="mt-4 text-xs text-slate-400">
-          If signup works but login fails: in Supabase → Auth → Providers → Email,
-          disable email confirmation for local dev.
-        </p>
       </div>
     </main>
   );

@@ -29,10 +29,14 @@ const [role,setRole] = useState("viewer");
     })
   });
 
-  if(res.ok){
-    alert("User created");
+  const data = await res.json();
+
+  if(data.ok){
+    alert("Invitation sent");
     setEmail("");
     loadUsers();
+  } else {
+    alert(data.error);
   }
 
 }

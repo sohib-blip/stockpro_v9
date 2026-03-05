@@ -10,23 +10,19 @@ export async function POST(req: Request) {
 
   const { email, role } = await req.json();
 
-  const { data, error } = await supabase.auth.admin.createUser({
-    email,
-    email_confirm: true,
-  });
+  const { data, error } = await supabase.auth.admin.inviteUserByEmail(email);
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    return NextResponse.json({ error: error.message });
   }
-
-  const user_id = data.user.id;
 
   await supabase
     .from("user_roles")
     .insert({
-      user_id,
+      user_id: data.user.id,
       role
     });
 
   return NextResponse.json({ ok: true });
+
 }

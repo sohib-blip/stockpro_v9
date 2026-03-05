@@ -1,26 +1,33 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+export const runtime = "nodejs";
 
-function sb() {
-  return createClient(SUPABASE_URL, SERVICE_ROLE);
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function GET() {
 
-  const supabase = sb();
-
   const { data } = await supabase
     .from("movements")
-    .select("device,type,created_at")
-    .order("created_at", { ascending: false })
-    .limit(10);
+    .select(`
+      type,
+      created_at,
+      bins(device)
+    `)
+    .order("created_at", { ascending:false })
+    .limit(20);
+
+  const rows = (data || []).map((m:any)=>({
+    type: m.type,
+    device: m.bins?.device || "Unknown",
+    created_at: m.created_at
+  }));
 
   return NextResponse.json({
-    ok: true,
-    rows: data || []
+    ok:true,
+    rows
   });
-
 }

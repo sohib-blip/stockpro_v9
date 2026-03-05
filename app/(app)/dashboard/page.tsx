@@ -459,19 +459,23 @@ const filteredAlerts = filteredDevices.filter(
         Top Devices
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-4 max-h-[350px] overflow-y-auto pr-2">
 
-        {filteredDevices.slice(0,5).map((d) => {
+        {[...filteredDevices]
+  .sort((a,b)=>b.total_in-a.total_in)
+  .map((d)=>{
 
-          const percent = Math.min(100, Math.round((d.total_in / 2000) * 100))
+  const percent = Math.min(100, Math.round((d.total_in / 2000) * 100))
 
-          return (
+  return (
 
             <div key={d.device_id}>
 
               <div className="flex justify-between text-sm mb-1">
                 <span>{d.device}</span>
-                <span className="text-slate-400">{d.total_in}</span>
+                <span className="text-slate-400">
+{d.total_in - d.total_out}
+</span>
               </div>
 
               <div className="w-full bg-slate-800 rounded-full h-2">
@@ -671,7 +675,7 @@ const filteredAlerts = filteredDevices.filter(
       {/* DRILLDOWN MODAL */}
       {openDeviceId && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="card-glow w-full max-w-5xl max-h-[85vh] overflow-y-auto">
+          <div className="card-glow w-full max-w-5xl max-h-[85vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-slate-800">
               <div>
                 <div className="text-xs text-slate-500">Drilldown</div>
@@ -693,7 +697,7 @@ const filteredAlerts = filteredDevices.filter(
               </button>
             </div>
 
-            <div className="p-4 space-y-4 overflow-y-auto">
+            <div className="p-4 space-y-4 overflow-y-auto flex-1 max-h-[70vh]">
               {drillBoxes.length === 0 ? (
                 <div className="rounded-xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-400">
                   No boxes for this device (with current filters).

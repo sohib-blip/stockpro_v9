@@ -7,29 +7,13 @@ const supabase = createClient(
 );
 
 export async function POST(req: Request) {
+  const { email } = await req.json();
 
-  const { email, role } = await req.json();
-
- const { data, error } = await supabase.auth.admin.inviteUserByEmail(email, {
-  redirectTo: `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password`
-});
+  const { error } = await supabase.auth.admin.inviteUserByEmail(email);
 
   if (error) {
     return NextResponse.json({ error: error.message });
   }
 
-  const userId = data.user.id;
-
-  await supabase.from("profiles").insert({
-    id: userId,
-    email
-  });
-
-  await supabase.from("user_roles").insert({
-    user_id: userId,
-    role
-  });
-
   return NextResponse.json({ ok: true });
-
 }

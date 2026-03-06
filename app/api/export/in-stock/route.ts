@@ -9,7 +9,7 @@ function csv(v: any) {
 
 async function fetchAllInStock() {
   const sb = supabaseService();
-  const pageSize = 1000;
+  const pageSize = 5000;
   let from = 0;
   const rows: any[] = [];
 

@@ -13,36 +13,13 @@ function sb() {
   });
 }
 
-export async function GET(req: Request) {
-  try {
-    const url = new URL(req.url);
-    const batch_id = url.searchParams.get("batch_id");
+async function fetchAllMovements(supabase: any, batch_id: string) {
+  const pageSize = 5000;
+  let from = 0;
+  let allRows: any[] = [];
 
-    if (!batch_id) {
-      return NextResponse.json(
-        { ok: false, error: "batch_id required" },
-        { status: 400 }
-      );
-    }
-
-    const supabase = sb();
-
-    // Load batch
-    const { data: batch, error: batchErr } = await supabase
-      .from("outbound_batches")
-      .select("*")
-      .eq("batch_id", batch_id)
-      .single();
-
-    if (batchErr || !batch) {
-      return NextResponse.json(
-        { ok: false, error: "Batch not found" },
-        { status: 404 }
-      );
-    }
-
-    // 🔥 JOIN via items
-    const { data: movements, error: movErr } = await supabase
+  while (true) {
+    const { data, error } = await supabase
       .from("movements")
       .select(`
         created_at,
@@ -58,14 +35,50 @@ export async function GET(req: Request) {
         )
       `)
       .eq("batch_id", batch_id)
-      .eq("type", "OUT");
+      .eq("type", "OUT")
+      .range(from, from + pageSize - 1);
 
-    if (movErr) {
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+
+    allRows.push(...data);
+
+    if (data.length < pageSize) break;
+    from += pageSize;
+  }
+
+  return allRows;
+}
+
+export async function GET(req: Request) {
+  try {
+    const url = new URL(req.url);
+    const batch_id = url.searchParams.get("batch_id");
+
+    if (!batch_id) {
       return NextResponse.json(
-        { ok: false, error: movErr.message },
-        { status: 500 }
+        { ok: false, error: "batch_id required" },
+        { status: 400 }
       );
     }
+
+    const supabase = sb();
+
+    const { data: batch, error: batchErr } = await supabase
+      .from("outbound_batches")
+      .select("*")
+      .eq("batch_id", batch_id)
+      .single();
+
+    if (batchErr || !batch) {
+      return NextResponse.json(
+        { ok: false, error: "Batch not found" },
+        { status: 404 }
+      );
+    }
+
+    // 🔥 unlimited movements
+    const movements = await fetchAllMovements(supabase, batch_id);
 
     if (!movements || movements.length === 0) {
       return NextResponse.json(

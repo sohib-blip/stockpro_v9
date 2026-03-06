@@ -16,37 +16,52 @@ function sb() {
 
 export async function GET() {
   try {
+
     const supabase = sb();
 
-    // 🔥 Important: only export items currently IN stock
-    const { data, error } = await supabase
-  .from("items")
-  .select(`
-    imei,
-    status,
-    boxes (
-      id,
-      box_code,
-      floor,
-      bins (
-        id,
-        name
-      )
-    )
-  `)
-  .order("imei", { ascending: true })
-  .limit(100000);
+    let allRows: any[] = [];
+    let from = 0;
+    const batch = 1000;
 
-    if (error) throw error;
+    while (true) {
 
-    if (!data || data.length === 0) {
+      const { data, error } = await supabase
+        .from("items")
+        .select(`
+          imei,
+          status,
+          boxes (
+            id,
+            box_code,
+            floor,
+            bins (
+              id,
+              name
+            )
+          )
+        `)
+        .order("imei", { ascending: true })
+        .range(from, from + batch - 1);
+
+      if (error) throw error;
+
+      if (!data || data.length === 0) break;
+
+      allRows.push(...data);
+
+      if (data.length < batch) break;
+
+      from += batch;
+    }
+
+    if (allRows.length === 0) {
       return NextResponse.json(
         { ok: false, error: "No stock data found." },
         { status: 404 }
       );
     }
 
-    const rows = data.map((r: any) => ({
+    const rows = allRows.map((r: any) => ({
       bin_id: r.boxes?.bins?.id || "",
       bin_name: r.boxes?.bins?.name || "",
       box_id: r.boxes?.id || "",
@@ -73,6 +88,7 @@ export async function GET() {
         "Cache-Control": "no-store",
       },
     });
+
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Export failed" },

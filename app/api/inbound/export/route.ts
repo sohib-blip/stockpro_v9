@@ -14,8 +14,39 @@ function sb() {
   });
 }
 
+async function fetchAllMovements(supabase: any, batch_id: string) {
+
+  const pageSize = 5000;
+  let from = 0;
+  let allRows: any[] = [];
+
+  while (true) {
+
+    const { data, error } = await supabase
+      .from("movements")
+      .select("created_at, actor, imei, box_id, batch_id")
+      .eq("type", "IN")
+      .eq("batch_id", batch_id)
+      .order("created_at", { ascending: true })
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) break;
+
+    allRows.push(...data);
+
+    if (data.length < pageSize) break;
+
+    from += pageSize;
+  }
+
+  return allRows;
+}
+
 export async function GET(req: Request) {
   try {
+
     const supabase = sb();
     const { searchParams } = new URL(req.url);
     const batch_id = searchParams.get("batch_id");
@@ -24,15 +55,8 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "Missing batch_id" }, { status: 400 });
     }
 
-    // 1) movements (NO JOIN)
-    const { data: movs, error: movErr } = await supabase
-      .from("movements")
-      .select("created_at, actor, imei, box_id, batch_id")
-      .eq("type", "IN")
-      .eq("batch_id", batch_id)
-      .order("created_at", { ascending: true });
-
-    if (movErr) throw movErr;
+    // 🔥 now unlimited
+    const movs = await fetchAllMovements(supabase, batch_id);
 
     if (!movs || movs.length === 0) {
       return NextResponse.json({ ok: false, error: "No movements found" }, { status: 404 });
@@ -40,13 +64,10 @@ export async function GET(req: Request) {
 
     const boxIds = Array.from(new Set(movs.map((m: any) => String(m.box_id)).filter(Boolean)));
 
-    // 2) boxes (NO JOIN)
-    const { data: boxes, error: boxErr } = await supabase
+    const { data: boxes } = await supabase
       .from("boxes")
       .select("id, box_code, floor, bin_id")
       .in("id", boxIds);
-
-    if (boxErr) throw boxErr;
 
     const boxMap: Record<string, any> = {};
     for (const b of boxes || []) boxMap[String((b as any).id)] = b;
@@ -55,30 +76,29 @@ export async function GET(req: Request) {
       new Set((boxes || []).map((b: any) => String(b.bin_id)).filter(Boolean))
     );
 
-    // 3) bins
-    const { data: bins, error: binErr } = await supabase
+    const { data: bins } = await supabase
       .from("bins")
       .select("id, name")
       .in("id", binIds);
 
-    if (binErr) throw binErr;
-
     const binMap: Record<string, string> = {};
     for (const b of bins || []) binMap[String((b as any).id)] = String((b as any).name);
 
-    // 4) build rows
-    const rows = (movs || []).map((m: any) => {
+    const rows = movs.map((m: any) => {
+
       const bx = boxMap[String(m.box_id)];
       const deviceName = bx?.bin_id ? (binMap[String(bx.bin_id)] || "") : "";
+
       return {
         date_time: m.created_at,
         user: m.actor || "",
-        vendor: "", // optionnel si tu veux l’ajouter depuis inbound_batches
+        vendor: "",
         device: deviceName,
         box_code: bx?.box_code || "",
         floor: bx?.floor || "",
         imei: m.imei || "",
       };
+
     });
 
     const ws = XLSX.utils.json_to_sheet(rows);
@@ -93,10 +113,13 @@ export async function GET(req: Request) {
         "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
       },
     });
+
   } catch (e: any) {
+
     return NextResponse.json(
       { ok: false, error: e?.message || "Export failed" },
       { status: 500 }
     );
+
   }
 }

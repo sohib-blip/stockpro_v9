@@ -27,6 +27,22 @@ export async function GET() {
     const supabase = sb();
 
     // ======================
+// LOAD OUTBOUND COUNTS
+// ======================
+
+const { data: outRows } = await supabase
+  .from("movements")
+  .select("device")
+  .eq("type", "OUT");
+
+const outMap: Record<string, number> = {};
+
+for (const r of outRows || []) {
+  const key = String(r.device || "");
+  outMap[key] = (outMap[key] || 0) + 1;
+}
+
+    // ======================
     // LOAD AGGREGATED STOCK
     // ======================
     const { data, error } = await supabase
@@ -91,7 +107,7 @@ export async function GET() {
         device_id: bin_id,
         device: info.device,
         total_in,
-        total_out: 0,
+        total_out: outMap[info.device] || 0,
         min_stock,
         level,
       });
@@ -108,7 +124,7 @@ export async function GET() {
 
     const kpis = {
       total_in: total_in_all,
-      total_out: 0,
+      total_out: Object.values(outMap).reduce((a,b)=>a+b,0),
       total_devices: deviceSummary.length,
       total_boxes: boxSummary.length,
       alerts,

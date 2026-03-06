@@ -299,6 +299,34 @@ const filteredAlerts = filteredDevices.filter(
     }
   }
 
+  async function exportCSV() {
+  setErr("");
+  try {
+    const res = await fetch("/api/dashboard/export?format=csv", { cache: "no-store" });
+
+    if (!res.ok) {
+      const j = await res.json().catch(() => null);
+      throw new Error(j?.error || "Export failed");
+    }
+
+    const blob = await res.blob();
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stock_export_${new Date().toISOString().slice(0,10)}.csv`;
+
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    window.URL.revokeObjectURL(url);
+
+  } catch (e:any) {
+    setErr(e?.message || "Export failed");
+  }
+}
+
   const openDevice = openDeviceId
     ? devices.find((d) => d.device_id === openDeviceId) || null
     : null;
@@ -381,12 +409,20 @@ const filteredAlerts = filteredDevices.filter(
 
     {/* EXPORT */}
     <button
-      onClick={exportExcel}
-      className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold flex items-center gap-2"
-    >
-      <Download size={16} />
-      Export
-    </button>
+  onClick={exportExcel}
+  className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold flex items-center gap-2"
+>
+  <Download size={16} />
+  Excel
+</button>
+
+<button
+  onClick={exportCSV}
+  className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold flex items-center gap-2 hover:bg-slate-800"
+>
+  <Download size={16} />
+  CSV Fast
+</button>
 
   </div>
 </div>

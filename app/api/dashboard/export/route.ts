@@ -14,85 +14,143 @@ function sb() {
   });
 }
 
-export async function GET() {
+async function fetchAllItems(supabase:any) {
+
+  const pageSize = 1000;
+  let from = 0;
+  let rows:any[] = [];
+
+  while (true) {
+
+    const { data, error } = await supabase
+      .from("items")
+      .select(`
+        imei,
+        status,
+        boxes (
+          box_code,
+          floor,
+          bins (
+            name
+          )
+        )
+      `)
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) break;
+
+    rows.push(...data);
+
+    if (data.length < pageSize) break;
+
+    from += pageSize;
+
+  }
+
+  return rows;
+}
+
+function csv(v:any) {
+  const s = String(v ?? "");
+  if (s.includes(",") || s.includes('"') || s.includes("\n")) {
+    return `"${s.replaceAll('"','""')}"`;
+  }
+  return s;
+}
+
+export async function GET(req:Request) {
+
   try {
 
     const supabase = sb();
+    const { searchParams } = new URL(req.url);
 
-    let allRows: any[] = [];
-    let from = 0;
-    const batch = 1000;
+    const format = searchParams.get("format") || "xlsx";
 
-    while (true) {
+    const data = await fetchAllItems(supabase);
 
-      const { data, error } = await supabase
-        .from("items")
-        .select(`
-          imei,
-          status,
-          boxes (
-            id,
-            box_code,
-            floor,
-            bins (
-              id,
-              name
-            )
-          )
-        `)
-        .order("imei", { ascending: true })
-        .range(from, from + batch - 1);
-
-      if (error) throw error;
-
-      if (!data || data.length === 0) break;
-
-      allRows.push(...data);
-
-      if (data.length < batch) break;
-
-      from += batch;
-    }
-
-    if (allRows.length === 0) {
+    if (!data.length) {
       return NextResponse.json(
-        { ok: false, error: "No stock data found." },
-        { status: 404 }
+        { ok:false, error:"No stock data" },
+        { status:404 }
       );
     }
 
-    const rows = allRows.map((r: any) => ({
-      bin_id: r.boxes?.bins?.id || "",
-      bin_name: r.boxes?.bins?.name || "",
-      box_id: r.boxes?.id || "",
+    const rows = data.map((r:any)=>({
+
+      device: r.boxes?.bins?.name || "",
       box_code: r.boxes?.box_code || "",
       floor: r.boxes?.floor || "",
-      imei: r.imei,
-      status: r.status,
+      imei: r.imei || "",
+      status: r.status || ""
+
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Dashboard Stock");
+    rows.sort((a,b)=>{
 
-    const buffer = XLSX.write(workbook, {
-      type: "buffer",
-      bookType: "xlsx",
+  if(a.device !== b.device)
+    return a.device.localeCompare(b.device);
+
+  if(a.box_code !== b.box_code)
+    return a.box_code.localeCompare(b.box_code);
+
+  return a.imei.localeCompare(b.imei);
+
+});
+
+    // ⚡ CSV FAST EXPORT
+    if (format === "csv") {
+
+      const header = ["device","box_code","floor","imei","status"].join(",");
+
+      const body = rows
+        .map(r =>
+          [
+            csv(r.device),
+            csv(r.box_code),
+            csv(r.floor),
+            csv(r.imei),
+            csv(r.status)
+          ].join(",")
+        )
+        .join("\n");
+
+      const csvText = `${header}\n${body}\n`;
+
+      return new NextResponse(csvText,{
+        headers:{
+          "Content-Type":"text/csv; charset=utf-8",
+          "Content-Disposition":`attachment; filename=dashboard_stock_${new Date().toISOString().slice(0,10)}.csv`
+        }
+      });
+
+    }
+
+    // 📊 EXCEL EXPORT
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Dashboard");
+
+    const buffer = XLSX.write(wb,{
+      type:"buffer",
+      bookType:"xlsx"
     });
 
-    return new NextResponse(buffer, {
-      headers: {
-        "Content-Disposition": "attachment; filename=dashboard-stock.xlsx",
-        "Content-Type":
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Cache-Control": "no-store",
-      },
+    return new NextResponse(buffer,{
+      headers:{
+        "Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition":`attachment; filename=dashboard_stock_${new Date().toISOString().slice(0,10)}.xlsx`
+      }
     });
 
-  } catch (e: any) {
+  } catch(e:any) {
+
     return NextResponse.json(
-      { ok: false, error: e?.message || "Export failed" },
-      { status: 500 }
+      { ok:false, error:e?.message || "Export failed" },
+      { status:500 }
     );
+
   }
 }

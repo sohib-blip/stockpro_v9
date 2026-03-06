@@ -152,49 +152,51 @@ export async function POST(req: Request) {
     // ============================
     const summaryMap: Record<string, any> = {};
 
-    for (const item of valid) {
-      const key = item.boxes?.box_code;
+for (const item of valid) {
 
-      if (!summaryMap[key]) {
-        summaryMap[key] = {
-          device: item.boxes?.bins?.name || "",
-          box_no: item.boxes?.box_code || "",
-          floor: item.boxes?.floor || "",
-          detected: 0,
-          remaining: 0,
-          percent_after: 0,
-        };
-      }
+  const key = item.box_id;
 
-      summaryMap[key].detected += 1;
-    }
+  if (!summaryMap[key]) {
 
-    // Calcul remaining
-    const { data: totals } = await supabase
-      .from("items")
-      .select("box_id")
-      .eq("status", "IN");
+    summaryMap[key] = {
+      device: item.boxes?.bins?.name || "",
+      box_no: item.boxes?.box_code || "",
+      floor: item.boxes?.floor || "",
+      box_id: item.box_id,
+      detected: 0,
+      stock_before: 0,
+      remaining: 0,
+      percent_after: 0,
+    };
 
-    const totalMap: Record<string, number> = {};
+  }
 
-    totals?.forEach((t: any) => {
-      totalMap[t.box_id] = (totalMap[t.box_id] || 0) + 1;
-    });
+  summaryMap[key].detected += 1;
+}
 
-    Object.values(summaryMap).forEach((row: any) => {
-      const relatedItem = valid.find(
-        (i: any) => i.boxes?.box_code === row.box_no
-      );
+    for (const row of Object.values(summaryMap) as any[]) {
 
-      const boxId = relatedItem?.box_id;
-      const totalInBox = totalMap[boxId] || 0;
+  const { count } = await supabase
+    .from("items")
+    .select("*", { count: "exact", head: true })
+    .eq("box_id", row.box_id)
+    .eq("status", "IN");
 
-      row.remaining = totalInBox - row.detected;
-      row.percent_after =
-        totalInBox > 0
-          ? Math.round((row.remaining / totalInBox) * 100)
-          : 0;
-    });
+  const stock = count || 0;
+
+  row.stock_before = stock;
+  row.remaining = stock - row.detected;
+
+  row.percent_after =
+    stock > 0
+      ? Math.round((row.remaining / stock) * 100)
+      : 0;
+
+  if (row.remaining < 0) {
+    row.warning = "Not enough stock";
+  }
+
+}
 
     return NextResponse.json({
       ok: true,

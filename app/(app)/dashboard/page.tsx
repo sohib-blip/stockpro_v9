@@ -105,14 +105,23 @@ const [activity, setActivity] = useState<any[]>([]);
           alerts: 0,
         };
 
-      const devs: DeviceSummaryRow[] = (json.deviceSummary || json.devices || []).map((d: any) => ({
-        device_id: String(d.device_id ?? ""),
-        device: String(d.device ?? ""),
-        total_in: Number(d.total_in ?? 0),
-        total_out: Number(d.total_out ?? 0),
-        min_stock: Number(d.min_stock ?? 0),
-        level: (d.level as Level) || "ok",
-      }));
+      const devs: DeviceSummaryRow[] = (json.deviceSummary || json.devices || []).map((d: any) => {
+
+  const inbound = Number(d.total_in ?? 0);
+  const outbound = Number(d.total_out ?? 0);
+
+  const stock = inbound - outbound;
+
+  return {
+    device_id: String(d.device_id ?? ""),
+    device: String(d.device ?? ""),
+    total_in: stock,       // 🔥 stock réel
+    total_out: outbound,   // sorties
+    min_stock: Number(d.min_stock ?? 0),
+    level: (d.level as Level) || "ok",
+  };
+
+});
 
       const bxs: BoxSummaryRow[] = (json.boxSummary || json.boxes || []).map((b: any) => ({
         box_id: String(b.box_id ?? b.id ?? ""),

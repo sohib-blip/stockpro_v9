@@ -26,39 +26,41 @@ export async function GET() {
   try {
     const supabase = sb();
 
-    // ======================
-// LOAD OUTBOUND COUNTS
+    // =========================
+    // 1️⃣ LOAD OUTBOUND COUNTS
+    // =========================
 
-const { data: outItems } = await supabase
-  .from("items")
-  .select("box_id")
-  .eq("status", "OUT");
+    const { data: outItems } = await supabase
+      .from("items")
+      .select("box_id")
+      .eq("status", "OUT");
 
-const { data: boxes } = await supabase
-  .from("boxes")
-  .select("box_id, bin_id");
+    const { data: boxes } = await supabase
+      .from("boxes")
+      .select("box_id, bin_id");
 
-const boxToBin: Record<string,string> = {};
+    const boxToBin: Record<string, string> = {};
 
-for (const b of boxes || []) {
-  boxToBin[b.box_id] = b.bin_id;
-}
+    for (const box of boxes || []) {
+      boxToBin[box.box_id] = box.bin_id;
+    }
 
-const outMap: Record<string, number> = {};
+    const outMap: Record<string, number> = {};
 
-for (const item of outItems || []) {
+    for (const item of outItems || []) {
 
-  const binId = boxToBin[item.box_id];
+      const binId = boxToBin[item.box_id];
 
-  if (!binId) continue;
+      if (!binId) continue;
 
-  outMap[binId] = (outMap[binId] || 0) + 1;
+      outMap[binId] = (outMap[binId] || 0) + 1;
 
-}
+    }
 
-    // ======================
-    // LOAD AGGREGATED STOCK
-    // ======================
+    // =========================
+    // 2️⃣ LOAD CURRENT STOCK
+    // =========================
+
     const { data, error } = await supabase
       .from("dashboard_stock_view")
       .select("*");
@@ -69,89 +71,101 @@ for (const item of outItems || []) {
     const deviceSummary: any[] = [];
     const boxSummary: any[] = [];
 
+    // =========================
+    // 3️⃣ BUILD BOX SUMMARY
+    // =========================
+
     for (const row of data || []) {
-      const bin_id = String(row.bin_id);
-      const total_in = Number(row.total_in || 0);
 
-      // accumulate per bin
-      binTotals[bin_id] = (binTotals[bin_id] || 0) + total_in;
+      const binId = String(row.bin_id);
+      const totalIn = Number(row.total_in || 0);
 
-      // box summary
+      binTotals[binId] = (binTotals[binId] || 0) + totalIn;
+
       if (row.box_id) {
         boxSummary.push({
           box_id: String(row.box_id),
-          device_id: bin_id,
+          device_id: binId,
           device: row.bin_name,
           box_code: row.box_code,
           floor: row.floor,
-          remaining: total_in,
-          total: total_in,
-          percent: total_in > 0 ? 100 : 0,
-          level: total_in === 0 ? "empty" : "ok",
+          remaining: totalIn,
+          total: totalIn,
+          percent: totalIn > 0 ? 100 : 0,
+          level: totalIn === 0 ? "empty" : "ok",
         });
       }
+
     }
 
-    // build device summary
+    // =========================
+    // 4️⃣ BUILD DEVICE SUMMARY
+    // =========================
+
     const uniqueBins = new Map<string, any>();
 
     for (const row of data || []) {
-      const bin_id = String(row.bin_id);
-      if (!uniqueBins.has(bin_id)) {
-        uniqueBins.set(bin_id, {
-          device_id: bin_id,
+
+      const binId = String(row.bin_id);
+
+      if (!uniqueBins.has(binId)) {
+        uniqueBins.set(binId, {
+          device_id: binId,
           device: row.bin_name,
           min_stock: Number(row.min_stock || 0),
         });
       }
+
     }
 
-    for (const [bin_id, info] of uniqueBins.entries()) {
-      const total_in = binTotals[bin_id] || 0;
-      const min_stock = info.min_stock;
+    for (const [binId, info] of uniqueBins.entries()) {
 
-      const level =
-        total_in <= 0
-          ? "empty"
-          : min_stock > 0 && total_in <= min_stock
-          ? "low"
-          : "ok";
+      const totalIn = binTotals[binId] || 0;
+
+      const level = computeLevel(totalIn, info.min_stock);
 
       deviceSummary.push({
-        device_id: bin_id,
+        device_id: binId,
         device: info.device,
-        total_in,
-        total_out: outMap[bin_id] || 0,
-        min_stock,
+        total_in: totalIn,
+        total_out: outMap[binId] || 0,
+        min_stock: info.min_stock,
         level,
       });
+
     }
 
-    const total_in_all = Object.values(binTotals).reduce(
-      (a, b) => a + b,
-      0
-    );
+    // =========================
+    // 5️⃣ GLOBAL KPIs
+    // =========================
 
-    const alerts = deviceSummary.filter(
-      (d) => d.level !== "ok"
-    ).length;
+    const totalInAll = Object.values(binTotals).reduce((a, b) => a + b, 0);
+
+    const totalOutAll = Object.values(outMap).reduce((a, b) => a + b, 0);
+
+    const alerts = deviceSummary.filter(d => d.level !== "ok").length;
 
     const kpis = {
-      total_in: total_in_all,
-      total_out: Object.values(outMap).reduce((a,b)=>a+b,0),
+      total_in: totalInAll,
+      total_out: totalOutAll,
       total_devices: deviceSummary.length,
       total_boxes: boxSummary.length,
       alerts,
     };
 
-    // ======================
-    // LOAD RECENT MOVEMENTS
-    // ======================
+    // =========================
+    // 6️⃣ RECENT MOVEMENTS
+    // =========================
+
     const { data: movements } = await supabase
       .from("movements")
       .select("type, device, created_at")
       .order("created_at", { ascending: false })
       .limit(10);
+
+    // =========================
+    // RESPONSE
+    // =========================
 
     return NextResponse.json(
       {
@@ -159,19 +173,21 @@ for (const item of outItems || []) {
         kpis,
         deviceSummary,
         boxSummary,
-        activity: movements
+        activity: movements,
       },
       {
         headers: {
-          "Cache-Control":
-            "no-store, no-cache, must-revalidate, max-age=0",
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
         },
       }
     );
+
   } catch (e: any) {
+
     return NextResponse.json(
       { ok: false, error: e?.message || "Dashboard failed" },
       { status: 500 }
     );
+
   }
 }

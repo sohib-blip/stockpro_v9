@@ -24,10 +24,7 @@ async function fetchAllMovements(supabase: any, batch_id: string) {
 
     const { data, error } = await supabase
       .from("movements")
-      .select(
-        "created_at, actor, imei, box_id, batch_id",
-        { count: "exact" }
-      )
+      .select("created_at, actor, imei, box_id")
       .eq("type", "IN")
       .eq("batch_id", batch_id)
       .order("created_at", { ascending: true })

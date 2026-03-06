@@ -33,7 +33,9 @@ export async function GET() {
         name
       )
     )
-  `);
+  `)
+  .order("imei", { ascending: true })
+  .limit(100000);
 
     if (error) throw error;
 

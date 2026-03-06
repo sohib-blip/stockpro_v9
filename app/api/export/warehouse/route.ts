@@ -11,8 +11,36 @@ function sb() {
   });
 }
 
+async function fetchAllItems(supabase: any) {
+
+  const pageSize = 5000;
+  let from = 0;
+  let allRows: any[] = [];
+
+  while (true) {
+
+    const { data, error } = await supabase
+      .from("items")
+      .select("imei, device_id, box_id")
+      .range(from, from + pageSize - 1);
+
+    if (error) throw error;
+
+    if (!data || data.length === 0) break;
+
+    allRows.push(...data);
+
+    if (data.length < pageSize) break;
+
+    from += pageSize;
+  }
+
+  return allRows;
+}
+
 export async function GET() {
   try {
+
     const supabase = sb();
 
     const { data: devices } = await supabase
@@ -23,9 +51,8 @@ export async function GET() {
       .from("boxes")
       .select("box_id, box_no, device_id, floor");
 
-    const { data: items } = await supabase
-      .from("items")
-      .select("imei, device_id, box_id");
+    // 🔥 now unlimited items
+    const items = await fetchAllItems(supabase);
 
     const deviceMap: Record<string, string> = {};
     for (const d of devices || []) {
@@ -48,6 +75,7 @@ export async function GET() {
     const rows: any[] = [];
 
     for (const it of items || []) {
+
       const box = boxMap[String((it as any).box_id)];
       if (!box) continue;
 
@@ -58,6 +86,7 @@ export async function GET() {
         Floor: box.floor,
         IMEI: (it as any).imei,
       });
+
     }
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
@@ -78,10 +107,13 @@ export async function GET() {
           "attachment; filename=warehouse_export.xlsx",
       },
     });
+
   } catch (e: any) {
+
     return NextResponse.json(
       { ok: false, error: e?.message || "Export failed" },
       { status: 500 }
     );
+
   }
 }

@@ -18,13 +18,16 @@ async function fetchAllMovements(supabase: any, batch_id: string) {
 
   const pageSize = 5000;
   let from = 0;
-  let allRows: any[] = [];
+  let allRows:any[] = [];
 
   while (true) {
 
     const { data, error } = await supabase
       .from("movements")
-      .select("created_at, actor, imei, box_id, batch_id")
+      .select(
+        "created_at, actor, imei, box_id, batch_id",
+        { count: "exact" }
+      )
       .eq("type", "IN")
       .eq("batch_id", batch_id)
       .order("created_at", { ascending: true })

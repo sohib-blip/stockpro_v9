@@ -28,18 +28,32 @@ export async function GET() {
 
     // ======================
 // LOAD OUTBOUND COUNTS
-// ======================
 
-const { data: outRows } = await supabase
-  .from("movements")
-  .select("device")
-  .eq("type", "OUT");
+const { data: outItems } = await supabase
+  .from("items")
+  .select("box_id")
+  .eq("status", "OUT");
+
+const { data: boxes } = await supabase
+  .from("boxes")
+  .select("box_id, bin_id");
+
+const boxToBin: Record<string,string> = {};
+
+for (const b of boxes || []) {
+  boxToBin[b.box_id] = b.bin_id;
+}
 
 const outMap: Record<string, number> = {};
 
-for (const r of outRows || []) {
-  const key = String(r.device || "");
-  outMap[key] = (outMap[key] || 0) + 1;
+for (const item of outItems || []) {
+
+  const binId = boxToBin[item.box_id];
+
+  if (!binId) continue;
+
+  outMap[binId] = (outMap[binId] || 0) + 1;
+
 }
 
     // ======================
@@ -107,7 +121,7 @@ for (const r of outRows || []) {
         device_id: bin_id,
         device: info.device,
         total_in,
-        total_out: outMap[info.device] || 0,
+        total_out: outMap[bin_id] || 0,
         min_stock,
         level,
       });

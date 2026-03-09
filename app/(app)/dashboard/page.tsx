@@ -12,77 +12,79 @@ import {
 } from "recharts";
 
 type KPI = {
-  total_bins: number;
-  total_boxes: number;
-  total_imei: number;
-  alerts: number;
+ total_bins: number;
+ total_boxes: number;
+ total_imei: number;
+ alerts: number;
 };
 
 export default function DashboardPage() {
 
-  const [kpi, setKpi] = useState<KPI | null>(null);
-  const [bins, setBins] = useState<any[]>([]);
-  const [floors, setFloors] = useState<any[]>([]);
-  const [activity, setActivity] = useState<any[]>([]);
-  const [drilldown, setDrilldown] = useState<any[]>([]);
-  const [openDevice, setOpenDevice] = useState<string | null>(null);
+ const [kpi, setKpi] = useState<KPI | null>(null);
+ const [bins, setBins] = useState<any[]>([]);
+ const [floors, setFloors] = useState<any[]>([]);
+ const [activity, setActivity] = useState<any[]>([]);
+ const [drilldown, setDrilldown] = useState<any[]>([]);
+ const [openDevice, setOpenDevice] = useState<string | null>(null);
 
-  const [search,setSearch] = useState("");
-  const [boxSearch,setBoxSearch] = useState("");
+ const [search,setSearch] = useState("");
+ const [boxSearch,setBoxSearch] = useState("");
 
-  const filteredBins = bins.filter((b:any)=>
-    b.device?.toLowerCase().includes(search.toLowerCase())
-  );
+ const filteredBins = bins.filter((b:any)=>
+  b.device?.toLowerCase().includes(search.toLowerCase())
+ );
 
-  const chartData =
-    filteredBins.map((b:any)=>({
-      device: b.device,
-      in: Number(b.total_in || b.imei_count || 0),
-      out: Number(b.total_out || 0)
-    })) || [];
+ const chartData =
+ filteredBins.map((b:any)=>({
+  device: b.device,
+  in: Number(b.total_in || b.imei_count || 0),
+  out: Number(b.total_out || 0)
+ })) || [];
 
-  async function loadAll() {
+ async function loadAll() {
 
-    const [kpiRes, binsRes, floorsRes, activityRes] = await Promise.all([
-      fetch("/api/dashboard/summary"),
-      fetch("/api/dashboard/bins"),
-      fetch("/api/dashboard/floors"),
-      fetch("/api/dashboard/activity"),
-    ]);
+ const [kpiRes, binsRes, floorsRes, activityRes] = await Promise.all([
+  fetch("/api/dashboard/summary"),
+  fetch("/api/dashboard/bins"),
+  fetch("/api/dashboard/floors"),
+  fetch("/api/dashboard/activity"),
+ ]);
 
-    const kpiJson = await kpiRes.json();
-    const binsJson = await binsRes.json();
-    const floorsJson = await floorsRes.json();
-    const activityJson = await activityRes.json();
+ const kpiJson = await kpiRes.json();
+ const binsJson = await binsRes.json();
+ const floorsJson = await floorsRes.json();
+ const activityJson = await activityRes.json();
 
-    if (kpiJson.ok) setKpi(kpiJson.kpis);
-    if (binsJson.ok) setBins(binsJson.rows);
-    if (floorsJson.ok) setFloors(floorsJson.rows);
-    if (activityJson.ok) setActivity(activityJson.rows);
+ if (kpiJson.ok) setKpi(kpiJson.kpis);
+ if (binsJson.ok) setBins(binsJson.rows);
+ if (floorsJson.ok) setFloors(floorsJson.rows);
+ if (activityJson.ok) setActivity(activityJson.rows);
 
-  }
+ }
 
-  async function openDrilldown(device_id: string) {
+ async function openDrilldown(device_id: string) {
 
-    setOpenDevice(device_id);
+ setOpenDevice(device_id);
 
-    const res = await fetch(`/api/dashboard/drilldown?device_id=${device_id}`);
-    const json = await res.json();
+ const res = await fetch(`/api/dashboard/drilldown?device_id=${device_id}`);
+ const json = await res.json();
 
-    if (json.ok) setDrilldown(json.rows);
+ if (json.ok) setDrilldown(json.rows);
 
-  }
+ }
 
-  useEffect(()=>{ loadAll(); },[]);
+ useEffect(()=>{ loadAll(); },[]);
 
-  return (
+ return (
 
-<div className="p-8 space-y-8 max-w-[1400px] mx-auto">
+<div className="p-10 space-y-10 max-w-[1500px] mx-auto">
 
-<h1 className="text-2xl font-bold">Dashboard</h1>
+<h1 className="text-3xl font-semibold tracking-tight">
+Inventory Dashboard
+</h1>
 
 
-{/* GLOBAL FILTER */}
+{/* SEARCH */}
 
 <div className="card-glow p-4 rounded-xl">
 
@@ -103,24 +105,24 @@ className="bg-transparent outline-none w-full text-sm"
 
 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
 
-<div className="card-glow p-5 rounded-xl">
-<div className="text-sm text-slate-400">Total bins</div>
-<div className="text-2xl font-semibold">{kpi.total_bins}</div>
+<div className="card-glow rounded-xl p-6 text-center">
+<div className="text-xs text-slate-400 uppercase mb-2">Total bins</div>
+<div className="text-3xl font-bold text-cyan-400">{kpi.total_bins}</div>
 </div>
 
-<div className="card-glow p-5 rounded-xl">
-<div className="text-sm text-slate-400">Total boxes</div>
-<div className="text-2xl font-semibold">{kpi.total_boxes}</div>
+<div className="card-glow rounded-xl p-6 text-center">
+<div className="text-xs text-slate-400 uppercase mb-2">Total boxes</div>
+<div className="text-3xl font-bold text-cyan-400">{kpi.total_boxes}</div>
 </div>
 
-<div className="card-glow p-5 rounded-xl">
-<div className="text-sm text-slate-400">Total IMEI</div>
-<div className="text-2xl font-semibold">{kpi.total_imei}</div>
+<div className="card-glow rounded-xl p-6 text-center">
+<div className="text-xs text-slate-400 uppercase mb-2">Total IMEI</div>
+<div className="text-3xl font-bold text-cyan-400">{kpi.total_imei}</div>
 </div>
 
-<div className="card-glow p-5 rounded-xl">
-<div className="text-sm text-slate-400">Alerts</div>
-<div className="text-2xl font-semibold">{kpi.alerts}</div>
+<div className="card-glow rounded-xl p-6 text-center">
+<div className="text-xs text-slate-400 uppercase mb-2">Alerts</div>
+<div className="text-3xl font-bold text-purple-400">{kpi.alerts}</div>
 </div>
 
 </div>
@@ -134,7 +136,7 @@ className="bg-transparent outline-none w-full text-sm"
 
 <a
 href="/api/dashboard/export"
-className="card-glow px-4 py-2 rounded-lg text-sm inline-block hover:opacity-90"
+className="card-glow px-5 py-2 rounded-lg text-sm inline-block hover:opacity-90"
 >
 Export current stock
 </a>
@@ -146,12 +148,11 @@ Export current stock
 
 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-
 {/* GRAPH */}
 
-<div className="card-glow p-6 rounded-xl md:col-span-2" style={{height:340}}>
+<div className="card-glow p-8 rounded-xl md:col-span-2" style={{height:360}}>
 
-<h2 className="text-lg font-semibold mb-4">IN vs OUT by device</h2>
+<h2 className="text-lg font-semibold mb-6">IN vs OUT by device</h2>
 
 <ResponsiveContainer>
 
@@ -189,30 +190,28 @@ radius={[4,4,0,0]}
 
 <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
 
-<div className="max-h-[260px] overflow-y-auto space-y-2 text-sm">
+<div className="max-h-[280px] overflow-y-auto space-y-3 text-sm">
 
 {activity.slice(0,50).map((a,i)=>(
 
-<div key={i}>
+<div key={i} className="flex justify-between items-center">
 
 <span className={
 a.type === "IN"
-? "text-green-400"
-: "text-red-400"
+? "text-green-400 font-semibold"
+: "text-red-400 font-semibold"
 }>
-{a.type === "IN" ? "+" : "-"}{a.qty}
+{a.type === "IN" ? "+" : "-"}{a.qty} {a.device}
 </span>
 
-{" "} {a.device}
-
-{" • "}
-
+<span className="text-slate-400 text-xs">
 {new Date(a.created_at).toLocaleString("fr-BE",{
 day:"2-digit",
 month:"2-digit",
 hour:"2-digit",
 minute:"2-digit"
 })}
+</span>
 
 </div>
 
@@ -229,14 +228,14 @@ minute:"2-digit"
 
 <div className="card-glow p-6 rounded-xl">
 
-<h2 className="text-lg font-semibold mb-4">Bins</h2>
+<h2 className="text-lg font-semibold mb-5">Bins</h2>
 
-<table className="w-full text-sm">
+<table className="w-full text-sm border-collapse">
 
 <thead>
 
-<tr className="text-left text-slate-400">
-<th>Device</th>
+<tr className="text-left text-slate-400 border-b border-white/5">
+<th className="py-2">Device</th>
 <th>Boxes</th>
 <th>IMEI</th>
 <th>Min stock</th>
@@ -250,11 +249,11 @@ minute:"2-digit"
 {filteredBins.map((b)=>(
 <tr
 key={b.device_id}
-className="cursor-pointer hover:bg-slate-800/30 transition"
+className="cursor-pointer hover:bg-white/5 transition"
 onClick={()=>openDrilldown(b.device_id)}
 >
 
-<td>{b.device}</td>
+<td className="py-2">{b.device}</td>
 <td>{b.boxes_count}</td>
 <td>{b.imei_count}</td>
 <td>{b.min_stock}</td>
@@ -291,7 +290,7 @@ b.level === "ok"
 
 <div className="card-glow p-6 rounded-xl">
 
-<div className="flex justify-between items-center mb-4">
+<div className="flex justify-between items-center mb-5">
 
 <h2 className="text-lg font-semibold">
 Device {openDevice}
@@ -299,7 +298,7 @@ Device {openDevice}
 
 <button
 onClick={()=>setOpenDevice(null)}
-className="text-sm border px-3 py-1 rounded hover:bg-slate-800"
+className="text-sm border px-3 py-1 rounded hover:bg-white/10"
 >
 Close
 </button>
@@ -311,15 +310,15 @@ type="text"
 placeholder="Filter box..."
 value={boxSearch}
 onChange={(e)=>setBoxSearch(e.target.value)}
-className="mb-4 bg-transparent border px-3 py-2 rounded text-sm"
+className="mb-4 bg-transparent border border-white/10 px-3 py-2 rounded text-sm"
 />
 
 <table className="w-full text-sm">
 
 <thead>
 
-<tr className="text-left text-slate-400">
-<th>Box</th>
+<tr className="text-left text-slate-400 border-b border-white/5">
+<th className="py-2">Box</th>
 <th>Floor</th>
 <th>Remaining</th>
 <th>Total ever</th>
@@ -337,7 +336,7 @@ d.box_code?.toLowerCase().includes(boxSearch.toLowerCase())
 .map((d)=>(
 <tr key={d.box_id}>
 
-<td>{d.box_code}</td>
+<td className="py-2">{d.box_code}</td>
 <td>{d.floor}</td>
 <td>{d.remaining}</td>
 <td>{d.total_ever}</td>
@@ -359,14 +358,14 @@ d.box_code?.toLowerCase().includes(boxSearch.toLowerCase())
 
 <div className="card-glow p-6 rounded-xl">
 
-<h2 className="text-lg font-semibold mb-4">Floors</h2>
+<h2 className="text-lg font-semibold mb-5">Floors</h2>
 
 <table className="w-full text-sm">
 
 <thead>
 
-<tr className="text-left text-slate-400">
-<th>Floor</th>
+<tr className="text-left text-slate-400 border-b border-white/5">
+<th className="py-2">Floor</th>
 <th>Device</th>
 <th>Boxes</th>
 <th>IMEI</th>
@@ -379,7 +378,7 @@ d.box_code?.toLowerCase().includes(boxSearch.toLowerCase())
 {floors.map((f,i)=>(
 <tr key={`${f.floor}-${f.device_id}-${i}`}>
 
-<td>{f.floor}</td>
+<td className="py-2">{f.floor}</td>
 <td>{f.device}</td>
 <td>{f.boxes_count}</td>
 <td>{f.imei_count}</td>

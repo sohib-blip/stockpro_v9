@@ -34,11 +34,10 @@ export default function DashboardPage() {
   b.device?.toLowerCase().includes(search.toLowerCase())
  );
 
- const chartData =
-filteredBins.map((b:any)=>({
+ const chartData = bins.map((b:any)=>({
  device: b.device,
- in: Number(b.total_in ?? b.imei_count ?? 0),
- out: Number(b.total_out ?? b.out ?? 0)
+ in: Number(b.total_in),
+ out: Number(b.total_out)
 })) || [];
 
  const deviceName =
@@ -181,8 +180,16 @@ IN vs OUT by device
 
 <BarChart data={chartData} barCategoryGap="25%">
 
-<XAxis dataKey="device" tick={{ fontSize: 12 }} />
-<YAxis/>
+<XAxis
+  dataKey="device"
+  angle={-90}
+  textAnchor="end"
+  interval={0}
+  height={110}
+  tick={{ fill:"#94a3b8", fontSize:12 }}
+/>
+
+<YAxis tick={{ fill:"#94a3b8", fontSize:12 }} />
 
 <Tooltip
  contentStyle={{

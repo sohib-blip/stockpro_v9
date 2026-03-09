@@ -83,7 +83,10 @@ export default function DashboardPage() {
         </a>
       </div>
 
-      <div style={{ width:"100%", height:300 }}>
+<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+{/* GRAPH */}
+<div className="md:col-span-2" style={{height:320}}>
 
 <ResponsiveContainer>
 
@@ -105,6 +108,94 @@ export default function DashboardPage() {
 </BarChart>
 
 </ResponsiveContainer>
+
+</div>
+
+
+{/* ACTIVITY */}
+<div className="md:col-span-1">
+
+<h2 className="text-xl font-semibold mb-3">Recent Activity</h2>
+
+<div className="max-h-[320px] overflow-y-auto space-y-2 border p-3 rounded">
+
+{activity.slice(0,50).map((a,i)=>(
+<div key={i}>
+
+<b>Batch {a.batch_id?.slice(0,8)}</b>
+
+{" "} {a.type === "IN" ? "+" : "-"}
+
+{a.qty} {a.device}
+
+{" — "}
+
+{new Date(a.created_at).toLocaleString()}
+
+</div>
+))}
+
+</div>
+
+</div>
+
+</div>
+
+<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+
+{/* GRAPH */}
+<div style={{height:300}}>
+
+<ResponsiveContainer>
+
+<BarChart data={chartData} barCategoryGap="30%">
+
+<XAxis dataKey="device" />
+
+<YAxis />
+
+<Tooltip />
+
+<Bar
+ dataKey="stock"
+ fill="#4DA3FF"
+ radius={[4,4,0,0]}
+ barSize={18}
+/>
+
+</BarChart>
+
+</ResponsiveContainer>
+
+</div>
+
+
+{/* ACTIVITY */}
+<div>
+
+<h2 className="text-xl font-semibold mb-3">Recent Activity</h2>
+
+<div className="max-h-[300px] overflow-y-auto space-y-2 border p-3 rounded">
+
+{activity.slice(0,50).map((a,i)=>(
+<div key={i}>
+
+<b>Batch {a.batch_id?.slice(0,8)}</b>
+
+{" "} {a.type === "IN" ? "+" : "-"}
+
+{a.qty} {a.device}
+
+{" — "}
+
+{new Date(a.created_at).toLocaleString()}
+
+</div>
+))}
+
+</div>
+
+</div>
 
 </div>
 
@@ -204,17 +295,6 @@ export default function DashboardPage() {
             ))}
           </tbody>
         </table>
-      </div>
-
-      <div>
-        <h2 className="text-xl font-semibold mb-3">Recent Activity</h2>
-        <div className="max-h-[260px] overflow-y-auto space-y-2">
-          {activity.slice(0,50).map((a) => (
-            <div key={a.id}>
-              {a.type} — {a.device} — {a.qty} — {a.actor}
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );

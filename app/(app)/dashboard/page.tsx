@@ -35,11 +35,17 @@ export default function DashboardPage() {
   b.device?.toLowerCase().includes(search.toLowerCase())
  );
 
- const chartData = flow.map((d:any)=>({
- device: d.device,
- in: Number(d.total_in || 0),
- out: Number(d.total_out || 0)
-}));
+ const chartData = bins.map((b:any) => {
+
+ const movement = flow.find((f:any)=>f.device === b.device);
+
+ return {
+  device: b.device,
+  in: Number(movement?.total_in || 0),
+  out: Number(movement?.total_out || 0)
+ };
+
+});
 
  const deviceName =
  bins.find((b:any)=>b.device_id === openDevice)?.device || openDevice;
@@ -193,7 +199,7 @@ IN vs OUT by device
   tick={{ fill:"#94a3b8", fontSize:12 }}
 />
 
-<YAxis allowDecimals={false} tick={{ fill:"#94a3b8", fontSize:12 }} />
+<YAxis allowDecimals={false} domain={[0, 'auto']} tick={{ fill:"#94a3b8", fontSize:12 }} />
 
 <Tooltip
  contentStyle={{
@@ -210,6 +216,7 @@ IN vs OUT by device
  fill="#38bdf8"
  name="Inbound"
  radius={[4,4,0,0]}
+ label={{ position:"top", fontSize:11, fill:"#94a3b8" }}
 />
 
 <Bar
@@ -217,6 +224,7 @@ IN vs OUT by device
  fill="#a855f7"
  name="Outbound"
  radius={[4,4,0,0]}
+ label={{ position:"top", fontSize:11, fill:"#94a3b8" }}
 />
 
 </BarChart>

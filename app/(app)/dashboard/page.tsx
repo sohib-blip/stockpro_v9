@@ -188,7 +188,11 @@ Device Flow Overview
 
 <ResponsiveContainer width="100%" height="100%">
 
-<BarChart data={chartData} barCategoryGap="25%">
+<BarChart
+ data={chartData}
+ barCategoryGap="25%"
+ margin={{ top: 40, right: 20, left: 10, bottom: 90 }}
+>
 
 <XAxis
   dataKey="device"
@@ -199,7 +203,11 @@ Device Flow Overview
   tick={{ fill:"#94a3b8", fontSize:12 }}
 />
 
-<YAxis allowDecimals={false} domain={[0, 'auto']} tick={{ fill:"#94a3b8", fontSize:12 }} />
+<YAxis
+ allowDecimals={false}
+ domain={[0, 'auto']}
+ tick={{ fill:"#94a3b8", fontSize:12 }}
+/>
 
 <Tooltip
  contentStyle={{
@@ -215,17 +223,18 @@ Device Flow Overview
  dataKey="in"
  fill="#38bdf8"
  name="Inbound"
- radius={[4,4,0,0]}
+ radius={[6,6,0,0]}
+ barSize={36}
  label={(props:any)=>{
   if(!props.value) return null
   return (
    <text
     x={props.x + props.width/2}
-    y={props.y - 6}
+    y={props.y - 8}
     textAnchor="middle"
-    fill="#cbd5f5"
-    fontSize="12"
-    fontWeight="500"
+    fill="#e2e8f0"
+    fontSize="13"
+    fontWeight="600"
    >
     {props.value}
    </text>
@@ -237,17 +246,18 @@ Device Flow Overview
  dataKey="out"
  fill="#a855f7"
  name="Outbound"
- radius={[4,4,0,0]}
+ radius={[6,6,0,0]}
+ barSize={36}
  label={(props:any)=>{
   if(!props.value) return null
   return (
    <text
     x={props.x + props.width/2}
-    y={props.y - 6}
+    y={props.y - 8}
     textAnchor="middle"
-    fill="#cbd5f5"
-    fontSize="12"
-    fontWeight="500"
+    fill="#e2e8f0"
+    fontSize="13"
+    fontWeight="600"
    >
     {props.value}
    </text>

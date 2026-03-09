@@ -41,6 +41,9 @@ export default function DashboardPage() {
   out: Number(b.total_out || 0)
  })) || [];
 
+ const deviceName =
+ bins.find((b:any)=>b.device_id === openDevice)?.device || openDevice;
+
  async function loadAll() {
 
  const [kpiRes, binsRes, floorsRes, activityRes] = await Promise.all([
@@ -106,23 +109,39 @@ className="bg-transparent outline-none w-full text-sm"
 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
 
 <div className="card-glow rounded-xl p-6 text-center">
-<div className="text-xs text-slate-400 uppercase mb-2">Total bins</div>
-<div className="text-3xl font-bold text-cyan-400">{kpi.total_bins}</div>
+<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+Total bins
+</div>
+<div className="text-4xl font-bold text-cyan-400">
+{kpi.total_bins}
+</div>
 </div>
 
 <div className="card-glow rounded-xl p-6 text-center">
-<div className="text-xs text-slate-400 uppercase mb-2">Total boxes</div>
-<div className="text-3xl font-bold text-cyan-400">{kpi.total_boxes}</div>
+<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+Total boxes
+</div>
+<div className="text-4xl font-bold text-cyan-400">
+{kpi.total_boxes}
+</div>
 </div>
 
 <div className="card-glow rounded-xl p-6 text-center">
-<div className="text-xs text-slate-400 uppercase mb-2">Total IMEI</div>
-<div className="text-3xl font-bold text-cyan-400">{kpi.total_imei}</div>
+<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+Total IMEI
+</div>
+<div className="text-4xl font-bold text-cyan-400">
+{kpi.total_imei}
+</div>
 </div>
 
 <div className="card-glow rounded-xl p-6 text-center">
-<div className="text-xs text-slate-400 uppercase mb-2">Alerts</div>
-<div className="text-3xl font-bold text-purple-400">{kpi.alerts}</div>
+<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+Alerts
+</div>
+<div className="text-4xl font-bold text-purple-400">
+{kpi.alerts}
+</div>
 </div>
 
 </div>
@@ -148,19 +167,30 @@ Export current stock
 
 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
+
 {/* GRAPH */}
 
-<div className="card-glow p-8 rounded-xl md:col-span-2" style={{height:360}}>
+<div className="card-glow p-8 rounded-xl md:col-span-2 h-[420px]">
 
-<h2 className="text-lg font-semibold mb-6">IN vs OUT by device</h2>
+<h2 className="text-lg font-semibold mb-6">
+IN vs OUT by device
+</h2>
 
-<ResponsiveContainer>
+<ResponsiveContainer width="100%" height="100%">
 
 <BarChart data={chartData} barCategoryGap="30%">
 
 <XAxis dataKey="device"/>
 <YAxis/>
-<Tooltip/>
+
+<Tooltip
+ contentStyle={{
+  background:"#020617",
+  border:"1px solid rgba(255,255,255,0.08)",
+  borderRadius:"10px"
+ }}
+/>
+
 <Legend/>
 
 <Bar
@@ -188,7 +218,9 @@ radius={[4,4,0,0]}
 
 <div className="card-glow p-6 rounded-xl">
 
-<h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
+<h2 className="text-lg font-semibold mb-4">
+Recent Activity
+</h2>
 
 <div className="max-h-[280px] overflow-y-auto space-y-3 text-sm">
 
@@ -228,7 +260,9 @@ minute:"2-digit"
 
 <div className="card-glow p-6 rounded-xl">
 
-<h2 className="text-lg font-semibold mb-5">Bins</h2>
+<h2 className="text-lg font-semibold mb-5">
+Bins
+</h2>
 
 <table className="w-full text-sm border-collapse">
 
@@ -293,7 +327,7 @@ b.level === "ok"
 <div className="flex justify-between items-center mb-5">
 
 <h2 className="text-lg font-semibold">
-Device {openDevice}
+Device {deviceName}
 </h2>
 
 <button
@@ -358,7 +392,9 @@ d.box_code?.toLowerCase().includes(boxSearch.toLowerCase())
 
 <div className="card-glow p-6 rounded-xl">
 
-<h2 className="text-lg font-semibold mb-5">Floors</h2>
+<h2 className="text-lg font-semibold mb-5">
+Floors
+</h2>
 
 <table className="w-full text-sm">
 

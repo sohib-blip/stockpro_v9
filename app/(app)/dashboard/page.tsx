@@ -178,13 +178,13 @@ Export current stock
 
 {/* GRAPH */}
 
-<div className="card-glow p-4 rounded-xl md:col-span-3">
+<div className="card-glow p-3 rounded-xl md:col-span-3">
 
 <h2 className="text-lg font-semibold mb-6">
 Device Flow Overview
 </h2>
 
-<div className="h-[420px]">
+<div className="h-[280px]">
 
 <ResponsiveContainer width="100%" height="100%">
 
@@ -224,7 +224,7 @@ Device Flow Overview
  fill="#38bdf8"
  name="Inbound"
  radius={[6,6,0,0]}
- barSize={36}
+ barSize={28}
  label={(props:any)=>{
   if(!props.value) return null
   return (
@@ -247,7 +247,7 @@ Device Flow Overview
  fill="#a855f7"
  name="Outbound"
  radius={[6,6,0,0]}
- barSize={36}
+ barSize={28}
  label={(props:any)=>{
   if(!props.value) return null
   return (

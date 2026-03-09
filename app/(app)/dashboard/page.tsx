@@ -35,11 +35,11 @@ export default function DashboardPage() {
  );
 
  const chartData =
- filteredBins.map((b:any)=>({
-  device: b.device,
-  in: Number(b.total_in || b.imei_count || 0),
-  out: Number(b.total_out || 0)
- })) || [];
+filteredBins.map((b:any)=>({
+ device: b.device,
+ in: Number(b.total_in ?? b.imei_count ?? 0),
+ out: Number(b.total_out ?? b.out ?? 0)
+})) || [];
 
  const deviceName =
  bins.find((b:any)=>b.device_id === openDevice)?.device || openDevice;
@@ -96,7 +96,7 @@ type="text"
 placeholder="Search device..."
 value={search}
 onChange={(e)=>setSearch(e.target.value)}
-className="bg-transparent outline-none w-full text-sm"
+className="w-full text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-2 outline-none"
 />
 
 </div>
@@ -347,7 +347,7 @@ type="text"
 placeholder="Filter box..."
 value={boxSearch}
 onChange={(e)=>setBoxSearch(e.target.value)}
-className="mb-4 bg-transparent border border-white/10 px-3 py-2 rounded text-sm"
+className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-sm outline-none"
 />
 
 <table className="w-full text-sm">

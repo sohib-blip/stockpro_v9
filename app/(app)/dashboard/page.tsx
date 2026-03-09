@@ -181,10 +181,10 @@ Export current stock
 <div className="card-glow p-8 rounded-xl md:col-span-3">
 
 <h2 className="text-lg font-semibold mb-6">
-IN vs OUT by device
+Device Flow Overview
 </h2>
 
-<div className="h-[360px]">
+<div className="h-[420px]">
 
 <ResponsiveContainer width="100%" height="100%">
 
@@ -216,7 +216,21 @@ IN vs OUT by device
  fill="#38bdf8"
  name="Inbound"
  radius={[4,4,0,0]}
- label={{ position:"top", fontSize:11, fill:"#94a3b8" }}
+ label={(props:any)=>{
+  if(!props.value) return null
+  return (
+   <text
+    x={props.x + props.width/2}
+    y={props.y - 6}
+    textAnchor="middle"
+    fill="#cbd5f5"
+    fontSize="12"
+    fontWeight="500"
+   >
+    {props.value}
+   </text>
+  )
+ }}
 />
 
 <Bar
@@ -224,7 +238,21 @@ IN vs OUT by device
  fill="#a855f7"
  name="Outbound"
  radius={[4,4,0,0]}
- label={{ position:"top", fontSize:11, fill:"#94a3b8" }}
+ label={(props:any)=>{
+  if(!props.value) return null
+  return (
+   <text
+    x={props.x + props.width/2}
+    y={props.y - 6}
+    textAnchor="middle"
+    fill="#cbd5f5"
+    fontSize="12"
+    fontWeight="500"
+   >
+    {props.value}
+   </text>
+  )
+ }}
 />
 
 </BarChart>

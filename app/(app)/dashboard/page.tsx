@@ -113,13 +113,13 @@ const [activity, setActivity] = useState<any[]>([]);
   const stock = inbound - outbound;
 
   return {
-    device_id: String(d.device_id ?? ""),
-    device: String(d.device ?? ""),
-    total_in: stock,       // 🔥 stock réel
-    total_out: outbound,   // sorties
-    min_stock: Number(d.min_stock ?? 0),
-    level: (d.level as Level) || "ok",
-  };
+  device_id: String(d.device_id ?? ""),
+  device: String(d.device ?? ""),
+  total_in: inbound,
+  total_out: outbound,
+  min_stock: Number(d.min_stock ?? 0),
+  level: (d.level as Level) || "ok",
+};
 
 });
 
@@ -548,7 +548,7 @@ const filteredAlerts = filteredDevices.filter(
               <div className="flex justify-between text-sm mb-1">
                 <span>{d.device}</span>
                 <span className="text-slate-400">
-{d.total_in - d.total_out}
+{d.total_in}
 </span>
               </div>
 

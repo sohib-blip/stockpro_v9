@@ -120,12 +120,12 @@ export async function GET(req:Request) {
       const csvText = `${header}\n${body}\n`;
 
       return new NextResponse(csvText,{
-        headers:{
-          "Content-Type":"text/csv; charset=utf-8",
-          "Content-Disposition":`attachment; filename=dashboard_stock_${new Date().toISOString().slice(0,10)}.csv`
-        }
-      });
-
+  headers:{
+    "Content-Type":"text/csv; charset=utf-8",
+    "Content-Disposition":`attachment; filename=dashboard_stock_${new Date().toISOString().slice(0,10)}.csv`,
+    "Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"
+  }
+});
     }
 
     // 📊 EXCEL EXPORT
@@ -139,12 +139,12 @@ export async function GET(req:Request) {
     });
 
     return new NextResponse(buffer,{
-      headers:{
-        "Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition":`attachment; filename=dashboard_stock_${new Date().toISOString().slice(0,10)}.xlsx`
-      }
-    });
-
+  headers:{
+    "Content-Type":"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "Content-Disposition":`attachment; filename=dashboard_stock_${new Date().toISOString().slice(0,10)}.xlsx`,
+    "Cache-Control":"no-store, no-cache, must-revalidate, max-age=0"
+  }
+});
   } catch(e:any) {
 
     return NextResponse.json(

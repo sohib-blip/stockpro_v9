@@ -230,30 +230,34 @@ const filteredAlerts = filteredDevices.filter(
 
   // ✅ Floors display with exact counts (boxes + IMEIs)
   function floorsForDevice(device_id: string): string {
-    const agg = new Map<string, { boxes: number; imeis: number }>();
 
-    for (const b of filteredBoxes) {
-      if (b.device_id !== device_id) continue;
+  const agg = new Map<string, { boxes: number; imeis: number }>();
 
-      const floor = (b.floor ?? "—").toString();
+  for (const b of boxes) {
 
-      const prev = agg.get(floor) || { boxes: 0, imeis: 0 };
-      prev.boxes += 1;
-      prev.imeis += Number(b.remaining ?? 0);
-      agg.set(floor, prev);
-    }
+    if (b.device_id !== device_id) continue;
 
-    const floors = Array.from(agg.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([floor, v]) => `${floor} (${v.boxes} boxes / ${v.imeis} IMEIs)`);
+    const floor = (b.floor ?? "—").toString();
 
-    return floors.length ? floors.join(", ") : "—";
+    const prev = agg.get(floor) || { boxes: 0, imeis: 0 };
+
+    prev.boxes += 1;
+    prev.imeis += Number(b.remaining ?? 0);
+
+    agg.set(floor, prev);
   }
+
+  const floors = Array.from(agg.entries())
+    .sort(([a],[b]) => a.localeCompare(b))
+    .map(([floor,v]) => `${floor} (${v.boxes} boxes / ${v.imeis} IMEIs)`);
+
+  return floors.length ? floors.join(", ") : "—";
+}
 
   // ✅ Boxes count must respect global filter too
   function boxesCountForDevice(device_id: string): number {
-    return filteredBoxes.filter((b) => b.device_id === device_id).length;
-  }
+  return boxes.filter((b) => b.device_id === device_id).length;
+}
 
   function startEditMinStock(row: DeviceSummaryRow) {
     setEditingDeviceId(row.device_id);
@@ -289,7 +293,7 @@ const filteredAlerts = filteredDevices.filter(
   async function exportExcel() {
     setErr("");
     try {
-      const res = await fetch("/api/dashboard/export", { cache: "no-store" });
+      const res = await fetch(`/api/dashboard/export?t=${Date.now()}`, { cache: "no-store" });
       if (!res.ok) {
         const j = await res.json().catch(() => null);
         throw new Error(j?.error || "Export failed");
@@ -311,7 +315,7 @@ const filteredAlerts = filteredDevices.filter(
   async function exportCSV() {
   setErr("");
   try {
-    const res = await fetch("/api/dashboard/export?format=csv", { cache: "no-store" });
+    const res = await fetch(`/api/dashboard/export?format=csv&t=${Date.now()}`, { cache: "no-store" });
 
     if (!res.ok) {
       const j = await res.json().catch(() => null);

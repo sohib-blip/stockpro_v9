@@ -190,8 +190,8 @@ Device Flow Overview
 
 <BarChart
  data={chartData}
- barCategoryGap="25%"
- margin={{ top: 40, right: 20, left: 10, bottom: 90 }}
+ barCategoryGap="30%"
+ margin={{ top: 30, right: 10, left: 0, bottom: 30 }}
 >
 
 <XAxis

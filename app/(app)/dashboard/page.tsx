@@ -165,22 +165,23 @@ Export current stock
 
 {/* GRAPH + ACTIVITY */}
 
-<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-
+<div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
 
 {/* GRAPH */}
 
-<div className="card-glow p-8 rounded-xl md:col-span-2 h-[420px]">
+<div className="card-glow p-8 rounded-xl md:col-span-3">
 
 <h2 className="text-lg font-semibold mb-6">
 IN vs OUT by device
 </h2>
 
+<div className="h-[360px]">
+
 <ResponsiveContainer width="100%" height="100%">
 
-<BarChart data={chartData} barCategoryGap="30%">
+<BarChart data={chartData} barCategoryGap="25%">
 
-<XAxis dataKey="device"/>
+<XAxis dataKey="device" tick={{ fontSize: 12 }} />
 <YAxis/>
 
 <Tooltip
@@ -194,17 +195,17 @@ IN vs OUT by device
 <Legend/>
 
 <Bar
-dataKey="in"
-fill="#38bdf8"
-name="Inbound"
-radius={[4,4,0,0]}
+ dataKey="in"
+ fill="#38bdf8"
+ name="Inbound"
+ radius={[4,4,0,0]}
 />
 
 <Bar
-dataKey="out"
-fill="#a855f7"
-name="Outbound"
-radius={[4,4,0,0]}
+ dataKey="out"
+ fill="#a855f7"
+ name="Outbound"
+ radius={[4,4,0,0]}
 />
 
 </BarChart>
@@ -213,37 +214,39 @@ radius={[4,4,0,0]}
 
 </div>
 
+</div>
+
 
 {/* ACTIVITY */}
 
-<div className="card-glow p-6 rounded-xl">
+<div className="card-glow p-5 rounded-xl md:col-span-1">
 
-<h2 className="text-lg font-semibold mb-4">
+<h2 className="text-md font-semibold mb-4">
 Recent Activity
 </h2>
 
-<div className="max-h-[280px] overflow-y-auto space-y-3 text-sm">
+<div className="max-h-[360px] overflow-y-auto space-y-3 text-sm">
 
-{activity.slice(0,50).map((a,i)=>(
+{activity.slice(0,40).map((a,i)=>(
 
 <div key={i} className="flex justify-between items-center">
 
-<span className={
+<div className={
 a.type === "IN"
 ? "text-green-400 font-semibold"
 : "text-red-400 font-semibold"
 }>
 {a.type === "IN" ? "+" : "-"}{a.qty} {a.device}
-</span>
+</div>
 
-<span className="text-slate-400 text-xs">
+<div className="text-slate-400 text-xs">
 {new Date(a.created_at).toLocaleString("fr-BE",{
 day:"2-digit",
 month:"2-digit",
 hour:"2-digit",
 minute:"2-digit"
 })}
-</span>
+</div>
 
 </div>
 

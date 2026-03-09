@@ -184,7 +184,7 @@ Export current stock
 Device Flow Overview
 </h2>
 
-<div className="h-[280px]">
+<div className="h-[480px]">
 
 <ResponsiveContainer width="100%" height="100%">
 

@@ -27,6 +27,9 @@ export default function DashboardPage() {
  const [drilldown, setDrilldown] = useState<any[]>([]);
  const [flow,setFlow] = useState<any[]>([]);
  const [openDevice, setOpenDevice] = useState<string | null>(null);
+ const [topDevices,setTopDevices] = useState<any[]>([]);
+const [showSales,setShowSales] = useState(false);
+const [salesTable,setSalesTable] = useState<any[]>([]);
 
  const [search,setSearch] = useState("");
  const [boxSearch,setBoxSearch] = useState("");
@@ -52,12 +55,13 @@ export default function DashboardPage() {
 
  async function loadAll() {
 
-const [kpiRes, binsRes, floorsRes, activityRes, flowRes] = await Promise.all([
+const [kpiRes, binsRes, floorsRes, activityRes, flowRes, salesRes] = await Promise.all([
  fetch("/api/dashboard/summary"),
  fetch("/api/dashboard/bins"),
  fetch("/api/dashboard/floors"),
  fetch("/api/dashboard/activity"),
- fetch("/api/dashboard/device-flow")
+ fetch("/api/dashboard/device-flow"),
+ fetch("/api/dashboard/sales")
 ]);
 
  const kpiJson = await kpiRes.json();
@@ -65,15 +69,20 @@ const [kpiRes, binsRes, floorsRes, activityRes, flowRes] = await Promise.all([
  const floorsJson = await floorsRes.json();
  const activityJson = await activityRes.json();
  const flowJson = await flowRes.json();
+ const salesJson = await salesRes.json();
 
  if (kpiJson.ok) setKpi(kpiJson.kpis);
  if (binsJson.ok) setBins(binsJson.rows);
  if (floorsJson.ok) setFloors(floorsJson.rows);
  if (activityJson.ok) setActivity(activityJson.rows);
  if (flowJson.ok) setFlow(flowJson.rows);
+if (salesJson.ok){
+ setSalesTable(salesJson.rows)
+ setTopDevices(salesJson.rows.slice(0,3))
+}
 
- }
-
+}
+ 
  async function openDrilldown(device_id: string) {
 
  setOpenDevice(device_id);
@@ -273,6 +282,111 @@ Device Flow Overview
 
 </div>
 
+{/* TOP SELLING DEVICES */}
+
+<div
+className="card-glow p-6 rounded-xl cursor-pointer hover:bg-white/5 transition"
+onClick={()=>setShowSales(!showSales)}
+>
+
+<h2 className="text-lg font-semibold mb-4">
+Top Selling Devices (This Month)
+</h2>
+
+<div className="space-y-3">
+
+{topDevices.map((d,i)=>{
+
+const percent = salesTable.length
+ ? Math.round((d.total_out / salesTable.reduce((a,b)=>a+b.total_out,0)) * 100)
+ : 0
+
+return(
+
+<div key={i} className="flex justify-between text-sm">
+
+<div className="flex gap-3 items-center">
+
+<span className="text-slate-400">
+#{i+1}
+</span>
+
+<span className="font-semibold text-cyan-400">
+{d.device}
+</span>
+
+</div>
+
+<div className="flex gap-4">
+
+<span className="text-purple-400">
+{d.total_out}
+</span>
+
+<span className="text-slate-400">
+{percent}%
+</span>
+
+</div>
+
+</div>
+
+)
+
+})}
+
+</div>
+
+</div>
+
+{showSales && (
+
+<div className="card-glow p-6 rounded-xl">
+
+<h2 className="text-lg font-semibold mb-5">
+Device Sales Details
+</h2>
+
+<table className="w-full text-sm">
+
+<thead>
+
+<tr className="text-left text-slate-400 border-b border-white/5">
+<th className="py-2">Device</th>
+<th>Sold</th>
+<th>%</th>
+</tr>
+
+</thead>
+
+<tbody>
+
+{salesTable.map((d,i)=>{
+
+const total = salesTable.reduce((a,b)=>a+b.total_out,0)
+const percent = total ? Math.round((d.total_out/total)*100) : 0
+
+return(
+
+<tr key={i} className="hover:bg-white/5">
+
+<td className="py-2">{d.device}</td>
+<td>{d.total_out}</td>
+<td>{percent}%</td>
+
+</tr>
+
+)
+
+})}
+
+</tbody>
+
+</table>
+
+</div>
+
+)}
 
 {/* ACTIVITY */}
 

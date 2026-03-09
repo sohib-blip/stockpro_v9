@@ -1,6 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import {
+ BarChart,
+ Bar,
+ XAxis,
+ YAxis,
+ Tooltip,
+ ResponsiveContainer
+} from "recharts";
 
 type KPI = {
   total_bins: number;
@@ -12,6 +20,12 @@ type KPI = {
 export default function DashboardPage() {
   const [kpi, setKpi] = useState<KPI | null>(null);
   const [bins, setBins] = useState<any[]>([]);
+
+  const chartData = bins?.map((b:any)=>({
+ device: b.device,
+ stock: Number(b.imei_count || 0)
+})) || [];
+
   const [floors, setFloors] = useState<any[]>([]);
   const [activity, setActivity] = useState<any[]>([]);
   const [drilldown, setDrilldown] = useState<any[]>([]);
@@ -69,6 +83,31 @@ export default function DashboardPage() {
         </a>
       </div>
 
+      <div style={{ width:"100%", height:300 }}>
+
+<ResponsiveContainer>
+
+<BarChart data={chartData} barCategoryGap="30%">
+
+<XAxis dataKey="device" />
+
+<YAxis />
+
+<Tooltip />
+
+<Bar
+ dataKey="stock"
+ fill="#4DA3FF"
+ radius={[4,4,0,0]}
+ barSize={18}
+/>
+
+</BarChart>
+
+</ResponsiveContainer>
+
+</div>
+
       <div>
         <h2 className="text-xl font-semibold mb-3">Bins</h2>
         <table className="w-full border">
@@ -92,7 +131,23 @@ export default function DashboardPage() {
                 <td>{b.boxes_count}</td>
                 <td>{b.imei_count}</td>
                 <td>{b.min_stock}</td>
-                <td>{b.level}</td>
+                <td>
+
+<span
+ className={
+  b.level === "ok"
+   ? "text-green-500"
+   : b.level === "low"
+   ? "text-orange-500"
+   : "text-red-500"
+ }
+>
+
+{b.level}
+
+</span>
+
+</td>
               </tr>
             ))}
           </tbody>
@@ -154,7 +209,7 @@ export default function DashboardPage() {
       <div>
         <h2 className="text-xl font-semibold mb-3">Recent Activity</h2>
         <div className="max-h-[260px] overflow-y-auto space-y-2">
-          {activity.map((a) => (
+          {activity.slice(0,50).map((a) => (
             <div key={a.id}>
               {a.type} — {a.device} — {a.qty} — {a.actor}
             </div>

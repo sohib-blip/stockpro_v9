@@ -343,7 +343,10 @@ Bins
 {filteredBins.map((b)=>(
 <tr
 key={b.device_id}
-className="cursor-pointer hover:bg-white/5 transition"
+className={`cursor-pointer transition
+ ${b.level === "low" ? "bg-orange-500/10" : ""}
+ ${b.level === "critical" ? "bg-red-500/10" : ""}
+ hover:bg-white/5`}
 onClick={()=>openDrilldown(b.device_id)}
 >
 
@@ -377,15 +380,15 @@ onBlur={async(e)=>{
 <td>
 
 <span
-className={
-b.level === "ok"
-? "text-green-500"
-: b.level === "low"
-? "text-orange-500"
-: "text-red-500"
-}
+className={`px-2 py-1 rounded text-xs font-semibold
+ ${b.level === "ok" ? "bg-green-500/20 text-green-400" : ""}
+ ${b.level === "low" ? "bg-orange-500/20 text-orange-400" : ""}
+ ${b.level === "critical" ? "bg-red-500/20 text-red-400" : ""}
+`}
 >
-{b.level}
+{b.level === "ok" && "OK"}
+{b.level === "low" && "LOW"}
+{b.level === "critical" && "OUT"}
 </span>
 
 </td>

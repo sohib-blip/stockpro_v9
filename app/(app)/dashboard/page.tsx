@@ -350,7 +350,29 @@ onClick={()=>openDrilldown(b.device_id)}
 <td className="py-2">{b.device}</td>
 <td>{b.boxes_count}</td>
 <td>{b.imei_count}</td>
-<td>{b.min_stock}</td>
+<td>
+
+<input
+type="number"
+defaultValue={b.min_stock ?? 0}
+className="w-16 bg-black/40 border border-white/10 rounded px-2 py-1 text-sm"
+onBlur={async(e)=>{
+
+ const value = Number(e.target.value)
+
+ await fetch("/api/bins/update-min-stock",{
+  method:"POST",
+  headers:{ "Content-Type":"application/json" },
+  body:JSON.stringify({
+   device_id:b.device_id,
+   min_stock:value
+  })
+ })
+
+}}
+/>
+
+</td>
 
 <td>
 

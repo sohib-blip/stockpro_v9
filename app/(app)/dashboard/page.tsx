@@ -178,7 +178,7 @@ Export current stock
 
 {/* GRAPH */}
 
-<div className="card-glow p-8 rounded-xl md:col-span-3">
+<div className="card-glow p-4 rounded-xl md:col-span-3">
 
 <h2 className="text-lg font-semibold mb-6">
 Device Flow Overview

@@ -474,7 +474,7 @@ const filteredAlerts = filteredDevices.filter(
     <ResponsiveContainer width="100%" height="100%">
   <BarChart
   data={filteredDevices}
-  barCategoryGap="25%"
+  barCategoryGap="60%"
 >
 
   <CartesianGrid strokeDasharray="3 3" stroke="#1e293b"/>
@@ -504,6 +504,7 @@ const filteredAlerts = filteredDevices.filter(
   dataKey="total_in"
   name="Inbound"
   fill="#38bdf8"
+  barSize={14}
   radius={[4,4,0,0]}
 />
 
@@ -511,6 +512,7 @@ const filteredAlerts = filteredDevices.filter(
   dataKey="total_out"
   name="Outbound"
   fill="#a855f7"
+  barSize={14}
   radius={[4,4,0,0]}
 />
 
@@ -584,7 +586,7 @@ const filteredAlerts = filteredDevices.filter(
         Recent Activity
       </div>
 
-      <div className="space-y-3 text-sm">
+      <div className="space-y-3 text-sm max-h-[260px] overflow-y-auto pr-1">
 
 {activity.length === 0 && (
   <div className="text-slate-500 text-sm">

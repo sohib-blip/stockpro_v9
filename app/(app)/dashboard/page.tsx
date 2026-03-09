@@ -7,7 +7,8 @@ import {
  XAxis,
  YAxis,
  Tooltip,
- ResponsiveContainer
+ ResponsiveContainer,
+ Legend
 } from "recharts";
 
 type KPI = {
@@ -26,10 +27,18 @@ export default function DashboardPage() {
   const [drilldown, setDrilldown] = useState<any[]>([]);
   const [openDevice, setOpenDevice] = useState<string | null>(null);
 
+  const [search,setSearch] = useState("");
+  const [boxSearch,setBoxSearch] = useState("");
+
+  const filteredBins = bins.filter((b:any)=>
+    b.device?.toLowerCase().includes(search.toLowerCase())
+  );
+
   const chartData =
-    bins?.map((b:any)=>({
+    filteredBins.map((b:any)=>({
       device: b.device,
-      stock: Number(b.imei_count || 0)
+      in: Number(b.total_in || b.imei_count || 0),
+      out: Number(b.total_out || 0)
     })) || [];
 
   async function loadAll() {
@@ -68,291 +77,323 @@ export default function DashboardPage() {
 
   return (
 
-    <div className="p-8 space-y-8 max-w-[1400px] mx-auto">
+<div className="p-8 space-y-8 max-w-[1400px] mx-auto">
 
-      <h1 className="text-2xl font-bold">Dashboard</h1>
+<h1 className="text-2xl font-bold">Dashboard</h1>
 
 
-      {/* KPI */}
+{/* GLOBAL FILTER */}
 
-      {kpi && (
+<div className="card-glow p-4 rounded-xl">
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+<input
+type="text"
+placeholder="Search device..."
+value={search}
+onChange={(e)=>setSearch(e.target.value)}
+className="bg-transparent outline-none w-full text-sm"
+/>
 
-          <div className="card-glow p-5 rounded-xl">
-            <div className="text-sm text-slate-400">Total bins</div>
-            <div className="text-2xl font-semibold">{kpi.total_bins}</div>
-          </div>
+</div>
 
-          <div className="card-glow p-5 rounded-xl">
-            <div className="text-sm text-slate-400">Total boxes</div>
-            <div className="text-2xl font-semibold">{kpi.total_boxes}</div>
-          </div>
 
-          <div className="card-glow p-5 rounded-xl">
-            <div className="text-sm text-slate-400">Total IMEI</div>
-            <div className="text-2xl font-semibold">{kpi.total_imei}</div>
-          </div>
+{/* KPI */}
 
-          <div className="card-glow p-5 rounded-xl">
-            <div className="text-sm text-slate-400">Alerts</div>
-            <div className="text-2xl font-semibold">{kpi.alerts}</div>
-          </div>
+{kpi && (
 
-        </div>
+<div className="grid grid-cols-2 md:grid-cols-4 gap-6">
 
-      )}
+<div className="card-glow p-5 rounded-xl">
+<div className="text-sm text-slate-400">Total bins</div>
+<div className="text-2xl font-semibold">{kpi.total_bins}</div>
+</div>
 
+<div className="card-glow p-5 rounded-xl">
+<div className="text-sm text-slate-400">Total boxes</div>
+<div className="text-2xl font-semibold">{kpi.total_boxes}</div>
+</div>
 
-      {/* EXPORT */}
+<div className="card-glow p-5 rounded-xl">
+<div className="text-sm text-slate-400">Total IMEI</div>
+<div className="text-2xl font-semibold">{kpi.total_imei}</div>
+</div>
 
-      <div>
+<div className="card-glow p-5 rounded-xl">
+<div className="text-sm text-slate-400">Alerts</div>
+<div className="text-2xl font-semibold">{kpi.alerts}</div>
+</div>
 
-        <a
-          href="/api/dashboard/export"
-          className="card-glow px-4 py-2 rounded-lg text-sm inline-block hover:opacity-90"
-        >
-          Export current stock
-        </a>
+</div>
 
-      </div>
+)}
 
 
-      {/* GRAPH + ACTIVITY */}
+{/* EXPORT */}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+<div>
 
+<a
+href="/api/dashboard/export"
+className="card-glow px-4 py-2 rounded-lg text-sm inline-block hover:opacity-90"
+>
+Export current stock
+</a>
 
-        {/* GRAPH */}
+</div>
 
-        <div className="card-glow p-6 rounded-xl md:col-span-2" style={{height:340}}>
 
-          <h2 className="text-lg font-semibold mb-4">Stock by device</h2>
+{/* GRAPH + ACTIVITY */}
 
-          <ResponsiveContainer>
+<div className="grid grid-cols-1 md:grid-cols-3 gap-6">
 
-            <BarChart data={chartData} barCategoryGap="30%">
 
-              <XAxis dataKey="device"/>
+{/* GRAPH */}
 
-              <YAxis/>
+<div className="card-glow p-6 rounded-xl md:col-span-2" style={{height:340}}>
 
-              <Tooltip/>
+<h2 className="text-lg font-semibold mb-4">IN vs OUT by device</h2>
 
-              <Bar
-                dataKey="stock"
-                fill="#4DA3FF"
-                radius={[4,4,0,0]}
-                barSize={18}
-              />
+<ResponsiveContainer>
 
-            </BarChart>
+<BarChart data={chartData} barCategoryGap="30%">
 
-          </ResponsiveContainer>
+<XAxis dataKey="device"/>
+<YAxis/>
+<Tooltip/>
+<Legend/>
 
-        </div>
+<Bar
+dataKey="in"
+fill="#38bdf8"
+name="Inbound"
+radius={[4,4,0,0]}
+/>
 
+<Bar
+dataKey="out"
+fill="#a855f7"
+name="Outbound"
+radius={[4,4,0,0]}
+/>
 
-        {/* ACTIVITY */}
+</BarChart>
 
-        <div className="card-glow p-6 rounded-xl">
+</ResponsiveContainer>
 
-          <h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
+</div>
 
-          <div className="max-h-[260px] overflow-y-auto space-y-2 text-sm">
 
-            {activity.slice(0,50).map((a,i)=>(
+{/* ACTIVITY */}
 
-              <div key={i}>
+<div className="card-glow p-6 rounded-xl">
 
-                <span className={
-                  a.type === "IN"
-                    ? "text-green-400"
-                    : "text-red-400"
-                }>
-                  {a.type === "IN" ? "+" : "-"}{a.qty}
-                </span>
+<h2 className="text-lg font-semibold mb-4">Recent Activity</h2>
 
-                {" "} {a.device}
+<div className="max-h-[260px] overflow-y-auto space-y-2 text-sm">
 
-                {" • "}
+{activity.slice(0,50).map((a,i)=>(
 
-                {new Date(a.created_at).toLocaleString("fr-BE",{
-                  day:"2-digit",
-                  month:"2-digit",
-                  hour:"2-digit",
-                  minute:"2-digit"
-                })}
+<div key={i}>
 
-              </div>
+<span className={
+a.type === "IN"
+? "text-green-400"
+: "text-red-400"
+}>
+{a.type === "IN" ? "+" : "-"}{a.qty}
+</span>
 
-            ))}
+{" "} {a.device}
 
-          </div>
+{" • "}
 
-        </div>
+{new Date(a.created_at).toLocaleString("fr-BE",{
+day:"2-digit",
+month:"2-digit",
+hour:"2-digit",
+minute:"2-digit"
+})}
 
-      </div>
+</div>
 
+))}
 
-      {/* BINS */}
+</div>
 
-      <div className="card-glow p-6 rounded-xl">
+</div>
 
-        <h2 className="text-lg font-semibold mb-4">Bins</h2>
+</div>
 
-        <table className="w-full text-sm">
 
-          <thead>
+{/* BINS */}
 
-            <tr className="text-left text-slate-400">
-              <th>Device</th>
-              <th>Boxes</th>
-              <th>IMEI</th>
-              <th>Min stock</th>
-              <th>Status</th>
-            </tr>
+<div className="card-glow p-6 rounded-xl">
 
-          </thead>
+<h2 className="text-lg font-semibold mb-4">Bins</h2>
 
-          <tbody>
+<table className="w-full text-sm">
 
-            {bins.map((b)=>(
-              <tr
-                key={b.device_id}
-                className="cursor-pointer hover:bg-slate-800/30"
-                onClick={()=>openDrilldown(b.device_id)}
-              >
+<thead>
 
-                <td>{b.device}</td>
-                <td>{b.boxes_count}</td>
-                <td>{b.imei_count}</td>
-                <td>{b.min_stock}</td>
+<tr className="text-left text-slate-400">
+<th>Device</th>
+<th>Boxes</th>
+<th>IMEI</th>
+<th>Min stock</th>
+<th>Status</th>
+</tr>
 
-                <td>
+</thead>
 
-                  <span
-                    className={
-                      b.level === "ok"
-                        ? "text-green-500"
-                        : b.level === "low"
-                        ? "text-orange-500"
-                        : "text-red-500"
-                    }
-                  >
-                    {b.level}
-                  </span>
+<tbody>
 
-                </td>
+{filteredBins.map((b)=>(
+<tr
+key={b.device_id}
+className="cursor-pointer hover:bg-slate-800/30 transition"
+onClick={()=>openDrilldown(b.device_id)}
+>
 
-              </tr>
-            ))}
+<td>{b.device}</td>
+<td>{b.boxes_count}</td>
+<td>{b.imei_count}</td>
+<td>{b.min_stock}</td>
 
-          </tbody>
+<td>
 
-        </table>
+<span
+className={
+b.level === "ok"
+? "text-green-500"
+: b.level === "low"
+? "text-orange-500"
+: "text-red-500"
+}
+>
+{b.level}
+</span>
 
-      </div>
+</td>
 
+</tr>
+))}
 
-      {/* DRILLDOWN */}
+</tbody>
 
-      {openDevice && (
+</table>
 
-        <div className="card-glow p-6 rounded-xl">
+</div>
 
-          <div className="flex justify-between items-center mb-4">
 
-            <h2 className="text-lg font-semibold">
-              Device {openDevice}
-            </h2>
+{/* DRILLDOWN */}
 
-            <button
-              onClick={()=>setOpenDevice(null)}
-              className="text-sm border px-3 py-1 rounded hover:bg-slate-800"
-            >
-              Close
-            </button>
+{openDevice && (
 
-          </div>
+<div className="card-glow p-6 rounded-xl">
 
-          <table className="w-full text-sm">
+<div className="flex justify-between items-center mb-4">
 
-            <thead>
+<h2 className="text-lg font-semibold">
+Device {openDevice}
+</h2>
 
-              <tr className="text-left text-slate-400">
-                <th>Box</th>
-                <th>Floor</th>
-                <th>Remaining</th>
-                <th>Total ever</th>
-                <th>%</th>
-              </tr>
+<button
+onClick={()=>setOpenDevice(null)}
+className="text-sm border px-3 py-1 rounded hover:bg-slate-800"
+>
+Close
+</button>
 
-            </thead>
+</div>
 
-            <tbody>
+<input
+type="text"
+placeholder="Filter box..."
+value={boxSearch}
+onChange={(e)=>setBoxSearch(e.target.value)}
+className="mb-4 bg-transparent border px-3 py-2 rounded text-sm"
+/>
 
-              {drilldown.map((d)=>(
-                <tr key={d.box_id}>
+<table className="w-full text-sm">
 
-                  <td>{d.box_code}</td>
-                  <td>{d.floor}</td>
-                  <td>{d.remaining}</td>
-                  <td>{d.total_ever}</td>
-                  <td>{d.percent}%</td>
+<thead>
 
-                </tr>
-              ))}
+<tr className="text-left text-slate-400">
+<th>Box</th>
+<th>Floor</th>
+<th>Remaining</th>
+<th>Total ever</th>
+<th>%</th>
+</tr>
 
-            </tbody>
+</thead>
 
-          </table>
+<tbody>
 
-        </div>
+{drilldown
+.filter((d:any)=>
+d.box_code?.toLowerCase().includes(boxSearch.toLowerCase())
+)
+.map((d)=>(
+<tr key={d.box_id}>
 
-      )}
+<td>{d.box_code}</td>
+<td>{d.floor}</td>
+<td>{d.remaining}</td>
+<td>{d.total_ever}</td>
+<td>{d.percent}%</td>
 
+</tr>
+))}
 
-      {/* FLOORS */}
+</tbody>
 
-      <div className="card-glow p-6 rounded-xl">
+</table>
 
-        <h2 className="text-lg font-semibold mb-4">Floors</h2>
+</div>
 
-        <table className="w-full text-sm">
+)}
 
-          <thead>
 
-            <tr className="text-left text-slate-400">
-              <th>Floor</th>
-              <th>Device</th>
-              <th>Boxes</th>
-              <th>IMEI</th>
-            </tr>
+{/* FLOORS */}
 
-          </thead>
+<div className="card-glow p-6 rounded-xl">
 
-          <tbody>
+<h2 className="text-lg font-semibold mb-4">Floors</h2>
 
-            {floors.map((f,i)=>(
-              <tr key={`${f.floor}-${f.device_id}-${i}`}>
+<table className="w-full text-sm">
 
-                <td>{f.floor}</td>
-                <td>{f.device}</td>
-                <td>{f.boxes_count}</td>
-                <td>{f.imei_count}</td>
+<thead>
 
-              </tr>
-            ))}
+<tr className="text-left text-slate-400">
+<th>Floor</th>
+<th>Device</th>
+<th>Boxes</th>
+<th>IMEI</th>
+</tr>
 
-          </tbody>
+</thead>
 
-        </table>
+<tbody>
 
-      </div>
+{floors.map((f,i)=>(
+<tr key={`${f.floor}-${f.device_id}-${i}`}>
 
-    </div>
+<td>{f.floor}</td>
+<td>{f.device}</td>
+<td>{f.boxes_count}</td>
+<td>{f.imei_count}</td>
 
-  );
+</tr>
+))}
 
+</tbody>
+
+</table>
+
+</div>
+
+</div>
+
+);
 }

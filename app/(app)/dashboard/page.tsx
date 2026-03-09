@@ -340,19 +340,34 @@ Bins
 
 <tbody>
 
-{filteredBins.map((b)=>(
+{filteredBins.map((b)=>{
+
+let level = "ok"
+
+if (b.imei_count === 0) {
+ level = "critical"
+}
+else if (b.imei_count < b.min_stock) {
+ level = "low"
+}
+
+return (
+
 <tr
 key={b.device_id}
 className={`cursor-pointer transition
- ${b.level === "low" ? "bg-orange-500/10" : ""}
- ${b.level === "critical" ? "bg-red-500/10" : ""}
+ ${level === "low" ? "bg-orange-500/10" : ""}
+ ${level === "critical" ? "bg-red-500/10" : ""}
  hover:bg-white/5`}
 onClick={()=>openDrilldown(b.device_id)}
 >
 
 <td className="py-2">{b.device}</td>
+
 <td>{b.boxes_count}</td>
+
 <td>{b.imei_count}</td>
+
 <td>
 
 <input
@@ -381,20 +396,25 @@ onBlur={async(e)=>{
 
 <span
 className={`px-2 py-1 rounded text-xs font-semibold
- ${b.level === "ok" ? "bg-green-500/20 text-green-400" : ""}
- ${b.level === "low" ? "bg-orange-500/20 text-orange-400" : ""}
- ${b.level === "critical" ? "bg-red-500/20 text-red-400" : ""}
+ ${level === "ok" ? "bg-green-500/20 text-green-400" : ""}
+ ${level === "low" ? "bg-orange-500/20 text-orange-400" : ""}
+ ${level === "critical" ? "bg-red-500/20 text-red-400" : ""}
 `}
 >
-{b.level === "ok" && "OK"}
-{b.level === "low" && "LOW"}
-{b.level === "critical" && "OUT"}
+
+{level === "ok" && "OK"}
+{level === "low" && "LOW"}
+{level === "critical" && "EMPTY"}
+
 </span>
 
 </td>
 
 </tr>
-))}
+
+)
+
+})}
 
 </tbody>
 

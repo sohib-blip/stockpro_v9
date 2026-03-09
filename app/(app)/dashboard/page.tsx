@@ -25,6 +25,7 @@ export default function DashboardPage() {
  const [floors, setFloors] = useState<any[]>([]);
  const [activity, setActivity] = useState<any[]>([]);
  const [drilldown, setDrilldown] = useState<any[]>([]);
+ const [flow,setFlow] = useState<any[]>([]);
  const [openDevice, setOpenDevice] = useState<string | null>(null);
 
  const [search,setSearch] = useState("");
@@ -34,33 +35,36 @@ export default function DashboardPage() {
   b.device?.toLowerCase().includes(search.toLowerCase())
  );
 
- const chartData = bins.map((b:any)=>({
- device: b.device,
- in: Number(b.total_in),
- out: Number(b.total_out)
-})) || [];
+ const chartData = flow.map((d:any)=>({
+ device: d.device,
+ in: Number(d.total_in || 0),
+ out: Number(d.total_out || 0)
+}));
 
  const deviceName =
  bins.find((b:any)=>b.device_id === openDevice)?.device || openDevice;
 
  async function loadAll() {
 
- const [kpiRes, binsRes, floorsRes, activityRes] = await Promise.all([
-  fetch("/api/dashboard/summary"),
-  fetch("/api/dashboard/bins"),
-  fetch("/api/dashboard/floors"),
-  fetch("/api/dashboard/activity"),
- ]);
+const [kpiRes, binsRes, floorsRes, activityRes, flowRes] = await Promise.all([
+ fetch("/api/dashboard/summary"),
+ fetch("/api/dashboard/bins"),
+ fetch("/api/dashboard/floors"),
+ fetch("/api/dashboard/activity"),
+ fetch("/api/dashboard/device-flow")
+]);
 
  const kpiJson = await kpiRes.json();
  const binsJson = await binsRes.json();
  const floorsJson = await floorsRes.json();
  const activityJson = await activityRes.json();
+ const flowJson = await flowRes.json();
 
  if (kpiJson.ok) setKpi(kpiJson.kpis);
  if (binsJson.ok) setBins(binsJson.rows);
  if (floorsJson.ok) setFloors(floorsJson.rows);
  if (activityJson.ok) setActivity(activityJson.rows);
+ if (flowJson.ok) setFlow(flowJson.rows);
 
  }
 
@@ -189,7 +193,7 @@ IN vs OUT by device
   tick={{ fill:"#94a3b8", fontSize:12 }}
 />
 
-<YAxis tick={{ fill:"#94a3b8", fontSize:12 }} />
+<YAxis allowDecimals={false} tick={{ fill:"#94a3b8", fontSize:12 }} />
 
 <Tooltip
  contentStyle={{

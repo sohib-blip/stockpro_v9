@@ -31,6 +31,7 @@ export default function DashboardPage() {
  const [topDevices,setTopDevices] = useState<any[]>([]);
 const [showSales,setShowSales] = useState(false);
 const [salesTable,setSalesTable] = useState<any[]>([]);
+const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
 
  const [search,setSearch] = useState("");
  const [boxSearch,setBoxSearch] = useState("");
@@ -99,12 +100,24 @@ if (salesJson.ok){
 
  return (
 
-<div className="p-10 space-y-10 max-w-[1500px] mx-auto">
+<div className="pt-4 px-10 pb-10 space-y-10 max-w-[1500px] mx-auto">
+
+<div className="flex items-center justify-between">
+
+<a
+href="/api/dashboard/export"
+className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+>
+Export Excel
+</a>
 
 <h1 className="text-3xl font-semibold tracking-tight">
 Inventory Dashboard
 </h1>
 
+<div className="w-[120px]"></div>
+
+</div>
 
 {/* SEARCH */}
 
@@ -166,21 +179,6 @@ Alerts
 </div>
 
 )}
-
-
-{/* EXPORT */}
-
-<div>
-
-<a
-href="/api/dashboard/export"
-className="card-glow px-5 py-2 rounded-lg text-sm inline-block hover:opacity-90"
->
-Export current stock
-</a>
-
-</div>
-
 
 {/* GRAPH */}
 
@@ -468,9 +466,12 @@ onClick={()=>openDrilldown(b.device_id)}
 
 <td>
 
+{editingMinStock === b.device_id ? (
+
 <input
 type="number"
 defaultValue={b.min_stock ?? 0}
+autoFocus
 className="w-16 bg-black/40 border border-white/10 rounded px-2 py-1 text-sm"
 onBlur={async(e)=>{
 
@@ -493,8 +494,28 @@ onBlur={async(e)=>{
   )
  )
 
+ setEditingMinStock(null)
+
 }}
 />
+
+) : (
+
+<div
+className="cursor-pointer flex items-center gap-2 text-slate-300 hover:text-white transition"
+onClick={(e)=>{
+ e.stopPropagation()
+ setEditingMinStock(b.device_id)
+}}
+>
+
+<span>{b.min_stock ?? 0}</span>
+
+<span className="text-xs text-slate-500">🔒</span>
+
+</div>
+
+)}
 
 </td>
 

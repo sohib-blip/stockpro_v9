@@ -13,7 +13,7 @@ function sb() {
 }
 
 type LabelPayload = {
-  device_id: string;
+  device_id: string; // ici c'est en réalité le bin_id venant du select UI
   box_no: string;
   floor?: string;
   imeis: string[];
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     const supabase = sb();
     const nowIso = new Date().toISOString();
 
-    // créer batch inbound
+    // création batch inbound
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
       .insert({
@@ -70,9 +70,39 @@ export async function POST(req: Request) {
     );
 
     for (const raw of labels as LabelPayload[]) {
-      const device_id = String(raw.device_id || "").trim();
+      const bin_id = String(raw.device_id || "").trim();
       const box_code = String(raw.box_no || "").trim();
       const floor = String(raw.floor || "").trim();
+
+      if (!bin_id || !box_code) continue;
+
+      // récupérer le bin
+      const { data: binRow, error: binErr } = await supabase
+        .from("bins")
+        .select("id,name")
+        .eq("id", bin_id)
+        .maybeSingle();
+
+      if (binErr) throw binErr;
+
+      if (!binRow) {
+        throw new Error(`Bin not found: ${bin_id}`);
+      }
+
+      // récupérer le device correspondant au bin
+      const { data: deviceRow, error: deviceErr } = await supabase
+        .from("devices")
+        .select("device_id")
+        .eq("device", binRow.name)
+        .maybeSingle();
+
+      if (deviceErr) throw deviceErr;
+
+      if (!deviceRow) {
+        throw new Error(`Device not found for bin ${binRow.name}`);
+      }
+
+      const device_id = deviceRow.device_id;
 
       const imeis = Array.from(
         new Set(
@@ -82,49 +112,7 @@ export async function POST(req: Request) {
         )
       );
 
-      if (!device_id || !box_code || imeis.length === 0) continue;
-
-      // vérifier device
-      const { data: deviceRow, error: deviceErr } = await supabase
-        .from("devices")
-        .select("device_id, device")
-        .eq("device_id", device_id)
-        .maybeSingle();
-
-      if (deviceErr) throw deviceErr;
-
-      if (!deviceRow) {
-        throw new Error(`Device not found: ${device_id}`);
-      }
-
-      // trouver bin correspondant
-      const { data: existingBin, error: binErr } = await supabase
-        .from("bins")
-        .select("id, name")
-        .eq("name", deviceRow.device)
-        .maybeSingle();
-
-      if (binErr) throw binErr;
-
-      let bin_id: string;
-
-      if (existingBin?.id) {
-        bin_id = String(existingBin.id);
-      } else {
-        const { data: newBin, error: newBinErr } = await supabase
-          .from("bins")
-          .insert({
-            name: deviceRow.device,
-            min_stock: 0,
-            active: true,
-          })
-          .select("id")
-          .single();
-
-        if (newBinErr) throw newBinErr;
-
-        bin_id = String(newBin.id);
-      }
+      if (imeis.length === 0) continue;
 
       // trouver ou créer la box
       const { data: existingBox, error: boxFindErr } = await supabase

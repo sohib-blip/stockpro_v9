@@ -13,7 +13,7 @@ function sb() {
 }
 
 type LabelPayload = {
-  device_id: string; // ici c'est en réalité le bin_id venant du select UI
+  device_id: string; // = bin_id
   box_no: string;
   floor?: string;
   imeis: string[];
@@ -40,7 +40,6 @@ export async function POST(req: Request) {
     const supabase = sb();
     const nowIso = new Date().toISOString();
 
-    // création batch inbound
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
       .insert({
@@ -58,7 +57,6 @@ export async function POST(req: Request) {
     let createdBoxes = 0;
     let reusedBoxes = 0;
 
-    // charger IMEI existants
     const { data: existingItems, error: exErr } = await supabase
       .from("items")
       .select("imei");
@@ -76,7 +74,6 @@ export async function POST(req: Request) {
 
       if (!bin_id || !box_code) continue;
 
-      // récupérer le bin
       const { data: binRow, error: binErr } = await supabase
         .from("bins")
         .select("id,name")
@@ -89,21 +86,6 @@ export async function POST(req: Request) {
         throw new Error(`Bin not found: ${bin_id}`);
       }
 
-      // récupérer le device correspondant au bin
-      const { data: deviceRow, error: deviceErr } = await supabase
-        .from("devices")
-        .select("device_id")
-        .eq("device", binRow.name)
-        .maybeSingle();
-
-      if (deviceErr) throw deviceErr;
-
-      if (!deviceRow) {
-        throw new Error(`Device not found for bin ${binRow.name}`);
-      }
-
-      const device_id = deviceRow.device_id;
-
       const imeis = Array.from(
         new Set(
           (raw.imeis || [])
@@ -114,10 +96,9 @@ export async function POST(req: Request) {
 
       if (imeis.length === 0) continue;
 
-      // trouver ou créer la box
       const { data: existingBox, error: boxFindErr } = await supabase
         .from("boxes")
-        .select("id, floor")
+        .select("id,floor")
         .eq("bin_id", bin_id)
         .eq("box_code", box_code)
         .maybeSingle();
@@ -131,12 +112,10 @@ export async function POST(req: Request) {
         reusedBoxes++;
 
         if (floor && existingBox.floor !== floor) {
-          const { error: upErr } = await supabase
+          await supabase
             .from("boxes")
             .update({ floor })
             .eq("id", box_id);
-
-          if (upErr) throw upErr;
         }
       } else {
         const { data: newBox, error: newBoxErr } = await supabase
@@ -168,7 +147,7 @@ export async function POST(req: Request) {
         itemsToInsert.push({
           imei,
           box_id,
-          device_id,
+          device_id: bin_id,
           status: "IN",
           imported_at: nowIso,
           imported_by: actor_id,
@@ -179,19 +158,17 @@ export async function POST(req: Request) {
       }
 
       if (itemsToInsert.length > 0) {
-        const { data: insertedItems, error: itemsErr } = await supabase
+        const { data: insertedItems } = await supabase
           .from("items")
           .insert(itemsToInsert)
-          .select("item_id, imei, device_id");
-
-        if (itemsErr) throw itemsErr;
+          .select("item_id,imei");
 
         const movements = (insertedItems || []).map((it: any) => ({
           type: "IN",
           batch_id: batch.batch_id,
           item_id: it.item_id,
           box_id,
-          device_id: it.device_id,
+          device_id: bin_id,
           imei: it.imei,
           qty: 1,
           created_by: actor_id,
@@ -200,20 +177,13 @@ export async function POST(req: Request) {
           notes: vendor ? `vendor=${vendor}` : null,
         }));
 
-        const { error: movErr } = await supabase
-          .from("movements")
-          .insert(movements);
-
-        if (movErr) throw movErr;
+        await supabase.from("movements").insert(movements);
       }
     }
 
     return NextResponse.json({
       ok: true,
       batch_id: batch.batch_id,
-      created_at: batch.created_at,
-      vendor: vendor || "unknown",
-      actor: actor || "unknown",
       totals: {
         inserted_imeis: insertedImeis,
         skipped_existing_imeis: skippedExistingImeis,

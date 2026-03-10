@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import {
  BarChart,
  Bar,
@@ -96,7 +97,28 @@ if (salesJson.ok){
 
  }
 
- useEffect(()=>{ loadAll(); },[]);
+ useEffect(() => {
+
+  loadAll();
+
+  const supabase = createSupabaseBrowserClient();
+
+  const channel = supabase
+    .channel("stock-changes")
+    .on(
+      "postgres_changes",
+      { event: "*", schema: "public", table: "movements" },
+      () => {
+        loadAll();
+      }
+    )
+    .subscribe();
+
+  return () => {
+    supabase.removeChannel(channel);
+  };
+
+}, []);
 
  return (
 

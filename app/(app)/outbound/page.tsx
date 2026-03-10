@@ -124,7 +124,15 @@ export default function OutboundPage() {
 
   // ================= CONFIRM =================
   async function confirmOut() {
-    if (!preview?.ok || !previewSource || !actorId) return;
+    if (!preview?.ok || !previewSource) {
+  setErrorMsg("Preview missing");
+  return;
+}
+
+if (!actorId) {
+  setErrorMsg("User not authenticated");
+  return;
+}
 
     setBusy(true);
 

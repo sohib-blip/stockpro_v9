@@ -8,7 +8,8 @@ import {
  YAxis,
  Tooltip,
  ResponsiveContainer,
- Legend
+ Legend,
+ CartesianGrid
 } from "recharts";
 
 type KPI = {
@@ -181,9 +182,9 @@ Export current stock
 </div>
 
 
-{/* GRAPH + ACTIVITY */}
+{/* GRAPH */}
 
-<div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-start">
+<div className="card-glow p-6 rounded-xl">
 
 {/* GRAPH */}
 
@@ -193,28 +194,33 @@ Export current stock
 Device Flow Overview
 </h2>
 
-<div className="h-[480px]">
+<div className="h-[520px]">
 
 <ResponsiveContainer width="100%" height="100%">
 
 <BarChart
  data={chartData}
- barCategoryGap="30%"
- margin={{ top: 30, right: 10, left: 0, bottom: 30 }}
+ barCategoryGap="20%"
+ margin={{ top: 30, right: 20, left: 0, bottom: 30 }}
 >
 
+<CartesianGrid
+ strokeDasharray="3 3"
+ stroke="rgba(255,255,255,0.05)"
+/>
+
 <XAxis
-  dataKey="device"
-  angle={-90}
-  textAnchor="end"
-  interval={0}
-  height={110}
-  tick={{ fill:"#94a3b8", fontSize:12 }}
+ dataKey="device"
+ angle={-90}
+ textAnchor="end"
+ interval={0}
+ height={110}
+ tick={{ fill:"#94a3b8", fontSize:12 }}
 />
 
 <YAxis
  allowDecimals={false}
- domain={[0, 'auto']}
+ domain={[0,'auto']}
  tick={{ fill:"#94a3b8", fontSize:12 }}
 />
 
@@ -233,22 +239,7 @@ Device Flow Overview
  fill="#38bdf8"
  name="Inbound"
  radius={[6,6,0,0]}
- barSize={28}
- label={(props:any)=>{
-  if(!props.value) return null
-  return (
-   <text
-    x={props.x + props.width/2}
-    y={props.y - 8}
-    textAnchor="middle"
-    fill="#e2e8f0"
-    fontSize="13"
-    fontWeight="600"
-   >
-    {props.value}
-   </text>
-  )
- }}
+ barSize={36}
 />
 
 <Bar
@@ -256,141 +247,80 @@ Device Flow Overview
  fill="#a855f7"
  name="Outbound"
  radius={[6,6,0,0]}
- barSize={28}
- label={(props:any)=>{
-  if(!props.value) return null
-  return (
-   <text
-    x={props.x + props.width/2}
-    y={props.y - 8}
-    textAnchor="middle"
-    fill="#e2e8f0"
-    fontSize="13"
-    fontWeight="600"
-   >
-    {props.value}
-   </text>
-  )
- }}
+ barSize={36}
 />
 
 </BarChart>
 
 </ResponsiveContainer>
+</div>
+</div>
+</div>
 
+{/* ANALYTICS */}
+
+<div className="grid md:grid-cols-4 gap-6">
+
+<div className="card-glow p-5 rounded-xl">
+
+<div className="text-xs text-slate-400 mb-1">
+Devices sold this month
+</div>
+
+<div className="text-3xl font-bold text-purple-400">
+{salesTable.reduce((a,b)=>a+b.total_out,0)}
 </div>
 
 </div>
 
-{/* TOP SELLING DEVICES */}
 
-<div
-className="card-glow p-6 rounded-xl cursor-pointer hover:bg-white/5 transition"
-onClick={()=>setShowSales(!showSales)}
->
+<div className="card-glow p-5 rounded-xl">
 
-<h2 className="text-lg font-semibold mb-4">
-Top Selling Devices (This Month)
-</h2>
+<div className="text-xs text-slate-400 mb-1">
+Top device
+</div>
 
-<div className="space-y-3">
-
-{topDevices.map((d,i)=>{
-
-const percent = salesTable.length
- ? Math.round((d.total_out / salesTable.reduce((a,b)=>a+b.total_out,0)) * 100)
- : 0
-
-return(
-
-<div key={i} className="flex justify-between text-sm">
-
-<div className="flex gap-3 items-center">
-
-<span className="text-slate-400">
-#{i+1}
-</span>
-
-<span className="font-semibold text-cyan-400">
-{d.device}
-</span>
+<div className="text-xl font-semibold text-cyan-400">
+{topDevices[0]?.device || "-"}
+</div>
 
 </div>
 
-<div className="flex gap-4">
 
-<span className="text-purple-400">
-{d.total_out}
-</span>
+<div className="card-glow p-5 rounded-xl">
 
-<span className="text-slate-400">
-{percent}%
-</span>
+<div className="text-xs text-slate-400 mb-1">
+Devices tracked
+</div>
+
+<div className="text-3xl font-bold text-cyan-400">
+{bins.length}
+</div>
+
+</div>
+
+
+<div className="card-glow p-5 rounded-xl">
+
+<div className="text-xs text-slate-400 mb-1">
+Low stock alerts
+</div>
+
+<div className="text-3xl font-bold text-orange-400">
+{bins.filter(b=>b.imei_count < b.min_stock).length}
+</div>
 
 </div>
 
 </div>
 
-)
+{/* ACTIVITY + SALES */}
 
-})}
+<div className="grid md:grid-cols-2 gap-6">
 
-</div>
+{/* RECENT ACTIVITY */}
 
-</div>
-
-{showSales && (
-
-<div className="card-glow p-6 rounded-xl">
-
-<h2 className="text-lg font-semibold mb-5">
-Device Sales Details
-</h2>
-
-<table className="w-full text-sm">
-
-<thead>
-
-<tr className="text-left text-slate-400 border-b border-white/5">
-<th className="py-2">Device</th>
-<th>Sold</th>
-<th>%</th>
-</tr>
-
-</thead>
-
-<tbody>
-
-{salesTable.map((d,i)=>{
-
-const total = salesTable.reduce((a,b)=>a+b.total_out,0)
-const percent = total ? Math.round((d.total_out/total)*100) : 0
-
-return(
-
-<tr key={i} className="hover:bg-white/5">
-
-<td className="py-2">{d.device}</td>
-<td>{d.total_out}</td>
-<td>{percent}%</td>
-
-</tr>
-
-)
-
-})}
-
-</tbody>
-
-</table>
-
-</div>
-
-)}
-
-{/* ACTIVITY */}
-
-<div className="card-glow p-5 rounded-xl md:col-span-1">
+<div className="card-glow p-5 rounded-xl">
 
 <h2 className="text-md font-semibold mb-4">
 Recent Activity
@@ -422,6 +352,60 @@ minute:"2-digit"
 </div>
 
 ))}
+
+</div>
+
+</div>
+
+
+{/* TOP SELLING DEVICES */}
+
+<div
+className="card-glow p-6 rounded-xl cursor-pointer hover:bg-white/5 transition"
+onClick={()=>setShowSales(!showSales)}
+>
+
+<h2 className="text-lg font-semibold mb-4">
+Top Selling Devices (This Month)
+</h2>
+
+<div className="space-y-4">
+
+{topDevices.map((d)=>{
+
+const total = salesTable.reduce((a,b)=>a+b.total_out,0)
+const percent = total ? Math.round((d.total_out/total)*100) : 0
+
+return(
+
+<div key={d.device}>
+
+<div className="flex justify-between text-sm mb-1">
+
+<span className="text-cyan-400 font-semibold">
+{d.device}
+</span>
+
+<span className="text-slate-400">
+{percent}%
+</span>
+
+</div>
+
+<div className="w-full bg-white/10 h-2 rounded">
+
+<div
+className="bg-purple-500 h-2 rounded"
+style={{width:`${percent}%`}}
+/>
+
+</div>
+
+</div>
+
+)
+
+})}
 
 </div>
 

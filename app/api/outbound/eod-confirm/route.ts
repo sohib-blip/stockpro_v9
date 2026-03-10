@@ -14,6 +14,7 @@ function sb() {
 
 export async function POST(req: Request) {
   try {
+
     const { imeis, shipment_ref, actor, actor_id, source } = await req.json();
 
     if (!actor_id) {
@@ -32,105 +33,25 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
-    // =========================
-    // LOAD ITEMS + DEVICE NAME
-    // =========================
+    // 🚀 SQL transaction (does EVERYTHING)
 
-    const { data: items, error: itemsErr } = await supabase
-      .from("items")
-      .select(`
-        item_id,
-        imei,
-        device_id,
-        box_id,
-        status,
-        devices(name)
-      `)
-      .in("imei", imeis);
+    const { data, error } = await supabase.rpc(
+      "confirm_outbound_batch",
+      {
+        p_imeis: imeis,
+        p_actor: actor || "unknown",
+        p_actor_id: actor_id,
+        p_shipment_ref: shipment_ref || null,
+        p_source: source || "manual",
+      }
+    );
 
-    if (itemsErr) throw itemsErr;
+    if (error) throw error;
 
-    const validItems = items?.filter((i: any) => i.status === "IN") || [];
-
-    if (validItems.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "No valid IN items to ship" },
-        { status: 400 }
-      );
-    }
-
-    const supabaseNow = new Date().toISOString();
-
-    // =========================
-    // CREATE OUTBOUND BATCH
-    // =========================
-
-    const { data: batch, error: batchErr } = await supabase
-      .from("outbound_batches")
-      .insert({
-        actor: actor || "unknown",
-        shipment_ref: shipment_ref || null,
-        source: source || "manual",
-      })
-      .select("batch_id, created_at")
-      .single();
-
-    if (batchErr) throw batchErr;
-
-    // =========================
-    // UPDATE ITEMS STATUS
-    // =========================
-
-    const validImeis = validItems.map((i: any) => i.imei);
-
-    const { error: updErr } = await supabase
-      .from("items")
-      .update({
-        status: "OUT",
-        shipped_at: supabaseNow,
-        shipment_ref: shipment_ref || null,
-      })
-      .in("imei", validImeis);
-
-    if (updErr) throw updErr;
-
-    // =========================
-    // INSERT MOVEMENTS
-    // =========================
-
-    const movements = validItems.map((i: any) => ({
-      type: "OUT",
-      device: i.devices?.name || "Unknown",
-      box_id: i.box_id,
-      item_id: i.item_id,
-      qty: 1,
-      notes: shipment_ref || null,
-      batch_id: batch.batch_id,
-      actor: actor || "unknown",
-      created_by: actor_id,
-      created_at: supabaseNow,
-    }));
-
-    const { error: movErr } = await supabase
-      .from("movements")
-      .insert(movements);
-
-    if (movErr) throw movErr;
-
-    // =========================
-    // CLEAN EMPTY BOXES
-    // =========================
-
-    await supabase.rpc("full_cleanup_empty_boxes");
-
-    return NextResponse.json({
-      ok: true,
-      batch_id: batch.batch_id,
-      shipped_count: validItems.length,
-      skipped_count: imeis.length - validItems.length,
-    });
+    return NextResponse.json(data);
 
   } catch (e: any) {
+
     console.error("EOD CONFIRM ERROR", e);
 
     return NextResponse.json(

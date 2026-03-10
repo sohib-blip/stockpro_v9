@@ -71,6 +71,13 @@ export async function POST(req: Request) {
 
     for (const raw of labels as LabelPayload[]) {
       const bin_id = String(raw.device_id || "").trim();
+      const { data: binRow } = await supabase
+  .from("bins")
+  .select("name")
+  .eq("id", bin_id)
+  .single();
+
+const deviceName = binRow?.name || "Unknown";
       const box_code = String(raw.box_no || "").trim();
       const floor = String(raw.floor || "").trim();
 
@@ -158,17 +165,18 @@ export async function POST(req: Request) {
         if (itemsErr) throw itemsErr;
 
         const movements = (insertedItems || []).map((it: any) => ({
-          type: "IN",
-          batch_id: batch.batch_id,
-          item_id: it.item_id,
-          box_id,
-          imei: it.imei, // ✅ IMPORTANT: pour export + labels
-          qty: 1,
-          created_by: actor_id,
-          actor: actor || "unknown",
-          created_at: nowIso,
-          notes: vendor ? `vendor=${vendor}` : null,
-        }));
+  type: "IN",
+  batch_id: batch.batch_id,
+  item_id: it.item_id,
+  box_id,
+  device: deviceName,
+  imei: it.imei,
+  qty: 1,
+  created_by: actor_id,
+  actor: actor || "unknown",
+  created_at: nowIso,
+  notes: vendor ? `vendor=${vendor}` : null,
+}));
 
         const { error: movErr } = await supabase
           .from("movements")

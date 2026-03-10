@@ -9,7 +9,7 @@ const supabase = createClient(
 export async function GET(){
 
  const { data, error } = await supabase
-  .from("dashboard_sales_month")
+  .from("monthly_sales_dashboard_view")
   .select("*");
 
  if(error){

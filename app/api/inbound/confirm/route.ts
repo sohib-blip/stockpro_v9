@@ -13,7 +13,7 @@ function sb() {
 }
 
 type LabelPayload = {
-  device_id: string; // ici on considère que c'est le vrai devices.device_id
+  device_id: string;
   box_no: string;
   floor?: string;
   imeis: string[];
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     const supabase = sb();
     const nowIso = new Date().toISOString();
 
-    // créer le batch
+    // créer batch inbound
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
       .insert({
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     let createdBoxes = 0;
     let reusedBoxes = 0;
 
-    // charger les IMEI existants
+    // charger IMEI existants
     const { data: existingItems, error: exErr } = await supabase
       .from("items")
       .select("imei");
@@ -84,23 +84,27 @@ export async function POST(req: Request) {
 
       if (!device_id || !box_code || imeis.length === 0) continue;
 
-      // vérifier que le device existe
+      // vérifier device
       const { data: deviceRow, error: deviceErr } = await supabase
         .from("devices")
         .select("device_id, device")
         .eq("device_id", device_id)
-        .single();
+        .maybeSingle();
 
       if (deviceErr) throw deviceErr;
 
-      // trouver ou créer le bin correspondant au device
-      const { data: existingBin, error: binFindErr } = await supabase
+      if (!deviceRow) {
+        throw new Error(`Device not found: ${device_id}`);
+      }
+
+      // trouver bin correspondant
+      const { data: existingBin, error: binErr } = await supabase
         .from("bins")
         .select("id, name")
         .eq("name", deviceRow.device)
         .maybeSingle();
 
-      if (binFindErr) throw binFindErr;
+      if (binErr) throw binErr;
 
       let bin_id: string;
 
@@ -118,6 +122,7 @@ export async function POST(req: Request) {
           .single();
 
         if (newBinErr) throw newBinErr;
+
         bin_id = String(newBin.id);
       }
 
@@ -135,7 +140,7 @@ export async function POST(req: Request) {
 
       if (existingBox?.id) {
         box_id = String(existingBox.id);
-        reusedBoxes += 1;
+        reusedBoxes++;
 
         if (floor && existingBox.floor !== floor) {
           const { error: upErr } = await supabase
@@ -159,14 +164,14 @@ export async function POST(req: Request) {
         if (newBoxErr) throw newBoxErr;
 
         box_id = String(newBox.id);
-        createdBoxes += 1;
+        createdBoxes++;
       }
 
       const itemsToInsert: any[] = [];
 
       for (const imei of imeis) {
         if (existingSet.has(imei)) {
-          skippedExistingImeis += 1;
+          skippedExistingImeis++;
           continue;
         }
 
@@ -175,14 +180,14 @@ export async function POST(req: Request) {
         itemsToInsert.push({
           imei,
           box_id,
-          device_id, // ✅ important : on stocke le vrai device_id
+          device_id,
           status: "IN",
           imported_at: nowIso,
           imported_by: actor_id,
           import_id: batch.batch_id,
         });
 
-        insertedImeis += 1;
+        insertedImeis++;
       }
 
       if (itemsToInsert.length > 0) {
@@ -198,7 +203,7 @@ export async function POST(req: Request) {
           batch_id: batch.batch_id,
           item_id: it.item_id,
           box_id,
-          device_id: it.device_id, // ✅ nouveau modèle
+          device_id: it.device_id,
           imei: it.imei,
           qty: 1,
           created_by: actor_id,

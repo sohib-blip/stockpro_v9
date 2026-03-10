@@ -40,6 +40,7 @@ export async function POST(req: Request) {
     const supabase = sb();
     const nowIso = new Date().toISOString();
 
+    // créer batch inbound
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
       .insert({
@@ -57,6 +58,7 @@ export async function POST(req: Request) {
     let createdBoxes = 0;
     let reusedBoxes = 0;
 
+    // charger IMEI existants
     const { data: existingItems, error: exErr } = await supabase
       .from("items")
       .select("imei");
@@ -68,12 +70,14 @@ export async function POST(req: Request) {
     );
 
     for (const raw of labels as LabelPayload[]) {
+
       const bin_id = String(raw.device_id || "").trim();
       const box_code = String(raw.box_no || "").trim();
       const floor = String(raw.floor || "").trim();
 
       if (!bin_id || !box_code) continue;
 
+      // vérifier que le bin existe
       const { data: binRow, error: binErr } = await supabase
         .from("bins")
         .select("id,name")
@@ -86,6 +90,7 @@ export async function POST(req: Request) {
         throw new Error(`Bin not found: ${bin_id}`);
       }
 
+      // nettoyer les IMEI
       const imeis = Array.from(
         new Set(
           (raw.imeis || [])
@@ -96,6 +101,7 @@ export async function POST(req: Request) {
 
       if (imeis.length === 0) continue;
 
+      // trouver box existante
       const { data: existingBox, error: boxFindErr } = await supabase
         .from("boxes")
         .select("id,floor")
@@ -108,16 +114,22 @@ export async function POST(req: Request) {
       let box_id: string;
 
       if (existingBox?.id) {
+
         box_id = String(existingBox.id);
         reusedBoxes++;
 
         if (floor && existingBox.floor !== floor) {
-          await supabase
+
+          const { error: floorErr } = await supabase
             .from("boxes")
             .update({ floor })
             .eq("id", box_id);
+
+          if (floorErr) throw floorErr;
         }
+
       } else {
+
         const { data: newBox, error: newBoxErr } = await supabase
           .from("boxes")
           .insert({
@@ -137,6 +149,7 @@ export async function POST(req: Request) {
       const itemsToInsert: any[] = [];
 
       for (const imei of imeis) {
+
         if (existingSet.has(imei)) {
           skippedExistingImeis++;
           continue;
@@ -158,10 +171,13 @@ export async function POST(req: Request) {
       }
 
       if (itemsToInsert.length > 0) {
-        const { data: insertedItems } = await supabase
+
+        const { data: insertedItems, error: itemsErr } = await supabase
           .from("items")
           .insert(itemsToInsert)
-          .select("item_id,imei");
+          .select("item_id, imei");
+
+        if (itemsErr) throw itemsErr;
 
         const movements = (insertedItems || []).map((it: any) => ({
           type: "IN",
@@ -177,13 +193,18 @@ export async function POST(req: Request) {
           notes: vendor ? `vendor=${vendor}` : null,
         }));
 
-        await supabase.from("movements").insert(movements);
+        const { error: movErr } = await supabase
+          .from("movements")
+          .insert(movements);
+
+        if (movErr) throw movErr;
       }
     }
 
     return NextResponse.json({
       ok: true,
       batch_id: batch.batch_id,
+      created_at: batch.created_at,
       totals: {
         inserted_imeis: insertedImeis,
         skipped_existing_imeis: skippedExistingImeis,
@@ -191,7 +212,9 @@ export async function POST(req: Request) {
         reused_boxes: reusedBoxes,
       },
     });
+
   } catch (e: any) {
+
     console.error("INBOUND CONFIRM ERROR", e);
 
     return NextResponse.json(

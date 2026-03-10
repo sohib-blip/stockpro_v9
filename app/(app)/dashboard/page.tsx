@@ -307,7 +307,7 @@ Low stock alerts
 </div>
 
 <div className="text-3xl font-bold text-orange-400">
-{bins.filter(b=>b.imei_count < b.min_stock).length}
+{bins.filter(b => b.min_stock && b.imei_count <= b.min_stock).length}
 </div>
 
 </div>
@@ -444,8 +444,8 @@ let level = "ok"
 
 if (b.imei_count === 0) {
  level = "critical"
-}
-else if (b.imei_count < b.min_stock) {
+} 
+else if (b.min_stock && b.imei_count <= b.min_stock) {
  level = "low"
 }
 
@@ -485,6 +485,14 @@ onBlur={async(e)=>{
   })
  })
 
+ setBins(prev =>
+  prev.map(item =>
+   item.device_id === b.device_id
+    ? { ...item, min_stock:value }
+    : item
+  )
+ )
+
 }}
 />
 
@@ -495,7 +503,7 @@ onBlur={async(e)=>{
 <span
 className={`px-2 py-1 rounded text-xs font-semibold
  ${level === "ok" ? "bg-green-500/20 text-green-400" : ""}
- ${level === "low" ? "bg-orange-500/20 text-orange-400" : ""}
+ ${level === "low" ? "bg-yellow-500/20 text-yellow-400" : ""}
  ${level === "critical" ? "bg-red-500/20 text-red-400" : ""}
 `}
 >

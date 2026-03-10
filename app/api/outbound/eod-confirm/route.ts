@@ -14,8 +14,7 @@ function sb() {
 
 export async function POST(req: Request) {
   try {
-    const { imeis, shipment_ref, actor, actor_id, source } =
-      await req.json();
+    const { imeis, shipment_ref, actor, actor_id, source } = await req.json();
 
     if (!actor_id) {
       return NextResponse.json(
@@ -33,16 +32,25 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
-    // 🔎 Load items
+    // =========================
+    // LOAD ITEMS + DEVICE NAME
+    // =========================
+
     const { data: items, error: itemsErr } = await supabase
       .from("items")
-      .select("item_id, imei, device_id, box_id, status")
+      .select(`
+        item_id,
+        imei,
+        device_id,
+        box_id,
+        status,
+        devices(name)
+      `)
       .in("imei", imeis);
 
     if (itemsErr) throw itemsErr;
 
-    const validItems =
-      items?.filter((i: any) => i.status === "IN") || [];
+    const validItems = items?.filter((i: any) => i.status === "IN") || [];
 
     if (validItems.length === 0) {
       return NextResponse.json(
@@ -51,7 +59,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // 📦 Create outbound batch
+    const supabaseNow = new Date().toISOString();
+
+    // =========================
+    // CREATE OUTBOUND BATCH
+    // =========================
+
     const { data: batch, error: batchErr } = await supabase
       .from("outbound_batches")
       .insert({
@@ -64,24 +77,30 @@ export async function POST(req: Request) {
 
     if (batchErr) throw batchErr;
 
-    const nowIso = new Date().toISOString();
+    // =========================
+    // UPDATE ITEMS STATUS
+    // =========================
+
     const validImeis = validItems.map((i: any) => i.imei);
 
-    // 🔄 Update items → OUT
     const { error: updErr } = await supabase
       .from("items")
       .update({
         status: "OUT",
-        shipped_at: nowIso,
+        shipped_at: supabaseNow,
         shipment_ref: shipment_ref || null,
       })
       .in("imei", validImeis);
 
     if (updErr) throw updErr;
 
-    // 📊 Insert movements (OUT history stays)
+    // =========================
+    // INSERT MOVEMENTS
+    // =========================
+
     const movements = validItems.map((i: any) => ({
       type: "OUT",
+      device: i.devices?.name || "Unknown",
       box_id: i.box_id,
       item_id: i.item_id,
       qty: 1,
@@ -89,7 +108,7 @@ export async function POST(req: Request) {
       batch_id: batch.batch_id,
       actor: actor || "unknown",
       created_by: actor_id,
-      created_at: nowIso,
+      created_at: supabaseNow,
     }));
 
     const { error: movErr } = await supabase
@@ -98,9 +117,9 @@ export async function POST(req: Request) {
 
     if (movErr) throw movErr;
 
-    // ============================
-    // 🔥 AUTO DELETE EMPTY BOXES (SQL VERSION)
-    // ============================
+    // =========================
+    // CLEAN EMPTY BOXES
+    // =========================
 
     await supabase.rpc("full_cleanup_empty_boxes");
 
@@ -110,7 +129,10 @@ export async function POST(req: Request) {
       shipped_count: validItems.length,
       skipped_count: imeis.length - validItems.length,
     });
+
   } catch (e: any) {
+    console.error("EOD CONFIRM ERROR", e);
+
     return NextResponse.json(
       { ok: false, error: e?.message || "Confirm failed" },
       { status: 500 }

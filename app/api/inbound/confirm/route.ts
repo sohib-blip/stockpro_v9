@@ -13,8 +13,8 @@ function sb() {
 }
 
 type LabelPayload = {
-  device_id: string; // bin_id
-  box_no: string; // box_code
+  device_id: string; // ici on considère que c'est le vrai devices.device_id
+  box_no: string;
   floor?: string;
   imeis: string[];
 };
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     const supabase = sb();
     const nowIso = new Date().toISOString();
 
-    // ✅ Create batch
+    // créer le batch
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
       .insert({
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     let createdBoxes = 0;
     let reusedBoxes = 0;
 
-    // ✅ Load existing IMEIs
+    // charger les IMEI existants
     const { data: existingItems, error: exErr } = await supabase
       .from("items")
       .select("imei");
@@ -70,14 +70,7 @@ export async function POST(req: Request) {
     );
 
     for (const raw of labels as LabelPayload[]) {
-      const bin_id = String(raw.device_id || "").trim();
-      const { data: binRow } = await supabase
-  .from("bins")
-  .select("name")
-  .eq("id", bin_id)
-  .single();
-
-const deviceName = binRow?.name || "Unknown";
+      const device_id = String(raw.device_id || "").trim();
       const box_code = String(raw.box_no || "").trim();
       const floor = String(raw.floor || "").trim();
 
@@ -89,9 +82,46 @@ const deviceName = binRow?.name || "Unknown";
         )
       );
 
-      if (!bin_id || !box_code || imeis.length === 0) continue;
+      if (!device_id || !box_code || imeis.length === 0) continue;
 
-      // ✅ Find or create box
+      // vérifier que le device existe
+      const { data: deviceRow, error: deviceErr } = await supabase
+        .from("devices")
+        .select("device_id, device")
+        .eq("device_id", device_id)
+        .single();
+
+      if (deviceErr) throw deviceErr;
+
+      // trouver ou créer le bin correspondant au device
+      const { data: existingBin, error: binFindErr } = await supabase
+        .from("bins")
+        .select("id, name")
+        .eq("name", deviceRow.device)
+        .maybeSingle();
+
+      if (binFindErr) throw binFindErr;
+
+      let bin_id: string;
+
+      if (existingBin?.id) {
+        bin_id = String(existingBin.id);
+      } else {
+        const { data: newBin, error: newBinErr } = await supabase
+          .from("bins")
+          .insert({
+            name: deviceRow.device,
+            min_stock: 0,
+            active: true,
+          })
+          .select("id")
+          .single();
+
+        if (newBinErr) throw newBinErr;
+        bin_id = String(newBin.id);
+      }
+
+      // trouver ou créer la box
       const { data: existingBox, error: boxFindErr } = await supabase
         .from("boxes")
         .select("id, floor")
@@ -107,12 +137,12 @@ const deviceName = binRow?.name || "Unknown";
         box_id = String(existingBox.id);
         reusedBoxes += 1;
 
-        // ✅ Update floor if provided
         if (floor && existingBox.floor !== floor) {
           const { error: upErr } = await supabase
             .from("boxes")
             .update({ floor })
             .eq("id", box_id);
+
           if (upErr) throw upErr;
         }
       } else {
@@ -145,7 +175,7 @@ const deviceName = binRow?.name || "Unknown";
         itemsToInsert.push({
           imei,
           box_id,
-          device_id: null, // ✅ SUPER IMPORTANT
+          device_id, // ✅ important : on stocke le vrai device_id
           status: "IN",
           imported_at: nowIso,
           imported_by: actor_id,
@@ -156,27 +186,26 @@ const deviceName = binRow?.name || "Unknown";
       }
 
       if (itemsToInsert.length > 0) {
-        // ✅ insert items and get item_id + imei back
         const { data: insertedItems, error: itemsErr } = await supabase
           .from("items")
           .insert(itemsToInsert)
-          .select("item_id, imei");
+          .select("item_id, imei, device_id");
 
         if (itemsErr) throw itemsErr;
 
         const movements = (insertedItems || []).map((it: any) => ({
-  type: "IN",
-  batch_id: batch.batch_id,
-  item_id: it.item_id,
-  box_id,
-  device: deviceName,
-  imei: it.imei,
-  qty: 1,
-  created_by: actor_id,
-  actor: actor || "unknown",
-  created_at: nowIso,
-  notes: vendor ? `vendor=${vendor}` : null,
-}));
+          type: "IN",
+          batch_id: batch.batch_id,
+          item_id: it.item_id,
+          box_id,
+          device_id: it.device_id, // ✅ nouveau modèle
+          imei: it.imei,
+          qty: 1,
+          created_by: actor_id,
+          actor: actor || "unknown",
+          created_at: nowIso,
+          notes: vendor ? `vendor=${vendor}` : null,
+        }));
 
         const { error: movErr } = await supabase
           .from("movements")
@@ -200,6 +229,8 @@ const deviceName = binRow?.name || "Unknown";
       },
     });
   } catch (e: any) {
+    console.error("INBOUND CONFIRM ERROR", e);
+
     return NextResponse.json(
       { ok: false, error: e?.message || "Inbound confirm failed" },
       { status: 500 }

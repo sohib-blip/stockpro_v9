@@ -14,7 +14,6 @@ function sb() {
 
 export async function POST(req: Request) {
   try {
-
     const { imeis, shipment_ref, actor, actor_id, source } = await req.json();
 
     if (!actor_id) {
@@ -33,26 +32,19 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
-    // 🚀 SQL transaction (does EVERYTHING)
-
-    const { data, error } = await supabase.rpc(
-      "confirm_outbound_batch",
-      {
-        p_imeis: imeis,
-        p_actor: actor || "unknown",
-        p_actor_id: actor_id,
-        p_shipment_ref: shipment_ref || null,
-        p_source: source || "manual",
-      }
-    );
+    const { data, error } = await supabase.rpc("confirm_outbound_batch", {
+      p_imeis: imeis,
+      p_actor: actor || "unknown",
+      p_actor_id: actor_id,
+      p_shipment_ref: shipment_ref || null,
+      p_source: source || "manual",
+    });
 
     if (error) throw error;
 
     return NextResponse.json(data);
-
   } catch (e: any) {
-
-    console.error("EOD CONFIRM ERROR", e);
+    console.error("OUTBOUND CONFIRM ERROR", e);
 
     return NextResponse.json(
       { ok: false, error: e?.message || "Confirm failed" },

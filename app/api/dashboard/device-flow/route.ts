@@ -9,7 +9,7 @@ const supabase = createClient(
 export async function GET() {
 
  const { data, error } = await supabase
-  .from("dashboard_device_flow_view")
+  .from("dashboard_device_flow")
   .select("device,total_in,total_out")
   .order("device");
 

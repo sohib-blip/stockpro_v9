@@ -11,6 +11,7 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
+
     const body = await req.json();
     const { box_codes, target_floor } = body;
 
@@ -29,6 +30,7 @@ export async function POST(req: Request) {
     }
 
     const authHeader = req.headers.get("authorization");
+
     if (!authHeader) {
       return NextResponse.json(
         { ok: false, error: "Unauthorized." },
@@ -50,10 +52,18 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1️⃣ Load boxes AVANT update (important pour historique)
+    // ================= LOAD BOXES =================
+
     const { data: boxes, error: loadError } = await supabase
       .from("boxes")
-      .select("id, box_code, floor, device_id")
+      .select(`
+        id,
+        box_code,
+        floor,
+        bins (
+          device_id
+        )
+      `)
       .in("box_code", box_codes);
 
     if (loadError) throw loadError;
@@ -65,7 +75,8 @@ export async function POST(req: Request) {
       );
     }
 
-    // 2️⃣ Update floors
+    // ================= UPDATE FLOOR =================
+
     const { error: updateErr } = await supabase
       .from("boxes")
       .update({ floor: target_floor })
@@ -73,17 +84,28 @@ export async function POST(req: Request) {
 
     if (updateErr) throw updateErr;
 
-    // 3️⃣ Insert movements avec historique réel
-    const movements = boxes.map((box) => ({
-  type: "TRANSFER",
-  device_id: box.device_id,
-  box_id: box.id,
-  actor: user.email,
-  created_by: user.id,
-  from_floor: box.floor,
-  to_floor: target_floor,
-  created_at: new Date().toISOString(),
-}));
+    // ================= CREATE MOVEMENTS =================
+
+    const movements = boxes.map((box: any) => {
+
+      const device_id = box?.bins?.device_id;
+
+      if (!device_id) {
+        throw new Error(`Device not found for box ${box.box_code}`);
+      }
+
+      return {
+        type: "TRANSFER",
+        device_id: device_id,
+        box_id: box.id,
+        actor: user.email,
+        created_by: user.id,
+        from_floor: box.floor,
+        to_floor: target_floor,
+        created_at: new Date().toISOString(),
+      };
+
+    });
 
     const { error: moveErr } = await supabase
       .from("movements")
@@ -97,9 +119,11 @@ export async function POST(req: Request) {
     });
 
   } catch (e: any) {
+
     return NextResponse.json(
       { ok: false, error: e.message || "Transfer failed." },
       { status: 500 }
     );
+
   }
 }

@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const supabase = createClient(
  process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -15,7 +15,7 @@ export async function GET() {
  const { data, error } = await supabase
   .from("dashboard_sales_month")
   .select("device,total_out")
-  .order("total_out", { ascending: false });
+  .order("total_out", { ascending: false }); // 🔥 TRI AUTOMATIQUE
 
  if (error) {
   return NextResponse.json({ ok:false, error:error.message });

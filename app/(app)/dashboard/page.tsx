@@ -81,7 +81,7 @@ const [kpiRes, binsRes, floorsRes, activityRes, flowRes, salesRes] = await Promi
  if (flowJson.ok) setFlow(flowJson.rows);
 if (salesJson.ok){
  setSalesTable(salesJson.rows)
- setTopDevices(salesJson.rows.slice(0,3))
+ setTopDevices(salesJson.rows)
 }
 
 }
@@ -337,18 +337,37 @@ Recent Activity
 
 <div className="max-h-[320px] overflow-y-auto space-y-3 text-sm pr-2">
 
-{activity.slice(0,40).map((a,i)=>(
+{activity.slice(0,20).map((a,i)=>(
 
 <div key={i} className="flex justify-between items-center">
 
 <div className={
 a.type === "IN"
 ? "text-green-400 font-semibold"
-: "text-red-400 font-semibold"
+: a.type === "OUT"
+? "text-red-400 font-semibold"
+: "text-cyan-400 font-semibold"
 }>
-{a.type === "IN" ? "+" : "-"}{a.qty} {a.device}
-</div>
 
+{a.type === "IN" && (
+<>
++{a.qty} {a.device}
+</>
+)}
+
+{a.type === "OUT" && (
+<>
+-{a.qty} {a.device}
+</>
+)}
+
+{a.type === "TRANSFER" && (
+<>
+🔁 Box {a.box_code} ({a.device}) {a.from_floor} → {a.to_floor}
+</>
+)}
+
+</div>
 <div className="text-slate-400 text-xs">
 {new Date(a.created_at).toLocaleString("fr-BE",{
 day:"2-digit",
@@ -396,7 +415,7 @@ return(
 </span>
 
 <span className="text-slate-400">
-{percent}%
+{d.total_out} sold • {percent}%
 </span>
 
 </div>

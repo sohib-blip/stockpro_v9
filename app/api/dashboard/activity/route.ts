@@ -12,9 +12,10 @@ const supabase = createClient(
 );
 
 export async function GET() {
+
   const { data, error } = await supabase
     .from("dashboard_activity")
-    .select("type,device,qty,created_at")
+    .select("type,device,qty,created_at,box_code,from_floor,to_floor")
     .order("created_at", { ascending: false });
 
   if (error) {
@@ -25,4 +26,5 @@ export async function GET() {
     ok: true,
     rows: data ?? [],
   });
+
 }

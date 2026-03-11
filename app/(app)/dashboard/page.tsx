@@ -108,14 +108,20 @@ if (salesJson.ok){
     .on(
       "postgres_changes",
       { event: "*", schema: "public", table: "movements" },
-      () => {
+      (payload) => {
+        console.log("Realtime movement:", payload);
         loadAll();
       }
     )
     .subscribe();
 
+  const refresh = setInterval(() => {
+    loadAll();
+  }, 10000);
+
   return () => {
     supabase.removeChannel(channel);
+    clearInterval(refresh);
   };
 
 }, []);

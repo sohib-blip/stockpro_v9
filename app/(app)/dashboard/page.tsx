@@ -101,28 +101,11 @@ if (salesJson.ok){
 
   loadAll();
 
-  const supabase = createSupabaseBrowserClient();
-
-  const channel = supabase
-    .channel("stock-changes")
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "movements" },
-      (payload) => {
-        console.log("Realtime movement:", payload);
-        loadAll();
-      }
-    )
-    .subscribe();
-
-  const refresh = setInterval(() => {
+  const interval = setInterval(() => {
     loadAll();
-  }, 10000);
+  }, 5000); // refresh toutes les 5s
 
-  return () => {
-    supabase.removeChannel(channel);
-    clearInterval(refresh);
-  };
+  return () => clearInterval(interval);
 
 }, []);
 

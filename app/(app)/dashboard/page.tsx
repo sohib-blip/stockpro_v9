@@ -346,7 +346,7 @@ Low stock alerts
 Recent Activity
 </h2>
 
-<div className="max-h-[360px] overflow-y-auto space-y-3 text-sm">
+<div className="max-h-[320px] overflow-y-auto space-y-3 text-sm pr-2">
 
 {activity.slice(0,40).map((a,i)=>(
 
@@ -389,7 +389,7 @@ onClick={()=>setShowSales(!showSales)}
 Top Selling Devices (This Month)
 </h2>
 
-<div className="space-y-4">
+<div className="space-y-4 max-h-[320px] overflow-y-auto pr-2">
 
 {topDevices.map((d)=>{
 

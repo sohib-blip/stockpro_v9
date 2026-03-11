@@ -53,7 +53,7 @@ export async function POST(req: Request) {
     // 1️⃣ Load boxes AVANT update (important pour historique)
     const { data: boxes, error: loadError } = await supabase
       .from("boxes")
-      .select("id, box_code, floor")
+      .select("id, box_code, floor, device_id")
       .in("box_code", box_codes);
 
     if (loadError) throw loadError;
@@ -75,14 +75,15 @@ export async function POST(req: Request) {
 
     // 3️⃣ Insert movements avec historique réel
     const movements = boxes.map((box) => ({
-      type: "ADJUST",
-      box_id: box.id,
-      actor: user.email,
-      created_by: user.id,
-      from_floor: box.floor,      // 🔥 ancien floor
-      to_floor: target_floor,     // 🔥 nouveau floor
-      created_at: new Date().toISOString(),
-    }));
+  type: "TRANSFER",
+  device_id: box.device_id,
+  box_id: box.id,
+  actor: user.email,
+  created_by: user.id,
+  from_floor: box.floor,
+  to_floor: target_floor,
+  created_at: new Date().toISOString(),
+}));
 
     const { error: moveErr } = await supabase
       .from("movements")

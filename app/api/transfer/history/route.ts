@@ -22,7 +22,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("movements")
       .select("created_at, actor, box_id, to_floor")
-      .eq("type", "ADJUST")
+      .eq("type", "TRANSFER")
       .order("created_at", { ascending: false });
 
     if (error) throw error;

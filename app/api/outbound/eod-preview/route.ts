@@ -198,15 +198,38 @@ for (const item of valid) {
 
 }
 
-    return NextResponse.json({
-      ok: true,
-      imeis: valid.map((v) => v.imei),
+    // ============================
+// ❌ BLOCK EXPORT IF INVALID
+// ============================
+
+if (unknown.length > 0 || alreadyOut.length > 0 || duplicates.length > 0) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "Some IMEIs are invalid",
       unknown_imeis: unknown,
       already_out: alreadyOut,
       duplicates,
       totalDetected: cleaned.length,
       summary: Object.values(summaryMap),
-    });
+    },
+    { status: 400 }
+  );
+}
+
+// ============================
+// ✅ OK → preview outbound
+// ============================
+
+return NextResponse.json({
+  ok: true,
+  imeis: valid.map((v) => v.imei),
+  unknown_imeis: unknown,
+  already_out: alreadyOut,
+  duplicates,
+  totalDetected: cleaned.length,
+  summary: Object.values(summaryMap),
+});
 
   } catch (e: any) {
     return NextResponse.json(

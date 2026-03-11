@@ -95,9 +95,33 @@ export default function OutboundPage() {
     });
 
     const json = await res.json();
-    setPreview(json);
-    setPreviewSource("manual");
-    setBusy(false);
+
+if (!json.ok) {
+  setErrorMsg(
+    [
+      json.error,
+      json.unknown_imeis?.length
+        ? `Unknown IMEI: ${json.unknown_imeis.join(", ")}`
+        : null,
+      json.already_out?.length
+        ? `Already out: ${json.already_out.join(", ")}`
+        : null,
+      json.duplicates?.length
+        ? `Duplicates: ${json.duplicates.join(", ")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" | ")
+  );
+
+  setPreview(null);
+  setBusy(false);
+  return;
+}
+
+setPreview(json);
+setPreviewSource("manual");
+setBusy(false);
   }
 
   // ================= PREVIEW EXCEL =================
@@ -117,9 +141,33 @@ export default function OutboundPage() {
     });
 
     const json = await res.json();
-    setPreview(json);
-    setPreviewSource("excel");
-    setBusy(false);
+
+if (!json.ok) {
+  setErrorMsg(
+    [
+      json.error,
+      json.unknown_imeis?.length
+        ? `Unknown IMEI: ${json.unknown_imeis.join(", ")}`
+        : null,
+      json.already_out?.length
+        ? `Already out: ${json.already_out.join(", ")}`
+        : null,
+      json.duplicates?.length
+        ? `Duplicates: ${json.duplicates.join(", ")}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(" | ")
+  );
+
+  setPreview(null);
+  setBusy(false);
+  return;
+}
+
+setPreview(json);
+setPreviewSource("excel");
+setBusy(false);
   }
 
   // ================= CONFIRM =================
@@ -242,6 +290,13 @@ if (!actorId) {
           Preview Excel
         </button>
       </div>
+
+{/* ERROR MESSAGE */}
+{errorMsg && (
+  <div className="bg-red-600/20 border border-red-500 text-red-300 px-4 py-3 rounded-xl text-sm">
+    {errorMsg}
+  </div>
+)}
 
       {/* PREVIEW */}
       {preview?.ok && (

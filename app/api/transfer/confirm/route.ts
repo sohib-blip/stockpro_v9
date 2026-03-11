@@ -60,7 +60,7 @@ export async function POST(req: Request) {
         id,
         box_code,
         floor,
-        bins (
+        items (
           device_id
         )
       `)
@@ -88,7 +88,7 @@ export async function POST(req: Request) {
 
     const movements = boxes.map((box: any) => {
 
-      const device_id = box?.bins?.device_id;
+      const device_id = box?.items?.[0]?.device_id;
 
       if (!device_id) {
         throw new Error(`Device not found for box ${box.box_code}`);

@@ -88,24 +88,25 @@ export async function POST(req: Request) {
 
     const movements = boxes.map((box: any) => {
 
-      const device_id = box?.items?.[0]?.device_id;
+  const device_id = box?.items?.[0]?.device_id;
 
-      if (!device_id) {
-        throw new Error(`Device not found for box ${box.box_code}`);
-      }
+  if (!device_id) {
+    throw new Error(`Device not found for box ${box.box_code}`);
+  }
 
-      return {
-        type: "TRANSFER",
-        device_id: device_id,
-        box_id: box.id,
-        actor: user.email,
-        created_by: user.id,
-        from_floor: box.floor,
-        to_floor: target_floor,
-        created_at: new Date().toISOString(),
-      };
+  return {
+    type: "TRANSFER",
+    device_id: device_id,
+    box_id: box.id,
+    qty: 1, // 🔥 obligatoire pour la contrainte
+    actor: user.email,
+    created_by: user.id,
+    from_floor: box.floor,
+    to_floor: target_floor,
+    created_at: new Date().toISOString(),
+  };
 
-    });
+});
 
     const { error: moveErr } = await supabase
       .from("movements")

@@ -87,6 +87,7 @@ export async function POST(req: Request) {
     // ================= CREATE MOVEMENTS =================
 
     const movements = boxes.map((box: any) => {
+    const operation_id = crypto.randomUUID();
 
   const device_id = box?.items?.[0]?.device_id;
 
@@ -95,16 +96,17 @@ export async function POST(req: Request) {
   }
 
   return {
-    type: "TRANSFER",
-    device_id: device_id,
-    box_id: box.id,
-    qty: 1, // 🔥 obligatoire pour la contrainte
-    actor: user.email,
-    created_by: user.id,
-    from_floor: box.floor,
-    to_floor: target_floor,
-    created_at: new Date().toISOString(),
-  };
+  type: "TRANSFER",
+  operation_id,
+  device_id: device_id,
+  box_id: box.id,
+  qty: 1,
+  actor: user.email,
+  created_by: user.id,
+  from_floor: box.floor,
+  to_floor: target_floor,
+  created_at: new Date().toISOString(),
+};
 
 });
 

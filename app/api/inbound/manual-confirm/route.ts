@@ -26,6 +26,7 @@ export async function POST(req: Request) {
 
     const supabase = sb();
     const nowIso = new Date().toISOString();
+    const operation_id = crypto.randomUUID();
 
     // 1️⃣ Create inbound batch
     const { data: batch } = await supabase
@@ -86,16 +87,18 @@ export async function POST(req: Request) {
 
     // 4️⃣ Insert movements
     const movements = insertedItems.map((it: any) => ({
-      type: "IN",
-      batch_id: batch.batch_id,
-      item_id: it.item_id,
-      box_id,
-      imei: it.imei, // ✅ IMPORTANT: pour export + labels
-      qty: 1,
-      created_by: actor_id,
-      actor: actor || "unknown",
-      created_at: nowIso,
-    }));
+  type: "IN",
+  operation_id,
+  batch_id: batch.batch_id,
+  item_id: it.item_id,
+  box_id,
+  device_id: device,
+  imei: it.imei,
+  qty: 1,
+  created_by: actor_id,
+  actor: actor || "unknown",
+  created_at: nowIso,
+}));
 
     await supabase.from("movements").insert(movements);
 

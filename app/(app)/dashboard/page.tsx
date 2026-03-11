@@ -59,12 +59,12 @@ const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
  async function loadAll() {
 
 const [kpiRes, binsRes, floorsRes, activityRes, flowRes, salesRes] = await Promise.all([
- fetch("/api/dashboard/summary"),
- fetch("/api/dashboard/bins"),
- fetch("/api/dashboard/floors"),
- fetch("/api/dashboard/activity"),
- fetch("/api/dashboard/device-flow"),
- fetch("/api/dashboard/sales")
+  fetch("/api/dashboard/summary", { cache: "no-store" }),
+  fetch("/api/dashboard/bins", { cache: "no-store" }),
+  fetch("/api/dashboard/floors", { cache: "no-store" }),
+  fetch("/api/dashboard/activity", { cache: "no-store" }),
+  fetch("/api/dashboard/device-flow", { cache: "no-store" }),
+  fetch("/api/dashboard/sales", { cache: "no-store" }),
 ]);
 
  const kpiJson = await kpiRes.json();
@@ -310,11 +310,11 @@ Top device
 <div className="card-glow p-5 rounded-xl">
 
 <div className="text-xs text-slate-400 mb-1">
-Devices tracked
+IMEI in stock
 </div>
 
 <div className="text-3xl font-bold text-cyan-400">
-{bins.length}
+{kpi?.total_imei ?? 0}
 </div>
 
 </div>

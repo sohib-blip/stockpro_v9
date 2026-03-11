@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-export const revalidate = 0;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,13 +10,16 @@ const supabase = createClient(
 
 export async function GET() {
   const { data, error } = await supabase
-    .from("dashboard_recent_activity_view")
-    .select("*")
-    .limit(50);
+    .from("dashboard_activity")
+    .select("type,device,qty,created_at")
+    .order("created_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: false, error: error.message });
   }
 
-  return NextResponse.json({ ok: true, rows: data ?? [] });
+  return NextResponse.json({
+    ok: true,
+    rows: data ?? [],
+  });
 }

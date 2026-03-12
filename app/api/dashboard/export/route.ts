@@ -13,18 +13,37 @@ const supabase = createClient(
 
 export async function GET() {
 
-  const { data, error } = await supabase
-    .from("stock_export_view")
-    .select("*");
+  let allRows: any[] = [];
+  let page = 0;
+  const pageSize = 1000;
 
-  if (error) {
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 }
-    );
+  while (true) {
+
+    const from = page * pageSize;
+    const to = from + pageSize - 1;
+
+    const { data, error } = await supabase
+      .from("stock_export_view")
+      .select("*")
+      .range(from, to);
+
+    if (error) {
+      return NextResponse.json(
+        { ok: false, error: error.message },
+        { status: 500 }
+      );
+    }
+
+    if (!data || data.length === 0) break;
+
+    allRows.push(...data);
+
+    if (data.length < pageSize) break;
+
+    page++;
   }
 
-  const rows = (data || []).map((r: any) => ({
+  const rows = allRows.map((r: any) => ({
     floor: r.floor || "",
     device: r.device || "",
     box_code: r.box_code || "",

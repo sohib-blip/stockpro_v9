@@ -14,20 +14,28 @@ function sb() {
   });
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const supabase = sb();
+
+    const url = new URL(req.url);
+    const page = Number(url.searchParams.get("page") || 1);
+
+    const limit = 50;
+    const offset = (page - 1) * limit;
 
     const { data, error } = await supabase
       .from("inbound_history_view")
       .select("*")
-      .limit(200);
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (error) throw error;
 
     const rows = (data || []).map((r: any) => ({
       ...r,
-      // ✅ Front expects qty_boxes / qty_imeis
+
+      // compatibilité UI
       qty_boxes: r.qty_boxes ?? r.boxes ?? 0,
       qty_imeis: r.qty_imeis ?? r.imeis ?? 0,
     }));
@@ -35,7 +43,9 @@ export async function GET() {
     return NextResponse.json({
       ok: true,
       rows,
+      page,
     });
+
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "History failed" },

@@ -28,6 +28,7 @@ export default function OutboundPage() {
 
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
+const [page, setPage] = useState(1);
 
   const [filter, setFilter] = useState("all");
 
@@ -55,7 +56,7 @@ export default function OutboundPage() {
   setLoadingHistory(true);
   try {
     const res = await fetch(
-      `/api/outbound/history?t=${Date.now()}`, // 🔥 cache buster
+      `/api/outbound/history?page=${page}&t=${Date.now()}`,
       {
         method: "GET",
         cache: "no-store",
@@ -74,8 +75,8 @@ export default function OutboundPage() {
 }
 
   useEffect(() => {
-    loadHistory();
-  }, []);
+  loadHistory();
+}, [page]);
 
   // ================= PREVIEW MANUAL =================
   async function previewManual() {
@@ -372,39 +373,64 @@ if (!actorId) {
           </div>
         </div>
 
-        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-          <thead className="bg-slate-950/50">
-            <tr>
-              <th className="p-2 text-left">Date/Time</th>
-              <th className="p-2 text-left">User</th>
-              <th className="p-2 text-left">Source</th>
-              <th className="p-2 text-left">Shipment ref</th>
-              <th className="p-2 text-right">Qty</th>
-              <th className="p-2 text-right">Excel</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredHistory.map((h) => (
-              <tr key={h.batch_id}>
-                <td className="p-2">{fmtDateTime(h.created_at)}</td>
-                <td className="p-2">{h.actor}</td>
-                <td className="p-2 capitalize">{h.source}</td>
-                <td className="p-2">{h.shipment_ref || "-"}</td>
-                <td className="p-2 text-right font-semibold">{h.qty}</td>
-                <td className="p-2 text-right">
-                  <a
-                    href={`/api/outbound/export?batch_id=${encodeURIComponent(h.batch_id)}`}
-                    className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
-                  >
-                    Excel
-                  </a>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="max-h-[400px] overflow-y-auto border border-slate-800 rounded-xl">
+  <table className="w-full text-sm">
+    <thead className="bg-slate-950/50">
+      <tr>
+        <th className="p-2 text-left">Date/Time</th>
+        <th className="p-2 text-left">User</th>
+        <th className="p-2 text-left">Source</th>
+        <th className="p-2 text-left">Shipment ref</th>
+        <th className="p-2 text-right">Qty</th>
+        <th className="p-2 text-right">Excel</th>
+      </tr>
+    </thead>
 
-      </div>
+    <tbody>
+      {filteredHistory.map((h) => (
+        <tr key={h.batch_id}>
+          <td className="p-2">{fmtDateTime(h.created_at)}</td>
+          <td className="p-2">{h.actor}</td>
+          <td className="p-2 capitalize">{h.source}</td>
+          <td className="p-2">{h.shipment_ref || "-"}</td>
+          <td className="p-2 text-right font-semibold">{h.qty}</td>
+          <td className="p-2 text-right">
+            <a
+              href={`/api/outbound/export?batch_id=${encodeURIComponent(h.batch_id)}`}
+              className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
+            >
+              Excel
+            </a>
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+</div>
+
+<div className="flex justify-between items-center pt-4">
+
+  <button
+    onClick={() => setPage((p) => Math.max(1, p - 1))}
+    className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
+  >
+    Previous
+  </button>
+
+  <div className="text-sm text-slate-400">
+    Page {page}
+  </div>
+
+  <button
+    onClick={() => setPage((p) => p + 1)}
+    className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
+  >
+    Next
+  </button>
+
+</div>
+
+</div>
 
     </div>
   );

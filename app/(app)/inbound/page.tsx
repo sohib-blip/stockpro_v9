@@ -14,8 +14,9 @@ type HistoryRow = {
   actor: string;
   vendor: string;
   source: string;
-  qty_imeis: number; // ✅ NEW (replaces old qty)
-  qty_boxes: number; // ✅ NEW
+  shipment_ref?: string;   // ✅ AJOUT
+  qty_imeis: number;
+  qty_boxes: number;
 };
 
 type DeviceRow = {
@@ -46,6 +47,9 @@ export default function InboundPage() {
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
+  const [search, setSearch] = useState("");
+  const [shipmentRef, setShipmentRef] = useState("");
+const [page, setPage] = useState(1);
 
   // Labels after confirm
   const [lastBatchId, setLastBatchId] = useState<string>("");
@@ -120,7 +124,7 @@ export default function InboundPage() {
   async function loadHistory() {
   setLoadingHistory(true);
   try {
-    const res = await fetch("/api/inbound/history", {
+    const res = await fetch(`/api/inbound/history?page=${page}`, {
       method: "GET",
       cache: "no-store",
       headers: {
@@ -137,10 +141,12 @@ export default function InboundPage() {
 }
 
   useEffect(() => {
-    loadHistory();
-    loadDevices();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  loadHistory();
+}, [page]);
+
+useEffect(() => {
+  loadDevices();
+}, []);
 
   function fmtDateTime(iso: string) {
     try {
@@ -291,11 +297,12 @@ export default function InboundPage() {
 
     try {
       const payload = {
-        labels: labelsConverted,
-        actor,
-        actor_id: actorId,
-        vendor,
-      };
+  labels: labelsConverted,
+  actor,
+  actor_id: actorId,
+  vendor,
+  shipment_ref: shipmentRef || null,
+};
 
       const res = await fetch("/api/inbound/confirm", {
         method: "POST",
@@ -455,10 +462,24 @@ setManualMsg("");
 
   // ========== HISTORY FILTER ==========
   const filteredHistory = history.filter((h) => {
-    if (historyFilter === "all") return true;
-    if (historyFilter === "manual") return (h.vendor || "").toLowerCase() === "manual";
-    return (h.vendor || "").toLowerCase() !== "manual";
-  });
+  const vendor = (h.vendor || "").toLowerCase();
+  const actor = (h.actor || "").toLowerCase();
+  const ref = (h.shipment_ref || "").toLowerCase();
+  const q = search.toLowerCase();
+
+  const filterOk =
+    historyFilter === "all" ||
+    (historyFilter === "manual" && vendor === "manual") ||
+    (historyFilter === "excel" && vendor !== "manual");
+
+  const searchOk =
+    !q ||
+    actor.includes(q) ||
+    vendor.includes(q) ||
+    ref.includes(q);
+
+  return filterOk && searchOk;
+});
 
   return (
     <div className="space-y-8 max-w-5xl">
@@ -481,6 +502,17 @@ setManualMsg("");
 
       {/* HEADER */}
       <div className="flex items-center justify-between gap-3">
+        {/* SHIPMENT NOTE */}
+<div className="card-glow p-6">
+  <div className="font-semibold mb-2">Reference / note</div>
+
+  <input
+    value={shipmentRef}
+    onChange={(e) => setShipmentRef(e.target.value)}
+    placeholder="ex: Teltonika delivery 18/03"
+    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+  />
+</div>
         <div>
           <div className="text-xs text-slate-500">Inbound</div>
           <h2 className="text-xl font-semibold">Inbound Import</h2>
@@ -717,7 +749,15 @@ setManualMsg("");
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 items-center">
+
+            <input
+  placeholder="Search user / vendor / reference"
+  value={search}
+  onChange={(e) => setSearch(e.target.value)}
+  className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm w-56"
+/>
+
             <select
               value={historyFilter}
               onChange={(e) => setHistoryFilter(e.target.value as HistoryFilter)}
@@ -737,13 +777,14 @@ setManualMsg("");
           </div>
         </div>
 
-        <div className="overflow-auto">
+        <div className="max-h-[400px] overflow-y-auto border border-slate-800 rounded-xl">
           <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
             <thead className="bg-slate-950/50">
               <tr>
                 <th className="p-2 border-b border-slate-800 text-left">Date/Time</th>
                 <th className="p-2 border-b border-slate-800 text-left">User</th>
                 <th className="p-2 border-b border-slate-800 text-left">Vendor</th>
+                <th className="p-2 border-b border-slate-800 text-left">Reference</th>
                 <th className="p-2 border-b border-slate-800 text-right">Boxes</th>
                 <th className="p-2 border-b border-slate-800 text-right">IMEIs</th>
                 <th className="p-2 border-b border-slate-800 text-right">Excel</th>
@@ -758,6 +799,18 @@ setManualMsg("");
                   </td>
                   <td className="p-2 border-b border-slate-800">{h.actor}</td>
                   <td className="p-2 border-b border-slate-800">{h.vendor}</td>
+          <td className="p-2 border-b border-slate-800">
+  {h.shipment_ref ? (
+    <span
+      className="px-2 py-1 text-xs rounded-lg bg-slate-800 border border-slate-700 max-w-[220px] truncate inline-block"
+      title={h.shipment_ref}
+    >
+      {h.shipment_ref}
+    </span>
+  ) : (
+    "-"
+  )}
+</td>     
                   <td className="p-2 border-b border-slate-800 text-right font-semibold">
                     {h.qty_boxes}
                   </td>
@@ -789,7 +842,7 @@ setManualMsg("");
 
               {filteredHistory.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="p-3 text-slate-400">
+                  <td colSpan={8} className="p-3 text-slate-400">
                     No inbound batches for this filter.
                   </td>
                 </tr>
@@ -797,7 +850,29 @@ setManualMsg("");
             </tbody>
           </table>
         </div>
-      </div>
+<div className="flex justify-between items-center pt-4">
+
+  <button
+    onClick={() => setPage((p) => Math.max(1, p - 1))}
+    className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
+  >
+    Previous
+  </button>
+
+  <div className="text-sm text-slate-400">
+    Page {page}
+  </div>
+
+  <button
+    onClick={() => setPage((p) => p + 1)}
+    className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
+  >
+    Next
+  </button>
+
+</div>
+
+</div>
     </div>
   );
 }

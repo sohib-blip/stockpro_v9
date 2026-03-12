@@ -17,7 +17,6 @@ export async function GET() {
   let page = 0;
   const pageSize = 1000;
 
-  // 🔹 récupérer tout le stock
   while (true) {
 
     const from = page * pageSize;
@@ -27,10 +26,7 @@ export async function GET() {
       .from("items")
       .select(`
         imei,
-        created_at,
-        imported_by,
         boxes (
-          id,
           box_code,
           floor,
           bins (
@@ -57,45 +53,39 @@ export async function GET() {
     page++;
   }
 
-  // 🔹 grouper IMEIs par box
+  // grouper par floor/device/box
   const boxMap: Record<string, any> = {};
 
   for (const r of allRows) {
 
+    const floor = r.boxes?.floor || "";
     const device = r.boxes?.bins?.name || "";
     const box = r.boxes?.box_code || "";
-    const floor = r.boxes?.floor || "";
-    const imei = r.imei || "";
 
     const key = `${floor}|${device}|${box}`;
 
     if (!boxMap[key]) {
       boxMap[key] = {
+        floor,
         device,
         box_code: box,
-        floor,
-        imeis: [],
+        expected_qty: 0,
       };
     }
 
-    boxMap[key].imeis.push(imei);
+    boxMap[key].expected_qty++;
   }
 
-  // 🔹 trier IMEIs dans chaque box
-  for (const k in boxMap) {
-    boxMap[k].imeis.sort();
-  }
-
-  // 🔹 convertir pour Excel
   const rows = Object.values(boxMap).map((b: any) => ({
     floor: b.floor,
     device: b.device,
     box_code: b.box_code,
-    qty: b.imeis.length,
-    imeis: b.imeis.join("\n"),
+    expected_qty: b.expected_qty,
+    counted_qty: "",
+    difference: "",
+    note: "",
   }));
 
-  // 🔹 tri final
   rows.sort((a: any, b: any) => {
 
     if (String(a.floor) !== String(b.floor))
@@ -107,20 +97,32 @@ export async function GET() {
     return a.box_code.localeCompare(b.box_code, undefined, { numeric: true });
   });
 
-  // 🔹 créer sheet Excel
   const ws = XLSX.utils.json_to_sheet(rows);
+
+  // ajouter formule difference
+  rows.forEach((_, i) => {
+
+    const rowIndex = i + 2; // Excel commence à 1 + header
+
+    ws[`F${rowIndex}`] = {
+      f: `E${rowIndex}-D${rowIndex}`
+    };
+
+  });
 
   // largeur colonnes
   ws["!cols"] = [
-    { wch: 10 }, // floor
-    { wch: 18 }, // device
-    { wch: 10 }, // box
-    { wch: 6 },  // qty
-    { wch: 60 }, // imeis
+    { wch: 8 },   // floor
+    { wch: 18 },  // device
+    { wch: 10 },  // box
+    { wch: 12 },  // expected
+    { wch: 12 },  // counted
+    { wch: 12 },  // difference
+    { wch: 20 },  // note
   ];
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Stock by Box");
+  XLSX.utils.book_append_sheet(wb, ws, "Count Sheet");
 
   const buffer = XLSX.write(wb, {
     type: "buffer",
@@ -131,7 +133,7 @@ export async function GET() {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename=stock_inventory.xlsx`,
+      "Content-Disposition": `attachment; filename=stock_count_sheet.xlsx`,
       "Cache-Control": "no-store",
     },
   });

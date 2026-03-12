@@ -115,12 +115,21 @@ if (salesJson.ok){
 
 <div className="flex items-center justify-between">
 
-<a
-href="/api/dashboard/export"
-className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
->
-Export Excel
-</a>
+<div className="flex items-center gap-3">
+  <a
+    href="/api/dashboard/export"
+    className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+  >
+    Export Stock
+  </a>
+
+  <a
+    href="/api/dashboard/export-count-sheet"
+    className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+  >
+    Export Count Sheet
+  </a>
+</div>
 
 <h1 className="text-3xl font-semibold tracking-tight">
 Inventory Dashboard

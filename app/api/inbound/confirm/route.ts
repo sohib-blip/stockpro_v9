@@ -21,7 +21,7 @@ type LabelPayload = {
 
 export async function POST(req: Request) {
   try {
-    const { labels, actor, actor_id, vendor } = await req.json();
+    const { labels, actor, actor_id, vendor, shipment_ref } = await req.json();
 
     if (!Array.isArray(labels) || labels.length === 0) {
       return NextResponse.json(
@@ -44,11 +44,12 @@ export async function POST(req: Request) {
     // créer batch inbound
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
-      .insert({
-        actor: actor || "unknown",
-        vendor: vendor || "unknown",
-        source: "excel",
-      })
+.insert({
+  actor: actor || "unknown",
+  vendor: vendor || "unknown",
+  source: "excel",
+  shipment_ref: shipment_ref || null
+})
       .select("batch_id, created_at")
       .single();
 

@@ -14,35 +14,52 @@ function sb() {
   });
 }
 
-export async function GET() {
+export async function GET(req: Request) {
   try {
     const supabase = sb();
 
-    // get last batches
+    const url = new URL(req.url);
+    const page = Number(url.searchParams.get("page") || 1);
+
+    const limit = 50;
+    const offset = (page - 1) * limit;
+
+    // 🔹 1. get batches paginated
     const { data: batches, error: bErr } = await supabase
       .from("outbound_batches")
       .select("batch_id, created_at, actor, shipment_ref, source")
       .order("created_at", { ascending: false })
-      .limit(200);
+      .range(offset, offset + limit - 1);
 
     if (bErr) throw bErr;
 
-    // get movement counts per batch
+    if (!batches || batches.length === 0) {
+      return NextResponse.json({ ok: true, rows: [] });
+    }
+
+    const batchIds = batches.map((b: any) => b.batch_id);
+
+    // 🔹 2. get movements ONLY for these batches
     const { data: movs, error: mErr } = await supabase
       .from("movements")
       .select("batch_id")
-      .eq("type", "OUT");
+      .eq("type", "OUT")
+      .in("batch_id", batchIds);
 
     if (mErr) throw mErr;
 
+    // 🔹 3. count per batch
     const counts: Record<string, number> = {};
+
     for (const m of movs || []) {
       const id = String((m as any).batch_id || "");
       if (!id) continue;
+
       counts[id] = (counts[id] || 0) + 1;
     }
 
-    const rows = (batches || []).map((b: any) => ({
+    // 🔹 4. build rows
+    const rows = batches.map((b: any) => ({
       batch_id: b.batch_id,
       created_at: b.created_at,
       actor: b.actor || "unknown",
@@ -51,8 +68,16 @@ export async function GET() {
       qty: counts[String(b.batch_id)] || 0,
     }));
 
-    return NextResponse.json({ ok: true, rows });
+    return NextResponse.json({
+      ok: true,
+      rows,
+      page,
+    });
+
   } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "History failed" }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: e?.message || "History failed" },
+      { status: 500 }
+    );
   }
 }

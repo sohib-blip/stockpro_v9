@@ -287,34 +287,41 @@ export default function TransferPage() {
           </div>
         </div>
 
-        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-          <thead className="bg-slate-950/50">
-            <tr>
-              <th className="p-2 text-left">Date</th>
-              <th className="p-2 text-left">User</th>
-              <th className="p-2 text-left">Box</th>
-              <th className="p-2 text-left">Floor</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredHistory.map((h, i) => (
-              <tr key={i} className="hover:bg-slate-950/40">
-                <td className="p-2">{fmtDate(h.created_at)}</td>
-                <td className="p-2">{h.actor}</td>
-                <td className="p-2 font-semibold">{h.boxes?.box_code}</td>
-                <td className="p-2">{h.boxes?.floor}</td>
-              </tr>
-            ))}
+        <div className="max-h-[400px] overflow-y-auto border border-slate-800 rounded-xl">
 
-            {filteredHistory.length === 0 && (
-              <tr>
-                <td colSpan={4} className="p-3 text-slate-400">
-                  No transfers found.
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
+  <table className="w-full text-sm">
+
+    <thead className="bg-slate-950/50">
+      <tr>
+        <th className="p-2 text-left">Date</th>
+        <th className="p-2 text-left">User</th>
+        <th className="p-2 text-left">Box</th>
+        <th className="p-2 text-left">Floor</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {filteredHistory.map((h, i) => (
+        <tr key={i} className="hover:bg-slate-950/40">
+          <td className="p-2">{fmtDate(h.created_at)}</td>
+          <td className="p-2">{h.actor}</td>
+          <td className="p-2 font-semibold">{h.boxes?.box_code}</td>
+          <td className="p-2">{h.boxes?.floor}</td>
+        </tr>
+      ))}
+
+      {filteredHistory.length === 0 && (
+        <tr>
+          <td colSpan={4} className="p-3 text-slate-400">
+            No transfers found.
+          </td>
+        </tr>
+      )}
+    </tbody>
+
+  </table>
+
+</div>
       </div>
 
     </div>

@@ -14,8 +14,8 @@ function sb() {
 
 export async function POST(req: Request) {
   try {
-    const { device, box_no, floor, imeis, actor, actor_id } =
-      await req.json();
+    const { device, box_no, floor, imeis, actor, actor_id, shipment_ref } =
+  await req.json();
 
     if (!device || !box_no || !Array.isArray(imeis) || imeis.length === 0) {
       return NextResponse.json(
@@ -31,11 +31,12 @@ export async function POST(req: Request) {
     // 1️⃣ Create inbound batch
     const { data: batch } = await supabase
       .from("inbound_batches")
-      .insert({
-        actor: actor || "unknown",
-        vendor: "manual",
-        source: "manual",
-      })
+.insert({
+  actor: actor || "unknown",
+  vendor: "manual",
+  source: "manual",
+  shipment_ref: shipment_ref || null
+})
       .select("batch_id")
       .single();
 

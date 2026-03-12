@@ -32,17 +32,22 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
+    // 🔥 important : un seul operation_id pour tout le batch
+    const operation_id = crypto.randomUUID();
+
     const { data, error } = await supabase.rpc("confirm_outbound_batch", {
       p_imeis: imeis,
       p_actor: actor || "unknown",
       p_actor_id: actor_id,
       p_shipment_ref: shipment_ref || null,
       p_source: source || "manual",
+      p_operation_id: operation_id,
     });
 
     if (error) throw error;
 
     return NextResponse.json(data);
+
   } catch (e: any) {
     console.error("OUTBOUND CONFIRM ERROR", e);
 

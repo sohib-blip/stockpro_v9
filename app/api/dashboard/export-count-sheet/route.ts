@@ -13,116 +13,91 @@ const supabase = createClient(
 
 export async function GET() {
 
-  let allRows: any[] = [];
-  let page = 0;
-  const pageSize = 1000;
+  const { data, error } = await supabase
+    .from("stock_export_view")
+    .select("*");
 
-  while (true) {
-
-    const from = page * pageSize;
-    const to = from + pageSize - 1;
-
-    const { data, error } = await supabase
-      .from("items")
-      .select(`
-        imei,
-        boxes (
-          box_code,
-          floor,
-          bins (
-            name
-          )
-        )
-      `)
-      .eq("status", "IN")
-      .range(from, to);
-
-    if (error) {
-      return NextResponse.json(
-        { ok: false, error: error.message },
-        { status: 500 }
-      );
-    }
-
-    if (!data || data.length === 0) break;
-
-    allRows.push(...data);
-
-    if (data.length < pageSize) break;
-
-    page++;
+  if (error) {
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 }
+    );
   }
 
-  // grouper par floor/device/box
-  const boxMap: Record<string, any> = {};
+  const deviceMap: Record<string, any[]> = {};
 
-  for (const r of allRows) {
+  for (const r of data || []) {
 
-    const floor = r.boxes?.floor || "";
-    const device = r.boxes?.bins?.name || "";
-    const box = r.boxes?.box_code || "";
+    const device = r.device || "Unknown";
+    const floor = r.floor || "";
+    const box = r.box_code || "";
 
-    const key = `${floor}|${device}|${box}`;
+    const key = `${floor}|${box}`;
 
-    if (!boxMap[key]) {
-      boxMap[key] = {
+    if (!deviceMap[device]) deviceMap[device] = [];
+
+    let existing = deviceMap[device].find(x => x.key === key);
+
+    if (!existing) {
+
+      existing = {
+        key,
         floor,
-        device,
         box_code: box,
         expected_qty: 0,
       };
+
+      deviceMap[device].push(existing);
+
     }
 
-    boxMap[key].expected_qty++;
+    existing.expected_qty++;
+
   }
 
-  const rows = Object.values(boxMap).map((b: any) => ({
-    floor: b.floor,
-    device: b.device,
-    box_code: b.box_code,
-    expected_qty: b.expected_qty,
-    counted_qty: "",
-    difference: "",
-    note: "",
-  }));
-
-  rows.sort((a: any, b: any) => {
-
-    if (String(a.floor) !== String(b.floor))
-      return String(a.floor).localeCompare(String(b.floor));
-
-    if (a.device !== b.device)
-      return a.device.localeCompare(b.device);
-
-    return a.box_code.localeCompare(b.box_code, undefined, { numeric: true });
-  });
-
-  const ws = XLSX.utils.json_to_sheet(rows);
-
-  // ajouter formule difference
-  rows.forEach((_, i) => {
-
-    const rowIndex = i + 2; // Excel commence à 1 + header
-
-    ws[`F${rowIndex}`] = {
-      f: `E${rowIndex}-D${rowIndex}`
-    };
-
-  });
-
-  // largeur colonnes
-  ws["!cols"] = [
-    { wch: 8 },   // floor
-    { wch: 18 },  // device
-    { wch: 10 },  // box
-    { wch: 12 },  // expected
-    { wch: 12 },  // counted
-    { wch: 12 },  // difference
-    { wch: 20 },  // note
-  ];
-
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Count Sheet");
+
+  for (const device of Object.keys(deviceMap)) {
+
+    const rows = deviceMap[device].map((b) => ({
+      floor: b.floor,
+      box_code: b.box_code,
+      expected_qty: b.expected_qty,
+      counted_qty: "",
+      difference: "",
+      note: "",
+    }));
+
+    rows.sort((a, b) => {
+
+      if (String(a.floor) !== String(b.floor))
+        return String(a.floor).localeCompare(String(b.floor));
+
+      return a.box_code.localeCompare(b.box_code, undefined, { numeric: true });
+
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    rows.forEach((_, i) => {
+
+      const rowIndex = i + 2;
+      ws[`E${rowIndex}`] = { f: `D${rowIndex}-C${rowIndex}` };
+
+    });
+
+    ws["!cols"] = [
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 20 },
+    ];
+
+    XLSX.utils.book_append_sheet(wb, ws, device.substring(0, 31));
+
+  }
 
   const buffer = XLSX.write(wb, {
     type: "buffer",

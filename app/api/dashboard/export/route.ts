@@ -13,114 +13,47 @@ const supabase = createClient(
 
 export async function GET() {
 
-  let allRows: any[] = [];
-  let page = 0;
-  const pageSize = 1000;
+  const { data, error } = await supabase
+    .from("stock_export_view")
+    .select("*");
 
-  // 🔹 récupérer tout le stock
-  while (true) {
-
-    const from = page * pageSize;
-    const to = from + pageSize - 1;
-
-    const { data, error } = await supabase
-      .from("items")
-      .select(`
-        imei,
-        created_at,
-        imported_by,
-        boxes (
-          id,
-          box_code,
-          floor,
-          bins (
-            name
-          )
-        )
-      `)
-      .eq("status", "IN")
-      .range(from, to);
-
-    if (error) {
-      return NextResponse.json(
-        { ok: false, error: error.message },
-        { status: 500 }
-      );
-    }
-
-    if (!data || data.length === 0) break;
-
-    allRows.push(...data);
-
-    if (data.length < pageSize) break;
-
-    page++;
+  if (error) {
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 }
+    );
   }
 
-  // 🔹 grouper IMEIs par box
-  const boxMap: Record<string, any> = {};
-
-  for (const r of allRows) {
-
-    const device = r.boxes?.bins?.name || "";
-    const box = r.boxes?.box_code || "";
-    const floor = r.boxes?.floor || "";
-    const imei = r.imei || "";
-
-    const key = `${floor}|${device}|${box}`;
-
-    if (!boxMap[key]) {
-      boxMap[key] = {
-        device,
-        box_code: box,
-        floor,
-        imeis: [],
-      };
-    }
-
-    boxMap[key].imeis.push(imei);
-  }
-
-  // 🔹 trier IMEIs dans chaque box
-  for (const k in boxMap) {
-    boxMap[k].imeis.sort();
-  }
-
-  // 🔹 convertir pour Excel
-  const rows = Object.values(boxMap).map((b: any) => ({
-    floor: b.floor,
-    device: b.device,
-    box_code: b.box_code,
-    qty: b.imeis.length,
-    imeis: b.imeis.join("\n"),
+  const rows = (data || []).map((r: any) => ({
+    floor: r.floor || "",
+    device: r.device || "",
+    box_code: r.box_code || "",
+    imei: r.imei || "",
   }));
 
-  // 🔹 tri final
-  rows.sort((a: any, b: any) => {
-
-    if (String(a.floor) !== String(b.floor))
-      return String(a.floor).localeCompare(String(b.floor));
+  rows.sort((a, b) => {
 
     if (a.device !== b.device)
       return a.device.localeCompare(b.device);
 
-    return a.box_code.localeCompare(b.box_code, undefined, { numeric: true });
+    if (a.box_code !== b.box_code)
+      return a.box_code.localeCompare(b.box_code, undefined, { numeric: true });
+
+    return a.imei.localeCompare(b.imei);
+
   });
 
-  // 🔹 créer sheet Excel
   const ws = XLSX.utils.json_to_sheet(rows);
 
-  // largeur colonnes
   ws["!cols"] = [
-    { wch: 10 }, // floor
-    { wch: 18 }, // device
-    { wch: 10 }, // box
-    { wch: 6 },  // qty
-    { wch: 60 }, // imeis
+    { wch: 10 },
+    { wch: 18 },
+    { wch: 10 },
+    { wch: 22 }
   ];
 
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Stock by Box");
+  XLSX.utils.book_append_sheet(wb, ws, "Stock");
 
   const buffer = XLSX.write(wb, {
     type: "buffer",
@@ -131,7 +64,7 @@ export async function GET() {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename=stock_inventory.xlsx`,
+      "Content-Disposition": `attachment; filename=stock_export.xlsx`,
       "Cache-Control": "no-store",
     },
   });

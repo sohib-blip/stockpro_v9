@@ -10,24 +10,28 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
 
-  const body = await req.json();
-  const { device_id, min_stock } = body;
+  const { device_id, min_stock } = await req.json();
 
-  const { data, error } = await supabase
+  // récupérer le nom du device depuis la view
+  const { data: device } = await supabase
+    .from("dashboard_bins_view")
+    .select("device")
+    .eq("device_id", device_id)
+    .single();
+
+  if (!device) {
+    return NextResponse.json({ ok:false, error:"Device not found" });
+  }
+
+  // update dans la vraie table bins
+  const { error } = await supabase
     .from("bins")
-    .update({ min_stock })
-    .eq("id", device_id)   // ✅ correction ici
-    .select();
-
-  console.log("UPDATED ROW", data);
+    .update({ min_stock:Number(min_stock) })
+    .eq("name", device.device);
 
   if (error) {
-    return NextResponse.json(
-      { ok:false, error:error.message },
-      { status:500 }
-    );
+    return NextResponse.json({ ok:false, error:error.message });
   }
 
   return NextResponse.json({ ok:true });
-
 }

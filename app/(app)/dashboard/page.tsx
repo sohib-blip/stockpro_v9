@@ -514,7 +514,7 @@ autoFocus
 className="w-16 bg-black/40 border border-white/10 rounded px-2 py-1 text-sm"
 onBlur={async(e)=>{
 
- const value = Number(e.target.value)
+ const value = Number(e.target.value || 0)
 
  await fetch("/api/bins/update-min-stock",{
   method:"POST",
@@ -525,13 +525,13 @@ onBlur={async(e)=>{
   })
  })
 
- setBins(prev =>
-  prev.map(item =>
-   item.device_id === b.device_id
-    ? { ...item, min_stock:value }
-    : item
-  )
- )
+ // 🔹 recharge depuis la DB
+ const res = await fetch("/api/dashboard/bins",{cache:"no-store"})
+ const json = await res.json()
+
+ if(json.ok){
+  setBins(json.rows)
+ }
 
  setEditingMinStock(null)
 

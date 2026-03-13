@@ -509,9 +509,24 @@ onClick={()=>openDrilldown(b.device_id)}
 
 <input
 type="number"
-defaultValue={b.min_stock ?? 0}
+value={b.min_stock ?? 0}
 autoFocus
 className="w-16 bg-black/40 border border-white/10 rounded px-2 py-1 text-sm"
+
+onChange={(e)=>{
+
+ const value = Number(e.target.value || 0)
+
+ setBins(prev =>
+  prev.map(item =>
+   item.device_id === b.device_id
+    ? { ...item, min_stock:value }
+    : item
+  )
+ )
+
+}}
+
 onBlur={async(e)=>{
 
  const value = Number(e.target.value || 0)
@@ -524,14 +539,6 @@ onBlur={async(e)=>{
    min_stock:value
   })
  })
-
- // 🔹 recharge depuis la DB
- const res = await fetch("/api/dashboard/bins",{cache:"no-store"})
- const json = await res.json()
-
- if(json.ok){
-  setBins(json.rows)
- }
 
  setEditingMinStock(null)
 

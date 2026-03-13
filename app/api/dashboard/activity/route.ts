@@ -15,8 +15,9 @@ export async function GET() {
 
   const { data, error } = await supabase
     .from("dashboard_activity")
-    .select("type,device,qty,created_at,box_code,from_floor,to_floor")
-    .order("created_at", { ascending: false });
+.select("type,device,qty,created_at,box_code,from_floor,to_floor")
+.order("created_at", { ascending: false })
+.limit(50)
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message });

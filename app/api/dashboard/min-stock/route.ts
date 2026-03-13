@@ -14,20 +14,20 @@ export async function POST(req: Request) {
   const { device_id, min_stock } = body;
 
   const { data, error } = await supabase
-  .from("bins")
-  .update({ min_stock })
-  .eq("device_id", device_id)
-  .select();
+    .from("bins")
+    .update({ min_stock })
+    .eq("id", device_id)   // ✅ correction ici
+    .select();
 
-console.log("UPDATED ROW", data);
+  console.log("UPDATED ROW", data);
 
   if (error) {
     return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 }
+      { ok:false, error:error.message },
+      { status:500 }
     );
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok:true });
 
 }

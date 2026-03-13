@@ -202,7 +202,7 @@ for (const item of valid) {
 // ❌ BLOCK EXPORT IF INVALID
 // ============================
 
-if (unknown.length > 0 || alreadyOut.length > 0 || duplicates.length > 0) {
+if (unknown.length > 0 || alreadyOut.length > 0) {
   return NextResponse.json(
     {
       ok: false,

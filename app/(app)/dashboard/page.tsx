@@ -98,15 +98,7 @@ if (salesJson.ok){
  }
 
  useEffect(() => {
-
   loadAll();
-
-  const interval = setInterval(() => {
-    loadAll();
-  }, 5000); // refresh toutes les 5s
-
-  return () => clearInterval(interval);
-
 }, []);
 
  return (
@@ -539,6 +531,8 @@ onBlur={async(e)=>{
    min_stock:value
   })
  })
+
+ await loadAll();
 
  setEditingMinStock(null)
 

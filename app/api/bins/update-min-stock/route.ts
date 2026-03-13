@@ -13,7 +13,7 @@ export async function POST(req:Request){
  const { error } = await supabase
   .from("bins")
   .update({ min_stock })
-  .eq("device_id",device_id)
+  .eq("id", device_id)
 
  if(error){
   return NextResponse.json({ ok:false,error:error.message })

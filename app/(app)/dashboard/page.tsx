@@ -507,7 +507,7 @@ className="w-16 bg-black/40 border border-white/10 rounded px-2 py-1 text-sm"
 
 onChange={(e)=>{
 
- const value = Number(e.target.value || 0)
+ const value = Number(e.target.value)
 
  setBins(prev =>
   prev.map(item =>
@@ -521,7 +521,7 @@ onChange={(e)=>{
 
 onBlur={async(e)=>{
 
- const value = Number(e.target.value || 0)
+ const value = Number(e.target.value)
 
  await fetch("/api/bins/update-min-stock",{
   method:"POST",
@@ -531,8 +531,6 @@ onBlur={async(e)=>{
    min_stock:value
   })
  })
-
- await loadAll();
 
  setEditingMinStock(null)
 

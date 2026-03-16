@@ -51,7 +51,7 @@ console.log("LOGIN RESULT", data, error);
       return;
     }
 
-    router.push("/dashboard");
+    window.location.href = "/dashboard";
   }
 
 async function resetPassword() {

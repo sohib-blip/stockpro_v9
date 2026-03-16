@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 
@@ -12,6 +12,18 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+  async function checkSession() {
+    const { data } = await supabase.auth.getSession();
+
+    if (data.session) {
+      router.push("/dashboard");
+    }
+  }
+
+  checkSession();
+}, []);
 
   async function signIn() {
     // ✅ block empty submit (prevents anonymous attempt)

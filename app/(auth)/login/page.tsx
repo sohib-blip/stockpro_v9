@@ -14,15 +14,15 @@ export default function LoginPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
-  const checkSession = async () => {
+  const check = async () => {
     const { data: { session } } = await supabase.auth.getSession()
 
     if (session?.user) {
-      router.replace("/dashboard")
+      window.location.href = "/dashboard"
     }
   }
 
-  checkSession()
+  check()
 }, [])
 
   async function signIn() {

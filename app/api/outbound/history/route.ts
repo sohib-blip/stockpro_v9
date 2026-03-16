@@ -16,6 +16,7 @@ function sb() {
 
 export async function GET(req: Request) {
   try {
+
     const supabase = sb();
 
     const url = new URL(req.url);
@@ -24,60 +25,54 @@ export async function GET(req: Request) {
     const limit = 50;
     const offset = (page - 1) * limit;
 
-    // 🔹 1. get batches paginated
-    const { data: batches, error: bErr } = await supabase
-      .from("outbound_batches")
-      .select("batch_id, created_at, actor, shipment_ref, source")
-      .order("created_at", { ascending: false })
+    const { data, error } = await supabase
+      .from("movements")
+      .select(`
+        created_at,
+        actor,
+        shipment_ref,
+        source,
+        batch_id
+      `)
+      .eq("type","OUT")
+      .order("created_at",{ ascending:false })
       .range(offset, offset + limit - 1);
 
-    if (bErr) throw bErr;
+    if (error) throw error;
 
-    if (!batches || batches.length === 0) {
-      return NextResponse.json({ ok: true, rows: [] });
+    const batchMap: Record<string, any> = {};
+
+    for (const row of data || []) {
+
+      const id = String(row.batch_id || "single");
+
+      if (!batchMap[id]) {
+        batchMap[id] = {
+          batch_id: id,
+          created_at: row.created_at,
+          actor: row.actor || "unknown",
+          shipment_ref: row.shipment_ref || "",
+          source: row.source || "",
+          qty: 0
+        };
+      }
+
+      batchMap[id].qty += 1;
+
     }
-
-    const batchIds = batches.map((b: any) => b.batch_id);
-
-    // 🔹 2. get movements ONLY for these batches
-    const { data: movs, error: mErr } = await supabase
-      .from("movements")
-      .select("batch_id")
-      .eq("type", "OUT")
-      .in("batch_id", batchIds);
-
-    if (mErr) throw mErr;
-
-    // 🔹 3. count per batch
-    const counts: Record<string, number> = {};
-
-    for (const m of movs || []) {
-      const id = String((m as any).batch_id || "");
-      if (!id) continue;
-
-      counts[id] = (counts[id] || 0) + 1;
-    }
-
-    // 🔹 4. build rows
-    const rows = batches.map((b: any) => ({
-      batch_id: b.batch_id,
-      created_at: b.created_at,
-      actor: b.actor || "unknown",
-      shipment_ref: b.shipment_ref || "",
-      source: b.source || "",
-      qty: counts[String(b.batch_id)] || 0,
-    }));
 
     return NextResponse.json({
       ok: true,
-      rows,
-      page,
+      rows: Object.values(batchMap),
+      page
     });
 
-  } catch (e: any) {
+  } catch (e:any) {
+
     return NextResponse.json(
-      { ok: false, error: e?.message || "History failed" },
-      { status: 500 }
+      { ok:false, error:e?.message || "History failed" },
+      { status:500 }
     );
+
   }
 }

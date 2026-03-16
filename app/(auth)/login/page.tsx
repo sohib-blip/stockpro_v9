@@ -14,16 +14,16 @@ export default function LoginPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   useEffect(() => {
-  async function checkSession() {
-    const { data } = await supabase.auth.getSession();
+  const checkSession = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
 
-    if (data.session) {
-      router.push("/dashboard");
+    if (session?.user) {
+      router.replace("/dashboard")
     }
   }
 
-  checkSession();
-}, []);
+  checkSession()
+}, [])
 
   async function signIn() {
     // ✅ block empty submit (prevents anonymous attempt)
@@ -37,10 +37,12 @@ export default function LoginPage() {
 
     console.log("SIGNIN DATA:", email.trim(), password ? "***" : "");
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    const { data, error } = await supabase.auth.signInWithPassword({
+  email: email.trim(),
+  password,
+});
+
+console.log("LOGIN RESULT", data, error);
 
     setLoading(false);
 
@@ -103,17 +105,19 @@ async function resetPassword() {
         <div className="flex flex-col gap-2">
 
   <button
-    onClick={signIn}
-    disabled={loading}
-    className="w-full rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 px-4 py-2 font-semibold disabled:opacity-50"
-  >
+  type="button"
+  onClick={signIn}
+  disabled={loading}
+  className="w-full rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 px-4 py-2 font-semibold disabled:opacity-50"
+>
     {loading ? "..." : "Sign in"}
   </button>
 
   <button
-    onClick={resetPassword}
-    className="text-xs text-slate-400 hover:text-slate-200"
-  >
+  type="button"
+  onClick={resetPassword}
+  className="text-xs text-slate-400 hover:text-slate-200"
+>
     Forgot password?
   </button>
 

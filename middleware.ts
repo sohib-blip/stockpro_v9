@@ -28,9 +28,18 @@ export async function middleware(req: NextRequest) {
     data: { session },
   } = await supabase.auth.getSession()
 
+  const url = req.nextUrl.clone()
+
   // pas connecté → login
-  if (!session) {
-    return NextResponse.redirect(new URL("/login", req.url))
+  if (!session && url.pathname !== "/login") {
+    url.pathname = "/login"
+    return NextResponse.redirect(url)
+  }
+
+  // connecté → dashboard si accès login
+  if (session && url.pathname === "/login") {
+    url.pathname = "/dashboard"
+    return NextResponse.redirect(url)
   }
 
   return res
@@ -38,6 +47,6 @@ export async function middleware(req: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!login|_next|favicon.ico|api).*)",
+    "/((?!_next|favicon.ico|api).*)",
   ],
 }

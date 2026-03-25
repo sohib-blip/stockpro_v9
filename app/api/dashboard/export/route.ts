@@ -24,6 +24,7 @@ export async function GET() {
       const { data, error } = await supabase
         .from("stock_export_view")
         .select("*")
+        .order("item_id", { ascending: true })
         .range(from, to);
 
       if (error) {
@@ -69,10 +70,10 @@ export async function GET() {
     const ws = XLSX.utils.json_to_sheet(rows);
 
     ws["!cols"] = [
-      { wch: 10 }, // floor
-      { wch: 20 }, // device
-      { wch: 12 }, // box
-      { wch: 22 }, // imei
+      { wch: 10 },
+      { wch: 20 },
+      { wch: 12 },
+      { wch: 22 },
     ];
 
     const wb = XLSX.utils.book_new();

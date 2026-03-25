@@ -12,79 +12,89 @@ const supabase = createClient(
 );
 
 export async function GET() {
+  try {
+    let allRows: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
 
-  let allRows: any[] = [];
-  let page = 0;
-  const pageSize = 1000;
+    while (true) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
 
-  while (true) {
+      const { data, error } = await supabase
+        .from("stock_export_view")
+        .select("*")
+        .range(from, to);
 
-    const from = page * pageSize;
-    const to = from + pageSize - 1;
+      if (error) {
+        return NextResponse.json(
+          { ok: false, error: error.message },
+          { status: 500 }
+        );
+      }
 
-    const { data, error } = await supabase
-      .from("stock_export_view")
-      .select("*")
-      .range(from, to);
+      if (!data || data.length === 0) break;
 
-    if (error) {
-      return NextResponse.json(
-        { ok: false, error: error.message },
-        { status: 500 }
-      );
+      allRows.push(...data);
+
+      if (data.length < pageSize) break;
+      page++;
     }
 
-    if (!data || data.length === 0) break;
+    const rows = allRows.map((r: any) => ({
+      floor: r.floor || "",
+      device: r.device || "",
+      box_code: r.box_code || "",
+      imei: r.imei || "",
+    }));
 
-    allRows.push(...data);
+    rows.sort((a, b) => {
+      if (String(a.floor) !== String(b.floor)) {
+        return String(a.floor).localeCompare(String(b.floor));
+      }
 
-    if (data.length < pageSize) break;
+      if (a.device !== b.device) {
+        return a.device.localeCompare(b.device);
+      }
 
-    page++;
+      if (a.box_code !== b.box_code) {
+        return a.box_code.localeCompare(b.box_code, undefined, {
+          numeric: true,
+        });
+      }
+
+      return a.imei.localeCompare(b.imei);
+    });
+
+    const ws = XLSX.utils.json_to_sheet(rows);
+
+    ws["!cols"] = [
+      { wch: 10 }, // floor
+      { wch: 20 }, // device
+      { wch: 12 }, // box
+      { wch: 22 }, // imei
+    ];
+
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Stock");
+
+    const buffer = XLSX.write(wb, {
+      type: "buffer",
+      bookType: "xlsx",
+    });
+
+    return new NextResponse(buffer, {
+      headers: {
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename=stock_export.xlsx`,
+        "Cache-Control": "no-store",
+      },
+    });
+  } catch (e: any) {
+    return NextResponse.json(
+      { ok: false, error: e?.message || "Export failed" },
+      { status: 500 }
+    );
   }
-
-  const rows = allRows.map((r: any) => ({
-    floor: r.floor || "",
-    device: r.device || "",
-    box_code: r.box_code || "",
-    imei: r.imei || "",
-  }));
-
-  rows.sort((a, b) => {
-
-    if (a.device !== b.device)
-      return a.device.localeCompare(b.device);
-
-    if (a.box_code !== b.box_code)
-      return a.box_code.localeCompare(b.box_code, undefined, { numeric: true });
-
-    return a.imei.localeCompare(b.imei);
-
-  });
-
-  const ws = XLSX.utils.json_to_sheet(rows);
-
-  ws["!cols"] = [
-    { wch: 10 },
-    { wch: 18 },
-    { wch: 10 },
-    { wch: 22 }
-  ];
-
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Stock");
-
-  const buffer = XLSX.write(wb, {
-    type: "buffer",
-    bookType: "xlsx",
-  });
-
-  return new NextResponse(buffer, {
-    headers: {
-      "Content-Type":
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename=stock_export.xlsx`,
-      "Cache-Control": "no-store",
-    },
-  });
 }

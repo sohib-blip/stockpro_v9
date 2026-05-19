@@ -3,6 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -13,93 +15,99 @@ function sb() {
   });
 }
 
-async function fetchAllMovements(supabase: any, batch_id: string) {
-  const pageSize = 5000;
-  let from = 0;
-  let allRows: any[] = [];
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("movements")
-      .select(`
-        created_at,
-        items (
-          imei,
-          boxes (
-            box_code,
-            floor,
-            bins (
-              name
-            )
-          )
-        )
-      `)
-      .eq("batch_id", batch_id)
-      .eq("type", "OUT")
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-    if (!data || data.length === 0) break;
-
-    allRows.push(...data);
-
-    if (data.length < pageSize) break;
-    from += pageSize;
-  }
-
-  return allRows;
-}
-
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-    const batch_id = url.searchParams.get("batch_id");
+    const operationId = url.searchParams.get("operation_id");
 
-    if (!batch_id) {
+    if (!operationId) {
       return NextResponse.json(
-        { ok: false, error: "batch_id required" },
+        { ok: false, error: "operation_id required" },
         { status: 400 }
       );
     }
 
     const supabase = sb();
 
-    const { data: batch, error: batchErr } = await supabase
-      .from("outbound_batches")
-      .select("*")
-      .eq("batch_id", batch_id)
-      .single();
+    const { data: movements, error } = await supabase
+      .from("movements")
+      .select(`
+        created_at,
+        actor,
+        shipment_ref,
+        source,
+        operation_id,
+        imei,
+        box_id,
+        device_id
+      `)
+      .eq("operation_id", operationId)
+      .eq("type", "OUT")
+      .order("created_at", { ascending: false });
 
-    if (batchErr || !batch) {
-      return NextResponse.json(
-        { ok: false, error: "Batch not found" },
-        { status: 404 }
-      );
-    }
-
-    // 🔥 unlimited movements
-    const movements = await fetchAllMovements(supabase, batch_id);
+    if (error) throw error;
 
     if (!movements || movements.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "No data for this batch" },
+        { ok: false, error: "No data for this operation" },
         { status: 404 }
       );
     }
 
+    const boxIds = [
+      ...new Set(movements.map((m: any) => m.box_id).filter(Boolean)),
+    ];
+
+    const deviceIds = [
+      ...new Set(movements.map((m: any) => m.device_id).filter(Boolean)),
+    ];
+
+    const [{ data: boxes }, { data: devices }] = await Promise.all([
+      supabase
+        .from("boxes")
+        .select("id, box_code, floor")
+        .in("id", boxIds.length ? boxIds : ["00000000-0000-0000-0000-000000000000"]),
+
+      supabase
+        .from("bins")
+        .select("id, name")
+        .in("id", deviceIds.length ? deviceIds : ["00000000-0000-0000-0000-000000000000"]),
+    ]);
+
+    const boxMap = Object.fromEntries(
+      (boxes || []).map((b: any) => [b.id, b])
+    );
+
+    const deviceMap = Object.fromEntries(
+      (devices || []).map((d: any) => [d.id, d])
+    );
+
     const rows = movements.map((m: any) => ({
-      "Date / Time": new Date(batch.created_at).toLocaleString(),
-      "User": batch.actor || "",
-      "Shipment Ref": batch.shipment_ref || "",
-      "Source": batch.source || "",
-      "Device": m.items?.boxes?.bins?.name || "",
-      "Box ID": m.items?.boxes?.box_code || "",
-      "Floor": m.items?.boxes?.floor || "",
-      "IMEI": m.items?.imei || "",
-      "Batch ID": batch.batch_id,
+      "Date / Time": new Date(m.created_at).toLocaleString(),
+      User: m.actor || "",
+      "Shipment Ref": m.shipment_ref || "",
+      Source: m.source || "",
+      Device: deviceMap[m.device_id]?.name || "",
+      "Box ID": boxMap[m.box_id]?.box_code || "",
+      Floor: boxMap[m.box_id]?.floor || "",
+      IMEI: m.imei || "",
+      "Operation ID": m.operation_id || "",
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(rows);
+
+    worksheet["!cols"] = [
+      { wch: 22 },
+      { wch: 28 },
+      { wch: 18 },
+      { wch: 12 },
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 12 },
+      { wch: 24 },
+      { wch: 40 },
+    ];
+
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Outbound");
 
@@ -112,7 +120,8 @@ export async function GET(req: Request) {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": `attachment; filename=outbound_${batch_id}.xlsx`,
+        "Content-Disposition": `attachment; filename=outbound_${operationId}.xlsx`,
+        "Cache-Control": "no-store",
       },
     });
   } catch (e: any) {

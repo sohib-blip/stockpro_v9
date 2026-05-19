@@ -5,70 +5,63 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-function sb() {
-  return createClient(SUPABASE_URL, SERVICE_ROLE, {
-    auth: { persistSession: false },
-  });
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function GET(req: Request) {
   try {
-    const supabase = sb();
-
     const url = new URL(req.url);
     const page = Number(url.searchParams.get("page") || 1);
-
     const limit = 50;
     const offset = (page - 1) * limit;
 
     const { data, error } = await supabase
       .from("movements")
       .select(`
-        movement_id,
+        operation_id,
         created_at,
         actor,
         shipment_ref,
-        source,
-        batch_id,
-        operation_id,
+        return_type,
+        return_reason,
         qty
       `)
-      .eq("type", "OUT")
+      .eq("type", "RETURN")
       .order("created_at", { ascending: false })
       .range(offset, offset + limit - 1);
 
     if (error) throw error;
 
-    const batchMap: Record<string, any> = {};
+    const map: Record<string, any> = {};
 
     for (const row of data || []) {
-      const id = String(row.operation_id || row.batch_id || row.movement_id);
+      const id = String(row.operation_id);
 
-      if (!batchMap[id]) {
-        batchMap[id] = {
-  operation_id: id,
-  created_at: row.created_at,
-  actor: row.actor || "unknown",
-  shipment_ref: row.shipment_ref || "",
-  source: row.source || "",
-  qty: 0,
-};
+      if (!map[id]) {
+        map[id] = {
+          operation_id: id,
+          created_at: row.created_at,
+          actor: row.actor || "unknown",
+          return_ref: row.shipment_ref || "",
+          return_type: row.return_type || "",
+          return_reason: row.return_reason || "",
+          qty: 0,
+        };
       }
 
-      batchMap[id].qty += Number(row.qty || 1);
+      map[id].qty += Number(row.qty || 1);
     }
 
     return NextResponse.json({
       ok: true,
-      rows: Object.values(batchMap),
+      rows: Object.values(map),
       page,
     });
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "History failed" },
+      { ok: false, error: e?.message || "Returns history failed" },
       { status: 500 }
     );
   }

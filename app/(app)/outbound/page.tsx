@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type HistoryRow = {
-  batch_id: string;
+  operation_id: string;
   created_at: string;
   actor: string;
   shipment_ref: string;
@@ -388,7 +388,7 @@ if (!actorId) {
 
     <tbody>
       {filteredHistory.map((h) => (
-        <tr key={h.batch_id}>
+        <tr key={h.operation_id}>
           <td className="p-2">{fmtDateTime(h.created_at)}</td>
           <td className="p-2">{h.actor}</td>
           <td className="p-2 capitalize">{h.source}</td>
@@ -396,7 +396,7 @@ if (!actorId) {
           <td className="p-2 text-right font-semibold">{h.qty}</td>
           <td className="p-2 text-right">
             <a
-              href={`/api/outbound/export?batch_id=${encodeURIComponent(h.batch_id)}`}
+              href={`/api/outbound/export?operation_id=${encodeURIComponent(h.operation_id)}`}
               className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
             >
               Excel

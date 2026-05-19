@@ -371,18 +371,32 @@ export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[
     devices.find((d) => d.display === deviceDisplay)?.units_per_imei ?? 1;
 
   const header = (rows[0] || []).map(norm);
-  const idxProd = header.findIndex((h) => h === "product name" || h.includes("product"));
+
   const idxImei = header.findIndex((h) => h.includes("imei"));
-  const idxBoxid = header.findIndex((h) => h === "boxid" || h.includes("boxid"));
+  const idxBox = header.findIndex(
+    (h) => h.includes("box number") || h.includes("box")
+  );
 
-  if (idxProd < 0) return makeFail("DigitalMatter: Product Name column not found", [], { header });
-  if (idxImei < 0) return makeFail("DigitalMatter: IMEI/PACCODE column not found", [], { header });
-  if (idxBoxid < 0) return makeFail("DigitalMatter: BOXID column not found", [], { header });
+  if (idxImei < 0) {
+    return makeFail("DigitalMatter: IMEI column not found", [], { header });
+  }
 
-  const unknown: string[] = [];
-  const debug: Record<string, any> = { header };
+  if (idxBox < 0) {
+    return makeFail("DigitalMatter: Box Number column not found", [], { header });
+  }
 
-  const byKey = new Map<string, string[]>();
+  const forcedDeviceRaw = "BarraGps";
+  const deviceDisplay = resolveDeviceDisplay(forcedDeviceRaw, devices);
+
+  if (!deviceDisplay) {
+    return makeFail(
+      `device(s) not found in Admin > Devices: ${forcedDeviceRaw}`,
+      [forcedDeviceRaw],
+      { header, forcedDeviceRaw }
+    );
+  }
+
+  const byBox = new Map<string, string[]>();
 
   for (let r = 1; r < rows.length; r++) {
     const row = rows[r] || [];
@@ -390,39 +404,16 @@ export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[
     const imei = isImei(row[idxImei]);
     if (!imei) continue;
 
-    const rawDevice = String(row[idxProd] ?? "").trim();
-if (!rawDevice) continue;
-
-// 🔥 Mapping DigitalMatter vers nouveaux noms bins
-let normalizedRaw = rawDevice;
-
-if (rawDevice.toUpperCase().includes("BARRA-GPS-4G")) {
-  normalizedRaw = "BarraGps";
-}
-
-const deviceDisplay = resolveDeviceDisplay(normalizedRaw, devices);
-if (!deviceDisplay) {
-  unknown.push(normalizedRaw);
-  continue;
-}
-
-    const boxNo = String(row[idxBoxid] ?? "").trim();
+    const boxNo = String(row[idxBox] ?? "").trim();
     if (!boxNo) continue;
 
     const key = `${deviceDisplay}__${boxNo}`;
-    if (!byKey.has(key)) byKey.set(key, []);
-    byKey.get(key)!.push(imei);
+
+    if (!byBox.has(key)) byBox.set(key, []);
+    byBox.get(key)!.push(imei);
   }
 
-  if (uniq(unknown).length > 0) {
-    return makeFail(
-      `device(s) not found in Admin > Devices: ${uniq(unknown).join(", ")}`,
-      uniq(unknown),
-      debug
-    );
-  }
-
-  const labels: ParsedLabel[] = Array.from(byKey.entries()).map(([key, imeis]) => {
+  const labels: ParsedLabel[] = Array.from(byBox.entries()).map(([key, imeis]) => {
     const box_no = key.split("__")[1] || "";
     const device = key.split("__")[0] || "";
     const uniqImeis = uniq(imeis);
@@ -438,7 +429,14 @@ if (!deviceDisplay) {
     };
   });
 
-  return makeOk(labels, debug, []);
+  if (labels.length === 0) {
+    return makeFail("DigitalMatter: no valid IMEIs found", [], {
+      header,
+      sampleTop: rows.slice(0, 10),
+    });
+  }
+
+  return makeOk(labels, { header, deviceDisplay }, []);
 }
 
 /**

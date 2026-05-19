@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,14 +11,18 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET() {
+function safeSheetName(name: string) {
+  return String(name || "Unknown")
+    .replace(/[\\/?*[\]:]/g, "-")
+    .substring(0, 31);
+}
 
+export async function GET() {
   let allRows: any[] = [];
   let page = 0;
   const pageSize = 1000;
 
   while (true) {
-
     const from = page * pageSize;
     const to = from + pageSize - 1;
 
@@ -39,99 +43,122 @@ export async function GET() {
     allRows.push(...data);
 
     if (data.length < pageSize) break;
-
     page++;
   }
 
-  const deviceMap: Record<string, any[]> = {};
+  const deviceMap: Record<string, number> = {};
 
   for (const r of allRows) {
-
     const device = r.device || "Unknown";
-    const floor = r.floor || "";
-    const box = r.box_code || "";
-
-    const key = `${floor}|${box}`;
-
-    if (!deviceMap[device]) deviceMap[device] = [];
-
-    let existing = deviceMap[device].find(x => x.key === key);
-
-    if (!existing) {
-
-      existing = {
-        key,
-        floor,
-        box_code: box,
-        expected_qty: 0,
-      };
-
-      deviceMap[device].push(existing);
-
-    }
-
-    existing.expected_qty++;
-
+    deviceMap[device] = (deviceMap[device] || 0) + 1;
   }
 
-  const wb = XLSX.utils.book_new();
+  const devices = Object.keys(deviceMap).sort();
 
-  for (const device of Object.keys(deviceMap)) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "StockPro";
+  wb.created = new Date();
 
-    const rows = deviceMap[device].map((b) => ({
-      floor: b.floor,
-      box_code: b.box_code,
-      expected_qty: b.expected_qty,
-      counted_qty: "",
-      difference: "",
-      note: "",
-    }));
+  const summary = wb.addWorksheet("Summary");
 
-    rows.sort((a, b) => {
+  summary.columns = [
+    { header: "Device", key: "device", width: 30 },
+    { header: "Expected", key: "expected", width: 14 },
+    { header: "Scanned", key: "scanned", width: 14 },
+    { header: "Variance", key: "variance", width: 14 },
+    { header: "Status", key: "status", width: 16 },
+  ];
 
-      if (String(a.floor) !== String(b.floor))
-        return String(a.floor).localeCompare(String(b.floor));
+  summary.getRow(1).font = { bold: true };
+  summary.getRow(1).fill = {
+    type: "pattern",
+    pattern: "solid",
+    fgColor: { argb: "FFE5E7EB" },
+  };
 
-      return a.box_code.localeCompare(b.box_code, undefined, { numeric: true });
+  devices.forEach((device, index) => {
+    const rowNumber = index + 2;
+    const sheetName = safeSheetName(device);
+    const row = summary.getRow(rowNumber);
 
-    });
+    row.getCell(1).value = device;
+    row.getCell(2).value = deviceMap[device];
 
-    const ws = XLSX.utils.json_to_sheet(rows);
+    row.getCell(3).value = {
+      formula: `COUNTA('${sheetName}'!A2:A5000)`,
+    };
 
-    rows.forEach((_, i) => {
+    row.getCell(4).value = {
+      formula: `C${rowNumber}-B${rowNumber}`,
+    };
 
-      const rowIndex = i + 2;
-      ws[`E${rowIndex}`] = { f: `D${rowIndex}-C${rowIndex}` };
+    row.getCell(5).value = {
+      formula: `IF(D${rowNumber}=0,"OK",IF(D${rowNumber}<0,"MISSING","EXTRA"))`,
+    };
 
-    });
-
-    ws["!cols"] = [
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 20 },
-    ];
-
-    XLSX.utils.book_append_sheet(
-      wb,
-      ws,
-      device.substring(0, 31)
-    );
-
-  }
-
-  const buffer = XLSX.write(wb, {
-    type: "buffer",
-    bookType: "xlsx",
+    row.commit();
   });
+
+  (summary as any).addConditionalFormatting({
+  ref: `D2:E${devices.length + 1}`,
+  rules: [
+    {
+      type: "expression",
+      formulae: ["$D2=0"],
+      style: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          bgColor: { argb: "FFC6EFCE" },
+        },
+        font: {
+          color: { argb: "FF006100" },
+          bold: true,
+        },
+      },
+    },
+    {
+      type: "expression",
+      formulae: ["$D2<>0"],
+      style: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          bgColor: { argb: "FFFFC7CE" },
+        },
+        font: {
+          color: { argb: "FF9C0006" },
+          bold: true,
+        },
+      },
+    },
+  ],
+});
+  summary.views = [{ state: "frozen", ySplit: 1 }];
+
+  for (const device of devices) {
+    const ws = wb.addWorksheet(safeSheetName(device));
+
+    ws.columns = [{ header: "Scanned IMEI", key: "imei", width: 32 }];
+
+    ws.getRow(1).font = { bold: true };
+    ws.getRow(1).fill = {
+      type: "pattern",
+      pattern: "solid",
+      fgColor: { argb: "FFE5E7EB" },
+    };
+
+    ws.views = [{ state: "frozen", ySplit: 1 }];
+  }
+
+  const buffer = await wb.xlsx.writeBuffer();
 
   return new NextResponse(buffer, {
     headers: {
       "Content-Type":
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename=stock_count_sheet.xlsx`,
+      "Content-Disposition":
+        "attachment; filename=end_of_month_stock_count.xlsx",
       "Cache-Control": "no-store",
     },
   });

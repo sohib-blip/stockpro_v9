@@ -13,6 +13,7 @@ import {
   Menu,
   Package,
   Repeat,
+  RotateCcw,
   LogOut,
   Settings
 } from "lucide-react";
@@ -22,6 +23,7 @@ const NAV = [
   { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
   { href: "/labels", label: "Labels", icon: Tag },
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
+  { href: "/returns", label: "Returns", icon: RotateCcw },
   { href: "/transfer", label: "Transfer", icon: Repeat },
   { href: "/bins", label: "Bins", icon: Package },
 ];

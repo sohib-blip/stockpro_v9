@@ -37,10 +37,11 @@ const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
  const [search,setSearch] = useState("");
  const [boxSearch,setBoxSearch] = useState("");
 
- const filteredBins = bins.filter((b:any)=>
+ const filteredBins = bins
+ .filter((b:any) => Number(b.imei_count) > 0)
+ .filter((b:any) =>
   b.device?.toLowerCase().includes(search.toLowerCase())
  );
-
  const chartData = bins.map((b:any) => {
 
  const movement = flow.find((f:any)=>f.device === b.device);
@@ -347,6 +348,8 @@ a.type === "IN"
 ? "text-green-400 font-semibold"
 : a.type === "OUT"
 ? "text-red-400 font-semibold"
+: a.type === "RETURN"
+? "text-emerald-400 font-semibold"
 : "text-cyan-400 font-semibold"
 }>
 
@@ -359,6 +362,12 @@ a.type === "IN"
 {a.type === "OUT" && (
 <>
 -{a.qty} {a.device}
+</>
+)}
+
+{a.type === "RETURN" && (
+<>
+↩️ Return {a.qty} {a.device}
 </>
 )}
 
@@ -634,8 +643,9 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
 <tbody>
 
 {drilldown
-.filter((d:any)=>
-d.box_code?.toLowerCase().includes(boxSearch.toLowerCase())
+.filter((d:any) => Number(d.remaining) > 0)
+.filter((d:any) =>
+ d.box_code?.toLowerCase().includes(boxSearch.toLowerCase())
 )
 .map((d)=>(
 <tr key={d.box_id}>
@@ -681,7 +691,9 @@ Floors
 
 <tbody>
 
-{floors.map((f,i)=>(
+{floors
+.filter((f:any) => Number(f.imei_count ?? f.total_imei ?? f.remaining ?? 0) > 0)
+.map((f,i)=>(
 <tr key={`${f.floor}-${f.device_id}-${i}`}>
 
 <td className="py-2">{f.floor}</td>

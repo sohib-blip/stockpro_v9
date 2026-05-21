@@ -19,6 +19,7 @@ export async function GET(req: Request) {
     const supabase = sb();
 
     const url = new URL(req.url);
+
     const page = Number(url.searchParams.get("page") || 1);
 
     const limit = 50;
@@ -28,13 +29,18 @@ export async function GET(req: Request) {
       .from("movements")
       .select(`
         movement_id,
+        operation_id,
+        batch_id,
         created_at,
         actor,
         shipment_ref,
         source,
-        batch_id,
-        operation_id,
-        qty
+        qty,
+        imei,
+        device_id,
+        bins (
+          name
+        )
       `)
       .eq("type", "OUT")
       .order("created_at", { ascending: false })
@@ -42,33 +48,73 @@ export async function GET(req: Request) {
 
     if (error) throw error;
 
-    const batchMap: Record<string, any> = {};
+    const grouped = new Map<string, any>();
 
     for (const row of data || []) {
-      const id = String(row.operation_id || row.batch_id || row.movement_id);
 
-      if (!batchMap[id]) {
-        batchMap[id] = {
-  operation_id: id,
-  created_at: row.created_at,
-  actor: row.actor || "unknown",
-  shipment_ref: row.shipment_ref || "",
-  source: row.source || "",
-  qty: 0,
-};
+      const key =
+        row.operation_id ||
+        row.batch_id ||
+        row.movement_id;
+
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          operation_id: key,
+          created_at: row.created_at,
+          actor: row.actor || "unknown",
+          shipment_ref: row.shipment_ref || "",
+          source: row.source || "manual",
+          qty: 0,
+          imeis: [],
+          devices: new Set<string>(),
+        });
       }
 
-      batchMap[id].qty += Number(row.qty || 1);
+      const current = grouped.get(key);
+
+      current.qty += Number(row.qty || 1);
+
+      if (row.imei) {
+        current.imeis.push(row.imei);
+      }
+
+      const deviceName =
+        (row as any)?.bins?.name;
+
+      if (deviceName) {
+        current.devices.add(deviceName);
+      }
     }
+
+    const rows = Array.from(grouped.values()).map((x) => ({
+      operation_id: x.operation_id,
+      created_at: x.created_at,
+      actor: x.actor,
+      shipment_ref: x.shipment_ref,
+      source: x.source,
+      qty: x.qty,
+      devices: Array.from(x.devices),
+      imeis_count: x.imeis.length,
+    }));
+
+    rows.sort(
+      (a, b) =>
+        new Date(b.created_at).getTime() -
+        new Date(a.created_at).getTime()
+    );
 
     return NextResponse.json({
       ok: true,
-      rows: Object.values(batchMap),
+      rows,
       page,
     });
+
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "History failed" },
+      {
+        ok: false,
+        error: e?.message || "History failed",
+      },
       { status: 500 }
     );
   }

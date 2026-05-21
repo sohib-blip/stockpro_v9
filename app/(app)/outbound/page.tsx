@@ -10,6 +10,8 @@ type HistoryRow = {
   shipment_ref: string;
   source: string;
   qty: number;
+  devices?: string[];
+  imeis_count?: number;
 };
 
 export default function OutboundPage() {
@@ -381,7 +383,8 @@ if (!actorId) {
         <th className="p-2 text-left">User</th>
         <th className="p-2 text-left">Source</th>
         <th className="p-2 text-left">Shipment ref</th>
-        <th className="p-2 text-right">Qty</th>
+<th className="p-2 text-left">Devices</th>
+<th className="p-2 text-right">Qty</th>
         <th className="p-2 text-right">Excel</th>
       </tr>
     </thead>
@@ -393,7 +396,8 @@ if (!actorId) {
           <td className="p-2">{h.actor}</td>
           <td className="p-2 capitalize">{h.source}</td>
           <td className="p-2">{h.shipment_ref || "-"}</td>
-          <td className="p-2 text-right font-semibold">{h.qty}</td>
+<td className="p-2">{h.devices?.join(", ") || "-"}</td>
+<td className="p-2 text-right font-semibold">{h.qty}</td>
           <td className="p-2 text-right">
             <a
               href={`/api/outbound/export?operation_id=${encodeURIComponent(h.operation_id)}`}

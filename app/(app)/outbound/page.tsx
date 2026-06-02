@@ -35,6 +35,10 @@ const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+const hasPreviewErrors =
+  preview?.duplicates?.length > 0 ||
+  preview?.already_out?.length > 0 ||
+  preview?.unknown_imeis?.length > 0;
 
   const filteredHistory =
     filter === "all"
@@ -98,24 +102,9 @@ const [page, setPage] = useState(1);
     const json = await res.json();
 
 if (!json.ok) {
-  setErrorMsg(
-    [
-      json.error,
-      json.unknown_imeis?.length
-        ? `Unknown IMEI: ${json.unknown_imeis.join(", ")}`
-        : null,
-      json.already_out?.length
-        ? `Already out: ${json.already_out.join(", ")}`
-        : null,
-      json.duplicates?.length
-        ? `Duplicates: ${json.duplicates.join(", ")}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" | ")
-  );
-
-  setPreview(null);
+  setPreview(json);
+  setPreviewSource("manual");
+  setErrorMsg("⚠ Confirm blocked. Please correct the IMEI list and preview again.");
   setBusy(false);
   return;
 }
@@ -144,24 +133,9 @@ setBusy(false);
     const json = await res.json();
 
 if (!json.ok) {
-  setErrorMsg(
-    [
-      json.error,
-      json.unknown_imeis?.length
-        ? `Unknown IMEI: ${json.unknown_imeis.join(", ")}`
-        : null,
-      json.already_out?.length
-        ? `Already out: ${json.already_out.join(", ")}`
-        : null,
-      json.duplicates?.length
-        ? `Duplicates: ${json.duplicates.join(", ")}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" | ")
-  );
-
-  setPreview(null);
+  setPreview(json);
+  setPreviewSource("excel");
+  setErrorMsg("⚠ Confirm blocked. Please correct the Excel file and preview again.");
   setBusy(false);
   return;
 }
@@ -300,52 +274,138 @@ if (!actorId) {
 )}
 
       {/* PREVIEW */}
-      {preview?.ok && (
-        <div className="card-glow p-6 space-y-4 relative overflow-hidden">
-          <div className="flex justify-between">
-            <div className="font-semibold">
-              Preview ({previewSource})
-            </div>
-            <div className="text-xs text-slate-400">
-              {preview.totalDetected} IMEIs
-            </div>
-          </div>
+{preview && (
+  <div className="card-glow p-6 space-y-5 relative overflow-hidden">
+    <div className="flex justify-between">
+      <div className="font-semibold">
+        Preview ({previewSource})
+      </div>
+      <div className="text-xs text-slate-400">
+        {preview.totalDetected || 0} IMEIs
+      </div>
+    </div>
 
-          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="p-2 text-left">Device</th>
-                <th className="p-2 text-left">Box</th>
-                <th className="p-2 text-left">Floor</th>
-                <th className="p-2 text-right">Detected</th>
-                <th className="p-2 text-right">Remaining</th>
-                <th className="p-2 text-right">% After</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.summary.map((row: any, idx: number) => (
-                <tr key={idx}>
-                  <td className="p-2">{row.device}</td>
-                  <td className="p-2">{row.box_no}</td>
-                  <td className="p-2">{row.floor || "-"}</td>
-                  <td className="p-2 text-right">{row.detected}</td>
-                  <td className="p-2 text-right">{row.remaining}</td>
-                  <td className="p-2 text-right">
-                    {row.percent_after ?? "-"}%
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+    {hasPreviewErrors && (
+      <div className="bg-red-600/20 border border-red-500 text-red-300 px-4 py-3 rounded-xl text-sm">
+        ⚠ Confirm blocked. Please remove duplicate, unknown or already outbound IMEIs.
+      </div>
+    )}
 
-          <button
-            onClick={confirmOut}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold"
-          >
-            Confirm Stock Out
-          </button>
+    {preview.duplicates?.length > 0 && (
+      <div>
+        <div className="font-semibold text-red-300 mb-2">
+          Duplicate IMEIs
         </div>
-      )}
+
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <thead className="bg-slate-950/50">
+            <tr>
+              <th className="p-2 text-left">IMEI</th>
+              <th className="p-2 text-right">Times found</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {preview.duplicates.map((d: any) => (
+              <tr key={d.imei}>
+                <td className="p-2">{d.imei}</td>
+                <td className="p-2 text-right font-semibold">{d.count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {preview.already_out?.length > 0 && (
+      <div>
+        <div className="font-semibold text-orange-300 mb-2">
+          Already OUT
+        </div>
+
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <thead className="bg-slate-950/50">
+            <tr>
+              <th className="p-2 text-left">IMEI</th>
+              <th className="p-2 text-left">Device</th>
+              <th className="p-2 text-left">Box</th>
+              <th className="p-2 text-left">Floor</th>
+              <th className="p-2 text-left">Status</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {preview.already_out.map((d: any) => (
+              <tr key={d.imei}>
+                <td className="p-2">{d.imei}</td>
+                <td className="p-2">{d.device || "-"}</td>
+                <td className="p-2">{d.box || "-"}</td>
+                <td className="p-2">{d.floor || "-"}</td>
+                <td className="p-2">{d.status || "OUT"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {preview.unknown_imeis?.length > 0 && (
+      <div>
+        <div className="font-semibold text-slate-300 mb-2">
+          Unknown IMEIs
+        </div>
+
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <tbody>
+            {preview.unknown_imeis.map((imei: string) => (
+              <tr key={imei}>
+                <td className="p-2">{imei}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {preview.summary?.length > 0 && (
+      <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+        <thead className="bg-slate-950/50">
+          <tr>
+            <th className="p-2 text-left">Device</th>
+            <th className="p-2 text-left">Box</th>
+            <th className="p-2 text-left">Floor</th>
+            <th className="p-2 text-right">Detected</th>
+            <th className="p-2 text-right">Remaining</th>
+            <th className="p-2 text-right">% After</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {preview.summary.map((row: any, idx: number) => (
+            <tr key={idx}>
+              <td className="p-2">{row.device}</td>
+              <td className="p-2">{row.box_no}</td>
+              <td className="p-2">{row.floor || "-"}</td>
+              <td className="p-2 text-right">{row.detected}</td>
+              <td className="p-2 text-right">{row.remaining}</td>
+              <td className="p-2 text-right">
+                {row.percent_after ?? "-"}%
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+
+    <button
+      onClick={confirmOut}
+      disabled={!preview.ok || hasPreviewErrors}
+      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      Confirm Stock Out
+    </button>
+  </div>
+)}
 
       {/* HISTORY */}
       <div className="card-glow p-6 space-y-4 relative overflow-hidden">

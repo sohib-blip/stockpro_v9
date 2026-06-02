@@ -175,9 +175,9 @@ console.log("CLEANED IMEIS", cleaned);
       if (outItem) {
         already_out.push({
   imei,
-  device: "",
-  box: "",
-  floor: "",
+  device: outItem.device || outItem.boxes?.bins?.name || "-",
+  box: outItem.box || outItem.boxes?.box_code || "-",
+  floor: outItem.floor || outItem.boxes?.floor || "-",
   status: "OUT",
   shipment_ref: outItem.shipment_ref || "",
   source: outItem.source || "",

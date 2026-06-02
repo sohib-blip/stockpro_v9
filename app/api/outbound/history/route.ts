@@ -40,7 +40,7 @@ export async function GET(req: Request) {
       `)
       .eq("type", "OUT")
       .order("created_at", { ascending: false })
-      .limit(5000);
+      .limit(10000);
 
     if (error) throw error;
 
@@ -48,15 +48,20 @@ export async function GET(req: Request) {
       new Set((data || []).map((r: any) => r.device_id).filter(Boolean))
     );
 
-    const { data: binsData, error: binsErr } = await supabase
-      .from("bins")
-      .select("id,name")
-      .in("id", deviceIds.length ? deviceIds : ["00000000-0000-0000-0000-000000000000"]);
+    let binsData: any[] = [];
 
-    if (binsErr) throw binsErr;
+    if (deviceIds.length > 0) {
+      const { data: bins, error: binsErr } = await supabase
+        .from("bins")
+        .select("id, name")
+        .in("id", deviceIds);
 
-    const binMap = Object.fromEntries(
-      (binsData || []).map((b: any) => [String(b.id), String(b.name)])
+      if (binsErr) throw binsErr;
+      binsData = bins || [];
+    }
+
+    const binMap = new Map(
+      binsData.map((b: any) => [String(b.id), String(b.name)])
     );
 
     const grouped = new Map<string, any>();
@@ -77,10 +82,15 @@ export async function GET(req: Request) {
       }
 
       const current = grouped.get(key);
+
       current.qty += Number(row.qty || 1);
 
-      const deviceName = binMap[String(row.device_id)] || "";
+      const deviceName = binMap.get(String(row.device_id));
       if (deviceName) current.devicesSet.add(deviceName);
+
+      if (new Date(row.created_at) > new Date(current.created_at)) {
+        current.created_at = row.created_at;
+      }
     }
 
     const allRows = Array.from(grouped.values())

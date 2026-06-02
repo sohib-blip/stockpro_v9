@@ -86,10 +86,7 @@ const [page, setPage] = useState(1);
 setErrorMsg("");
 setPreview(null);
 
-    const imeis = imeiInput
-      .split("\n")
-      .map((i) => i.replace(/\D/g, ""))
-      .filter((i) => i.length === 15);
+    const imeis = imeiInput.match(/\d{15}/g) || [];
 
     const res = await fetch("/api/outbound/eod-preview", {
       method: "POST",

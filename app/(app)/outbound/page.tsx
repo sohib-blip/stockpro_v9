@@ -316,6 +316,62 @@ if (!actorId) {
   </div>
 )}
 
+{preview.unknown_imeis?.length > 0 && (
+  <div>
+    <div className="font-semibold text-yellow-300 mb-2">
+      Unknown IMEIs
+    </div>
+
+    <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+      <thead className="bg-slate-950/50">
+        <tr>
+          <th className="p-2 text-left">IMEI</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {preview.unknown_imeis.map((imei: string) => (
+          <tr key={imei}>
+            <td className="p-2">{imei}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}
+
+{preview.already_out?.length > 0 && (
+  <div>
+    <div className="font-semibold text-orange-300 mb-2">
+      Already OUT IMEIs
+    </div>
+
+    <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+      <thead className="bg-slate-950/50">
+        <tr>
+          <th className="p-2 text-left">IMEI</th>
+          <th className="p-2 text-left">Device</th>
+          <th className="p-2 text-left">Box</th>
+          <th className="p-2 text-left">Floor</th>
+          <th className="p-2 text-left">Status</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {preview.already_out.map((row: any) => (
+          <tr key={row.imei}>
+            <td className="p-2">{row.imei}</td>
+            <td className="p-2">{row.device || "-"}</td>
+            <td className="p-2">{row.box || "-"}</td>
+            <td className="p-2">{row.floor || "-"}</td>
+            <td className="p-2">{row.status || "OUT"}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}
+
                     {preview.summary?.length > 0 && (
             <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
               <thead className="bg-slate-950/50">

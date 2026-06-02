@@ -173,11 +173,11 @@ console.log("CLEANED IMEIS", cleaned);
       const outItem = outMap.get(imei);
 
       if (outItem) {
-        already_out.push({
+       already_out.push({
   imei,
-  device: outItem.device || outItem.boxes?.bins?.name || "-",
-  box: outItem.box || outItem.boxes?.box_code || "-",
-  floor: outItem.floor || outItem.boxes?.floor || "-",
+  device: "-",
+  box: "-",
+  floor: "-",
   status: "OUT",
   shipment_ref: outItem.shipment_ref || "",
   source: outItem.source || "",

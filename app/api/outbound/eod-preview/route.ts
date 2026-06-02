@@ -67,7 +67,12 @@ export async function POST(req: Request) {
       });
     } else {
       const body = await req.json();
-      rawImeis = Array.isArray(body.imeis) ? body.imeis : [];
+
+rawImeis = body.imeisText
+  ? [String(body.imeisText)]
+  : Array.isArray(body.imeis)
+    ? body.imeis
+    : [];
     }
 
     const cleaned = cleanImeis(rawImeis);

@@ -91,7 +91,7 @@ setPreview(null);
     const res = await fetch("/api/outbound/eod-preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imeis }),
+      body: JSON.stringify({ imeisText: imeiInput, imeis }),
     });
 
     const json = await res.json();

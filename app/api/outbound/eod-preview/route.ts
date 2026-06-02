@@ -77,17 +77,24 @@ rawImeis = body.imeisText
 
     const cleaned = cleanImeis(rawImeis);
 
+    console.log("RAW IMEIS", rawImeis);
+console.log("CLEANED IMEIS", cleaned);
+
     if (cleaned.length === 0) {
-      return NextResponse.json({
-        ok: true,
-        imeis: [],
-        unknown_imeis: [],
-        already_out: [],
-        duplicates: [],
-        totalDetected: 0,
-        summary: [],
-      });
-    }
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "No valid 15-digit IMEI detected.",
+      imeis: [],
+      unknown_imeis: rawImeis.map((x) => String(x)),
+      already_out: [],
+      duplicates: [],
+      totalDetected: 0,
+      summary: [],
+    },
+    { status: 400 }
+  );
+}
 
     const counter: Record<string, number> = {};
     const uniqueImeis: string[] = [];

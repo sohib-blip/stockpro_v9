@@ -83,8 +83,8 @@ const [page, setPage] = useState(1);
   // ================= PREVIEW MANUAL =================
   async function previewManual() {
     setBusy(true);
-    setErrorMsg("");
-    setPreview(null);
+setErrorMsg("");
+setPreview(null);
 
     const imeis = imeiInput
       .split("\n")
@@ -100,24 +100,9 @@ const [page, setPage] = useState(1);
     const json = await res.json();
 
 if (!json.ok) {
-  setErrorMsg(
-    [
-      json.error,
-      json.unknown_imeis?.length
-        ? `Unknown IMEI: ${json.unknown_imeis.join(", ")}`
-        : null,
-      json.already_out?.length
-        ? `Already out: ${json.already_out.join(", ")}`
-        : null,
-      json.duplicates?.length
-        ? `Duplicates: ${json.duplicates.join(", ")}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" | ")
-  );
-
-  setPreview(null);
+  setPreview(json);
+  setPreviewSource("manual");
+  setErrorMsg("⚠ Confirm blocked. Please correct duplicate, unknown or already outbound IMEIs.");
   setBusy(false);
   return;
 }
@@ -146,24 +131,9 @@ setBusy(false);
     const json = await res.json();
 
 if (!json.ok) {
-  setErrorMsg(
-    [
-      json.error,
-      json.unknown_imeis?.length
-        ? `Unknown IMEI: ${json.unknown_imeis.join(", ")}`
-        : null,
-      json.already_out?.length
-        ? `Already out: ${json.already_out.join(", ")}`
-        : null,
-      json.duplicates?.length
-        ? `Duplicates: ${json.duplicates.join(", ")}`
-        : null,
-    ]
-      .filter(Boolean)
-      .join(" | ")
-  );
-
-  setPreview(null);
+  setPreview(json);
+  setPreviewSource("excel");
+  setErrorMsg("⚠ Confirm blocked. Please correct duplicate, unknown or already outbound IMEIs.");
   setBusy(false);
   return;
 }
@@ -222,6 +192,11 @@ if (!actorId) {
       return iso;
     }
   }
+
+  const hasPreviewErrors =
+  preview?.duplicates?.length > 0 ||
+  preview?.already_out?.length > 0 ||
+  preview?.unknown_imeis?.length > 0;
 
   return (
     <div className="space-y-10 max-w-6xl">
@@ -301,8 +276,10 @@ if (!actorId) {
   </div>
 )}
 
+
+
       {/* PREVIEW */}
-      {preview?.ok && (
+      {preview && (
         <div className="card-glow p-6 space-y-4 relative overflow-hidden">
           <div className="flex justify-between">
             <div className="font-semibold">
@@ -312,6 +289,32 @@ if (!actorId) {
               {preview.totalDetected} IMEIs
             </div>
           </div>
+
+{preview.duplicates?.length > 0 && (
+  <div>
+    <div className="font-semibold text-red-300 mb-2">
+      Duplicate IMEIs
+    </div>
+
+    <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+      <thead className="bg-slate-950/50">
+        <tr>
+          <th className="p-2 text-left">IMEI</th>
+          <th className="p-2 text-right">Times found</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {preview.duplicates.map((d: any) => (
+          <tr key={d.imei}>
+            <td className="p-2">{d.imei}</td>
+            <td className="p-2 text-right font-semibold">{d.count}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+)}
 
           <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
             <thead className="bg-slate-950/50">
@@ -341,11 +344,12 @@ if (!actorId) {
           </table>
 
           <button
-            onClick={confirmOut}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold"
-          >
-            Confirm Stock Out
-          </button>
+  onClick={confirmOut}
+  disabled={!preview?.ok || hasPreviewErrors}
+  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+>
+  Confirm Stock Out
+</button>
         </div>
       )}
 

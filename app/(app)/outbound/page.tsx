@@ -98,6 +98,10 @@ setPreview(null);
     });
 
     const json = await res.json();
+    if (!json.unknown_imeis) json.unknown_imeis = [];
+if (!json.already_out) json.already_out = [];
+if (!json.duplicates) json.duplicates = [];
+if (!json.summary) json.summary = [];
 
 if (!json.ok) {
   setPreview(json);
@@ -129,6 +133,10 @@ setBusy(false);
     });
 
     const json = await res.json();
+    if (!json.unknown_imeis) json.unknown_imeis = [];
+if (!json.already_out) json.already_out = [];
+if (!json.duplicates) json.duplicates = [];
+if (!json.summary) json.summary = [];
 
 if (!json.ok) {
   setPreview(json);

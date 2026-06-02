@@ -24,40 +24,52 @@ export async function GET(req: Request) {
     const limit = 50;
     const offset = (page - 1) * limit;
 
-    const { data, error } = await supabase
-      .from("movements")
-      .select(`
-        movement_id,
-        operation_id,
-        batch_id,
-        created_at,
-        actor,
-        shipment_ref,
-        source,
-        qty,
-        imei,
-        device_id
-      `)
-      .eq("type", "OUT")
-      .order("created_at", { ascending: false })
-      .limit(10000);
+    let allMovements: any[] = [];
+    let from = 0;
+    const pageSize = 1000;
 
-    if (error) throw error;
+    while (true) {
+      const { data, error } = await supabase
+        .from("movements")
+        .select(`
+          movement_id,
+          operation_id,
+          batch_id,
+          created_at,
+          actor,
+          shipment_ref,
+          source,
+          qty,
+          imei,
+          device_id
+        `)
+        .eq("type", "OUT")
+        .order("created_at", { ascending: false })
+        .range(from, from + pageSize - 1);
+
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+
+      allMovements.push(...data);
+
+      if (data.length < pageSize) break;
+      from += pageSize;
+    }
 
     const deviceIds = Array.from(
-      new Set((data || []).map((r: any) => r.device_id).filter(Boolean))
+      new Set(allMovements.map((r: any) => r.device_id).filter(Boolean))
     );
 
     let binsData: any[] = [];
 
     if (deviceIds.length > 0) {
-      const { data: bins, error: binsErr } = await supabase
+      const { data, error } = await supabase
         .from("bins")
         .select("id, name")
         .in("id", deviceIds);
 
-      if (binsErr) throw binsErr;
-      binsData = bins || [];
+      if (error) throw error;
+      binsData = data || [];
     }
 
     const binMap = new Map(
@@ -66,24 +78,31 @@ export async function GET(req: Request) {
 
     const grouped = new Map<string, any>();
 
-    for (const row of data || []) {
-      const key = String(row.operation_id || row.batch_id || row.movement_id);
+    for (const row of allMovements) {
+      const realKey =
+        row.operation_id ||
+        row.batch_id ||
+        row.shipment_ref ||
+        row.movement_id;
+
+      const key = String(realKey);
 
       if (!grouped.has(key)) {
         grouped.set(key, {
-          operation_id: key,
+          history_key: key,
+          operation_id: row.operation_id || row.batch_id || row.movement_id,
           created_at: row.created_at,
           actor: row.actor || "unknown",
           shipment_ref: row.shipment_ref || "",
           source: row.source || "manual",
-          qty: 0,
+          imeisSet: new Set<string>(),
           devicesSet: new Set<string>(),
         });
       }
 
       const current = grouped.get(key);
 
-      current.qty += Number(row.qty || 1);
+      if (row.imei) current.imeisSet.add(String(row.imei));
 
       const deviceName = binMap.get(String(row.device_id));
       if (deviceName) current.devicesSet.add(deviceName);
@@ -95,12 +114,13 @@ export async function GET(req: Request) {
 
     const allRows = Array.from(grouped.values())
       .map((x) => ({
+        history_key: x.history_key,
         operation_id: x.operation_id,
         created_at: x.created_at,
         actor: x.actor,
         shipment_ref: x.shipment_ref,
         source: x.source,
-        qty: x.qty,
+        qty: x.imeisSet.size,
         devices: Array.from(x.devicesSet),
       }))
       .sort(

@@ -12,6 +12,7 @@ type HistoryRow = {
   qty: number;
   devices?: string[];
   imeis_count?: number;
+  history_key?: string;
 };
 
 export default function OutboundPage() {
@@ -453,7 +454,7 @@ if (!actorId) {
 
     <tbody>
       {filteredHistory.map((h) => (
-        <tr key={h.operation_id}>
+        <tr key={h.history_key || h.operation_id}>
           <td className="p-2">{fmtDateTime(h.created_at)}</td>
           <td className="p-2">{h.actor}</td>
           <td className="p-2 capitalize">{h.source}</td>

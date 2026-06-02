@@ -77,9 +77,6 @@ rawImeis = body.imeisText
 
     const cleaned = cleanImeis(rawImeis);
 
-    console.log("RAW IMEIS", rawImeis);
-console.log("CLEANED IMEIS", cleaned);
-
     if (cleaned.length === 0) {
   return NextResponse.json(
     {
@@ -158,6 +155,45 @@ console.log("CLEANED IMEIS", cleaned);
       }
     }
 
+    const boxIds = Array.from(
+  new Set(outRows.map((r: any) => r.box_id).filter(Boolean))
+);
+
+const deviceIds = Array.from(
+  new Set(outRows.map((r: any) => r.device_id).filter(Boolean))
+);
+
+let boxRows: any[] = [];
+let deviceRows: any[] = [];
+
+if (boxIds.length > 0) {
+  const { data, error } = await supabase
+    .from("boxes")
+    .select("id, box_code, floor")
+    .in("id", boxIds);
+
+  if (error) throw error;
+  boxRows = data || [];
+}
+
+if (deviceIds.length > 0) {
+  const { data, error } = await supabase
+    .from("bins")
+    .select("id, name")
+    .in("id", deviceIds);
+
+  if (error) throw error;
+  deviceRows = data || [];
+}
+
+const boxMap = new Map(
+  (boxRows || []).map((b: any) => [String(b.id), b])
+);
+
+const deviceMap = new Map(
+  (deviceRows || []).map((d: any) => [String(d.id), d])
+);
+
     const valid: any[] = [];
     const already_out: any[] = [];
     const unknown_imeis: string[] = [];
@@ -173,11 +209,14 @@ console.log("CLEANED IMEIS", cleaned);
       const outItem = outMap.get(imei);
 
       if (outItem) {
-       already_out.push({
+       const box = boxMap.get(String(outItem.box_id));
+const device = deviceMap.get(String(outItem.device_id));
+
+already_out.push({
   imei,
-  device: "-",
-  box: "-",
-  floor: "-",
+  device: device?.name || "-",
+  box: box?.box_code || "-",
+  floor: box?.floor || "-",
   status: "OUT",
   shipment_ref: outItem.shipment_ref || "",
   source: outItem.source || "",

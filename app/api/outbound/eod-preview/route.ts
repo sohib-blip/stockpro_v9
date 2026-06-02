@@ -36,9 +36,6 @@ export async function POST(req: Request) {
     const supabase = sb();
     let rawImeis: string[] = [];
 
-    // ============================
-    // EXCEL IMPORT
-    // ============================
     if (req.headers.get("content-type")?.includes("multipart/form-data")) {
       const form = await req.formData();
       const file = form.get("file") as File;
@@ -73,9 +70,6 @@ export async function POST(req: Request) {
         });
       });
     } else {
-      // ============================
-      // MANUAL IMPORT
-      // ============================
       const body = await req.json();
       rawImeis = Array.isArray(body.imeis) ? body.imeis : [];
     }
@@ -94,9 +88,6 @@ export async function POST(req: Request) {
       });
     }
 
-    // ============================
-    // DUPLICATES IN INPUT
-    // ============================
     const counter: Record<string, number> = {};
     const uniqueImeis: string[] = [];
 
@@ -115,12 +106,36 @@ export async function POST(req: Request) {
         count,
       }));
 
-    // ============================
-    // DB LOOKUP IN CHUNKS
-    // ============================
-    const allItems: any[] = [];
+    const stockRows: any[] = [];
 
     for (const chunk of chunkArray(uniqueImeis, 500)) {
+      const { data, error } = await supabase
+        .from("stock_export_view")
+        .select(`
+          item_id,
+          imei,
+          status,
+          box_id,
+          box_code,
+          floor,
+          device
+        `)
+        .in("imei", chunk);
+
+      if (error) throw error;
+
+      stockRows.push(...(data || []));
+    }
+
+    const stockMap = new Map(
+      stockRows.map((item: any) => [String(item.imei), item])
+    );
+
+    const missingImeis = uniqueImeis.filter((imei) => !stockMap.has(imei));
+
+    const itemRows: any[] = [];
+
+    for (const chunk of chunkArray(missingImeis, 500)) {
       const { data, error } = await supabase
         .from("items")
         .select(`
@@ -138,11 +153,11 @@ export async function POST(req: Request) {
 
       if (error) throw error;
 
-      allItems.push(...(data || []));
+      itemRows.push(...(data || []));
     }
 
-    const foundMap = new Map(
-      allItems.map((item: any) => [String(item.imei), item])
+    const itemMap = new Map(
+      itemRows.map((item: any) => [String(item.imei), item])
     );
 
     const unknown_imeis: string[] = [];
@@ -150,30 +165,29 @@ export async function POST(req: Request) {
     const valid: any[] = [];
 
     for (const imei of uniqueImeis) {
-      const item = foundMap.get(imei);
+      const stockItem = stockMap.get(imei);
+
+      if (stockItem) {
+        valid.push(stockItem);
+        continue;
+      }
+
+      const item = itemMap.get(imei);
 
       if (!item) {
         unknown_imeis.push(imei);
         continue;
       }
 
-      if (String(item.status).toUpperCase() !== "IN") {
-        already_out.push({
-          imei,
-          device: item.boxes?.bins?.name || "",
-          box: item.boxes?.box_code || "",
-          floor: item.boxes?.floor || "",
-          status: item.status || "",
-        });
-        continue;
-      }
-
-      valid.push(item);
+      already_out.push({
+        imei,
+        device: item.boxes?.bins?.name || "",
+        box: item.boxes?.box_code || "",
+        floor: item.boxes?.floor || "",
+        status: item.status || "",
+      });
     }
 
-    // ============================
-    // SUMMARY BY BOX
-    // ============================
     const summaryMap: Record<string, any> = {};
 
     for (const item of valid) {
@@ -181,9 +195,9 @@ export async function POST(req: Request) {
 
       if (!summaryMap[key]) {
         summaryMap[key] = {
-          device: item.boxes?.bins?.name || "",
-          box_no: item.boxes?.box_code || "",
-          floor: item.boxes?.floor || "",
+          device: item.device || "",
+          box_no: item.box_code || "",
+          floor: item.floor || "",
           box_id: item.box_id,
           detected: 0,
           stock_before: 0,

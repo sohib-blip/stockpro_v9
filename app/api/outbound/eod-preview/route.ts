@@ -132,23 +132,18 @@ console.log("CLEANED IMEIS", cleaned);
 
     for (const chunk of chunkArray(missingImeis, 500)) {
       const { data, error } = await supabase
-        .from("movements")
-        .select(`
-          imei,
-          created_at,
-          shipment_ref,
-          source,
-          device_id,
-          box_id,
-          boxes (
-            box_code,
-            floor,
-            bins ( name )
-          )
-        `)
-        .eq("type", "OUT")
-        .in("imei", chunk)
-        .order("created_at", { ascending: false });
+  .from("movements")
+  .select(`
+    imei,
+    created_at,
+    shipment_ref,
+    source,
+    device_id,
+    box_id
+  `)
+  .eq("type", "OUT")
+  .in("imei", chunk)
+  .order("created_at", { ascending: false });
 
       if (error) throw error;
       outRows.push(...(data || []));
@@ -179,15 +174,15 @@ console.log("CLEANED IMEIS", cleaned);
 
       if (outItem) {
         already_out.push({
-          imei,
-          device: outItem.boxes?.bins?.name || "",
-          box: outItem.boxes?.box_code || "",
-          floor: outItem.boxes?.floor || "",
-          status: "OUT",
-          shipment_ref: outItem.shipment_ref || "",
-          source: outItem.source || "",
-          created_at: outItem.created_at || "",
-        });
+  imei,
+  device: "",
+  box: "",
+  floor: "",
+  status: "OUT",
+  shipment_ref: outItem.shipment_ref || "",
+  source: outItem.source || "",
+  created_at: outItem.created_at || "",
+});
         continue;
       }
 

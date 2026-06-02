@@ -316,32 +316,34 @@ if (!actorId) {
   </div>
 )}
 
-          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="p-2 text-left">Device</th>
-                <th className="p-2 text-left">Box</th>
-                <th className="p-2 text-left">Floor</th>
-                <th className="p-2 text-right">Detected</th>
-                <th className="p-2 text-right">Remaining</th>
-                <th className="p-2 text-right">% After</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.summary.map((row: any, idx: number) => (
-                <tr key={idx}>
-                  <td className="p-2">{row.device}</td>
-                  <td className="p-2">{row.box_no}</td>
-                  <td className="p-2">{row.floor || "-"}</td>
-                  <td className="p-2 text-right">{row.detected}</td>
-                  <td className="p-2 text-right">{row.remaining}</td>
-                  <td className="p-2 text-right">
-                    {row.percent_after ?? "-"}%
-                  </td>
+                    {preview.summary?.length > 0 && (
+            <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+              <thead className="bg-slate-950/50">
+                <tr>
+                  <th className="p-2 text-left">Device</th>
+                  <th className="p-2 text-left">Box</th>
+                  <th className="p-2 text-left">Floor</th>
+                  <th className="p-2 text-right">Detected</th>
+                  <th className="p-2 text-right">Remaining</th>
+                  <th className="p-2 text-right">% After</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {preview.summary.map((row: any, idx: number) => (
+                  <tr key={idx}>
+                    <td className="p-2">{row.device}</td>
+                    <td className="p-2">{row.box_no}</td>
+                    <td className="p-2">{row.floor || "-"}</td>
+                    <td className="p-2 text-right">{row.detected}</td>
+                    <td className="p-2 text-right">{row.remaining}</td>
+                    <td className="p-2 text-right">
+                      {row.percent_after ?? "-"}%
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
 
           <button
   onClick={confirmOut}

@@ -287,137 +287,132 @@ if (!actorId) {
 
 
       {/* PREVIEW */}
-      {preview && (
-        <div className="card-glow p-6 space-y-4 relative overflow-hidden">
-          <div className="flex justify-between">
-            <div className="font-semibold">
-              Preview ({previewSource})
-            </div>
-            <div className="text-xs text-slate-400">
-              {preview.totalDetected} IMEIs
-            </div>
-          </div>
-
-{preview.duplicates?.length > 0 && (
-  <div>
-    <div className="font-semibold text-red-300 mb-2">
-      Duplicate IMEIs
+{preview && (
+  <div className="card-glow p-6 space-y-5 relative overflow-hidden">
+    <div className="flex justify-between">
+      <div className="font-semibold">
+        Preview ({previewSource})
+      </div>
+      <div className="text-xs text-slate-400">
+        {preview.totalDetected ?? 0} IMEIs
+      </div>
     </div>
 
-    <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-      <thead className="bg-slate-950/50">
-        <tr>
-          <th className="p-2 text-left">IMEI</th>
-          <th className="p-2 text-right">Times found</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {preview.duplicates.map((d: any) => (
-          <tr key={d.imei}>
-            <td className="p-2">{d.imei}</td>
-            <td className="p-2 text-right font-semibold">{d.count}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-)}
-
-{preview.unknown_imeis?.length > 0 && (
-  <div>
-    <div className="font-semibold text-yellow-300 mb-2">
-      Unknown IMEIs
-    </div>
-
-    <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-      <thead className="bg-slate-950/50">
-        <tr>
-          <th className="p-2 text-left">IMEI</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {preview.unknown_imeis.map((imei: string) => (
-          <tr key={imei}>
-            <td className="p-2">{imei}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-)}
-
-{preview.already_out?.length > 0 && (
-  <div>
-    <div className="font-semibold text-orange-300 mb-2">
-      Already OUT IMEIs
-    </div>
-
-    <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-      <thead className="bg-slate-950/50">
-        <tr>
-          <th className="p-2 text-left">IMEI</th>
-          <th className="p-2 text-left">Device</th>
-          <th className="p-2 text-left">Box</th>
-          <th className="p-2 text-left">Floor</th>
-          <th className="p-2 text-left">Status</th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {preview.already_out.map((row: any) => (
-          <tr key={row.imei}>
-            <td className="p-2">{row.imei}</td>
-            <td className="p-2">{row.device || "-"}</td>
-            <td className="p-2">{row.box || "-"}</td>
-            <td className="p-2">{row.floor || "-"}</td>
-            <td className="p-2">{row.status || "OUT"}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>
-)}
-
-                    {preview.summary?.length > 0 && (
-            <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-              <thead className="bg-slate-950/50">
-                <tr>
-                  <th className="p-2 text-left">Device</th>
-                  <th className="p-2 text-left">Box</th>
-                  <th className="p-2 text-left">Floor</th>
-                  <th className="p-2 text-right">Detected</th>
-                  <th className="p-2 text-right">Remaining</th>
-                  <th className="p-2 text-right">% After</th>
-                </tr>
-              </thead>
-              <tbody>
-                {preview.summary.map((row: any, idx: number) => (
-                  <tr key={idx}>
-                    <td className="p-2">{row.device}</td>
-                    <td className="p-2">{row.box_no}</td>
-                    <td className="p-2">{row.floor || "-"}</td>
-                    <td className="p-2 text-right">{row.detected}</td>
-                    <td className="p-2 text-right">{row.remaining}</td>
-                    <td className="p-2 text-right">
-                      {row.percent_after ?? "-"}%
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-
-          <button
-  onClick={confirmOut}
-  disabled={!preview?.ok || hasPreviewErrors}
-  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
->
-  Confirm Stock Out
-</button>
+    {preview.duplicates?.length > 0 && (
+      <div>
+        <div className="font-semibold text-red-300 mb-2">
+          Duplicate IMEIs
         </div>
-      )}
+
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <thead className="bg-slate-950/50">
+            <tr>
+              <th className="p-2 text-left">IMEI</th>
+              <th className="p-2 text-right">Times found</th>
+            </tr>
+          </thead>
+          <tbody>
+            {preview.duplicates.map((d: any) => (
+              <tr key={d.imei}>
+                <td className="p-2">{d.imei}</td>
+                <td className="p-2 text-right font-semibold">{d.count}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {preview.unknown_imeis?.length > 0 && (
+      <div>
+        <div className="font-semibold text-yellow-300 mb-2">
+          Unknown IMEIs
+        </div>
+
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <thead className="bg-slate-950/50">
+            <tr>
+              <th className="p-2 text-left">IMEI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {preview.unknown_imeis.map((imei: string) => (
+              <tr key={imei}>
+                <td className="p-2">{imei}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {preview.already_out?.length > 0 && (
+      <div>
+        <div className="font-semibold text-orange-300 mb-2">
+          Already OUT IMEIs
+        </div>
+
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <thead className="bg-slate-950/50">
+            <tr>
+              <th className="p-2 text-left">IMEI</th>
+              <th className="p-2 text-left">Device</th>
+              <th className="p-2 text-left">Box</th>
+              <th className="p-2 text-left">Floor</th>
+              <th className="p-2 text-left">Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {preview.already_out.map((row: any) => (
+              <tr key={row.imei}>
+                <td className="p-2">{row.imei}</td>
+                <td className="p-2">{row.device || "-"}</td>
+                <td className="p-2">{row.box || "-"}</td>
+                <td className="p-2">{row.floor || "-"}</td>
+                <td className="p-2">{row.status || "OUT"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+
+    {preview.summary?.length > 0 && (
+      <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+        <thead className="bg-slate-950/50">
+          <tr>
+            <th className="p-2 text-left">Device</th>
+            <th className="p-2 text-left">Box</th>
+            <th className="p-2 text-left">Floor</th>
+            <th className="p-2 text-right">Detected</th>
+            <th className="p-2 text-right">Remaining</th>
+            <th className="p-2 text-right">% After</th>
+          </tr>
+        </thead>
+        <tbody>
+          {preview.summary.map((row: any, idx: number) => (
+            <tr key={idx}>
+              <td className="p-2">{row.device}</td>
+              <td className="p-2">{row.box_no}</td>
+              <td className="p-2">{row.floor || "-"}</td>
+              <td className="p-2 text-right">{row.detected}</td>
+              <td className="p-2 text-right">{row.remaining}</td>
+              <td className="p-2 text-right">{row.percent_after ?? "-"}%</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    )}
+
+    <button
+      onClick={confirmOut}
+      disabled={!preview?.ok || hasPreviewErrors}
+      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+    >
+      Confirm Stock Out
+    </button>
+  </div>
+)}
 
       {/* HISTORY */}
       <div className="card-glow p-6 space-y-4 relative overflow-hidden">

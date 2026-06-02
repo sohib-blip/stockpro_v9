@@ -17,8 +17,18 @@ function sb() {
 
 function cleanImeis(list: string[]) {
   return list
-    .map((i) => String(i).replace(/\D/g, ""))
+    .flatMap((i) => String(i ?? "").match(/\d{15}/g) || [])
     .filter((i) => i.length === 15);
+}
+
+function chunkArray<T>(arr: T[], size: number) {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+
+  return chunks;
 }
 
 export async function POST(req: Request) {
@@ -26,6 +36,9 @@ export async function POST(req: Request) {
     const supabase = sb();
     let rawImeis: string[] = [];
 
+    // ============================
+    // EXCEL IMPORT
+    // ============================
     if (req.headers.get("content-type")?.includes("multipart/form-data")) {
       const form = await req.formData();
       const file = form.get("file") as File;
@@ -55,18 +68,16 @@ export async function POST(req: Request) {
         json.forEach((row: any) => {
           Object.values(row).forEach((value: any) => {
             if (!value) return;
-
-            const str = String(value).trim();
-
-            if (str.includes("E+")) return;
-
-            rawImeis.push(str);
+            rawImeis.push(String(value));
           });
         });
       });
     } else {
+      // ============================
+      // MANUAL IMPORT
+      // ============================
       const body = await req.json();
-      rawImeis = body.imeis || [];
+      rawImeis = Array.isArray(body.imeis) ? body.imeis : [];
     }
 
     const cleaned = cleanImeis(rawImeis);
@@ -83,74 +94,86 @@ export async function POST(req: Request) {
       });
     }
 
-    const seen = new Set<string>();
+    // ============================
+    // DUPLICATES IN INPUT
+    // ============================
+    const counter: Record<string, number> = {};
     const uniqueImeis: string[] = [];
-    const duplicateCounter: Record<string, number> = {};
 
-    cleaned.forEach((imei) => {
-      duplicateCounter[imei] = (duplicateCounter[imei] || 0) + 1;
+    for (const imei of cleaned) {
+      counter[imei] = (counter[imei] || 0) + 1;
 
-      if (!seen.has(imei)) {
-        seen.add(imei);
+      if (counter[imei] === 1) {
         uniqueImeis.push(imei);
       }
-    });
+    }
 
-    const duplicates = Object.entries(duplicateCounter)
+    const duplicates = Object.entries(counter)
       .filter(([_, count]) => count > 1)
       .map(([imei, count]) => ({
         imei,
         count,
       }));
 
-    const { data: items, error: itemsErr } = await supabase
-      .from("items")
-      .select(`
-        item_id,
-        imei,
-        status,
-        box_id,
-        boxes (
-          box_code,
-          floor,
-          bins ( name )
-        )
-      `)
-      .in("imei", uniqueImeis);
+    // ============================
+    // DB LOOKUP IN CHUNKS
+    // ============================
+    const allItems: any[] = [];
 
-    if (itemsErr) throw itemsErr;
+    for (const chunk of chunkArray(uniqueImeis, 500)) {
+      const { data, error } = await supabase
+        .from("items")
+        .select(`
+          item_id,
+          imei,
+          status,
+          box_id,
+          boxes (
+            box_code,
+            floor,
+            bins ( name )
+          )
+        `)
+        .in("imei", chunk);
+
+      if (error) throw error;
+
+      allItems.push(...(data || []));
+    }
 
     const foundMap = new Map(
-      items?.map((i: any) => [i.imei, i]) || []
+      allItems.map((item: any) => [String(item.imei), item])
     );
 
-    const unknown: string[] = [];
-    const alreadyOut: any[] = [];
+    const unknown_imeis: string[] = [];
+    const already_out: any[] = [];
     const valid: any[] = [];
 
-    uniqueImeis.forEach((imei) => {
+    for (const imei of uniqueImeis) {
       const item = foundMap.get(imei);
 
       if (!item) {
-        unknown.push(imei);
-        return;
+        unknown_imeis.push(imei);
+        continue;
       }
 
-      if (item.status !== "IN") {
-        alreadyOut.push({
+      if (String(item.status).toUpperCase() !== "IN") {
+        already_out.push({
           imei,
           device: item.boxes?.bins?.name || "",
           box: item.boxes?.box_code || "",
           floor: item.boxes?.floor || "",
-          status: item.status,
+          status: item.status || "",
         });
-
-        return;
+        continue;
       }
 
       valid.push(item);
-    });
+    }
 
+    // ============================
+    // SUMMARY BY BOX
+    // ============================
     const summaryMap: Record<string, any> = {};
 
     for (const item of valid) {
@@ -173,19 +196,18 @@ export async function POST(req: Request) {
     }
 
     for (const row of Object.values(summaryMap) as any[]) {
-      const { count, error: countErr } = await supabase
+      const { count, error } = await supabase
         .from("items")
         .select("*", { count: "exact", head: true })
         .eq("box_id", row.box_id)
         .eq("status", "IN");
 
-      if (countErr) throw countErr;
+      if (error) throw error;
 
       const stock = count || 0;
 
       row.stock_before = stock;
       row.remaining = stock - row.detected;
-
       row.percent_after =
         stock > 0 ? Math.round((row.remaining / stock) * 100) : 0;
 
@@ -195,38 +217,28 @@ export async function POST(req: Request) {
     }
 
     const hasErrors =
-      unknown.length > 0 ||
-      alreadyOut.length > 0 ||
-      duplicates.length > 0;
+      duplicates.length > 0 ||
+      unknown_imeis.length > 0 ||
+      already_out.length > 0;
 
-    if (hasErrors) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Confirm blocked. Please correct the IMEI list and preview again.",
-          imeis: valid.map((v) => v.imei),
-          unknown_imeis: unknown,
-          already_out: alreadyOut,
-          duplicates,
-          totalDetected: cleaned.length,
-          summary: Object.values(summaryMap),
-        },
-        { status: 400 }
-      );
-    }
-
-    return NextResponse.json({
-      ok: true,
-      imeis: valid.map((v) => v.imei),
-      unknown_imeis: unknown,
-      already_out: alreadyOut,
-      duplicates,
-      totalDetected: cleaned.length,
-      summary: Object.values(summaryMap),
-    });
+    return NextResponse.json(
+      {
+        ok: !hasErrors,
+        error: hasErrors
+          ? "Confirm blocked. Please correct duplicate, unknown or already outbound IMEIs."
+          : null,
+        imeis: valid.map((v) => v.imei),
+        unknown_imeis,
+        already_out,
+        duplicates,
+        totalDetected: cleaned.length,
+        summary: Object.values(summaryMap),
+      },
+      { status: hasErrors ? 400 : 200 }
+    );
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e.message || "Preview failed" },
+      { ok: false, error: e?.message || "Preview failed" },
       { status: 500 }
     );
   }

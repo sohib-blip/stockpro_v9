@@ -13,7 +13,7 @@ export async function POST(req: Request) {
   try {
 
     const body = await req.json();
-    const { box_codes, target_floor } = body;
+    const { box_codes, source_floor, target_floor } = body;
 
     if (!Array.isArray(box_codes) || box_codes.length === 0) {
       return NextResponse.json(
@@ -23,11 +23,18 @@ export async function POST(req: Request) {
     }
 
     if (!target_floor) {
-      return NextResponse.json(
-        { ok: false, error: "Target floor required." },
-        { status: 400 }
-      );
-    }
+  return NextResponse.json(
+    { ok: false, error: "Target floor required." },
+    { status: 400 }
+  );
+}
+
+if (!source_floor) {
+  return NextResponse.json(
+    { ok: false, error: "Source floor required." },
+    { status: 400 }
+  );
+}
 
     const authHeader = req.headers.get("authorization");
 
@@ -55,16 +62,17 @@ export async function POST(req: Request) {
     // ================= LOAD BOXES =================
 
     const { data: boxes, error: loadError } = await supabase
-      .from("boxes")
-      .select(`
-        id,
-        box_code,
-        floor,
-        items (
-          device_id
-        )
-      `)
-      .in("box_code", box_codes);
+  .from("boxes")
+  .select(`
+    id,
+    box_code,
+    floor,
+    items (
+      device_id
+    )
+  `)
+  .in("box_code", box_codes)
+  .eq("floor", source_floor);
 
     if (loadError) throw loadError;
 
@@ -77,10 +85,12 @@ export async function POST(req: Request) {
 
     // ================= UPDATE FLOOR =================
 
-    const { error: updateErr } = await supabase
-      .from("boxes")
-      .update({ floor: target_floor })
-      .in("box_code", box_codes);
+    const boxIds = boxes.map((box: any) => box.id);
+
+const { error: updateErr } = await supabase
+  .from("boxes")
+  .update({ floor: target_floor })
+  .in("id", boxIds);
 
     if (updateErr) throw updateErr;
 

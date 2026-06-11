@@ -18,6 +18,7 @@ export default function TransferPage() {
 
   const [boxInput, setBoxInput] = useState("");
   const [targetFloor, setTargetFloor] = useState("00");
+  const [sourceFloor, setSourceFloor] = useState("00");
   const [preview, setPreview] = useState<any>(null);
 
   const [history, setHistory] = useState<HistoryRow[]>([]);
@@ -77,9 +78,10 @@ export default function TransferPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        box_codes,
-        target_floor: targetFloor,
-      }),
+  box_codes,
+  source_floor: sourceFloor,
+  target_floor: targetFloor,
+}),
     });
 
     const json = await res.json();
@@ -121,9 +123,10 @@ export default function TransferPage() {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
-        box_codes,
-        target_floor: targetFloor,
-      }),
+  box_codes,
+  source_floor: sourceFloor,
+  target_floor: targetFloor,
+}),
     });
 
     const json = await res.json();
@@ -180,6 +183,16 @@ export default function TransferPage() {
           placeholder="Enter box codes (1 per line)"
           className="w-full h-28 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3"
         />
+<select
+  value={sourceFloor}
+  onChange={(e) => setSourceFloor(e.target.value)}
+  className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
+>
+  <option value="00">From Floor 00</option>
+  <option value="1">From Floor 1</option>
+  <option value="6">From Floor 6</option>
+  <option value="Cabinet">From Cabinet</option>
+</select>
 
         <select
           value={targetFloor}

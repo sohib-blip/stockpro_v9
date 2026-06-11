@@ -40,22 +40,21 @@ export async function GET(req: Request) {
 
     // ✅ IMPORTANT: movements contient déjà l’imei
     const { data: movs, error: movErr } = await supabase
-      .from("movements")
-      .select(
-        `
-        box_id,
-        imei,
-        boxes ( id, box_code, bin_id, bins ( id, name ) )
-      `
-      )
-      .eq("type", "IN")
-      .eq("batch_id", batch_id);
+  .from("items")
+  .select(
+    `
+    box_id,
+    imei,
+    boxes ( id, box_code, bin_id, bins ( id, name ) )
+  `
+  )
+  .eq("import_id", batch_id);
 
     if (movErr) throw movErr;
 
     if (!movs || movs.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "No movements found" },
+        { ok: false, error: "No items found for this import" },
         { status: 404 }
       );
     }
@@ -92,7 +91,7 @@ export async function GET(req: Request) {
     const totalImeis = Object.values(grouped).reduce((a, g) => a + g.imeis.length, 0);
     if (totalImeis === 0) {
       return NextResponse.json(
-        { ok: false, error: "No IMEIs found in movements.imei for this batch." },
+        { ok: false, error: "No IMEIs found in items for this import." },
         { status: 404 }
       );
     }

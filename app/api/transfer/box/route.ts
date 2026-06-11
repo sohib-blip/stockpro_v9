@@ -11,7 +11,7 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { box_code, target_floor, actor, actor_id } = await req.json();
+    const { box_code, source_floor, target_floor, actor, actor_id } = await req.json();
 
     if (!box_code) {
       return NextResponse.json({ ok: false, error: "Box code required" });
@@ -21,11 +21,19 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Target floor required" });
     }
 
+if (!source_floor) {
+  return NextResponse.json({
+    ok: false,
+    error: "Source floor required",
+  });
+}
+
     const { data: sourceBox, error: boxErr } = await supabase
-      .from("boxes")
-      .select("id, bin_id, floor")
-      .eq("box_code", box_code)
-      .maybeSingle();
+  .from("boxes")
+  .select("id, bin_id, floor")
+  .eq("box_code", box_code)
+  .eq("floor", source_floor)
+  .maybeSingle();
 
     if (boxErr) throw boxErr;
     if (!sourceBox) {

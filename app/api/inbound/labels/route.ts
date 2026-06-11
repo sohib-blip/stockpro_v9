@@ -38,15 +38,14 @@ export async function GET(req: Request) {
 
     // 1) movements (NO JOIN)
     const { data: movs, error: movErr } = await supabase
-      .from("movements")
-      .select("box_id, imei")
-      .eq("batch_id", batch_id)
-      .eq("type", "IN");
+  .from("items")
+  .select("box_id, imei")
+  .eq("import_id", batch_id);
 
     if (movErr) throw movErr;
 
     if (!movs || movs.length === 0) {
-      return NextResponse.json({ ok: false, error: "No movements found" }, { status: 404 });
+      return NextResponse.json({ ok: false, error: "No items found for this import" }, { status: 404 });
     }
 
     const boxIds = Array.from(new Set(movs.map((m: any) => String(m.box_id)).filter(Boolean)));

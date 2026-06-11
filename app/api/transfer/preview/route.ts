@@ -11,7 +11,7 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { box_codes, target_floor } = await req.json();
+    const { box_codes, source_floor, target_floor } = await req.json();
 
     if (!Array.isArray(box_codes) || box_codes.length === 0) {
       return NextResponse.json({ ok: false, error: "No box codes provided." });
@@ -20,6 +20,10 @@ export async function POST(req: Request) {
     if (!target_floor) {
       return NextResponse.json({ ok: false, error: "Target floor required." });
     }
+
+    if (!source_floor) {
+  return NextResponse.json({ ok: false, error: "Source floor required." });
+}
 
     const { data: boxes, error } = await supabase
       .from("boxes")
@@ -31,7 +35,8 @@ export async function POST(req: Request) {
           name
         )
       `)
-      .in("box_code", box_codes);
+      .in("box_code", box_codes)
+.eq("floor", source_floor);
 
     if (error) throw error;
 

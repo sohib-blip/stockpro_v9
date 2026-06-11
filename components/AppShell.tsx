@@ -15,7 +15,6 @@ import {
   Repeat,
   RotateCcw,
   LogOut,
-  Settings,
   Timer,
 } from "lucide-react";
 
@@ -34,34 +33,58 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "";
   const [collapsed, setCollapsed] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
+  const [activeNrd, setActiveNrd] = useState<any>(null);
 
   const supabase = createSupabaseBrowserClient();
-const router = useRouter();
+  const router = useRouter();
 
-async function handleLogout() {
-  await supabase.auth.signOut();
-  router.push("/login");
-}
-
-useEffect(() => {
-  async function loadUser() {
-    const { data } = await supabase.auth.getUser();
-    setEmail(data?.user?.email || null);
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/login");
   }
 
-  loadUser();
-}, []);
+  useEffect(() => {
+    async function loadUserAndNrd() {
+      const { data } = await supabase.auth.getUser();
+      const user = data?.user;
+
+      setEmail(user?.email || null);
+
+      if (user?.email) {
+        const res = await fetch(
+          `/api/nrd/current?user_email=${encodeURIComponent(
+            user.email
+          )}&t=${Date.now()}`,
+          { cache: "no-store" }
+        );
+
+        const json = await res.json();
+
+        if (json.ok) {
+          setActiveNrd(json.active || null);
+        }
+      } else {
+        setActiveNrd(null);
+      }
+    }
+
+    loadUserAndNrd();
+
+    const interval = setInterval(loadUserAndNrd, 30000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="min-h-screen flex bg-slate-950 text-slate-100">
       <aside
-  className={[
-  "h-screen sticky top-0 shrink-0 relative",
-    "bg-slate-950 border-r border-slate-800/80",
-    "transition-all duration-300",
-    collapsed ? "w-[72px]" : "w-[260px]",
-  ].join(" ")}
->
+        className={[
+          "h-screen sticky top-0 shrink-0 relative",
+          "bg-slate-950 border-r border-slate-800/80",
+          "transition-all duration-300",
+          collapsed ? "w-[72px]" : "w-[260px]",
+        ].join(" ")}
+      >
         <div className="h-14 flex items-center justify-between px-3 border-b border-slate-800/80">
           <div className="flex items-center gap-2">
             <div className="h-9 w-9 rounded-xl bg-indigo-600 grid place-items-center">
@@ -85,62 +108,77 @@ useEffect(() => {
         <nav className="px-2 py-4 space-y-1 text-sm">
           {NAV.map((item) => {
             const Icon = item.icon;
+
             return (
               <Link
-  key={item.href}
-  href={item.href}
-  className={`
-  flex items-center gap-3 px-3 py-2 rounded-xl
-  transition-all duration-200
-  ${collapsed ? "justify-center" : ""}
-  hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(99,102,241,0.15)]
-  ${pathname.startsWith(item.href)
-    ? "bg-slate-800 shadow-[0_0_12px_rgba(99,102,241,0.25)]"
-    : ""}
-`}
->
+                key={item.href}
+                href={item.href}
+                className={`
+                  flex items-center gap-3 px-3 py-2 rounded-xl
+                  transition-all duration-200
+                  ${collapsed ? "justify-center" : ""}
+                  hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(99,102,241,0.15)]
+                  ${
+                    pathname.startsWith(item.href)
+                      ? "bg-slate-800 shadow-[0_0_12px_rgba(99,102,241,0.25)]"
+                      : ""
+                  }
+                `}
+              >
                 <Icon size={18} className="shrink-0" />
                 {!collapsed && <span>{item.label}</span>}
               </Link>
             );
           })}
-
         </nav>
 
-<div className="absolute bottom-4 left-0 w-full px-2 border-t border-slate-800 pt-3">
+        <div className="absolute bottom-4 left-0 w-full px-2 border-t border-slate-800 pt-3">
+          {!collapsed && email && (
+            <div className="px-3 py-2 text-xs text-slate-400 truncate">
+              {email}
+            </div>
+          )}
 
-  {!collapsed && email && (
-    <div className="px-3 py-2 text-xs text-slate-400 truncate">
-      {email}
-    </div>
-  )}
-
-  <button
-    onClick={handleLogout}
-    className={`
-      flex items-center gap-3 px-3 py-2 rounded-xl w-full
-      transition-all duration-200
-      ${collapsed ? "justify-center" : ""}
-      hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(239,68,68,0.2)]
-    `}
-  >
-    <LogOut size={18} />
-    {!collapsed && <span>Logout</span>}
-  </button>
-
-</div>
-
-</aside>
+          <button
+            onClick={handleLogout}
+            className={`
+              flex items-center gap-3 px-3 py-2 rounded-xl w-full
+              transition-all duration-200
+              ${collapsed ? "justify-center" : ""}
+              hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(239,68,68,0.2)]
+            `}
+          >
+            <LogOut size={18} />
+            {!collapsed && <span>Logout</span>}
+          </button>
+        </div>
+      </aside>
 
       <section className="flex-1 p-8">
-  <div
-    className={`mx-auto w-full transition-all duration-300 ${
-      collapsed ? "max-w-[1400px]" : "max-w-screen-xl"
-    }`}
-  >
-    {children}
-  </div>
-</section>
+        {activeNrd && (
+          <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 px-4 py-3 text-sm flex items-center justify-between">
+            <div>
+              ⏱ NRD task running: <b>{activeNrd.task}</b>
+              <span className="text-amber-300/70 ml-2">
+                Started at{" "}
+                {new Date(activeNrd.started_at).toLocaleTimeString()}
+              </span>
+            </div>
+
+            <Link href="/nrd" className="text-xs underline font-semibold">
+              Open NRD
+            </Link>
+          </div>
+        )}
+
+        <div
+          className={`mx-auto w-full transition-all duration-300 ${
+            collapsed ? "max-w-[1400px]" : "max-w-screen-xl"
+          }`}
+        >
+          {children}
+        </div>
+      </section>
     </div>
   );
 }

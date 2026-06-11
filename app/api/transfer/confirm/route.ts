@@ -12,8 +12,8 @@ const supabase = createClient(
 export async function POST(req: Request) {
   try {
 
-    const body = await req.json();
-    const { box_codes, source_floor, target_floor } = body;
+    const body = await req.json();const { box_codes, source_bin_id, target_floor } = body;
+    
 
     if (!Array.isArray(box_codes) || box_codes.length === 0) {
       return NextResponse.json(
@@ -29,9 +29,9 @@ export async function POST(req: Request) {
   );
 }
 
-if (!source_floor) {
+if (!source_bin_id) {
   return NextResponse.json(
-    { ok: false, error: "Source floor required." },
+    { ok: false, error: "Device required." },
     { status: 400 }
   );
 }
@@ -64,15 +64,16 @@ if (!source_floor) {
     const { data: boxes, error: loadError } = await supabase
   .from("boxes")
   .select(`
-    id,
-    box_code,
-    floor,
-    items (
-      device_id
-    )
-  `)
+  id,
+  box_code,
+  floor,
+  bin_id,
+  items (
+    device_id
+  )
+`)
   .in("box_code", box_codes)
-  .eq("floor", source_floor);
+.eq("bin_id", source_bin_id);
 
     if (loadError) throw loadError;
 

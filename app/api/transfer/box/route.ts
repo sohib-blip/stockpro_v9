@@ -11,33 +11,35 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { box_code, source_floor, target_floor, actor, actor_id } = await req.json();
+    const { box_code, source_bin_id, target_floor, actor, actor_id } =
+      await req.json();
 
     if (!box_code) {
       return NextResponse.json({ ok: false, error: "Box code required" });
+    }
+
+    if (!source_bin_id) {
+      return NextResponse.json({ ok: false, error: "Device required" });
     }
 
     if (!target_floor) {
       return NextResponse.json({ ok: false, error: "Target floor required" });
     }
 
-if (!source_floor) {
-  return NextResponse.json({
-    ok: false,
-    error: "Source floor required",
-  });
-}
-
     const { data: sourceBox, error: boxErr } = await supabase
-  .from("boxes")
-  .select("id, bin_id, floor")
-  .eq("box_code", box_code)
-  .eq("floor", source_floor)
-  .maybeSingle();
+      .from("boxes")
+      .select("id, bin_id, floor")
+      .eq("box_code", box_code)
+      .eq("bin_id", source_bin_id)
+      .maybeSingle();
 
     if (boxErr) throw boxErr;
+
     if (!sourceBox) {
-      return NextResponse.json({ ok: false, error: "Source box not found" });
+      return NextResponse.json({
+        ok: false,
+        error: "Box not found in selected device",
+      });
     }
 
     if (sourceBox.floor === target_floor) {
@@ -47,7 +49,6 @@ if (!source_floor) {
       });
     }
 
-    // Get items IN
     const { data: items, error: itemsErr } = await supabase
       .from("items")
       .select("item_id")
@@ -55,6 +56,7 @@ if (!source_floor) {
       .eq("status", "IN");
 
     if (itemsErr) throw itemsErr;
+
     if (!items || items.length === 0) {
       return NextResponse.json({
         ok: false,
@@ -62,7 +64,6 @@ if (!source_floor) {
       });
     }
 
-    // Find or create target box
     let { data: targetBox } = await supabase
       .from("boxes")
       .select("id")
@@ -86,8 +87,7 @@ if (!source_floor) {
       targetBox = newBox;
     }
 
-    // Update items
-    await supabase
+    const { error: updateErr } = await supabase
       .from("items")
       .update({ box_id: targetBox.id })
       .in(
@@ -95,10 +95,11 @@ if (!source_floor) {
         items.map((i: any) => i.item_id)
       );
 
-    // Log movements
+    if (updateErr) throw updateErr;
+
     const nowIso = new Date().toISOString();
 
-    await supabase.from("movements").insert(
+    const { error: moveErr } = await supabase.from("movements").insert(
       items.map((i: any) => ({
         type: "TRANSFER",
         item_id: i.item_id,
@@ -110,6 +111,8 @@ if (!source_floor) {
         created_at: nowIso,
       }))
     );
+
+    if (moveErr) throw moveErr;
 
     return NextResponse.json({
       ok: true,

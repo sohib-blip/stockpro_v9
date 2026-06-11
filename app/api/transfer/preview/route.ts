@@ -11,7 +11,7 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { box_codes, source_floor, target_floor } = await req.json();
+    const { box_codes, source_bin_id, target_floor } = await req.json();
 
     if (!Array.isArray(box_codes) || box_codes.length === 0) {
       return NextResponse.json({ ok: false, error: "No box codes provided." });
@@ -21,31 +21,32 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Target floor required." });
     }
 
-    if (!source_floor) {
-  return NextResponse.json({ ok: false, error: "Source floor required." });
+    if (!source_bin_id) {
+  return NextResponse.json({ ok: false, error: "Device required." });
 }
 
     const { data: boxes, error } = await supabase
       .from("boxes")
       .select(`
-        id,
-        box_code,
-        floor,
-        bins (
-          name
-        )
-      `)
+  id,
+  box_code,
+  floor,
+  bin_id,
+  bins (
+    name
+  )
+`)
       .in("box_code", box_codes)
-.eq("floor", source_floor);
+.eq("bin_id", source_bin_id);
 
     if (error) throw error;
 
     if (!boxes || boxes.length !== box_codes.length) {
-      return NextResponse.json({
-        ok: false,
-        error: "One or more boxes not found.",
-      });
-    }
+  return NextResponse.json({
+    ok: false,
+    error: "One or more boxes not found in the selected device.",
+  });
+}
 
     let totalGlobal = 0;
     const result = [];

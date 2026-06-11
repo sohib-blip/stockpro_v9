@@ -97,6 +97,16 @@ export async function GET(req: Request) {
       if (m.imei) grouped[boxId].imeis.push(String(m.imei));
     }
 
+console.log("========== LABEL DEBUG ==========");
+
+for (const [boxId, g] of Object.entries(grouped)) {
+  console.log({
+    boxId,
+    box: g.box,
+    qty: g.imeis.length,
+  });
+}
+
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 

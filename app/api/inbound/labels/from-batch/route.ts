@@ -29,7 +29,10 @@ export async function GET(req: Request) {
     const url = new URL(req.url);
     const batch_id = url.searchParams.get("batch_id");
 
-    if (!batch_id) {
+    const w_mm = Number(url.searchParams.get("w_mm") || "105");
+    const h_mm = Number(url.searchParams.get("h_mm") || "155");
+
+    if (!batch_id || batch_id === "null" || batch_id === "undefined") {
       return NextResponse.json(
         { ok: false, error: "batch_id required" },
         { status: 400 }
@@ -38,25 +41,52 @@ export async function GET(req: Request) {
 
     const supabase = sb();
 
-    // ✅ IMPORTANT: movements contient déjà l’imei
-    const { data: movs, error: movErr } = await supabase
-  .from("items")
-  .select(
-    `
-    box_id,
-    imei,
-    boxes ( id, box_code, bin_id, bins ( id, name ) )
-  `
-  )
-  .eq("import_id", batch_id);
+    const { data: items, error: itemsErr } = await supabase
+      .from("items")
+      .select("box_id, imei")
+      .eq("import_id", batch_id)
+      .order("box_id", { ascending: true })
+      .range(0, 4999);
 
-    if (movErr) throw movErr;
+    if (itemsErr) throw itemsErr;
 
-    if (!movs || movs.length === 0) {
+    if (!items || items.length === 0) {
       return NextResponse.json(
         { ok: false, error: "No items found for this import" },
         { status: 404 }
       );
+    }
+
+    const boxIds = Array.from(
+      new Set(items.map((m: any) => String(m.box_id)).filter(Boolean))
+    );
+
+    const { data: boxes, error: boxErr } = await supabase
+      .from("boxes")
+      .select("id, box_code, bin_id")
+      .in("id", boxIds);
+
+    if (boxErr) throw boxErr;
+
+    const boxMap: Record<string, any> = {};
+    for (const b of boxes || []) {
+      boxMap[String((b as any).id)] = b;
+    }
+
+    const binIds = Array.from(
+      new Set((boxes || []).map((b: any) => String(b.bin_id)).filter(Boolean))
+    );
+
+    const { data: bins, error: binErr } = await supabase
+      .from("bins")
+      .select("id, name")
+      .in("id", binIds);
+
+    if (binErr) throw binErr;
+
+    const binMap: Record<string, string> = {};
+    for (const b of bins || []) {
+      binMap[String((b as any).id)] = String((b as any).name);
     }
 
     const grouped: Record<
@@ -64,47 +94,35 @@ export async function GET(req: Request) {
       { device: string; box: string; imeis: string[] }
     > = {};
 
-    for (const m of movs as any[]) {
-      const boxId = String(m.box_id ?? "");
+    for (const item of items as any[]) {
+      const boxId = String(item.box_id || "");
       if (!boxId) continue;
 
-      const deviceName =
-        m.boxes?.bins?.name ||
-        "UNKNOWN";
-
-      const boxCode =
-        m.boxes?.box_code ||
-        "";
+      const bx = boxMap[boxId];
+      if (!bx) continue;
 
       if (!grouped[boxId]) {
         grouped[boxId] = {
-          device: deviceName,
-          box: boxCode,
+          device: bx?.bin_id ? binMap[String(bx.bin_id)] || "UNKNOWN" : "UNKNOWN",
+          box: bx?.box_code || "",
           imeis: [],
         };
       }
 
-      const im = String(m.imei ?? "").replace(/\D/g, "");
-      if (im.length === 15) grouped[boxId].imeis.push(im);
-    }
-
-    const totalImeis = Object.values(grouped).reduce((a, g) => a + g.imeis.length, 0);
-    if (totalImeis === 0) {
-      return NextResponse.json(
-        { ok: false, error: "No IMEIs found in items for this import." },
-        { status: 404 }
-      );
+      if (item.imei) {
+        grouped[boxId].imeis.push(String(item.imei));
+      }
     }
 
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
-    const PAGE_W = mmToPt(105);
-    const PAGE_H = mmToPt(155);
+    const PAGE_W = mmToPt(w_mm);
+    const PAGE_H = mmToPt(h_mm);
 
     for (const boxId of Object.keys(grouped)) {
       const data = grouped[boxId];
-      const imeis = data.imeis;
+      const imeis = data.imeis.filter(Boolean);
 
       if (imeis.length === 0) continue;
 
@@ -131,7 +149,7 @@ export async function GET(req: Request) {
 
       let yStart = PAGE_H - qrSize - 70;
 
-      centerText(data.device, yStart, 18);
+      centerText(data.device || "UNKNOWN", yStart, 18);
       yStart -= 25;
 
       centerText(`BOX: ${data.box}`, yStart, 14);

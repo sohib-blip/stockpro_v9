@@ -9,7 +9,9 @@ const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 function sb() {
-  return createClient(SUPABASE_URL, SERVICE_ROLE, { auth: { persistSession: false } });
+  return createClient(SUPABASE_URL, SERVICE_ROLE, {
+    auth: { persistSession: false },
+  });
 }
 
 function mmToPt(mm: number) {
@@ -31,26 +33,34 @@ export async function GET(req: Request) {
     const h_mm = Number(url.searchParams.get("h_mm") || "155");
 
     if (!batch_id || batch_id === "null" || batch_id === "undefined") {
-      return NextResponse.json({ ok: false, error: "batch_id required" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "batch_id required" },
+        { status: 400 }
+      );
     }
 
     const supabase = sb();
 
-    // 1) movements (NO JOIN)
-    const { data: movs, error: movErr } = await supabase
-  .from("items")
-  .select("box_id, imei")
-  .eq("import_id", batch_id);
+    const { data: items, error: itemsErr } = await supabase
+      .from("items")
+      .select("box_id, imei")
+      .eq("import_id", batch_id)
+      .order("box_id", { ascending: true })
+      .range(0, 4999);
 
-    if (movErr) throw movErr;
+    if (itemsErr) throw itemsErr;
 
-    if (!movs || movs.length === 0) {
-      return NextResponse.json({ ok: false, error: "No items found for this import" }, { status: 404 });
+    if (!items || items.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No items found for this import" },
+        { status: 404 }
+      );
     }
 
-    const boxIds = Array.from(new Set(movs.map((m: any) => String(m.box_id)).filter(Boolean)));
+    const boxIds = Array.from(
+      new Set(items.map((m: any) => String(m.box_id)).filter(Boolean))
+    );
 
-    // 2) boxes
     const { data: boxes, error: boxErr } = await supabase
       .from("boxes")
       .select("id, box_code, bin_id")
@@ -59,13 +69,14 @@ export async function GET(req: Request) {
     if (boxErr) throw boxErr;
 
     const boxMap: Record<string, any> = {};
-    for (const b of boxes || []) boxMap[String((b as any).id)] = b;
+    for (const b of boxes || []) {
+      boxMap[String((b as any).id)] = b;
+    }
 
     const binIds = Array.from(
       new Set((boxes || []).map((b: any) => String(b.bin_id)).filter(Boolean))
     );
 
-    // 3) bins
     const { data: bins, error: binErr } = await supabase
       .from("bins")
       .select("id, name")
@@ -74,13 +85,17 @@ export async function GET(req: Request) {
     if (binErr) throw binErr;
 
     const binMap: Record<string, string> = {};
-    for (const b of bins || []) binMap[String((b as any).id)] = String((b as any).name);
+    for (const b of bins || []) {
+      binMap[String((b as any).id)] = String((b as any).name);
+    }
 
-    // 4) group by box_id
-    const grouped: Record<string, { device: string; box: string; imeis: string[] }> = {};
+    const grouped: Record<
+      string,
+      { device: string; box: string; imeis: string[] }
+    > = {};
 
-    for (const m of movs as any[]) {
-      const boxId = String(m.box_id || "");
+    for (const item of items as any[]) {
+      const boxId = String(item.box_id || "");
       if (!boxId) continue;
 
       const bx = boxMap[boxId];
@@ -88,24 +103,16 @@ export async function GET(req: Request) {
 
       if (!grouped[boxId]) {
         grouped[boxId] = {
-          device: bx?.bin_id ? (binMap[String(bx.bin_id)] || "UNKNOWN") : "UNKNOWN",
+          device: bx?.bin_id ? binMap[String(bx.bin_id)] || "UNKNOWN" : "UNKNOWN",
           box: bx?.box_code || "",
           imeis: [],
         };
       }
 
-      if (m.imei) grouped[boxId].imeis.push(String(m.imei));
+      if (item.imei) {
+        grouped[boxId].imeis.push(String(item.imei));
+      }
     }
-
-console.log("========== LABEL DEBUG ==========");
-
-for (const [boxId, g] of Object.entries(grouped)) {
-  console.log({
-    boxId,
-    box: g.box,
-    qty: g.imeis.length,
-  });
-}
 
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
@@ -116,6 +123,8 @@ for (const [boxId, g] of Object.entries(grouped)) {
     for (const boxId of Object.keys(grouped)) {
       const data = grouped[boxId];
       const imeis = data.imeis.filter(Boolean);
+
+      if (imeis.length === 0) continue;
 
       const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
 

@@ -15,7 +15,8 @@ import {
   Repeat,
   RotateCcw,
   LogOut,
-  Settings
+  Settings,
+  Timer,
 } from "lucide-react";
 
 const NAV = [
@@ -25,6 +26,7 @@ const NAV = [
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
   { href: "/returns", label: "Returns", icon: RotateCcw },
   { href: "/transfer", label: "Transfer", icon: Repeat },
+  { href: "/nrd", label: "NRD Tracker", icon: Timer },
   { href: "/bins", label: "Bins", icon: Package },
 ];
 

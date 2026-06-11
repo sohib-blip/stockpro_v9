@@ -70,7 +70,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
     loadUserAndNrd();
 
-    const interval = setInterval(loadUserAndNrd, 30000);
+    const interval = setInterval(loadUserAndNrd, 5000);
 
     return () => clearInterval(interval);
   }, []);

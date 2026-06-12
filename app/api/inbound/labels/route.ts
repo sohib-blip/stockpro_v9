@@ -93,6 +93,7 @@ export async function GET(req: Request) {
         box: string;
         device: string;
         qty: number;
+        imeis: string[];
       }
     > = {};
 
@@ -106,11 +107,13 @@ export async function GET(req: Request) {
           box: `BOX ${boxId.slice(0, 8)}`,
           device: "UNKNOWN",
           qty: 0,
+          imeis: [],
         };
       }
 
       if (item.imei) {
         grouped[boxId].qty += 1;
+        grouped[boxId].imeis.push(String(item.imei));
       }
     }
 
@@ -129,9 +132,7 @@ export async function GET(req: Request) {
       allBoxes.push(...(data || []));
     }
 
-    const boxMap = new Map(
-      allBoxes.map((b: any) => [String(b.id), b])
-    );
+    const boxMap = new Map(allBoxes.map((b: any) => [String(b.id), b]));
 
     const binIds = Array.from(
       new Set(allBoxes.map((b: any) => String(b.bin_id)).filter(Boolean))
@@ -182,8 +183,8 @@ export async function GET(req: Request) {
     for (const data of labelRows) {
       const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
 
-      // QR per box, not per IMEI list
-      const qrContent = data.boxId;
+      // QR contains all IMEIs of this box, one IMEI per line
+      const qrContent = data.imeis.join("\n");
       const qrBytes = await qrBuffer(qrContent);
       const qrImage = await pdfDoc.embedPng(qrBytes);
 

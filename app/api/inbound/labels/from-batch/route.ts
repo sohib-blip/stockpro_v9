@@ -95,24 +95,23 @@ export async function GET(req: Request) {
     > = {};
 
     for (const item of items as any[]) {
-      const boxId = String(item.box_id || "");
-      if (!boxId) continue;
+  const boxId = String(item.box_id || "");
+  if (!boxId) continue;
 
-      const bx = boxMap[boxId];
-      if (!bx) continue;
+  const bx = boxMap[boxId];
 
-      if (!grouped[boxId]) {
-        grouped[boxId] = {
-          device: bx?.bin_id ? binMap[String(bx.bin_id)] || "UNKNOWN" : "UNKNOWN",
-          box: bx?.box_code || "",
-          imeis: [],
-        };
-      }
+  if (!grouped[boxId]) {
+    grouped[boxId] = {
+      device: bx?.bin_id ? binMap[String(bx.bin_id)] || "UNKNOWN" : "UNKNOWN",
+      box: bx?.box_code || `MISSING BOX ${boxId.slice(0, 8)}`,
+      imeis: [],
+    };
+  }
 
-      if (item.imei) {
-        grouped[boxId].imeis.push(String(item.imei));
-      }
-    }
+  if (item.imei) {
+    grouped[boxId].imeis.push(String(item.imei));
+  }
+}
 
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);

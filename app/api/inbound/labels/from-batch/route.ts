@@ -4,6 +4,8 @@ import { PDFDocument, StandardFonts } from "pdf-lib";
 import QRCode from "qrcode";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -16,6 +18,16 @@ function sb() {
 
 function mmToPt(mm: number) {
   return (mm / 25.4) * 72;
+}
+
+function chunkArray<T>(arr: T[], size: number) {
+  const chunks: T[][] = [];
+
+  for (let i = 0; i < arr.length; i += size) {
+    chunks.push(arr.slice(i, i + size));
+  }
+
+  return chunks;
 }
 
 async function qrBuffer(text: string): Promise<Uint8Array> {
@@ -41,93 +53,137 @@ export async function GET(req: Request) {
 
     const supabase = sb();
 
-    const { data: items, error: itemsErr } = await supabase
-      .from("items")
-      .select("box_id, imei")
-      .eq("import_id", batch_id)
-      .order("box_id", { ascending: true })
-      .range(0, 4999);
+    // 1) Get ALL items for this import
+    const allItems: any[] = [];
+    let page = 0;
+    const pageSize = 1000;
 
-    if (itemsErr) throw itemsErr;
+    while (true) {
+      const from = page * pageSize;
+      const to = from + pageSize - 1;
 
-    if (!items || items.length === 0) {
+      const { data, error } = await supabase
+        .from("items")
+        .select("box_id, imei")
+        .eq("import_id", batch_id)
+        .order("box_id", { ascending: true })
+        .range(from, to);
+
+      if (error) throw error;
+      if (!data || data.length === 0) break;
+
+      allItems.push(...data);
+
+      if (data.length < pageSize) break;
+      page++;
+    }
+
+    if (allItems.length === 0) {
       return NextResponse.json(
         { ok: false, error: "No items found for this import" },
         { status: 404 }
       );
     }
 
-    const boxIds = Array.from(
-      new Set(items.map((m: any) => String(m.box_id)).filter(Boolean))
-    );
-
-    const { data: boxes, error: boxErr } = await supabase
-      .from("boxes")
-      .select("id, box_code, bin_id")
-      .in("id", boxIds);
-
-    if (boxErr) throw boxErr;
-
-    const boxMap: Record<string, any> = {};
-    for (const b of boxes || []) {
-      boxMap[String((b as any).id)] = b;
-    }
-
-    const binIds = Array.from(
-      new Set((boxes || []).map((b: any) => String(b.bin_id)).filter(Boolean))
-    );
-
-    const { data: bins, error: binErr } = await supabase
-      .from("bins")
-      .select("id, name")
-      .in("id", binIds);
-
-    if (binErr) throw binErr;
-
-    const binMap: Record<string, string> = {};
-    for (const b of bins || []) {
-      binMap[String((b as any).id)] = String((b as any).name);
-    }
-
+    // 2) Group by box_id
     const grouped: Record<
       string,
-      { device: string; box: string; imeis: string[] }
+      {
+        boxId: string;
+        box: string;
+        device: string;
+        qty: number;
+      }
     > = {};
 
-    for (const item of items as any[]) {
-  const boxId = String(item.box_id || "");
-  if (!boxId) continue;
+    for (const item of allItems) {
+      const boxId = String(item.box_id || "");
+      if (!boxId) continue;
 
-  const bx = boxMap[boxId];
+      if (!grouped[boxId]) {
+        grouped[boxId] = {
+          boxId,
+          box: `BOX ${boxId.slice(0, 8)}`,
+          device: "UNKNOWN",
+          qty: 0,
+        };
+      }
 
-  if (!grouped[boxId]) {
-    grouped[boxId] = {
-      device: bx?.bin_id ? binMap[String(bx.bin_id)] || "UNKNOWN" : "UNKNOWN",
-      box: bx?.box_code || `MISSING BOX ${boxId.slice(0, 8)}`,
-      imeis: [],
-    };
-  }
+      if (item.imei) {
+        grouped[boxId].qty += 1;
+      }
+    }
 
-  if (item.imei) {
-    grouped[boxId].imeis.push(String(item.imei));
-  }
-}
+    const boxIds = Object.keys(grouped);
 
+    // 3) Fetch boxes
+    const allBoxes: any[] = [];
+
+    for (const chunk of chunkArray(boxIds, 500)) {
+      const { data, error } = await supabase
+        .from("boxes")
+        .select("id, box_code, bin_id")
+        .in("id", chunk);
+
+      if (error) throw error;
+      allBoxes.push(...(data || []));
+    }
+
+    const boxMap = new Map(
+      allBoxes.map((b: any) => [String(b.id), b])
+    );
+
+    const binIds = Array.from(
+      new Set(allBoxes.map((b: any) => String(b.bin_id)).filter(Boolean))
+    );
+
+    // 4) Fetch bins/devices
+    const allBins: any[] = [];
+
+    for (const chunk of chunkArray(binIds, 500)) {
+      const { data, error } = await supabase
+        .from("bins")
+        .select("id, name")
+        .in("id", chunk);
+
+      if (error) throw error;
+      allBins.push(...(data || []));
+    }
+
+    const binMap = new Map(
+      allBins.map((b: any) => [String(b.id), String(b.name)])
+    );
+
+    // 5) Complete label data
+    for (const boxId of boxIds) {
+      const box = boxMap.get(boxId);
+
+      if (box) {
+        grouped[boxId].box = box.box_code || `BOX ${boxId.slice(0, 8)}`;
+        grouped[boxId].device = box.bin_id
+          ? binMap.get(String(box.bin_id)) || "UNKNOWN"
+          : "UNKNOWN";
+      }
+    }
+
+    const labelRows = Object.values(grouped)
+      .filter((row) => row.qty > 0)
+      .sort((a, b) =>
+        a.box.localeCompare(b.box, undefined, { numeric: true })
+      );
+
+    // 6) Create PDF
     const pdfDoc = await PDFDocument.create();
     const font = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
 
     const PAGE_W = mmToPt(w_mm);
     const PAGE_H = mmToPt(h_mm);
 
-    for (const boxId of Object.keys(grouped)) {
-      const data = grouped[boxId];
-      const imeis = data.imeis.filter(Boolean);
-
-      if (imeis.length === 0) continue;
-
+    for (const data of labelRows) {
       const page = pdfDoc.addPage([PAGE_W, PAGE_H]);
 
-      const qrContent = imeis.join("\n");
+      // QR per box, not per IMEI list
+      const qrContent = data.boxId;
       const qrBytes = await qrBuffer(qrContent);
       const qrImage = await pdfDoc.embedPng(qrBytes);
 
@@ -154,7 +210,7 @@ export async function GET(req: Request) {
       centerText(`BOX: ${data.box}`, yStart, 14);
       yStart -= 20;
 
-      centerText(`QTY IMEI: ${imeis.length}`, yStart, 14);
+      centerText(`QTY IMEI: ${data.qty}`, yStart, 14);
     }
 
     const pdfBytes = await pdfDoc.save();
@@ -163,6 +219,7 @@ export async function GET(req: Request) {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename=labels_${batch_id}.pdf`,
+        "Cache-Control": "no-store",
       },
     });
   } catch (e: any) {

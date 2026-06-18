@@ -269,7 +269,7 @@ export default function NRDPage() {
           </div>
         )}
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           {!active ? (
             <button
               onClick={startTask}
@@ -313,6 +313,23 @@ export default function NRDPage() {
 >
   Export Excel
 </a>
+
+{["martine.gevaert@radius.com", "emily.vancauwenberge@radius.com"].includes(
+  userEmail.toLowerCase()
+) && (
+  <a
+    href={
+      userEmail
+        ? `/api/nrd/export-global?user_email=${encodeURIComponent(
+            userEmail
+          )}&period_month=${encodeURIComponent(periodMonth)}`
+        : "#"
+    }
+    className="rounded-xl border border-purple-500/50 bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 px-4 py-2 font-semibold"
+  >
+    Export Global Excel
+  </a>
+)}
 
         </div>
       </div>

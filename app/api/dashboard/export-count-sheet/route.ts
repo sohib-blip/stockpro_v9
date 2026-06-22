@@ -316,21 +316,26 @@ for (const device of devices) {
   const sheetRef = excelSheetName(sheetName);
   const count = deviceMap[device].length;
 
-  for (let i = 2; i <= count + 1; i++) {
-    missing.getCell(`A${missingRow}`).value = {
-      formula: `IF(${sheetRef}!C${i}="MISSING","${device.replace(/"/g, '""')}","")`,
+  missing.getCell(`A${missingRow}`).value = device;
+  missing.getCell(`A${missingRow}`).font = { bold: true };
+
+  for (let n = 1; n <= count; n++) {
+    const row = missingRow + n;
+
+    missing.getCell(`A${row}`).value = {
+      formula: `IF(B${row}<>"","${device.replace(/"/g, '""')}","")`,
     };
 
-    missing.getCell(`B${missingRow}`).value = {
-      formula: `IF(${sheetRef}!C${i}="MISSING",${sheetRef}!A${i},"")`,
+    missing.getCell(`B${row}`).value = {
+      formula: `IFERROR(INDEX(${sheetRef}!$A$2:$A$${count + 1},AGGREGATE(15,6,(ROW(${sheetRef}!$A$2:$A$${count + 1})-ROW(${sheetRef}!$A$2)+1)/(${sheetRef}!$C$2:$C$${count + 1}="MISSING"),ROWS($B$${missingRow + 1}:B${row}))),"")`,
     };
 
-    missing.getCell(`C${missingRow}`).value = {
-      formula: `IF(B${missingRow}<>"","MISSING","")`,
+    missing.getCell(`C${row}`).value = {
+      formula: `IF(B${row}<>"","MISSING","")`,
     };
-
-    missingRow++;
   }
+
+  missingRow += count + 2;
 }
 
 missing.autoFilter = {
@@ -385,21 +390,26 @@ for (const device of devices) {
   const sheetRef = excelSheetName(sheetName);
   const scanRows = Math.max(deviceMap[device].length + 500, 5000);
 
-  for (let i = 2; i <= scanRows; i++) {
-    unexpected.getCell(`A${unexpectedRow}`).value = {
-      formula: `IF(${sheetRef}!D${i}="UNEXPECTED","${device.replace(/"/g, '""')}","")`,
+  unexpected.getCell(`A${unexpectedRow}`).value = device;
+  unexpected.getCell(`A${unexpectedRow}`).font = { bold: true };
+
+  for (let n = 1; n <= scanRows - 1; n++) {
+    const row = unexpectedRow + n;
+
+    unexpected.getCell(`A${row}`).value = {
+      formula: `IF(B${row}<>"","${device.replace(/"/g, '""')}","")`,
     };
 
-    unexpected.getCell(`B${unexpectedRow}`).value = {
-      formula: `IF(${sheetRef}!D${i}="UNEXPECTED",${sheetRef}!B${i},"")`,
+    unexpected.getCell(`B${row}`).value = {
+      formula: `IFERROR(INDEX(${sheetRef}!$B$2:$B$${scanRows},AGGREGATE(15,6,(ROW(${sheetRef}!$B$2:$B$${scanRows})-ROW(${sheetRef}!$B$2)+1)/(${sheetRef}!$D$2:$D$${scanRows}="UNEXPECTED"),ROWS($B$${unexpectedRow + 1}:B${row}))),"")`,
     };
 
-    unexpected.getCell(`C${unexpectedRow}`).value = {
-      formula: `IF(B${unexpectedRow}<>"","UNEXPECTED","")`,
+    unexpected.getCell(`C${row}`).value = {
+      formula: `IF(B${row}<>"","UNEXPECTED","")`,
     };
-
-    unexpectedRow++;
   }
+
+  unexpectedRow += scanRows + 2;
 }
 
 unexpected.autoFilter = {

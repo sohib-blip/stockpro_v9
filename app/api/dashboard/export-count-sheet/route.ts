@@ -234,38 +234,59 @@ export async function GET() {
 
       styleSheet(ws);
 
-      (ws as any).addConditionalFormatting({
-        ref: `C2:D${scanRows}`,
-        rules: [
-          {
-            type: "containsText",
-            operator: "containsText",
-            text: "FOUND",
-            style: {
-              fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFC6EFCE" } },
-              font: { color: { argb: "FF006100" }, bold: true },
-            },
-          },
-          {
-            type: "containsText",
-            operator: "containsText",
-            text: "MISSING",
-            style: {
-              fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFC7CE" } },
-              font: { color: { argb: "FF9C0006" }, bold: true },
-            },
-          },
-          {
-            type: "containsText",
-            operator: "containsText",
-            text: "UNEXPECTED",
-            style: {
-              fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFE0B2" } },
-              font: { color: { argb: "FFFF6D00" }, bold: true },
-            },
-          },
-        ],
-      });
+(ws as any).addConditionalFormatting({
+  ref: `A2:A${scanRows}`,
+  rules: [
+    {
+      type: "expression",
+      formulae: [`$C2="MISSING"`],
+      style: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          bgColor: { argb: "FFFFC7CE" },
+        },
+        font: {
+          color: { argb: "FF9C0006" },
+          bold: true,
+        },
+      },
+    },
+  ],
+});
+
+(ws as any).addConditionalFormatting({
+  ref: `C2:D${scanRows}`,
+  rules: [
+    {
+      type: "containsText",
+      operator: "containsText",
+      text: "FOUND",
+      style: {
+        fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFC6EFCE" } },
+        font: { color: { argb: "FF006100" }, bold: true },
+      },
+    },
+    {
+      type: "containsText",
+      operator: "containsText",
+      text: "MISSING",
+      style: {
+        fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFC7CE" } },
+        font: { color: { argb: "FF9C0006" }, bold: true },
+      },
+    },
+    {
+      type: "containsText",
+      operator: "containsText",
+      text: "UNEXPECTED",
+      style: {
+        fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFE0B2" } },
+        font: { color: { argb: "FFFF6D00" }, bold: true },
+      },
+    },
+  ],
+});
     }
 
     // ================= MISSING IMEIS =================

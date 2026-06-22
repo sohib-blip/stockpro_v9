@@ -5,16 +5,24 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 const NRD_TASKS = [
   "Prepare FMC234",
-  "Clean shelves",
-  "stock take",
-  "re-stock",
-  "Receive incoming orders",
+  "Clean Shelves",
+  "Stock Take",
+  "Re-stock",
+  "Receive Incoming Orders",
   "Returns",
-  "Consumables - stocktake & orders",
-  "Preparing DVR's adding sims",
-  "Order checks",
-  "mail & case handeling",
-  "Tiding up the workspace",
+  "Consumables - Stock Take & Orders",
+  "Preparing DVRs & Adding SIMs",
+  "Order Checks",
+  "Mail & Case Handling",
+  "Tidying Up the Workspace",
+
+  // New tasks
+  "Overtime",
+  "Container",
+  "Team Meeting",
+  "Stock Revision",
+  "Training",
+  "Working on StockPro",
 ];
 
 function formatTimer(seconds: number) {

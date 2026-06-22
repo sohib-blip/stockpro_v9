@@ -21,10 +21,6 @@ function excelSheetName(name: string) {
   return `'${name.replace(/'/g, "''")}'`;
 }
 
-function excelText(value: string) {
-  return `"${String(value || "").replace(/"/g, '""')}"`;
-}
-
 function styleHeader(row: ExcelJS.Row) {
   row.font = { bold: true, color: { argb: "FFFFFFFF" } };
   row.fill = {
@@ -303,126 +299,142 @@ export async function GET() {
     }
 
     // ================= MISSING IMEIS =================
-    const missing = wb.addWorksheet("Missing IMEIs");
+const missing = wb.addWorksheet("Missing IMEIs");
 
-    missing.columns = [
-      { header: "Device", key: "device", width: 30 },
-      { header: "Missing IMEI", key: "imei", width: 24 },
-      { header: "Status", key: "status", width: 16 },
-    ];
+missing.columns = [
+  { header: "Device", key: "device", width: 30 },
+  { header: "Missing IMEI", key: "imei", width: 24 },
+  { header: "Status", key: "status", width: 16 },
+];
 
-    styleSheet(missing);
+styleSheet(missing);
 
-    const missingBlocks: string[] = [];
+let missingRow = 2;
 
-    for (const device of devices) {
-      const sheetName = sheetNameMap[device];
-      const sheetRef = excelSheetName(sheetName);
-      const count = deviceMap[device].length;
+for (const device of devices) {
+  const sheetName = sheetNameMap[device];
+  const sheetRef = excelSheetName(sheetName);
+  const count = deviceMap[device].length;
 
-      missingBlocks.push(
-        `FILTER(HSTACK(IF(${sheetRef}!A2:A${count + 1}<>"",${excelText(
-          device
-        )},""),${sheetRef}!A2:A${count + 1},IF(${sheetRef}!A2:A${
-          count + 1
-        }<>"","MISSING","")),${sheetRef}!C2:C${count + 1}="MISSING","")`
-      );
-    }
-
-    missing.getCell("A2").value = {
-      formula: missingBlocks.length
-        ? `VSTACK(${missingBlocks.join(",")})`
-        : `""`,
+  for (let i = 2; i <= count + 1; i++) {
+    missing.getCell(`A${missingRow}`).value = {
+      formula: `IF(${sheetRef}!C${i}="MISSING","${device.replace(/"/g, '""')}","")`,
     };
 
-    (missing as any).addConditionalFormatting({
-      ref: `B2:B100000`,
-      rules: [
-        {
-          type: "expression",
-          formulae: [`$C2="MISSING"`],
-          style: {
-            fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFC7CE" } },
-            font: { color: { argb: "FF9C0006" }, bold: true },
-          },
-        },
-      ],
-    });
+    missing.getCell(`B${missingRow}`).value = {
+      formula: `IF(${sheetRef}!C${i}="MISSING",${sheetRef}!A${i},"")`,
+    };
 
-    (missing as any).addConditionalFormatting({
-      ref: `C2:C100000`,
-      rules: [
-        {
-          type: "containsText",
-          operator: "containsText",
-          text: "MISSING",
-          style: {
-            fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFC7CE" } },
-            font: { color: { argb: "FF9C0006" }, bold: true },
-          },
-        },
-      ],
-    });
+    missing.getCell(`C${missingRow}`).value = {
+      formula: `IF(B${missingRow}<>"","MISSING","")`,
+    };
+
+    missingRow++;
+  }
+}
+
+missing.autoFilter = {
+  from: "A1",
+  to: "C1",
+};
+
+(missing as any).addConditionalFormatting({
+  ref: `B2:B${missingRow}`,
+  rules: [
+    {
+      type: "expression",
+      formulae: [`$C2="MISSING"`],
+      style: {
+        fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFC7CE" } },
+        font: { color: { argb: "FF9C0006" }, bold: true },
+      },
+    },
+  ],
+});
+
+(missing as any).addConditionalFormatting({
+  ref: `C2:C${missingRow}`,
+  rules: [
+    {
+      type: "containsText",
+      operator: "containsText",
+      text: "MISSING",
+      style: {
+        fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFC7CE" } },
+        font: { color: { argb: "FF9C0006" }, bold: true },
+      },
+    },
+  ],
+});
 
     // ================= UNEXPECTED IMEIS =================
-    const unexpected = wb.addWorksheet("Unexpected IMEIs");
+const unexpected = wb.addWorksheet("Unexpected IMEIs");
 
-    unexpected.columns = [
-      { header: "Device", key: "device", width: 30 },
-      { header: "Unexpected IMEI", key: "imei", width: 24 },
-      { header: "Status", key: "status", width: 16 },
-    ];
+unexpected.columns = [
+  { header: "Device", key: "device", width: 30 },
+  { header: "Unexpected IMEI", key: "imei", width: 24 },
+  { header: "Status", key: "status", width: 16 },
+];
 
-    styleSheet(unexpected);
+styleSheet(unexpected);
 
-    const unexpectedBlocks: string[] = [];
+let unexpectedRow = 2;
 
-    for (const device of devices) {
-      const sheetName = sheetNameMap[device];
-      const sheetRef = excelSheetName(sheetName);
-      const scanRows = Math.max(deviceMap[device].length + 500, 5000);
+for (const device of devices) {
+  const sheetName = sheetNameMap[device];
+  const sheetRef = excelSheetName(sheetName);
+  const scanRows = Math.max(deviceMap[device].length + 500, 5000);
 
-      unexpectedBlocks.push(
-        `FILTER(HSTACK(IF(${sheetRef}!B2:B${scanRows}<>"",${excelText(
-          device
-        )},""),${sheetRef}!B2:B${scanRows},IF(${sheetRef}!B2:B${scanRows}<>"","UNEXPECTED","")),${sheetRef}!D2:D${scanRows}="UNEXPECTED","")`
-      );
-    }
-
-    unexpected.getCell("A2").value = {
-      formula: unexpectedBlocks.length
-        ? `VSTACK(${unexpectedBlocks.join(",")})`
-        : `""`,
+  for (let i = 2; i <= scanRows; i++) {
+    unexpected.getCell(`A${unexpectedRow}`).value = {
+      formula: `IF(${sheetRef}!D${i}="UNEXPECTED","${device.replace(/"/g, '""')}","")`,
     };
 
-    (unexpected as any).addConditionalFormatting({
-      ref: `B2:B100000`,
-      rules: [
-        {
-          type: "expression",
-          formulae: [`$C2="UNEXPECTED"`],
-          style: {
-            fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFE0B2" } },
-            font: { color: { argb: "FFFF6D00" }, bold: true },
-          },
-        },
-      ],
-    });
+    unexpected.getCell(`B${unexpectedRow}`).value = {
+      formula: `IF(${sheetRef}!D${i}="UNEXPECTED",${sheetRef}!B${i},"")`,
+    };
 
-    (unexpected as any).addConditionalFormatting({
-      ref: `C2:C100000`,
-      rules: [
-        {
-          type: "containsText",
-          operator: "containsText",
-          text: "UNEXPECTED",
-          style: {
-            fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFE0B2" } },
-            font: { color: { argb: "FFFF6D00" }, bold: true },
-          },
-        },
-      ],
-    });
+    unexpected.getCell(`C${unexpectedRow}`).value = {
+      formula: `IF(B${unexpectedRow}<>"","UNEXPECTED","")`,
+    };
+
+    unexpectedRow++;
+  }
+}
+
+unexpected.autoFilter = {
+  from: "A1",
+  to: "C1",
+};
+
+(unexpected as any).addConditionalFormatting({
+  ref: `B2:B${unexpectedRow}`,
+  rules: [
+    {
+      type: "expression",
+      formulae: [`$C2="UNEXPECTED"`],
+      style: {
+        fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFE0B2" } },
+        font: { color: { argb: "FFFF6D00" }, bold: true },
+      },
+    },
+  ],
+});
+
+(unexpected as any).addConditionalFormatting({
+  ref: `C2:C${unexpectedRow}`,
+  rules: [
+    {
+      type: "containsText",
+      operator: "containsText",
+      text: "UNEXPECTED",
+      style: {
+        fill: { type: "pattern", pattern: "solid", bgColor: { argb: "FFFFE0B2" } },
+        font: { color: { argb: "FFFF6D00" }, bold: true },
+      },
+    },
+  ],
+});
 
     const buffer = await wb.xlsx.writeBuffer();
 

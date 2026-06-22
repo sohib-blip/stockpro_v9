@@ -239,6 +239,21 @@ export async function GET() {
   rules: [
     {
       type: "expression",
+      formulae: [`$C2="FOUND"`],
+      style: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          bgColor: { argb: "FFC6EFCE" },
+        },
+        font: {
+          color: { argb: "FF006100" },
+          bold: true,
+        },
+      },
+    },
+    {
+      type: "expression",
       formulae: [`$C2="MISSING"`],
       style: {
         fill: {
@@ -248,6 +263,44 @@ export async function GET() {
         },
         font: {
           color: { argb: "FF9C0006" },
+          bold: true,
+        },
+      },
+    },
+  ],
+});
+
+(ws as any).addConditionalFormatting({
+  ref: `B2:B${scanRows}`,
+  rules: [
+    {
+      // Vert si l'IMEI scanné existe dans le stock attendu
+      type: "expression",
+      formulae: [`$D2="FOUND"`],
+      style: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          bgColor: { argb: "FFC6EFCE" },
+        },
+        font: {
+          color: { argb: "FF006100" },
+          bold: true,
+        },
+      },
+    },
+    {
+      // Orange si l'IMEI scanné n'existe pas dans le stock attendu
+      type: "expression",
+      formulae: [`$D2="UNEXPECTED"`],
+      style: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          bgColor: { argb: "FFFFE0B2" },
+        },
+        font: {
+          color: { argb: "FFFF6D00" },
           bold: true,
         },
       },
@@ -319,6 +372,49 @@ export async function GET() {
 
     styleSheet(missing);
 
+    (missing as any).addConditionalFormatting({
+  ref: `B2:B${missingRow}`,
+  rules: [
+    {
+      type: "expression",
+      formulae: [`$C2="MISSING"`],
+      style: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          bgColor: { argb: "FFFFC7CE" },
+        },
+        font: {
+          color: { argb: "FF9C0006" },
+          bold: true,
+        },
+      },
+    },
+  ],
+});
+
+    (missing as any).addConditionalFormatting({
+  ref: `C2:C${missingRow}`,
+  rules: [
+    {
+      type: "containsText",
+      operator: "containsText",
+      text: "MISSING",
+      style: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          bgColor: { argb: "FFFFC7CE" },
+        },
+        font: {
+          color: { argb: "FF9C0006" },
+          bold: true,
+        },
+      },
+    },
+  ],
+});
+
     // ================= UNEXPECTED IMEIS =================
     const unexpected = wb.addWorksheet("Unexpected IMEIs");
 
@@ -348,6 +444,49 @@ export async function GET() {
     }
 
     styleSheet(unexpected);
+
+    (unexpected as any).addConditionalFormatting({
+  ref: `B2:B${unexpectedRow}`,
+  rules: [
+    {
+      type: "expression",
+      formulae: [`$C2="UNEXPECTED"`],
+      style: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          bgColor: { argb: "FFFFE0B2" },
+        },
+        font: {
+          color: { argb: "FFFF6D00" },
+          bold: true,
+        },
+      },
+    },
+  ],
+});
+
+    (unexpected as any).addConditionalFormatting({
+  ref: `C2:C${unexpectedRow}`,
+  rules: [
+    {
+      type: "containsText",
+      operator: "containsText",
+      text: "UNEXPECTED",
+      style: {
+        fill: {
+          type: "pattern",
+          pattern: "solid",
+          bgColor: { argb: "FFFFE0B2" },
+        },
+        font: {
+          color: { argb: "FFFF6D00" },
+          bold: true,
+        },
+      },
+    },
+  ],
+});
 
     const buffer = await wb.xlsx.writeBuffer();
 

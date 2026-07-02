@@ -24,13 +24,14 @@ export default function DashboardPage() {
 
  const [kpi, setKpi] = useState<KPI | null>(null);
  const [bins, setBins] = useState<any[]>([]);
- const [floors, setFloors] = useState<any[]>([]);
+ const [accessories, setAccessories] = useState<any[]>([]);
+const [accessoryKpis, setAccessoryKpis] = useState<any>(null);
+const [accessorySearch, setAccessorySearch] = useState("");
  const [activity, setActivity] = useState<any[]>([]);
  const [drilldown, setDrilldown] = useState<any[]>([]);
  const [flow,setFlow] = useState<any[]>([]);
  const [openDevice, setOpenDevice] = useState<string | null>(null);
  const [topDevices,setTopDevices] = useState<any[]>([]);
-const [showSales,setShowSales] = useState(false);
 const [salesTable,setSalesTable] = useState<any[]>([]);
 const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
 
@@ -42,6 +43,12 @@ const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
  .filter((b:any) =>
   b.device?.toLowerCase().includes(search.toLowerCase())
  );
+
+ const filteredAccessories = accessories.filter((a:any) =>
+  a.name?.toLowerCase().includes(accessorySearch.toLowerCase()) ||
+  a.bin?.toLowerCase().includes(accessorySearch.toLowerCase())
+);
+
  const chartData = bins.map((b:any) => {
 
  const movement = flow.find((f:any)=>f.device === b.device);
@@ -59,25 +66,28 @@ const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
 
  async function loadAll() {
 
-const [kpiRes, binsRes, floorsRes, activityRes, flowRes, salesRes] = await Promise.all([
+const [kpiRes, binsRes, activityRes, flowRes, salesRes, accessoriesRes] = await Promise.all([
   fetch("/api/dashboard/summary", { cache: "no-store" }),
   fetch("/api/dashboard/bins", { cache: "no-store" }),
-  fetch("/api/dashboard/floors", { cache: "no-store" }),
   fetch("/api/dashboard/activity", { cache: "no-store" }),
   fetch("/api/dashboard/device-flow", { cache: "no-store" }),
   fetch("/api/dashboard/sales", { cache: "no-store" }),
+  fetch("/api/dashboard/accessories", { cache: "no-store" }),
 ]);
 
  const kpiJson = await kpiRes.json();
  const binsJson = await binsRes.json();
- const floorsJson = await floorsRes.json();
+ const accessoriesJson = await accessoriesRes.json();
  const activityJson = await activityRes.json();
  const flowJson = await flowRes.json();
  const salesJson = await salesRes.json();
 
  if (kpiJson.ok) setKpi(kpiJson.kpis);
  if (binsJson.ok) setBins(binsJson.rows);
- if (floorsJson.ok) setFloors(floorsJson.rows);
+ if (accessoriesJson.ok) {
+  setAccessories(accessoriesJson.rows || []);
+  setAccessoryKpis(accessoriesJson.kpis || null);
+}
  if (activityJson.ok) setActivity(activityJson.rows);
  if (flowJson.ok) setFlow(flowJson.rows);
 if (salesJson.ok){
@@ -400,7 +410,6 @@ minute:"2-digit"
 
 <div
 className="card-glow p-6 rounded-xl cursor-pointer hover:bg-white/5 transition"
-onClick={()=>setShowSales(!showSales)}
 >
 
 <h2 className="text-lg font-semibold mb-4">
@@ -668,41 +677,106 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
 )}
 
 
-{/* FLOORS */}
+{/* ACCESSORIES STOCK */}
 
 <div className="card-glow p-6 rounded-xl">
 
-<h2 className="text-lg font-semibold mb-5">
-Floors
-</h2>
+<div className="flex items-center justify-between mb-5">
+  <h2 className="text-lg font-semibold">
+    Accessories Stock
+  </h2>
+
+  <input
+    type="text"
+    placeholder="Search accessory or bin..."
+    value={accessorySearch}
+    onChange={(e)=>setAccessorySearch(e.target.value)}
+    className="w-[300px] text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-2 outline-none"
+  />
+</div>
+
+{accessoryKpis && (
+  <div className="grid md:grid-cols-4 gap-4 mb-6">
+
+    <div className="bg-white/5 rounded-xl p-4">
+      <div className="text-xs text-slate-400 mb-1">Accessories</div>
+      <div className="text-2xl font-bold text-cyan-400">
+        {accessoryKpis.total_accessories}
+      </div>
+    </div>
+
+    <div className="bg-white/5 rounded-xl p-4">
+      <div className="text-xs text-slate-400 mb-1">Total Qty</div>
+      <div className="text-2xl font-bold text-purple-400">
+        {accessoryKpis.total_qty}
+      </div>
+    </div>
+
+    <div className="bg-white/5 rounded-xl p-4">
+      <div className="text-xs text-slate-400 mb-1">Low Stock</div>
+      <div className="text-2xl font-bold text-orange-400">
+        {accessoryKpis.low_stock}
+      </div>
+    </div>
+
+    <div className="bg-white/5 rounded-xl p-4">
+      <div className="text-xs text-slate-400 mb-1">Empty</div>
+      <div className="text-2xl font-bold text-red-400">
+        {accessoryKpis.empty_stock}
+      </div>
+    </div>
+
+  </div>
+)}
 
 <table className="w-full text-sm">
 
 <thead>
-
 <tr className="text-left text-slate-400 border-b border-white/5">
-<th className="py-2">Floor</th>
-<th>Device</th>
-<th>Boxes</th>
-<th>IMEI</th>
+  <th className="py-2">Accessory</th>
+  <th>Bin</th>
+  <th className="text-right">Qty</th>
+  <th className="text-right">Min stock</th>
+  <th className="text-right">Status</th>
 </tr>
-
 </thead>
 
 <tbody>
 
-{floors
-.filter((f:any) => Number(f.imei_count ?? f.total_imei ?? f.remaining ?? 0) > 0)
-.map((f,i)=>(
-<tr key={`${f.floor}-${f.device_id}-${i}`}>
-
-<td className="py-2">{f.floor}</td>
-<td>{f.device}</td>
-<td>{f.boxes_count}</td>
-<td>{f.imei_count}</td>
-
+{filteredAccessories.map((a:any)=>(
+<tr
+  key={a.id}
+  className={`
+    border-b border-white/5
+    ${a.status === "LOW" ? "bg-orange-500/10" : ""}
+    ${a.status === "EMPTY" ? "bg-red-500/10" : ""}
+  `}
+>
+  <td className="py-2 font-semibold">{a.name}</td>
+  <td>{a.bin}</td>
+  <td className="text-right">{a.current_stock}</td>
+  <td className="text-right">{a.minimum_stock}</td>
+  <td className="text-right">
+    <span
+      className={`px-2 py-1 rounded text-xs font-semibold
+        ${a.status === "OK" ? "bg-green-500/20 text-green-400" : ""}
+        ${a.status === "LOW" ? "bg-yellow-500/20 text-yellow-400" : ""}
+        ${a.status === "EMPTY" ? "bg-red-500/20 text-red-400" : ""}
+      `}
+    >
+      {a.status}
+    </span>
+  </td>
 </tr>
 ))}
+
+{filteredAccessories.length === 0 && (
+<tr>
+  <td colSpan={5} className="py-6 text-center text-slate-500">
+    No accessories found
+  </td>
+</tr>
+)}
 
 </tbody>
 

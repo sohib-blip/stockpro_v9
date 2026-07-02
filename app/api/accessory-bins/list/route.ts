@@ -11,14 +11,8 @@ const supabase = createClient(
 
 export async function GET() {
   const { data, error } = await supabase
-    .from("accessories")
-    .select(`
-      *,
-      accessory_bins (
-        id,
-        name
-      )
-    `)
+    .from("accessory_bins")
+    .select("*")
     .order("name");
 
   if (error) {

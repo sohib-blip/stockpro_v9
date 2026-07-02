@@ -11,24 +11,18 @@ const supabase = createClient(
 export async function POST(req: Request) {
   const body = await req.json();
 
-  const { name, stock, minimum_stock } = body;
+  const { name, stock, minimum_stock, accessory_bin_id } = body;
 
-  const { error } = await supabase
-    .from("accessories")
-    .insert({
-      name,
-      current_stock: stock,
-      minimum_stock,
-    });
+  const { error } = await supabase.from("accessories").insert({
+    name,
+    current_stock: Number(stock || 0),
+    minimum_stock: Number(minimum_stock || 0),
+    accessory_bin_id: accessory_bin_id || null,
+  });
 
   if (error) {
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({
-    ok: true,
-  });
+  return NextResponse.json({ ok: true });
 }

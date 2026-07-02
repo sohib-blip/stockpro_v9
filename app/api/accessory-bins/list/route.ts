@@ -13,6 +13,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("accessory_bins")
     .select("*")
+    .eq("active", true)
     .order("name");
 
   if (error) {

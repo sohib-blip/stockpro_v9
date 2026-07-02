@@ -12,26 +12,13 @@ const supabase = createClient(
 
 export async function GET() {
   const { data, error } = await supabase
-    .from("accessories")
-    .select(`
-      id,
-      name,
-      current_stock,
-      minimum_stock,
-      active,
-      accessory_bins (
-        id,
-        name
-      )
-    `)
+    .from("accessory_bins")
+    .select("id, name, current_stock, minimum_stock, active")
     .eq("active", true)
     .order("name");
 
   if (error) {
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 }
-    );
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
   }
 
   const rows = (data || []).map((row: any) => {
@@ -39,14 +26,13 @@ export async function GET() {
     const min = Number(row.minimum_stock || 0);
 
     let status = "OK";
-
     if (stock <= 0) status = "EMPTY";
     else if (min > 0 && stock <= min) status = "LOW";
 
     return {
       id: row.id,
       name: row.name,
-      bin: row.accessory_bins?.name || "-",
+      bin: row.name,
       current_stock: stock,
       minimum_stock: min,
       status,

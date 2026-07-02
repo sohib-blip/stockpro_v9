@@ -6,6 +6,8 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 type Bin = {
   id: string;
   name: string;
+  current_stock?: number;
+  minimum_stock?: number;
 };
 
 export default function BinsPage() {
@@ -13,15 +15,12 @@ export default function BinsPage() {
 
   const [bins, setBins] = useState<Bin[]>([]);
   const [accessoryBins, setAccessoryBins] = useState<Bin[]>([]);
-  const [accessories, setAccessories] = useState<any[]>([]);
 
   const [newBin, setNewBin] = useState("");
-  const [newAccessoryBin, setNewAccessoryBin] = useState("");
 
-  const [accessoryName, setAccessoryName] = useState("");
-  const [accessoryBinId, setAccessoryBinId] = useState("");
-  const [stock, setStock] = useState(0);
-  const [minStock, setMinStock] = useState(0);
+  const [newAccessoryBin, setNewAccessoryBin] = useState("");
+  const [newAccessoryStock, setNewAccessoryStock] = useState(0);
+  const [newAccessoryMinStock, setNewAccessoryMinStock] = useState(0);
 
   const [selectedDevice, setSelectedDevice] = useState<Bin | null>(null);
   const [templateAccessories, setTemplateAccessories] = useState<any[]>([]);
@@ -50,15 +49,6 @@ export default function BinsPage() {
     if (json.ok) setAccessoryBins(json.rows || []);
   }
 
-  async function loadAccessories() {
-    const res = await fetch(`/api/accessories/list?t=${Date.now()}`, {
-      cache: "no-store",
-    });
-
-    const json = await res.json();
-    if (json.ok) setAccessories(json.rows || []);
-  }
-
   async function addBin() {
     if (!newBin.trim()) return;
 
@@ -78,37 +68,18 @@ export default function BinsPage() {
     await fetch("/api/accessory-bins/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: newAccessoryBin }),
-    });
-
-    setNewAccessoryBin("");
-    setLoading(false);
-    loadAccessoryBins();
-  }
-
-  async function addAccessory() {
-    if (!accessoryName.trim()) return;
-
-    setLoading(true);
-
-    await fetch("/api/accessories/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        name: accessoryName,
-        stock,
-        minimum_stock: minStock,
-        accessory_bin_id: accessoryBinId || null,
+        name: newAccessoryBin,
+        current_stock: newAccessoryStock,
+        minimum_stock: newAccessoryMinStock,
       }),
     });
 
-    setAccessoryName("");
-    setAccessoryBinId("");
-    setStock(0);
-    setMinStock(0);
+    setNewAccessoryBin("");
+    setNewAccessoryStock(0);
+    setNewAccessoryMinStock(0);
     setLoading(false);
-
-    loadAccessories();
+    loadAccessoryBins();
   }
 
   async function deleteBin(id: string) {
@@ -159,7 +130,6 @@ export default function BinsPage() {
   useEffect(() => {
     loadBins();
     loadAccessoryBins();
-    loadAccessories();
   }, []);
 
   return (
@@ -323,99 +293,38 @@ export default function BinsPage() {
         </div>
       )}
 
-      {/* ACCESSORY BINS */}
+      {/* ACCESSORY BINS = ACCESSORIES */}
       <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Accessory Bins</div>
+        <div className="font-semibold">Accessory Bins / Accessories</div>
 
-        <div className="flex gap-2 items-center">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input
             value={newAccessoryBin}
             onChange={(e) => setNewAccessoryBin(e.target.value)}
-            placeholder="New accessory bin..."
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-64"
+            placeholder="Accessory name, e.g. Wipe..."
+            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
+          />
+
+          <input
+            type="number"
+            value={newAccessoryStock}
+            onChange={(e) => setNewAccessoryStock(Number(e.target.value))}
+            placeholder="Current stock"
+            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
+          />
+
+          <input
+            type="number"
+            value={newAccessoryMinStock}
+            onChange={(e) => setNewAccessoryMinStock(Number(e.target.value))}
+            placeholder="Minimum stock"
+            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
           />
 
           <button
             onClick={addAccessoryBin}
-            disabled={loading}
+            disabled={loading || !newAccessoryBin.trim()}
             className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
-          >
-            Add
-          </button>
-        </div>
-
-        <div className="border border-slate-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900">
-              <tr>
-                <th className="text-left p-3">Name</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {accessoryBins.map((bin) => (
-                <tr key={bin.id} className="border-t border-slate-800">
-                  <td className="p-3">{bin.name}</td>
-                </tr>
-              ))}
-
-              {accessoryBins.length === 0 && (
-                <tr>
-                  <td className="p-4 text-center text-slate-500">
-                    No accessory bins yet
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* ADD ACCESSORY */}
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Add Accessory</div>
-
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-          <input
-            value={accessoryName}
-            onChange={(e) => setAccessoryName(e.target.value)}
-            placeholder="Accessory name..."
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
-          />
-
-          <select
-            value={accessoryBinId}
-            onChange={(e) => setAccessoryBinId(e.target.value)}
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
-          >
-            <option value="">No bin</option>
-            {accessoryBins.map((bin) => (
-              <option key={bin.id} value={bin.id}>
-                {bin.name}
-              </option>
-            ))}
-          </select>
-
-          <input
-            type="number"
-            value={stock}
-            onChange={(e) => setStock(Number(e.target.value))}
-            placeholder="Stock"
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
-          />
-
-          <input
-            type="number"
-            value={minStock}
-            onChange={(e) => setMinStock(Number(e.target.value))}
-            placeholder="Min stock"
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
-          />
-
-          <button
-            onClick={addAccessory}
-            disabled={loading || !accessoryName.trim()}
-            className="bg-emerald-600 hover:bg-emerald-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
           >
             Add Accessory
           </button>
@@ -426,23 +335,54 @@ export default function BinsPage() {
             <thead className="bg-slate-900">
               <tr>
                 <th className="text-left p-3">Accessory</th>
-                <th className="text-left p-3">Bin</th>
                 <th className="text-right p-3">Stock</th>
                 <th className="text-right p-3">Min stock</th>
+                <th className="text-right p-3">Status</th>
               </tr>
             </thead>
 
             <tbody>
-              {accessories.map((a) => (
-                <tr key={a.id} className="border-t border-slate-800">
-                  <td className="p-3">{a.name}</td>
-                  <td className="p-3">{a.accessory_bins?.name || "-"}</td>
-                  <td className="p-3 text-right">{a.current_stock}</td>
-                  <td className="p-3 text-right">{a.minimum_stock}</td>
-                </tr>
-              ))}
+              {accessoryBins.map((bin) => {
+                const stock = Number(bin.current_stock || 0);
+                const min = Number(bin.minimum_stock || 0);
 
-              {accessories.length === 0 && (
+                let status = "OK";
+                if (stock <= 0) status = "EMPTY";
+                else if (min > 0 && stock <= min) status = "LOW";
+
+                return (
+                  <tr key={bin.id} className="border-t border-slate-800">
+                    <td className="p-3">{bin.name}</td>
+                    <td className="p-3 text-right">{stock}</td>
+                    <td className="p-3 text-right">{min}</td>
+                    <td className="p-3 text-right">
+                      <span
+                        className={`px-2 py-1 rounded text-xs font-semibold
+                          ${
+                            status === "OK"
+                              ? "bg-green-500/20 text-green-400"
+                              : ""
+                          }
+                          ${
+                            status === "LOW"
+                              ? "bg-yellow-500/20 text-yellow-400"
+                              : ""
+                          }
+                          ${
+                            status === "EMPTY"
+                              ? "bg-red-500/20 text-red-400"
+                              : ""
+                          }
+                        `}
+                      >
+                        {status}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+
+              {accessoryBins.length === 0 && (
                 <tr>
                   <td colSpan={4} className="p-4 text-center text-slate-500">
                     No accessories yet

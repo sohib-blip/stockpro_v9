@@ -12,6 +12,7 @@ import {
   Tag,
   Menu,
   Package,
+  Boxes,
   Repeat,
   RotateCcw,
   LogOut,
@@ -20,11 +21,16 @@ import {
 
 const NAV = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+
   { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
   { href: "/labels", label: "Labels", icon: Tag },
+
   { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
+  { href: "/accessories", label: "Accessories", icon: Boxes },
+
   { href: "/returns", label: "Returns", icon: RotateCcw },
   { href: "/transfer", label: "Transfer", icon: Repeat },
+
   { href: "/nrd", label: "NRD Tracker", icon: Timer },
   { href: "/bins", label: "Bins", icon: Package },
 ];

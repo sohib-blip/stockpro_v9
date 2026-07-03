@@ -29,12 +29,15 @@ export default function BinsPage() {
   const [templateQty, setTemplateQty] = useState(1);
   const [templatePerDevices, setTemplatePerDevices] = useState(1);
 
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
+  const [editTemplateAccessoryId, setEditTemplateAccessoryId] = useState("");
+  const [editTemplateQty, setEditTemplateQty] = useState(1);
+  const [editTemplatePerDevices, setEditTemplatePerDevices] = useState(1);
+
   const [accessoryFilter, setAccessoryFilter] =
     useState<"all" | "show" | "hide">("all");
 
-  const [editingAccessoryId, setEditingAccessoryId] = useState<string | null>(
-    null
-  );
+  const [editingAccessoryId, setEditingAccessoryId] = useState<string | null>(null);
   const [editAccessoryName, setEditAccessoryName] = useState("");
   const [editAccessoryStock, setEditAccessoryStock] = useState(0);
   const [editAccessoryMinStock, setEditAccessoryMinStock] = useState(0);
@@ -177,36 +180,77 @@ export default function BinsPage() {
   }
 
   async function saveTemplate() {
-  if (!selectedDevice || !templateAccessoryId) return;
+    if (!selectedDevice || !templateAccessoryId) return;
 
-  setLoading(true);
+    setLoading(true);
 
-  const res = await fetch("/api/bins/templates/save", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      device_id: selectedDevice.id,
-      accessory_bin_id: templateAccessoryId,
-      quantity: templateQty,
-      per_devices: templatePerDevices,
-    }),
-  });
+    const res = await fetch("/api/bins/templates/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        device_id: selectedDevice.id,
+        accessory_bin_id: templateAccessoryId,
+        quantity: templateQty,
+        per_devices: templatePerDevices,
+      }),
+    });
 
-  const json = await res.json();
+    const json = await res.json();
+    setLoading(false);
 
-  setLoading(false);
+    if (!json.ok) {
+      alert(json.error || "Save template failed");
+      return;
+    }
 
-  if (!json.ok) {
-    alert(json.error || "Save template failed");
-    return;
+    setTemplateAccessoryId("");
+    setTemplateQty(1);
+    setTemplatePerDevices(1);
+
+    await openTemplate(selectedDevice);
   }
 
-  setTemplateAccessoryId("");
-  setTemplateQty(1);
-  setTemplatePerDevices(1);
+  function startEditTemplate(t: any) {
+    setEditingTemplateId(t.id);
+    setEditTemplateAccessoryId(t.accessory_bin_id);
+    setEditTemplateQty(Number(t.quantity || 1));
+    setEditTemplatePerDevices(Number(t.per_devices || 1));
+  }
 
-  await openTemplate(selectedDevice);
-}
+  function cancelEditTemplate() {
+    setEditingTemplateId(null);
+    setEditTemplateAccessoryId("");
+    setEditTemplateQty(1);
+    setEditTemplatePerDevices(1);
+  }
+
+  async function saveTemplateEdit() {
+    if (!selectedDevice || !editTemplateAccessoryId) return;
+
+    setLoading(true);
+
+    const res = await fetch("/api/bins/templates/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        device_id: selectedDevice.id,
+        accessory_bin_id: editTemplateAccessoryId,
+        quantity: editTemplateQty,
+        per_devices: editTemplatePerDevices,
+      }),
+    });
+
+    const json = await res.json();
+    setLoading(false);
+
+    if (!json.ok) {
+      alert(json.error || "Update template failed");
+      return;
+    }
+
+    cancelEditTemplate();
+    await openTemplate(selectedDevice);
+  }
 
   useEffect(() => {
     loadBins();
@@ -375,21 +419,101 @@ export default function BinsPage() {
                   <th className="text-left p-3">Accessory</th>
                   <th className="text-right p-3">Qty</th>
                   <th className="text-right p-3">Per devices</th>
+                  <th className="text-right p-3">Actions</th>
                 </tr>
               </thead>
 
               <tbody>
-                {templates.map((t) => (
-                  <tr key={t.id} className="border-t border-slate-800">
-                    <td className="p-3">{t.accessory_bins?.name || "-"}</td>
-                    <td className="p-3 text-right">{t.quantity}</td>
-                    <td className="p-3 text-right">{t.per_devices}</td>
-                  </tr>
-                ))}
+                {templates.map((t) => {
+                  const isEditingTemplate = editingTemplateId === t.id;
+
+                  return (
+                    <tr key={t.id} className="border-t border-slate-800">
+                      <td className="p-3">
+                        {isEditingTemplate ? (
+                          <select
+                            value={editTemplateAccessoryId}
+                            onChange={(e) =>
+                              setEditTemplateAccessoryId(e.target.value)
+                            }
+                            className="bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm w-full"
+                          >
+                            {templateAccessories.map((a) => (
+                              <option key={a.id} value={a.id}>
+                                {a.name}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          t.accessory_bins?.name || "-"
+                        )}
+                      </td>
+
+                      <td className="p-3 text-right">
+                        {isEditingTemplate ? (
+                          <input
+                            type="number"
+                            min={1}
+                            value={editTemplateQty}
+                            onChange={(e) =>
+                              setEditTemplateQty(Number(e.target.value))
+                            }
+                            className="w-20 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+                          />
+                        ) : (
+                          t.quantity
+                        )}
+                      </td>
+
+                      <td className="p-3 text-right">
+                        {isEditingTemplate ? (
+                          <input
+                            type="number"
+                            min={1}
+                            value={editTemplatePerDevices}
+                            onChange={(e) =>
+                              setEditTemplatePerDevices(Number(e.target.value))
+                            }
+                            className="w-20 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+                          />
+                        ) : (
+                          t.per_devices
+                        )}
+                      </td>
+
+                      <td className="p-3 text-right space-x-3">
+                        {isEditingTemplate ? (
+                          <>
+                            <button
+                              onClick={saveTemplateEdit}
+                              className="text-emerald-400 hover:text-emerald-300"
+                            >
+                              Save
+                            </button>
+
+                            <button
+                              onClick={cancelEditTemplate}
+                              className="text-slate-400 hover:text-slate-300"
+                            >
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            onClick={() => startEditTemplate(t)}
+                            className="text-cyan-400 hover:text-cyan-300"
+                          >
+                            Edit
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
 
                 {templates.length === 0 && (
                   <tr>
-                    <td colSpan={3} className="p-4 text-center text-slate-500">
+                    <td colSpan={4} className="p-4 text-center text-slate-500">
                       No template rules yet
                     </td>
                   </tr>

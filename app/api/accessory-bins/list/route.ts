@@ -10,22 +10,24 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-export async function GET() {
-  const { data, error } = await supabase
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const includeHidden = url.searchParams.get("include_hidden") === "1";
+
+  let query = supabase
     .from("accessory_bins")
     .select("id, name, active, created_at, current_stock, minimum_stock")
-    .eq("active", true)
     .order("name", { ascending: true });
 
-  if (error) {
-    return NextResponse.json(
-      { ok: false, error: error.message },
-      { status: 500 }
-    );
+  if (!includeHidden) {
+    query = query.eq("active", true);
   }
 
-  return NextResponse.json({
-    ok: true,
-    rows: data || [],
-  });
+  const { data, error } = await query;
+
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, rows: data || [] });
 }

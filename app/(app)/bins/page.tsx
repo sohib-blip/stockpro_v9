@@ -6,6 +6,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 type Bin = {
   id: string;
   name: string;
+  active?: boolean;
   current_stock?: number;
   minimum_stock?: number;
 };
@@ -28,6 +29,16 @@ export default function BinsPage() {
   const [templateQty, setTemplateQty] = useState(1);
   const [templatePerDevices, setTemplatePerDevices] = useState(1);
 
+  const [accessoryFilter, setAccessoryFilter] =
+    useState<"all" | "show" | "hide">("all");
+
+  const [editingAccessoryId, setEditingAccessoryId] = useState<string | null>(
+    null
+  );
+  const [editAccessoryName, setEditAccessoryName] = useState("");
+  const [editAccessoryStock, setEditAccessoryStock] = useState(0);
+  const [editAccessoryMinStock, setEditAccessoryMinStock] = useState(0);
+
   const [loading, setLoading] = useState(false);
 
   async function loadBins() {
@@ -40,9 +51,10 @@ export default function BinsPage() {
   }
 
   async function loadAccessoryBins() {
-    const res = await fetch(`/api/accessory-bins/list?t=${Date.now()}`, {
-      cache: "no-store",
-    });
+    const res = await fetch(
+      `/api/accessory-bins/list?include_hidden=1&t=${Date.now()}`,
+      { cache: "no-store" }
+    );
 
     const json = await res.json();
     if (json.ok) setAccessoryBins(json.rows || []);
@@ -86,6 +98,68 @@ export default function BinsPage() {
     loadBins();
   }
 
+  async function toggleAccessoryVisibility(id: string, active: boolean) {
+    setLoading(true);
+
+    await fetch("/api/accessory-bins/toggle-active", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, active }),
+    });
+
+    setLoading(false);
+    loadAccessoryBins();
+  }
+
+  function startEditAccessory(bin: Bin) {
+    setEditingAccessoryId(bin.id);
+    setEditAccessoryName(bin.name);
+    setEditAccessoryStock(Number(bin.current_stock || 0));
+    setEditAccessoryMinStock(Number(bin.minimum_stock || 0));
+  }
+
+  function cancelEditAccessory() {
+    setEditingAccessoryId(null);
+    setEditAccessoryName("");
+    setEditAccessoryStock(0);
+    setEditAccessoryMinStock(0);
+  }
+
+  async function saveAccessoryEdit(id: string) {
+    setLoading(true);
+
+    await fetch("/api/accessory-bins/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id,
+        name: editAccessoryName,
+        current_stock: editAccessoryStock,
+        minimum_stock: editAccessoryMinStock,
+      }),
+    });
+
+    setLoading(false);
+    cancelEditAccessory();
+    loadAccessoryBins();
+  }
+
+  async function deleteAccessory(id: string) {
+    const ok = confirm("Are you sure you want to delete this accessory?");
+    if (!ok) return;
+
+    setLoading(true);
+
+    await fetch("/api/accessory-bins/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+
+    setLoading(false);
+    loadAccessoryBins();
+  }
+
   async function openTemplate(bin: Bin) {
     setSelectedDevice(bin);
 
@@ -111,11 +185,11 @@ export default function BinsPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-  device_id: selectedDevice.id,
-  accessory_bin_id: templateAccessoryId,
-  quantity: templateQty,
-  per_devices: templatePerDevices,
-}),
+        device_id: selectedDevice.id,
+        accessory_bin_id: templateAccessoryId,
+        quantity: templateQty,
+        per_devices: templatePerDevices,
+      }),
     });
 
     setTemplateAccessoryId("");
@@ -130,6 +204,12 @@ export default function BinsPage() {
     loadBins();
     loadAccessoryBins();
   }, []);
+
+  const filteredAccessoryBins = accessoryBins.filter((bin) => {
+    if (accessoryFilter === "show") return bin.active !== false;
+    if (accessoryFilter === "hide") return bin.active === false;
+    return true;
+  });
 
   return (
     <div className="space-y-10 max-w-6xl">
@@ -314,10 +394,29 @@ export default function BinsPage() {
 
       {/* ACCESSORIES */}
       <div className="card-glow p-6 space-y-4">
-        <div>
-          <div className="font-semibold text-lg">Accessories</div>
-          <div className="text-xs text-slate-500 mt-1">
-            Create accessories and define their stock levels.
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <div className="font-semibold text-lg">Accessories</div>
+            <div className="text-xs text-slate-500 mt-1">
+              Create accessories, define stock levels and choose if they are
+              visible in outbound/dashboard.
+            </div>
+          </div>
+
+          <div className="flex gap-2">
+            {(["all", "show", "hide"] as const).map((f) => (
+              <button
+                key={f}
+                onClick={() => setAccessoryFilter(f)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                  accessoryFilter === f
+                    ? "bg-indigo-600 text-white"
+                    : "bg-slate-800 text-slate-400"
+                }`}
+              >
+                {f.toUpperCase()}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -361,55 +460,121 @@ export default function BinsPage() {
                 <th className="text-left p-3">Accessory</th>
                 <th className="text-right p-3">Stock</th>
                 <th className="text-right p-3">Min stock</th>
-                <th className="text-right p-3">Status</th>
+                <th className="text-right p-3">Visibility</th>
+                <th className="text-right p-3">Actions</th>
               </tr>
             </thead>
 
             <tbody>
-              {accessoryBins.map((bin) => {
-                const stock = Number(bin.current_stock || 0);
-                const min = Number(bin.minimum_stock || 0);
-
-                let status = "OK";
-                if (stock <= 0) status = "EMPTY";
-                else if (min > 0 && stock <= min) status = "LOW";
+              {filteredAccessoryBins.map((bin) => {
+                const isActive = bin.active !== false;
+                const isEditing = editingAccessoryId === bin.id;
 
                 return (
                   <tr key={bin.id} className="border-t border-slate-800">
-                    <td className="p-3">{bin.name}</td>
-                    <td className="p-3 text-right">{stock}</td>
-                    <td className="p-3 text-right">{min}</td>
+                    <td className="p-3">
+                      {isEditing ? (
+                        <input
+                          value={editAccessoryName}
+                          onChange={(e) =>
+                            setEditAccessoryName(e.target.value)
+                          }
+                          className="w-full bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
+                        />
+                      ) : (
+                        bin.name
+                      )}
+                    </td>
+
                     <td className="p-3 text-right">
-                      <span
-                        className={`px-2 py-1 rounded text-xs font-semibold
-                          ${
-                            status === "OK"
-                              ? "bg-green-500/20 text-green-400"
-                              : ""
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          value={editAccessoryStock}
+                          onChange={(e) =>
+                            setEditAccessoryStock(Number(e.target.value))
                           }
-                          ${
-                            status === "LOW"
-                              ? "bg-yellow-500/20 text-yellow-400"
-                              : ""
+                          className="w-24 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+                        />
+                      ) : (
+                        Number(bin.current_stock || 0)
+                      )}
+                    </td>
+
+                    <td className="p-3 text-right">
+                      {isEditing ? (
+                        <input
+                          type="number"
+                          value={editAccessoryMinStock}
+                          onChange={(e) =>
+                            setEditAccessoryMinStock(Number(e.target.value))
                           }
-                          ${
-                            status === "EMPTY"
-                              ? "bg-red-500/20 text-red-400"
-                              : ""
-                          }
-                        `}
+                          className="w-24 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+                        />
+                      ) : (
+                        Number(bin.minimum_stock || 0)
+                      )}
+                    </td>
+
+                    <td className="p-3 text-right">
+                      <button
+                        onClick={() =>
+                          toggleAccessoryVisibility(bin.id, !isActive)
+                        }
+                        disabled={isEditing}
+                        className={`px-3 py-1 rounded text-xs font-semibold disabled:opacity-40 ${
+                          isActive
+                            ? "bg-green-500/20 text-green-400"
+                            : "bg-slate-700 text-slate-300"
+                        }`}
                       >
-                        {status}
-                      </span>
+                        {isActive ? "SHOW" : "HIDE"}
+                      </button>
+                    </td>
+
+                    <td className="p-3 text-right space-x-3">
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={() => saveAccessoryEdit(bin.id)}
+                            className="text-emerald-400 hover:text-emerald-300"
+                          >
+                            Save
+                          </button>
+
+                          <button
+                            onClick={cancelEditAccessory}
+                            className="text-slate-400 hover:text-slate-300"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button
+                            onClick={() => startEditAccessory(bin)}
+                            className="text-cyan-400 hover:text-cyan-300"
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            onClick={() => deleteAccessory(bin.id)}
+                            className="text-rose-400 hover:text-rose-500"
+                          >
+                            Delete
+                          </button>
+                        </>
+                      )}
                     </td>
                   </tr>
                 );
               })}
 
-              {accessoryBins.length === 0 && (
+              {filteredAccessoryBins.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-4 text-center text-slate-500">
-                    No accessories yet
+                  <td colSpan={5} className="p-4 text-center text-slate-500">
+                    No accessories found.
                   </td>
                 </tr>
               )}

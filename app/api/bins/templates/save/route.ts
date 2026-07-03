@@ -12,11 +12,19 @@ export async function POST(req: Request) {
   try {
     const body = await req.json();
 
-    const { device_id, accessory_id, quantity, per_devices } = body;
+    const {
+      device_id,
+      accessory_bin_id,
+      quantity,
+      per_devices,
+    } = body;
 
-    if (!device_id || !accessory_id) {
+    if (!device_id || !accessory_bin_id) {
       return NextResponse.json(
-        { ok: false, error: "device_id and accessory_id required" },
+        {
+          ok: false,
+          error: "device_id and accessory_bin_id required",
+        },
         { status: 400 }
       );
     }
@@ -26,12 +34,12 @@ export async function POST(req: Request) {
       .upsert(
         {
           device_id,
-          accessory_id,
+          accessory_bin_id,
           quantity: Number(quantity || 1),
           per_devices: Number(per_devices || 1),
         },
         {
-          onConflict: "device_id,accessory_id",
+          onConflict: "device_id,accessory_bin_id",
         }
       );
 
@@ -40,7 +48,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Save template failed" },
+      {
+        ok: false,
+        error: e?.message || "Save template failed",
+      },
       { status: 500 }
     );
   }

@@ -17,7 +17,6 @@ export default function BinsPage() {
   const [accessoryBins, setAccessoryBins] = useState<Bin[]>([]);
 
   const [newBin, setNewBin] = useState("");
-
   const [newAccessoryBin, setNewAccessoryBin] = useState("");
   const [newAccessoryStock, setNewAccessoryStock] = useState(0);
   const [newAccessoryMinStock, setNewAccessoryMinStock] = useState(0);
@@ -112,11 +111,11 @@ export default function BinsPage() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        device_id: selectedDevice.id,
-        accessory_id: templateAccessoryId,
-        quantity: templateQty,
-        per_devices: templatePerDevices,
-      }),
+  device_id: selectedDevice.id,
+  accessory_bin_id: templateAccessoryId,
+  quantity: templateQty,
+  per_devices: templatePerDevices,
+}),
     });
 
     setTemplateAccessoryId("");
@@ -217,48 +216,68 @@ export default function BinsPage() {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <select
-              value={templateAccessoryId}
-              onChange={(e) => setTemplateAccessoryId(e.target.value)}
-              className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
-            >
-              <option value="">Select accessory</option>
-              {templateAccessories.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </select>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">Accessory</label>
 
-            <input
-              type="number"
-              min={1}
-              value={templateQty}
-              onChange={(e) => setTemplateQty(Number(e.target.value))}
-              placeholder="Qty"
-              className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
-            />
+              <select
+                value={templateAccessoryId}
+                onChange={(e) => setTemplateAccessoryId(e.target.value)}
+                className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+              >
+                <option value="">Select accessory...</option>
+                {templateAccessories.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name}
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            <input
-              type="number"
-              min={1}
-              value={templatePerDevices}
-              onChange={(e) => setTemplatePerDevices(Number(e.target.value))}
-              placeholder="Per devices"
-              className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
-            />
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">
+                Quantity to include
+              </label>
 
-            <button
-              onClick={saveTemplate}
-              disabled={loading || !templateAccessoryId}
-              className="bg-cyan-600 hover:bg-cyan-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
-            >
-              Save Rule
-            </button>
+              <input
+                type="number"
+                min={1}
+                value={templateQty}
+                onChange={(e) => setTemplateQty(Number(e.target.value))}
+                className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-slate-400">
+                For every X devices
+              </label>
+
+              <input
+                type="number"
+                min={1}
+                value={templatePerDevices}
+                onChange={(e) => setTemplatePerDevices(Number(e.target.value))}
+                className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-transparent">Action</label>
+
+              <button
+                onClick={saveTemplate}
+                disabled={loading || !templateAccessoryId}
+                className="w-full bg-cyan-600 hover:bg-cyan-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+              >
+                Save Rule
+              </button>
+            </div>
           </div>
 
           <div className="text-xs text-slate-500">
-            Example: Qty 1 / Per devices 5 = 1 accessory for every 5 devices.
+            Example: If an order contains <b>25 devices</b> and the rule is{" "}
+            <b>1 every 5 devices</b>, StockPro will automatically remove{" "}
+            <b>5 accessories</b>.
           </div>
 
           <div className="border border-slate-800 rounded-xl overflow-hidden">
@@ -274,7 +293,7 @@ export default function BinsPage() {
               <tbody>
                 {templates.map((t) => (
                   <tr key={t.id} className="border-t border-slate-800">
-                    <td className="p-3">{t.accessories?.name || "-"}</td>
+                    <td className="p-3">{t.accessory_bins?.name || "-"}</td>
                     <td className="p-3 text-right">{t.quantity}</td>
                     <td className="p-3 text-right">{t.per_devices}</td>
                   </tr>
@@ -293,15 +312,20 @@ export default function BinsPage() {
         </div>
       )}
 
-      {/* ACCESSORY BINS = ACCESSORIES */}
+      {/* ACCESSORIES */}
       <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Accessory Bins / Accessories</div>
+        <div>
+          <div className="font-semibold text-lg">Accessories</div>
+          <div className="text-xs text-slate-500 mt-1">
+            Create accessories and define their stock levels.
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <input
             value={newAccessoryBin}
             onChange={(e) => setNewAccessoryBin(e.target.value)}
-            placeholder="Accessory name, e.g. Wipe..."
+            placeholder="Accessory name (QR Guide, Wipe...)"
             className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
           />
 
@@ -309,7 +333,7 @@ export default function BinsPage() {
             type="number"
             value={newAccessoryStock}
             onChange={(e) => setNewAccessoryStock(Number(e.target.value))}
-            placeholder="Current stock"
+            placeholder="Initial stock"
             className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
           />
 
@@ -317,7 +341,7 @@ export default function BinsPage() {
             type="number"
             value={newAccessoryMinStock}
             onChange={(e) => setNewAccessoryMinStock(Number(e.target.value))}
-            placeholder="Minimum stock"
+            placeholder="Minimum stock alert"
             className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
           />
 
@@ -326,7 +350,7 @@ export default function BinsPage() {
             disabled={loading || !newAccessoryBin.trim()}
             className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
           >
-            Add Accessory
+            Create Accessory
           </button>
         </div>
 

@@ -3,11 +3,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
-function statusOf(stock: number, min: number) {
-  if (stock <= 0) return "EMPTY";
-  if (min > 0 && stock <= min) return "LOW";
-  return "OK";
-}
+type Accessory = {
+  id: string;
+  name: string;
+  current_stock?: number;
+};
+
+type ManualLine = {
+  accessory_id: string;
+  qty: number;
+};
 
 export default function AccessoriesPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -15,87 +20,92 @@ export default function AccessoriesPage() {
   const [actor, setActor] = useState("unknown");
   const [actorId, setActorId] = useState<string | null>(null);
 
-  const [rows, setRows] = useState<any[]>([]);
+  const [shipmentRef, setShipmentRef] = useState("");
+  const [comment, setComment] = useState("");
+
+  const [accessories, setAccessories] = useState<Accessory[]>([]);
+  const [lines, setLines] = useState<ManualLine[]>([
+    { accessory_id: "", qty: 1 },
+  ]);
+
+  const [file, setFile] = useState<File | null>(null);
+  const [history, setHistory] = useState<any[]>([]);
   const [search, setSearch] = useState("");
-
-  const [name, setName] = useState("");
-  const [stock, setStock] = useState(0);
-  const [minStock, setMinStock] = useState(0);
-
-  const [adjustId, setAdjustId] = useState("");
-  const [movementType, setMovementType] = useState("IN");
-  const [qty, setQty] = useState(1);
-  const [note, setNote] = useState("");
 
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  async function loadUser() {
+    const { data } = await supabase.auth.getUser();
+    const user = data?.user;
+
+    if (user?.email) setActor(user.email);
+    if (user?.id) setActorId(user.id);
+  }
+
   async function loadAccessories() {
-    const res = await fetch(`/api/accessories/list?t=${Date.now()}`, {
+    const res = await fetch(`/api/accessory-bins/list?t=${Date.now()}`, {
       cache: "no-store",
     });
 
     const json = await res.json();
-
-    if (json.ok) setRows(json.rows || []);
-    else setErrorMsg(json.error || "Load failed");
+    if (json.ok) setAccessories(json.rows || []);
   }
 
-  useEffect(() => {
-    async function loadUser() {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-
-      if (user?.email) setActor(user.email);
-      if (user?.id) setActorId(user.id);
-    }
-
-    loadUser();
-    loadAccessories();
-  }, [supabase]);
-
-  async function createAccessory() {
-    setBusy(true);
-    setErrorMsg("");
-    setSuccessMsg("");
-
-    const res = await fetch("/api/accessories/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, stock, minimum_stock: minStock }),
+  async function loadHistory() {
+    const res = await fetch(`/api/accessories/outbound/history?t=${Date.now()}`, {
+      cache: "no-store",
     });
 
     const json = await res.json();
-    setBusy(false);
-
-    if (!json.ok) {
-      setErrorMsg(json.error || "Create failed");
-      return;
-    }
-
-    setName("");
-    setStock(0);
-    setMinStock(0);
-    setSuccessMsg("Accessory created");
-    await loadAccessories();
+    if (json.ok) setHistory(json.rows || []);
   }
 
-  async function adjustStock() {
+  useEffect(() => {
+    loadUser();
+    loadAccessories();
+    loadHistory();
+  }, []);
+
+  function updateLine(index: number, patch: Partial<ManualLine>) {
+    setLines((prev) =>
+      prev.map((line, i) => (i === index ? { ...line, ...patch } : line))
+    );
+  }
+
+  function addLine() {
+    setLines((prev) => [...prev, { accessory_id: "", qty: 1 }]);
+  }
+
+  function removeLine(index: number) {
+    setLines((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  async function submitManualOutbound() {
     setBusy(true);
     setErrorMsg("");
     setSuccessMsg("");
 
-    const res = await fetch("/api/accessories/adjust", {
+    const cleanLines = lines.filter(
+      (l) => l.accessory_id && Number(l.qty) > 0
+    );
+
+    if (cleanLines.length === 0) {
+      setBusy(false);
+      setErrorMsg("Add at least one accessory line.");
+      return;
+    }
+
+    const res = await fetch("/api/accessories/outbound/manual", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        accessory_id: adjustId,
-        qty,
-        movement_type: movementType,
+        shipment_ref: shipmentRef || null,
+        comment: comment || null,
         actor,
         actor_id: actorId,
-        note,
+        lines: cleanLines,
       }),
     });
 
@@ -103,30 +113,84 @@ export default function AccessoriesPage() {
     setBusy(false);
 
     if (!json.ok) {
-      setErrorMsg(json.error || "Adjust failed");
+      setErrorMsg(json.error || "Manual outbound failed");
       return;
     }
 
-    setAdjustId("");
-    setQty(1);
-    setNote("");
-    setSuccessMsg("Stock updated");
+    setSuccessMsg("Accessories outbound confirmed");
+    setLines([{ accessory_id: "", qty: 1 }]);
+    setShipmentRef("");
+    setComment("");
+
     await loadAccessories();
+    await loadHistory();
   }
 
-  const filtered = rows.filter((r) =>
-    r.name?.toLowerCase().includes(search.toLowerCase())
-  );
+  async function importExcelOutbound() {
+    if (!file) return;
+
+    setBusy(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("shipment_ref", shipmentRef || "");
+    form.append("comment", comment || "");
+    form.append("actor", actor);
+    form.append("actor_id", actorId || "");
+
+    const res = await fetch("/api/accessories/outbound/excel", {
+      method: "POST",
+      body: form,
+    });
+
+    const json = await res.json();
+    setBusy(false);
+
+    if (!json.ok) {
+      setErrorMsg(json.error || "Excel outbound failed");
+      return;
+    }
+
+    setSuccessMsg("Excel outbound imported");
+    setFile(null);
+    setShipmentRef("");
+    setComment("");
+
+    await loadAccessories();
+    await loadHistory();
+  }
+
+  const filteredHistory = history.filter((h) => {
+    const q = search.toLowerCase();
+
+    return (
+      h.shipment_ref?.toLowerCase().includes(q) ||
+      h.accessory_name?.toLowerCase().includes(q) ||
+      h.actor?.toLowerCase().includes(q) ||
+      h.comment?.toLowerCase().includes(q)
+    );
+  });
 
   return (
     <div className="space-y-10 max-w-6xl">
       <div>
-        <div className="text-xs text-slate-500">Inventory</div>
-        <h2 className="text-xl font-semibold">Accessories</h2>
+        <div className="text-xs text-slate-500">Accessories</div>
+        <h2 className="text-xl font-semibold">Accessories Outbound</h2>
         <p className="text-sm text-slate-400 mt-1">
-          Manage accessories stock without IMEI or serial number.
+          Manual outbound, Excel outbound and history for accessories.
         </p>
       </div>
+
+      {busy && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
+          <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl flex items-center gap-3 shadow-xl">
+            <div className="h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+            <div className="font-semibold text-sm">Processing...</div>
+          </div>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="bg-red-600/20 border border-red-500 text-red-300 px-4 py-3 rounded-xl text-sm">
@@ -140,128 +204,118 @@ export default function AccessoriesPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card-glow p-5 rounded-xl">
-          <div className="text-xs text-slate-400 mb-1">Total accessories</div>
-          <div className="text-3xl font-bold text-cyan-400">{rows.length}</div>
-        </div>
+      <div className="card-glow p-6 space-y-4">
+        <div className="font-semibold">Shipment</div>
 
-        <div className="card-glow p-5 rounded-xl">
-          <div className="text-xs text-slate-400 mb-1">Total stock qty</div>
-          <div className="text-3xl font-bold text-purple-400">
-            {rows.reduce((a, b) => a + Number(b.current_stock || 0), 0)}
-          </div>
-        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input
+            value={shipmentRef}
+            onChange={(e) => setShipmentRef(e.target.value)}
+            placeholder="Shipment reference..."
+            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          />
 
-        <div className="card-glow p-5 rounded-xl">
-          <div className="text-xs text-slate-400 mb-1">Low / Empty</div>
-          <div className="text-3xl font-bold text-orange-400">
-            {
-              rows.filter(
-                (r) =>
-                  statusOf(Number(r.current_stock || 0), Number(r.minimum_stock || 0)) !==
-                  "OK"
-              ).length
-            }
-          </div>
+          <input
+            value={comment}
+            onChange={(e) => setComment(e.target.value)}
+            placeholder="Comment optional..."
+            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          />
         </div>
       </div>
 
       <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">New Accessory</div>
+        <div className="font-semibold">Manual Outbound</div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <input
-            placeholder="Accessory name"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
+        <div className="space-y-3">
+          {lines.map((line, index) => (
+            <div
+              key={index}
+              className="grid grid-cols-1 md:grid-cols-[1fr_160px_100px] gap-3"
+            >
+              <select
+                value={line.accessory_id}
+                onChange={(e) =>
+                  updateLine(index, { accessory_id: e.target.value })
+                }
+                className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+              >
+                <option value="">Select accessory</option>
+                {accessories.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name} — stock {a.current_stock ?? 0}
+                  </option>
+                ))}
+              </select>
 
-          <input
-            type="number"
-            placeholder="Current stock"
-            value={stock}
-            onChange={(e) => setStock(Number(e.target.value))}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
+              <input
+                type="number"
+                min={1}
+                value={line.qty}
+                onChange={(e) =>
+                  updateLine(index, { qty: Number(e.target.value) })
+                }
+                className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+              />
 
-          <input
-            type="number"
-            placeholder="Minimum stock"
-            value={minStock}
-            onChange={(e) => setMinStock(Number(e.target.value))}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
+              <button
+                onClick={() => removeLine(index)}
+                disabled={lines.length === 1}
+                className="rounded-xl border border-slate-800 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-40"
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className="flex gap-3">
+          <button
+            onClick={addLine}
+            className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+          >
+            + Add line
+          </button>
 
           <button
-            onClick={createAccessory}
-            disabled={busy || !name}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-40"
+            onClick={submitManualOutbound}
+            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold"
           >
-            Add Accessory
+            Submit Shipment
           </button>
         </div>
       </div>
 
       <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Adjust Stock</div>
+        <div className="font-semibold">Excel Outbound</div>
 
-        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <select
-            value={adjustId}
-            onChange={(e) => setAdjustId(e.target.value)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          >
-            <option value="">Select accessory</option>
-            {rows.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.name}
-              </option>
-            ))}
-          </select>
-
-          <select
-            value={movementType}
-            onChange={(e) => setMovementType(e.target.value)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          >
-            <option value="IN">IN</option>
-            <option value="OUT">OUT</option>
-            <option value="ADJUSTMENT">ADJUSTMENT</option>
-          </select>
-
+        <div className="flex flex-wrap gap-3 items-center">
           <input
-            type="number"
-            value={qty}
-            min={0}
-            onChange={(e) => setQty(Number(e.target.value))}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
-
-          <input
-            placeholder="Note"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />
 
           <button
-            onClick={adjustStock}
-            disabled={busy || !adjustId}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40"
+            onClick={importExcelOutbound}
+            disabled={!file}
+            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
           >
-            Update Stock
+            Import Excel
           </button>
+        </div>
+
+        <div className="text-xs text-slate-500">
+          Expected columns: Accessory, Qty.
         </div>
       </div>
 
       <div className="card-glow p-6 space-y-4">
         <div className="flex justify-between items-center">
-          <div className="font-semibold">Accessories Stock</div>
+          <div className="font-semibold">History</div>
 
           <input
-            placeholder="Search accessory..."
+            placeholder="Search history..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -272,48 +326,36 @@ export default function AccessoriesPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-950/50">
               <tr>
+                <th className="p-2 text-left">Date</th>
+                <th className="p-2 text-left">Shipment</th>
                 <th className="p-2 text-left">Accessory</th>
-                <th className="p-2 text-right">Stock</th>
-                <th className="p-2 text-right">Minimum</th>
-                <th className="p-2 text-right">Status</th>
+                <th className="p-2 text-right">Qty</th>
+                <th className="p-2 text-left">User</th>
+                <th className="p-2 text-left">Comment</th>
               </tr>
             </thead>
 
             <tbody>
-              {filtered.length === 0 && (
+              {filteredHistory.map((h) => (
+                <tr key={h.id} className="border-t border-slate-800">
+                  <td className="p-2">
+                    {new Date(h.created_at).toLocaleString()}
+                  </td>
+                  <td className="p-2">{h.shipment_ref || "-"}</td>
+                  <td className="p-2">{h.accessory_name || "-"}</td>
+                  <td className="p-2 text-right">{h.qty}</td>
+                  <td className="p-2">{h.actor || "-"}</td>
+                  <td className="p-2">{h.comment || "-"}</td>
+                </tr>
+              ))}
+
+              {filteredHistory.length === 0 && (
                 <tr>
-                  <td colSpan={4} className="p-4 text-center text-slate-500">
-                    No accessories yet.
+                  <td colSpan={6} className="p-4 text-center text-slate-500">
+                    No history yet.
                   </td>
                 </tr>
               )}
-
-              {filtered.map((r) => {
-                const stock = Number(r.current_stock || 0);
-                const min = Number(r.minimum_stock || 0);
-                const status = statusOf(stock, min);
-
-                return (
-                  <tr key={r.id} className="border-t border-slate-800">
-                    <td className="p-2 font-semibold">{r.name}</td>
-                    <td className="p-2 text-right">{stock}</td>
-                    <td className="p-2 text-right">{min}</td>
-                    <td className="p-2 text-right">
-                      <span
-                        className={`px-2 py-1 rounded text-xs font-semibold ${
-                          status === "OK"
-                            ? "bg-green-500/20 text-green-400"
-                            : status === "LOW"
-                            ? "bg-yellow-500/20 text-yellow-400"
-                            : "bg-red-500/20 text-red-400"
-                        }`}
-                      >
-                        {status}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
             </tbody>
           </table>
         </div>

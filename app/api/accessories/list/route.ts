@@ -11,19 +11,20 @@ const supabase = createClient(
 
 export async function GET() {
   const { data, error } = await supabase
-    .from("accessories")
-    .select(`
-      *,
-      accessory_bins (
-        id,
-        name
-      )
-    `)
+    .from("accessory_bins")
+    .select("*")
+    .eq("active", true)
     .order("name");
 
   if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 }
+    );
   }
 
-  return NextResponse.json({ ok: true, rows: data || [] });
+  return NextResponse.json({
+    ok: true,
+    rows: data || [],
+  });
 }

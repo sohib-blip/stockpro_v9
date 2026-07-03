@@ -20,26 +20,35 @@ export async function GET(req: Request) {
     );
   }
 
-  const [{ data: device }, { data: accessories }, { data: templates, error }] =
-    await Promise.all([
-      supabase.from("bins").select("id, name").eq("id", deviceId).single(),
-      supabase.from("accessories").select("id, name").eq("active", true).order("name"),
-      supabase
-        .from("device_accessory_templates")
-        .select(`
+  const [
+    { data: device },
+    { data: accessories },
+    { data: templates, error },
+  ] = await Promise.all([
+    supabase.from("bins").select("id, name").eq("id", deviceId).single(),
+
+    supabase
+      .from("accessory_bins")
+      .select("id, name")
+      .eq("active", true)
+      .order("name"),
+
+    supabase
+      .from("device_accessory_templates")
+      .select(`
+        id,
+        device_id,
+        accessory_bin_id,
+        quantity,
+        per_devices,
+        accessory_bins (
           id,
-          device_id,
-          accessory_id,
-          quantity,
-          per_devices,
-          accessories (
-            id,
-            name
-          )
-        `)
-        .eq("device_id", deviceId)
-        .order("created_at", { ascending: false }),
-    ]);
+          name
+        )
+      `)
+      .eq("device_id", deviceId)
+      .order("created_at", { ascending: false }),
+  ]);
 
   if (error) {
     return NextResponse.json(

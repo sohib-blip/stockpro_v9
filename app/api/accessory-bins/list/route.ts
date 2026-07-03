@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -12,13 +13,19 @@ const supabase = createClient(
 export async function GET() {
   const { data, error } = await supabase
     .from("accessory_bins")
-    .select("*")
+    .select("id, name, active, created_at, current_stock, minimum_stock")
     .eq("active", true)
-    .order("name");
+    .order("name", { ascending: true });
 
   if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 }
+    );
   }
 
-  return NextResponse.json({ ok: true, rows: data || [] });
+  return NextResponse.json({
+    ok: true,
+    rows: data || [],
+  });
 }

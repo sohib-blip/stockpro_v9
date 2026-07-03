@@ -252,6 +252,31 @@ export default function BinsPage() {
     await openTemplate(selectedDevice);
   }
 
+  async function deleteTemplate(id: string) {
+    if (!selectedDevice) return;
+
+    const ok = confirm("Delete this template rule?");
+    if (!ok) return;
+
+    setLoading(true);
+
+    const res = await fetch("/api/bins/templates/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+
+    const json = await res.json();
+    setLoading(false);
+
+    if (!json.ok) {
+      alert(json.error || "Delete template failed");
+      return;
+    }
+
+    await openTemplate(selectedDevice);
+  }
+
   useEffect(() => {
     loadBins();
     loadAccessoryBins();
@@ -267,7 +292,6 @@ export default function BinsPage() {
     <div className="space-y-10 max-w-6xl">
       <h1 className="text-xl font-semibold">Bins</h1>
 
-      {/* DEVICE BINS */}
       <div className="card-glow p-6 space-y-4">
         <div className="font-semibold">Device Bins</div>
 
@@ -331,13 +355,10 @@ export default function BinsPage() {
         </div>
       </div>
 
-      {/* TEMPLATE EDITOR */}
       {selectedDevice && (
         <div className="card-glow p-6 space-y-4">
           <div className="flex items-center justify-between">
-            <div className="font-semibold">
-              Template for {selectedDevice.name}
-            </div>
+            <div className="font-semibold">Template for {selectedDevice.name}</div>
 
             <button
               onClick={() => setSelectedDevice(null)}
@@ -366,9 +387,7 @@ export default function BinsPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">
-                Quantity to include
-              </label>
+              <label className="text-xs text-slate-400">Quantity to include</label>
 
               <input
                 type="number"
@@ -380,9 +399,7 @@ export default function BinsPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">
-                For every X devices
-              </label>
+              <label className="text-xs text-slate-400">For every X devices</label>
 
               <input
                 type="number"
@@ -499,12 +516,21 @@ export default function BinsPage() {
                             </button>
                           </>
                         ) : (
-                          <button
-                            onClick={() => startEditTemplate(t)}
-                            className="text-cyan-400 hover:text-cyan-300"
-                          >
-                            Edit
-                          </button>
+                          <>
+                            <button
+                              onClick={() => startEditTemplate(t)}
+                              className="text-cyan-400 hover:text-cyan-300"
+                            >
+                              Edit
+                            </button>
+
+                            <button
+                              onClick={() => deleteTemplate(t.id)}
+                              className="text-rose-400 hover:text-rose-500"
+                            >
+                              Delete
+                            </button>
+                          </>
                         )}
                       </td>
                     </tr>
@@ -524,7 +550,6 @@ export default function BinsPage() {
         </div>
       )}
 
-      {/* ACCESSORIES */}
       <div className="card-glow p-6 space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>

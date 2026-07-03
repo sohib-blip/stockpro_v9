@@ -177,28 +177,36 @@ export default function BinsPage() {
   }
 
   async function saveTemplate() {
-    if (!selectedDevice || !templateAccessoryId) return;
+  if (!selectedDevice || !templateAccessoryId) return;
 
-    setLoading(true);
+  setLoading(true);
 
-    await fetch("/api/bins/templates/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        device_id: selectedDevice.id,
-        accessory_bin_id: templateAccessoryId,
-        quantity: templateQty,
-        per_devices: templatePerDevices,
-      }),
-    });
+  const res = await fetch("/api/bins/templates/save", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      device_id: selectedDevice.id,
+      accessory_bin_id: templateAccessoryId,
+      quantity: templateQty,
+      per_devices: templatePerDevices,
+    }),
+  });
 
-    setTemplateAccessoryId("");
-    setTemplateQty(1);
-    setTemplatePerDevices(1);
-    setLoading(false);
+  const json = await res.json();
 
-    openTemplate(selectedDevice);
+  setLoading(false);
+
+  if (!json.ok) {
+    alert(json.error || "Save template failed");
+    return;
   }
+
+  setTemplateAccessoryId("");
+  setTemplateQty(1);
+  setTemplatePerDevices(1);
+
+  await openTemplate(selectedDevice);
+}
 
   useEffect(() => {
     loadBins();

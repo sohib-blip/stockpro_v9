@@ -40,13 +40,17 @@ function getMonthRange(periodMonth?: string | null) {
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("fr-BE");
+  return new Date(value).toLocaleDateString("fr-BE", {
+    timeZone: "Europe/Brussels",
+  });
 }
 
 function formatTime(value: string) {
   return new Date(value).toLocaleTimeString("fr-BE", {
+    timeZone: "Europe/Brussels",
     hour: "2-digit",
     minute: "2-digit",
+    hour12: false,
   });
 }
 

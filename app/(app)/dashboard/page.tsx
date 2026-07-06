@@ -134,7 +134,7 @@ if (salesJson.ok){
   </a>
 
   <button
-  onClick={() => window.open("/api/accessories/export", "_blank")}
+  onClick={() => window.open("/api/accessory-bins/export", "_blank")}
   className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
 >
   Export Accessories

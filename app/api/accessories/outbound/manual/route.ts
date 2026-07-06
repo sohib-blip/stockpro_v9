@@ -10,7 +10,8 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { shipment_ref, comment, actor, actor_id, lines } = await req.json();
+    const { shipment_ref, comment, actor, actor_id, lines, preview } =
+  await req.json();
 
     if (!Array.isArray(lines) || lines.length === 0) {
       return NextResponse.json({ ok: false, error: "No lines provided" }, { status: 400 });
@@ -52,6 +53,24 @@ export async function POST(req: Request) {
       }
     }
 
+if (String(preview || "") === "1") {
+  return NextResponse.json({
+    ok: true,
+    preview: true,
+    rows: (accessories || []).map((item: any) => {
+      const qty = grouped.get(item.id) || 0;
+
+      return {
+        accessory_bin_id: item.id,
+        accessory: item.name,
+        qty,
+        current_stock: Number(item.current_stock || 0),
+        after_stock: Number(item.current_stock || 0) - qty,
+      };
+    }),
+  });
+}
+
     for (const item of accessories || []) {
       const qty = grouped.get(item.id) || 0;
       const newStock = Number(item.current_stock || 0) - qty;
@@ -70,7 +89,7 @@ export async function POST(req: Request) {
           qty,
           movement_type: "OUT",
           shipment_ref: shipment_ref || null,
-          comment: comment || null,
+          note: comment || null,
           actor: actor || "unknown",
           actor_id: actor_id || null,
           source: "manual",

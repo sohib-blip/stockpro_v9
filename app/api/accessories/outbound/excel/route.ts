@@ -182,8 +182,6 @@ export async function POST(req: Request) {
 );
 
     for (const row of finalRows) {
-      
-
       if (Number(row.accessory.current_stock || 0) < row.qty) {
         return NextResponse.json(
           {
@@ -194,6 +192,22 @@ export async function POST(req: Request) {
         );
       }
     }
+
+const preview = String(form.get("preview") || "") === "1";
+
+if (preview) {
+  return NextResponse.json({
+    ok: true,
+    preview: true,
+    rows: finalRows.map((r) => ({
+      accessory_bin_id: r.accessory_bin_id,
+      accessory: r.accessory.name,
+      qty: r.qty,
+      current_stock: Number(r.accessory.current_stock || 0),
+      after_stock: Number(r.accessory.current_stock || 0) - r.qty,
+    })),
+  });
+}
 
     const operation_id = crypto.randomUUID();
 

@@ -14,6 +14,14 @@ type ManualLine = {
   qty: number;
 };
 
+type PreviewRow = {
+  accessory_bin_id: string;
+  accessory: string;
+  qty: number;
+  current_stock: number;
+  after_stock: number;
+};
+
 export default function AccessoriesPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
@@ -36,6 +44,12 @@ export default function AccessoriesPage() {
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewType, setPreviewType] = useState<"manual" | "excel" | null>(
+    null
+  );
+  const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
+
   async function loadUser() {
     const { data } = await supabase.auth.getUser();
     const user = data?.user;
@@ -54,9 +68,10 @@ export default function AccessoriesPage() {
   }
 
   async function loadHistory() {
-    const res = await fetch(`/api/accessories/outbound/history?t=${Date.now()}`, {
-      cache: "no-store",
-    });
+    const res = await fetch(
+      `/api/accessories/outbound/history?t=${Date.now()}`,
+      { cache: "no-store" }
+    );
 
     const json = await res.json();
     if (json.ok) setHistory(json.rows || []);
@@ -82,7 +97,13 @@ export default function AccessoriesPage() {
     setLines((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function submitManualOutbound() {
+  function closePreview() {
+    setPreviewOpen(false);
+    setPreviewType(null);
+    setPreviewRows([]);
+  }
+
+  async function previewManualOutbound() {
     setBusy(true);
     setErrorMsg("");
     setSuccessMsg("");
@@ -106,6 +127,42 @@ export default function AccessoriesPage() {
         actor,
         actor_id: actorId,
         lines: cleanLines,
+        preview: "1",
+      }),
+    });
+
+    const json = await res.json();
+    setBusy(false);
+
+    if (!json.ok) {
+      setErrorMsg(json.error || "Manual preview failed");
+      return;
+    }
+
+    setPreviewRows(json.rows || []);
+    setPreviewType("manual");
+    setPreviewOpen(true);
+  }
+
+  async function confirmManualOutbound() {
+    setBusy(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    const cleanLines = lines.filter(
+      (l) => l.accessory_id && Number(l.qty) > 0
+    );
+
+    const res = await fetch("/api/accessories/outbound/manual", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        shipment_ref: shipmentRef || null,
+        comment: comment || null,
+        actor,
+        actor_id: actorId,
+        lines: cleanLines,
+        preview: "0",
       }),
     });
 
@@ -117,6 +174,7 @@ export default function AccessoriesPage() {
       return;
     }
 
+    closePreview();
     setSuccessMsg("Accessories outbound confirmed");
     setLines([{ accessory_id: "", qty: 1 }]);
     setShipmentRef("");
@@ -126,7 +184,7 @@ export default function AccessoriesPage() {
     await loadHistory();
   }
 
-  async function importExcelOutbound() {
+  async function previewExcelOutbound() {
     if (!file) return;
 
     setBusy(true);
@@ -139,6 +197,40 @@ export default function AccessoriesPage() {
     form.append("comment", comment || "");
     form.append("actor", actor);
     form.append("actor_id", actorId || "");
+    form.append("preview", "1");
+
+    const res = await fetch("/api/accessories/outbound/excel", {
+      method: "POST",
+      body: form,
+    });
+
+    const json = await res.json();
+    setBusy(false);
+
+    if (!json.ok) {
+      setErrorMsg(json.error || "Excel preview failed");
+      return;
+    }
+
+    setPreviewRows(json.rows || []);
+    setPreviewType("excel");
+    setPreviewOpen(true);
+  }
+
+  async function confirmExcelOutbound() {
+    if (!file) return;
+
+    setBusy(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    const form = new FormData();
+    form.append("file", file);
+    form.append("shipment_ref", shipmentRef || "");
+    form.append("comment", comment || "");
+    form.append("actor", actor);
+    form.append("actor_id", actorId || "");
+    form.append("preview", "0");
 
     const res = await fetch("/api/accessories/outbound/excel", {
       method: "POST",
@@ -153,6 +245,7 @@ export default function AccessoriesPage() {
       return;
     }
 
+    closePreview();
     setSuccessMsg("Excel outbound imported");
     setFile(null);
     setShipmentRef("");
@@ -162,6 +255,11 @@ export default function AccessoriesPage() {
     await loadHistory();
   }
 
+  async function confirmPreview() {
+    if (previewType === "manual") await confirmManualOutbound();
+    if (previewType === "excel") await confirmExcelOutbound();
+  }
+
   const filteredHistory = history.filter((h) => {
     const q = search.toLowerCase();
 
@@ -169,12 +267,13 @@ export default function AccessoriesPage() {
       h.shipment_ref?.toLowerCase().includes(q) ||
       h.accessory_name?.toLowerCase().includes(q) ||
       h.actor?.toLowerCase().includes(q) ||
-      h.comment?.toLowerCase().includes(q)
+      h.comment?.toLowerCase().includes(q) ||
+      h.note?.toLowerCase().includes(q)
     );
   });
 
   return (
-    <div className="space-y-10 max-w-6xl">
+        <div className="space-y-10 max-w-6xl">
       <div>
         <div className="text-xs text-slate-500">Accessories</div>
         <h2 className="text-xl font-semibold">Accessories Outbound</h2>
@@ -188,6 +287,89 @@ export default function AccessoriesPage() {
           <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl flex items-center gap-3 shadow-xl">
             <div className="h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
             <div className="font-semibold text-sm">Processing...</div>
+          </div>
+        </div>
+      )}
+
+      {previewOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+              <div>
+                <div className="text-xs text-slate-500">Preview</div>
+                <div className="font-semibold text-lg">
+                  Confirm accessories outbound
+                </div>
+              </div>
+
+              <button
+                onClick={closePreview}
+                className="text-slate-400 hover:text-slate-200 text-sm"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="p-5 space-y-4">
+              <div className="text-sm text-slate-400">
+                Please review the stock changes before confirming.
+              </div>
+
+              <div className="border border-slate-800 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-900">
+                    <tr>
+                      <th className="p-3 text-left">Accessory</th>
+                      <th className="p-3 text-right">Qty</th>
+                      <th className="p-3 text-right">Current stock</th>
+                      <th className="p-3 text-right">After</th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {previewRows.map((row) => (
+                      <tr
+                        key={row.accessory_bin_id}
+                        className="border-t border-slate-800"
+                      >
+                        <td className="p-3 font-semibold">{row.accessory}</td>
+                        <td className="p-3 text-right">{row.qty}</td>
+                        <td className="p-3 text-right">{row.current_stock}</td>
+                        <td className="p-3 text-right">{row.after_stock}</td>
+                      </tr>
+                    ))}
+
+                    {previewRows.length === 0 && (
+                      <tr>
+                        <td
+                          colSpan={4}
+                          className="p-4 text-center text-slate-500"
+                        >
+                          No preview rows.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  onClick={closePreview}
+                  className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  onClick={confirmPreview}
+                  disabled={previewRows.length === 0}
+                  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                >
+                  Confirm outbound
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -278,10 +460,10 @@ export default function AccessoriesPage() {
           </button>
 
           <button
-            onClick={submitManualOutbound}
+            onClick={previewManualOutbound}
             className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold"
           >
-            Submit Shipment
+            Preview Shipment
           </button>
         </div>
       </div>
@@ -297,16 +479,16 @@ export default function AccessoriesPage() {
           />
 
           <button
-            onClick={importExcelOutbound}
+            onClick={previewExcelOutbound}
             disabled={!file}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
           >
-            Import Excel
+            Preview Excel
           </button>
         </div>
 
         <div className="text-xs text-slate-500">
-          Expected columns: Accessory, Qty.
+          Reads IMEI and Item Type, then calculates accessories automatically.
         </div>
       </div>
 
@@ -345,7 +527,7 @@ export default function AccessoriesPage() {
                   <td className="p-2">{h.accessory_name || "-"}</td>
                   <td className="p-2 text-right">{h.qty}</td>
                   <td className="p-2">{h.actor || "-"}</td>
-                  <td className="p-2">{h.comment || "-"}</td>
+                  <td className="p-2">{h.comment || h.note || "-"}</td>
                 </tr>
               ))}
 

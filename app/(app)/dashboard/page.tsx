@@ -132,6 +132,13 @@ if (salesJson.ok){
   >
     Export Count Sheet
   </a>
+
+  <a
+    href="/api/accessories/export"
+    className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+  >
+    Export Accessories
+  </a>
 </div>
 
 <h1 className="text-3xl font-semibold tracking-tight">

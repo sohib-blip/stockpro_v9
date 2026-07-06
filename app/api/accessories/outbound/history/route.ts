@@ -30,7 +30,7 @@ export async function GET() {
       `)
       .eq("movement_type", "OUT")
       .order("created_at", { ascending: false })
-      .limit(200);
+      .limit(50);
 
     if (error) throw error;
 

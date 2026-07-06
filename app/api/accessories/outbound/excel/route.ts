@@ -13,6 +13,10 @@ function norm(value: any) {
   return String(value || "").trim().toLowerCase();
 }
 
+function cleanImei(value: any) {
+  return String(value || "").replace(/\D/g, "").trim();
+}
+
 export async function POST(req: Request) {
   try {
     const form = await req.formData();
@@ -24,92 +28,167 @@ export async function POST(req: Request) {
     const actor_id = String(form.get("actor_id") || "");
 
     if (!file) {
-      return NextResponse.json({ ok: false, error: "No file uploaded" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "No file uploaded" },
+        { status: 400 }
+      );
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const workbook = XLSX.read(buffer, { type: "buffer", raw: false });
 
-    const grouped = new Map<string, number>();
+    const imeis = new Set<string>();
+    const itemTypes: string[] = [];
 
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
-
-      const rows = XLSX.utils.sheet_to_json<any>(sheet, {
+      const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
+        header: 1,
         raw: false,
         defval: "",
+        blankrows: false,
       });
 
-      for (const row of rows) {
-        const keys = Object.keys(row);
+      let headerIndex = -1;
+      let imeiIndex = -1;
+      let itemTypeIndex = -1;
 
-        const accessoryKey = keys.find((k) =>
-          ["accessory", "accessories", "item", "items", "name"].includes(norm(k))
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i].map(norm);
+
+        imeiIndex = row.findIndex((c) =>
+          ["imei", "imei / id", "imei/id", "imei id"].includes(c)
         );
 
-        const qtyKey = keys.find((k) =>
-          ["qty", "quantity", "amount"].includes(norm(k))
+        itemTypeIndex = row.findIndex((c) =>
+          ["item type", "itemtype", "type"].includes(c)
         );
 
-        if (!accessoryKey) continue;
+        if (imeiIndex >= 0 || itemTypeIndex >= 0) {
+          headerIndex = i;
+          break;
+        }
+      }
 
-        const accessoryName = String(row[accessoryKey] || "").trim();
-        const qty = qtyKey ? Number(row[qtyKey] || 0) : 1;
+      if (headerIndex === -1) continue;
 
-        if (!accessoryName || qty <= 0) continue;
+      for (let i = headerIndex + 1; i < rows.length; i++) {
+        const row = rows[i];
 
-        grouped.set(
-          norm(accessoryName),
-          (grouped.get(norm(accessoryName)) || 0) + qty
-        );
+        if (imeiIndex >= 0) {
+          const imei = cleanImei(row[imeiIndex]);
+          if (imei) imeis.add(imei);
+        }
+
+        if (itemTypeIndex >= 0) {
+          const itemType = String(row[itemTypeIndex] || "").trim();
+          if (itemType) itemTypes.push(itemType);
+        }
       }
     }
 
-    if (grouped.size === 0) {
-      return NextResponse.json(
-        { ok: false, error: "No valid accessories found in Excel. Expected columns: Accessory, Qty." },
-        { status: 400 }
-      );
-    }
-
-    const { data: accessories, error } = await supabase
+    const { data: accessoryBins, error: accessoryError } = await supabase
       .from("accessory_bins")
       .select("id, name, current_stock")
       .eq("active", true);
 
-    if (error) throw error;
+    if (accessoryError) throw accessoryError;
 
     const accessoryMap = new Map(
-      (accessories || []).map((a: any) => [norm(a.name), a])
+      (accessoryBins || []).map((a: any) => [norm(a.name), a])
     );
 
-    const matched: any[] = [];
-    const unknown: string[] = [];
+    const accessoryQtyMap = new Map<string, number>();
 
-    for (const [name, qty] of grouped.entries()) {
-      const item = accessoryMap.get(name);
+    for (const itemType of itemTypes) {
+      const accessory = accessoryMap.get(norm(itemType));
+      if (!accessory) continue;
 
-      if (!item) {
-        unknown.push(name);
-        continue;
-      }
-
-      matched.push({ item, qty });
+      accessoryQtyMap.set(
+        accessory.id,
+        (accessoryQtyMap.get(accessory.id) || 0) + 1
+      );
     }
 
-    if (unknown.length > 0) {
+    if (imeis.size > 0) {
+      const { data: items, error: itemsError } = await supabase
+        .from("items")
+        .select("imei, device_id")
+        .in("imei", Array.from(imeis));
+
+      if (itemsError) throw itemsError;
+
+      const deviceCountMap = new Map<string, number>();
+
+      for (const item of items || []) {
+        if (!item.device_id) continue;
+
+        deviceCountMap.set(
+          item.device_id,
+          (deviceCountMap.get(item.device_id) || 0) + 1
+        );
+      }
+
+      if (deviceCountMap.size > 0) {
+        const { data: templates, error: templateError } = await supabase
+          .from("device_accessory_templates")
+          .select("device_id, accessory_bin_id, quantity, per_devices")
+          .in("device_id", Array.from(deviceCountMap.keys()));
+
+        if (templateError) throw templateError;
+
+        for (const template of templates || []) {
+          const deviceCount = deviceCountMap.get(template.device_id) || 0;
+          const qty = Number(template.quantity || 1);
+          const perDevices = Number(template.per_devices || 1);
+
+          const needed = Math.ceil(deviceCount / perDevices) * qty;
+
+          accessoryQtyMap.set(
+            template.accessory_bin_id,
+            (accessoryQtyMap.get(template.accessory_bin_id) || 0) + needed
+          );
+        }
+      }
+    }
+
+    if (accessoryQtyMap.size === 0) {
       return NextResponse.json(
-        { ok: false, error: `Unknown accessories: ${unknown.join(", ")}` },
+        {
+          ok: false,
+          error:
+            "No accessories to remove. No matching IMEI templates or Item Type accessories found.",
+        },
         { status: 400 }
       );
     }
 
-    for (const row of matched) {
-      if (Number(row.item.current_stock || 0) < row.qty) {
+    const finalRows = Array.from(accessoryQtyMap.entries()).map(
+  ([accessory_bin_id, qty]) => {
+    const accessory = (accessoryBins || []).find(
+      (a: any) => a.id === accessory_bin_id
+    );
+
+    if (!accessory) {
+      throw new Error(`Accessory not found: ${accessory_bin_id}`);
+    }
+
+    return {
+      accessory,
+      accessory_bin_id,
+      qty,
+    };
+  }
+);
+
+    for (const row of finalRows) {
+      
+
+      if (Number(row.accessory.current_stock || 0) < row.qty) {
         return NextResponse.json(
           {
             ok: false,
-            error: `Not enough stock for ${row.item.name}. Stock: ${row.item.current_stock}, needed: ${row.qty}`,
+            error: `Not enough stock for ${row.accessory.name}. Stock: ${row.accessory.current_stock}, needed: ${row.qty}`,
           },
           { status: 400 }
         );
@@ -118,24 +197,24 @@ export async function POST(req: Request) {
 
     const operation_id = crypto.randomUUID();
 
-    for (const row of matched) {
-      const newStock = Number(row.item.current_stock || 0) - row.qty;
+    for (const row of finalRows) {
+      const newStock = Number(row.accessory.current_stock || 0) - row.qty;
 
       const { error: updateError } = await supabase
         .from("accessory_bins")
         .update({ current_stock: newStock })
-        .eq("id", row.item.id);
+        .eq("id", row.accessory_bin_id);
 
       if (updateError) throw updateError;
 
       const { error: moveError } = await supabase
         .from("accessory_movements")
         .insert({
-          accessory_bin_id: row.item.id,
+          accessory_bin_id: row.accessory_bin_id,
           qty: row.qty,
           movement_type: "OUT",
           shipment_ref: shipment_ref || null,
-          comment: comment || null,
+          note: comment || null,
           actor,
           actor_id: actor_id || null,
           source: "excel",
@@ -145,7 +224,14 @@ export async function POST(req: Request) {
       if (moveError) throw moveError;
     }
 
-    return NextResponse.json({ ok: true, operation_id });
+    return NextResponse.json({
+      ok: true,
+      operation_id,
+      removed: finalRows.map((r) => ({
+        accessory: r.accessory.name,
+        qty: r.qty,
+      })),
+    });
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Excel outbound failed" },

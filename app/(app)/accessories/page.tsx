@@ -145,7 +145,6 @@ export default function AccessoriesPage() {
   }
 
   async function confirmManualOutbound() {
-    setBusy(true);
     setErrorMsg("");
     setSuccessMsg("");
 
@@ -167,7 +166,6 @@ export default function AccessoriesPage() {
     });
 
     const json = await res.json();
-    setBusy(false);
 
     if (!json.ok) {
       setErrorMsg(json.error || "Manual outbound failed");
@@ -220,7 +218,6 @@ export default function AccessoriesPage() {
   async function confirmExcelOutbound() {
     if (!file) return;
 
-    setBusy(true);
     setErrorMsg("");
     setSuccessMsg("");
 
@@ -238,7 +235,6 @@ export default function AccessoriesPage() {
     });
 
     const json = await res.json();
-    setBusy(false);
 
     if (!json.ok) {
       setErrorMsg(json.error || "Excel outbound failed");
@@ -256,9 +252,20 @@ export default function AccessoriesPage() {
   }
 
   async function confirmPreview() {
-    if (previewType === "manual") await confirmManualOutbound();
-    if (previewType === "excel") await confirmExcelOutbound();
+  if (busy) return;
+
+  setBusy(true);
+
+  try {
+    if (previewType === "manual") {
+      await confirmManualOutbound();
+    } else if (previewType === "excel") {
+      await confirmExcelOutbound();
+    }
+  } finally {
+    setBusy(false);
   }
+}
 
   const filteredHistory = history.filter((h) => {
     const q = search.toLowerCase();
@@ -354,20 +361,27 @@ export default function AccessoriesPage() {
               </div>
 
               <div className="flex justify-end gap-3">
-                <button
-                  onClick={closePreview}
-                  className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-                >
-                  Cancel
-                </button>
+  <div className="flex justify-end gap-3">
+  <button
+  onClick={closePreview}
+  disabled={busy}
+  className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
+>
+  Cancel
+</button>
 
-                <button
-                  onClick={confirmPreview}
-                  disabled={previewRows.length === 0}
-                  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
-                >
-                  Confirm outbound
-                </button>
+  <button
+  onClick={confirmPreview}
+  disabled={busy || previewRows.length === 0}
+  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[180px]"
+>
+  {busy && (
+    <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+  )}
+
+  {busy ? "Processing..." : "Confirm outbound"}
+</button>
+</div>
               </div>
             </div>
           </div>

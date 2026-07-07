@@ -91,7 +91,7 @@ export default function LoginPage() {
 
     const { data: profile, error: profileReadError } = await supabase
   .from("profiles")
-  .select("current_session_id")
+  .select("current_session_id,last_seen_at")
   .eq("user_id", user.id)
   .single();
 
@@ -101,13 +101,22 @@ export default function LoginPage() {
       return;
     }
 
-    if (profile?.current_session_id) {
-      setPendingUserId(user.id);
-      setPendingSessionId(sessionId);
-      setShowSessionDialog(true);
-      setLoading(false);
-      return;
-    }
+    const lastSeen = profile?.last_seen_at
+  ? new Date(profile.last_seen_at).getTime()
+  : 0;
+
+const isSessionReallyActive =
+  profile?.current_session_id &&
+  lastSeen &&
+  Date.now() - lastSeen < 2 * 60 * 1000;
+
+if (isSessionReallyActive) {
+  setPendingUserId(user.id);
+  setPendingSessionId(sessionId);
+  setShowSessionDialog(true);
+  setLoading(false);
+  return;
+}
 
     await completeLogin(user.id, sessionId);
   }

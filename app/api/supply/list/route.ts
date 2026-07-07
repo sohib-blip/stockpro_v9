@@ -12,18 +12,9 @@ const supabase = createClient(
 export async function GET() {
   try {
     const { data, error } = await supabase
-      .from("supplies")
-      .select(`
-        *,
-        supply_items (
-          id,
-          product_id,
-          product_type,
-          product_name,
-          qty
-        )
-      `)
-      .order("created_at", { ascending: false });
+  .from("supplies")
+  .select("*")
+  .order("created_at", { ascending: false });
 
     if (error) throw error;
 

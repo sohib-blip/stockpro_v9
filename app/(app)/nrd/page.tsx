@@ -100,20 +100,22 @@ export default function NRDPage() {
     }
   }
 
-  async function loadHistory(email = userEmail) {
-    if (!email) return;
+  async function loadHistory(email = userEmail, month = periodMonth) {
+  if (!email) return;
 
-    const res = await fetch(
-      `/api/nrd/history?user_email=${encodeURIComponent(email)}&t=${Date.now()}`,
-      { cache: "no-store" }
-    );
+  const res = await fetch(
+    `/api/nrd/history?user_email=${encodeURIComponent(
+      email
+    )}&period_month=${encodeURIComponent(month)}&t=${Date.now()}`,
+    { cache: "no-store" }
+  );
 
-    const json = await res.json();
+  const json = await res.json();
 
-    if (json.ok) {
-      setHistory(json.rows || []);
-    }
+  if (json.ok) {
+    setHistory(json.rows || []);
   }
+}
 
   async function loadStats(email = userEmail, month = periodMonth) {
     if (!email) return;
@@ -212,7 +214,7 @@ export default function NRDPage() {
     setSuccessMsg("Task stopped");
     setTimeout(() => setSuccessMsg(""), 2000);
 
-    await loadHistory(userEmail);
+    await loadHistory(userEmail, periodMonth);
     await loadStats(userEmail, periodMonth);
     await loadCurrent(userEmail);
   }
@@ -298,7 +300,7 @@ export default function NRDPage() {
 
           <button
             onClick={() => {
-              loadHistory(userEmail);
+              loadHistory(userEmail, periodMonth);
               loadStats(userEmail, periodMonth);
             }}
             disabled={busy || !userEmail}

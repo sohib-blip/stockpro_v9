@@ -10,5 +10,13 @@ export function createSupabaseBrowserClient() {
     );
   }
 
-  return createBrowserClient(url, anon);
+  return createBrowserClient(url, anon, {
+    auth: {
+      persistSession: true,
+      storage:
+        typeof window !== "undefined"
+          ? window.sessionStorage
+          : undefined,
+    },
+  });
 }

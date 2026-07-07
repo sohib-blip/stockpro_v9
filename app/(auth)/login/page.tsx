@@ -38,7 +38,7 @@ export default function LoginPage() {
         current_session_id: sessionId,
         last_seen_at: new Date().toISOString(),
       })
-      .eq("id", userId);
+      .eq("user_id", userId);
 
     if (profileError) {
       setLoading(false);
@@ -83,10 +83,10 @@ export default function LoginPage() {
     const sessionId = crypto.randomUUID();
 
     const { data: profile, error: profileReadError } = await supabase
-      .from("profiles")
-      .select("current_session_id")
-      .eq("id", user.id)
-      .single();
+  .from("profiles")
+  .select("current_session_id")
+  .eq("user_id", user.id)
+  .single();
 
     if (profileReadError) {
       setLoading(false);

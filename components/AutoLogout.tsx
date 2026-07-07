@@ -61,7 +61,7 @@ export default function AutoLogout() {
       const { data: profile, error } = await supabase
         .from("profiles")
         .select("current_session_id")
-        .eq("id", user.id)
+        .eq("user_id", user.id)
         .single();
 
       if (error || !profile) return;

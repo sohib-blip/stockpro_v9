@@ -208,13 +208,13 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
     const q = search.toLowerCase();
 
     const matchesSearch =
-      row.order_number?.toLowerCase().includes(q) ||
-      row.tracking_number?.toLowerCase().includes(q) ||
-      row.from_office?.toLowerCase().includes(q) ||
-      row.to_office?.toLowerCase().includes(q) ||
-      row.supply_items?.some((i: any) =>
-        i.product_name?.toLowerCase().includes(q)
-      );
+  row.order_number?.toLowerCase().includes(q) ||
+  row.tracking_number?.toLowerCase().includes(q) ||
+  row.from_office?.toLowerCase().includes(q) ||
+  row.to_office?.toLowerCase().includes(q) ||
+  (row.supply_items || []).some((i: any) =>
+    i.product_name?.toLowerCase().includes(q)
+  );
 
     const matchesStatus =
       statusFilter === "ALL" || row.status === statusFilter;

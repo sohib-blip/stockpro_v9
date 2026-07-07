@@ -18,19 +18,26 @@ export default function LoginPage() {
   const [pendingSessionId, setPendingSessionId] = useState("");
 
   useEffect(() => {
-    const check = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
+  const check = async () => {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-      if (session?.user) {
-        window.location.href = "/dashboard";
-      }
-    };
+    const localSessionId = window.sessionStorage.getItem("stockpro_session_id");
 
-    check();
-  }, [supabase]);
+    if (session?.user && localSessionId) {
+      window.location.href = "/dashboard";
+      return;
+    }
 
+    if (session?.user && !localSessionId) {
+      await supabase.auth.signOut();
+      return;
+    }
+  };
+
+  check();
+}, [supabase]);
   async function completeLogin(userId: string, sessionId: string) {
     const { error: profileError } = await supabase
       .from("profiles")

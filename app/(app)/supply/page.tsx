@@ -347,94 +347,126 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
       </div>
 
       <div className="card-glow p-6 rounded-xl overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left text-slate-400 border-b border-slate-800">
-              <th className="py-3">Order</th>
-              <th>Created</th>
-              <th>Edited</th>
-              <th>Route</th>
-              <th>Items</th>
-              <th className="text-right">Qty</th>
-              <th>Tracking</th>
-              <th>Status</th>
-              <th>Imported</th>
-              <th>Imported Date</th>
-              <th className="text-right">Actions</th>
-            </tr>
-          </thead>
+  <table className="w-full text-sm table-fixed">
+    <thead>
+      <tr className="text-left text-slate-400 border-b border-slate-800">
+        <th className="py-3 w-[180px]">Order</th>
+        <th className="w-[90px]">Created</th>
+        <th className="w-[90px]">Edited</th>
+        <th className="w-[90px]">Route</th>
+        <th className="w-[220px]">Items</th>
+        <th className="w-[70px] text-right">Qty</th>
+        <th className="w-[140px]">Tracking</th>
+        <th className="w-[110px]">Status</th>
+        <th className="w-[120px]">Import</th>
+        <th className="w-[110px]">Import date</th>
+        <th className="w-[100px] text-right">Actions</th>
+      </tr>
+    </thead>
 
-          <tbody>
-            {filteredRows.map((row) => (
-              <tr key={row.id} className="border-b border-slate-800/70">
-                <td className="py-3 font-semibold text-cyan-400">
-                  {row.order_number}
-                </td>
+    <tbody>
+      {filteredRows.map((row) => (
+        <tr key={row.id} className="border-b border-slate-800/70 align-top">
+          <td className="py-4 font-semibold text-cyan-400">
+            {row.order_number}
+          </td>
 
-                <td>{formatDate(row.created_at)}</td>
-                <td>{formatDate(row.updated_at)}</td>
+          <td className="text-slate-300">{formatDate(row.created_at)}</td>
+          <td className="text-slate-300">{formatDate(row.updated_at)}</td>
 
-                <td className="font-semibold">
-                  {officeFlag(row.from_office)} ➜ {officeFlag(row.to_office)}
-                </td>
+          <td>
+            <span className="font-semibold text-slate-100">
+              {row.from_office}
+            </span>
+            <span className="mx-2 text-slate-500">→</span>
+            <span className="font-semibold text-slate-100">
+              {row.to_office}
+            </span>
+          </td>
 
-                <td>
-                  {(row.supply_items || []).slice(0, 3).map((item: any) => (
-                    <div key={item.id}>
-                      {item.product_name}{" "}
-                      <span className="text-slate-500">×{item.qty}</span>
-                    </div>
-                  ))}
+          <td>
+            <div className="space-y-1">
+              {(row.supply_items || []).slice(0, 3).map((item: any) => (
+                <div key={item.id} className="leading-tight">
+                  <div className="font-semibold text-slate-100">
+                    {item.product_name}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {item.qty} pcs
+                  </div>
+                </div>
+              ))}
 
-                  {(row.supply_items || []).length > 3 && (
-                    <div className="text-xs text-slate-500">
-                      +{row.supply_items.length - 3} more
-                    </div>
-                  )}
-                </td>
+              {(row.supply_items || []).length > 3 && (
+                <div className="text-xs text-slate-500">
+                  +{row.supply_items.length - 3} more
+                </div>
+              )}
+            </div>
+          </td>
 
-                <td className="text-right font-semibold">{totalQty(row)}</td>
-                <td>{row.tracking_number || "-"}</td>
+          <td className="text-right font-bold text-slate-100">
+            {totalQty(row)}
+          </td>
 
-                <td>
-                  <span className={`px-2 py-1 rounded text-xs font-semibold ${statusClass(row.status)}`}>
-                    {row.status}
-                  </span>
-                </td>
+          <td className="font-mono text-slate-300 truncate">
+            {row.tracking_number || "-"}
+          </td>
 
-                <td>{row.imported ? "✅" : "❌"}</td>
-                <td>{formatDate(row.imported_date)}</td>
+          <td>
+            <span
+              className={`px-3 py-1 rounded-full text-xs font-semibold ${statusClass(
+                row.status
+              )}`}
+            >
+              {row.status}
+            </span>
+          </td>
 
-                <td className="text-right">
-  <div className="flex justify-end gap-3">
-    <button
-      onClick={() => openEdit(row)}
-      className="text-cyan-400 hover:text-cyan-300 font-semibold"
-    >
-      Edit
-    </button>
-
-    <button
-      onClick={() => setDeleteTarget(row)}
-      className="text-red-400 hover:text-red-300 font-semibold"
-    >
-      Delete
-    </button>
-  </div>
-</td>
-              </tr>
-            ))}
-
-            {filteredRows.length === 0 && (
-              <tr>
-                <td colSpan={11} className="py-8 text-center text-slate-500">
-                  No supplies found.
-                </td>
-              </tr>
+          <td>
+            {row.imported ? (
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-400">
+                Imported
+              </span>
+            ) : (
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 text-slate-400">
+                Not imported
+              </span>
             )}
-          </tbody>
-        </table>
-      </div>
+          </td>
+
+          <td className="text-slate-300">{formatDate(row.imported_date)}</td>
+
+          <td className="text-right">
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => openEdit(row)}
+                className="text-cyan-400 hover:text-cyan-300 font-semibold"
+              >
+                Edit
+              </button>
+
+              <button
+                onClick={() => setDeleteTarget(row)}
+                className="text-red-400 hover:text-red-300 font-semibold"
+              >
+                Delete
+              </button>
+            </div>
+          </td>
+        </tr>
+      ))}
+
+      {filteredRows.length === 0 && (
+        <tr>
+          <td colSpan={11} className="py-8 text-center text-slate-500">
+            No supplies found.
+          </td>
+        </tr>
+      )}
+    </tbody>
+  </table>
+</div>
             {openModal && (
         <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
           <div className="w-full max-w-3xl rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">

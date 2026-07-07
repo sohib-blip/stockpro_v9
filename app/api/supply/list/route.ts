@@ -11,16 +11,37 @@ const supabase = createClient(
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-  .from("supplies")
-  .select("*")
-  .order("created_at", { ascending: false });
+    const { data: supplies, error: suppliesError } = await supabase
+      .from("supplies")
+      .select("*")
+      .order("created_at", { ascending: false });
 
-    if (error) throw error;
+    if (suppliesError) throw suppliesError;
+
+    const supplyIds = (supplies || []).map((s: any) => s.id);
+
+    let items: any[] = [];
+
+    if (supplyIds.length > 0) {
+      const { data: itemsData, error: itemsError } = await supabase
+        .from("supply_items")
+        .select("id, supply_id, product_id, product_type, product_name, qty")
+        .in("supply_id", supplyIds)
+        .order("created_at", { ascending: true });
+
+      if (itemsError) throw itemsError;
+
+      items = itemsData || [];
+    }
+
+    const rows = (supplies || []).map((supply: any) => ({
+      ...supply,
+      supply_items: items.filter((item: any) => item.supply_id === supply.id),
+    }));
 
     return NextResponse.json({
       ok: true,
-      rows: data || [],
+      rows,
     });
   } catch (e: any) {
     return NextResponse.json(

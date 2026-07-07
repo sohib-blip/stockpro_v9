@@ -462,6 +462,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
             <div className="p-5 space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <select
+                disabled={!!editing}
                   value={fromOffice}
                   onChange={(e) => setFromOffice(e.target.value)}
                   className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -474,6 +475,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
                 </select>
 
                 <select
+                  disabled={!!editing}
                   value={toOffice}
                   onChange={(e) => setToOffice(e.target.value)}
                   className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -486,6 +488,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
                 </select>
 
                 <input
+                disabled={!!editing}
                   value={tracking}
                   onChange={(e) => setTracking(e.target.value)}
                   placeholder="Tracking number..."
@@ -508,6 +511,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
               </div>
 
               <textarea
+              disabled={!!editing}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Comment..."
@@ -518,12 +522,14 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
                 <div className="flex justify-between">
                   <div className="font-semibold">Items</div>
 
-                  <button
-                    onClick={addItem}
-                    className="rounded-xl border border-slate-800 px-3 py-2 text-sm font-semibold hover:bg-slate-800"
-                  >
-                    + Add item
-                  </button>
+                  {!editing && (
+  <button
+    onClick={addItem}
+    className="rounded-xl border border-slate-800 px-3 py-2 text-sm font-semibold hover:bg-slate-800"
+  >
+    + Add item
+  </button>
+)}
                 </div>
 
                 {items.map((item, index) => (
@@ -532,6 +538,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
                     className="grid grid-cols-1 md:grid-cols-[140px_1fr_100px_90px] gap-3"
                   >
                     <select
+                    disabled={!!editing}
                       value={item.product_type}
                       onChange={(e) =>
                         updateItem(index, {
@@ -546,6 +553,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
 
                     <>
   <input
+  disabled={!!editing}
     list={`products-${index}`}
     value={item.product_name}
     onChange={(e) =>
@@ -563,6 +571,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
 </>
 
                     <input
+                    disabled={!!editing}
                       type="number"
                       min={1}
                       value={item.qty}
@@ -574,7 +583,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
 
                     <button
                       onClick={() => removeItem(index)}
-                      disabled={items.length === 1}
+                      disabled={!!editing || items.length === 1}
                       className="rounded-xl border border-slate-800 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-40"
                     >
                       Remove

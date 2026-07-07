@@ -346,70 +346,67 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
         </select>
       </div>
 
-      <div className="card-glow p-6 rounded-xl overflow-x-auto">
-  <table className="w-full text-sm table-fixed">
+      <div className="card-glow p-6 rounded-xl overflow-hidden">
+  <table className="w-full text-sm">
     <thead>
       <tr className="text-left text-slate-400 border-b border-slate-800">
-        <th className="py-3 w-[180px]">Order</th>
-        <th className="w-[90px]">Created</th>
-        <th className="w-[90px]">Edited</th>
-        <th className="w-[90px]">Route</th>
-        <th className="w-[220px]">Items</th>
-        <th className="w-[70px] text-right">Qty</th>
-        <th className="w-[140px]">Tracking</th>
-        <th className="w-[110px]">Status</th>
-        <th className="w-[120px]">Import</th>
-        <th className="w-[110px]">Import date</th>
-        <th className="w-[100px] text-right">Actions</th>
+        <th className="py-3">Order</th>
+        <th>Route</th>
+        <th>Items</th>
+        <th className="text-center">Qty</th>
+        <th>Tracking</th>
+        <th>Status</th>
+        <th>Import</th>
+        <th className="text-right">Actions</th>
       </tr>
     </thead>
 
     <tbody>
       {filteredRows.map((row) => (
-        <tr key={row.id} className="border-b border-slate-800/70 align-top">
-          <td className="py-4 font-semibold text-cyan-400">
-            {row.order_number}
+        <tr key={row.id} className="border-b border-slate-800/70">
+          <td className="py-4">
+            <div className="font-semibold text-cyan-400">
+              {row.order_number}
+            </div>
+            <div className="text-xs text-slate-500">
+              Created {formatDate(row.created_at)}
+            </div>
           </td>
 
-          <td className="text-slate-300">{formatDate(row.created_at)}</td>
-          <td className="text-slate-300">{formatDate(row.updated_at)}</td>
-
           <td>
-            <span className="font-semibold text-slate-100">
-              {row.from_office}
-            </span>
-            <span className="mx-2 text-slate-500">→</span>
-            <span className="font-semibold text-slate-100">
-              {row.to_office}
+            <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold">
+              {row.from_office} → {row.to_office}
             </span>
           </td>
 
           <td>
             <div className="space-y-1">
-              {(row.supply_items || []).slice(0, 3).map((item: any) => (
-                <div key={item.id} className="leading-tight">
-                  <div className="font-semibold text-slate-100">
+              {(row.supply_items || []).slice(0, 2).map((item: any) => (
+                <div key={item.id}>
+                  <span className="font-semibold text-slate-100">
                     {item.product_name}
-                  </div>
-                  <div className="text-xs text-slate-500">
+                  </span>
+                  <span className="ml-2 text-xs text-slate-500">
                     {item.qty} pcs
-                  </div>
+                  </span>
                 </div>
               ))}
 
-              {(row.supply_items || []).length > 3 && (
+              {(row.supply_items || []).length > 2 && (
                 <div className="text-xs text-slate-500">
-                  +{row.supply_items.length - 3} more
+                  +{row.supply_items.length - 2} more
                 </div>
               )}
             </div>
           </td>
 
-          <td className="text-right font-bold text-slate-100">
-            {totalQty(row)}
+          <td className="text-center">
+            <span className="inline-flex min-w-12 justify-center rounded-xl bg-slate-800 px-3 py-1 font-bold text-slate-100">
+              {totalQty(row)}
+            </span>
           </td>
 
-          <td className="font-mono text-slate-300 truncate">
+          <td className="font-mono text-slate-300 max-w-[160px] truncate">
             {row.tracking_number || "-"}
           </td>
 
@@ -435,8 +432,6 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
             )}
           </td>
 
-          <td className="text-slate-300">{formatDate(row.imported_date)}</td>
-
           <td className="text-right">
             <div className="flex justify-end gap-3">
               <button
@@ -459,7 +454,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
 
       {filteredRows.length === 0 && (
         <tr>
-          <td colSpan={11} className="py-8 text-center text-slate-500">
+          <td colSpan={8} className="py-8 text-center text-slate-500">
             No supplies found.
           </td>
         </tr>

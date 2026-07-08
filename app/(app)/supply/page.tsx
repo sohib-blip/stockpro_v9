@@ -318,7 +318,7 @@ resetForm();
 
         <div className="flex gap-3">
   <a
-    href="/api/supply/export"
+    href={`/api/supply/export?t=${Date.now()}`}
     className="rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-semibold"
   >
     📄 Export Excel

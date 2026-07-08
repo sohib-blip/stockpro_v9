@@ -89,17 +89,37 @@ export default function LoginPage() {
 
     const sessionId = crypto.randomUUID();
 
-    const { data: profile, error: profileReadError } = await supabase
+    let { data: profile, error: profileReadError } = await supabase
   .from("profiles")
   .select("current_session_id,last_seen_at")
   .eq("user_id", user.id)
-  .single();
+  .maybeSingle();
 
-    if (profileReadError) {
-      setLoading(false);
-      setMsg(profileReadError.message);
-      return;
-    }
+if (profileReadError) {
+  setLoading(false);
+  setMsg(profileReadError.message);
+  return;
+}
+
+if (!profile) {
+  const { error: insertProfileError } = await supabase.from("profiles").insert({
+    user_id: user.id,
+    email: user.email,
+    current_session_id: null,
+    last_seen_at: null,
+  });
+
+  if (insertProfileError) {
+    setLoading(false);
+    setMsg(insertProfileError.message);
+    return;
+  }
+
+  profile = {
+    current_session_id: null,
+    last_seen_at: null,
+  };
+}
 
     const lastSeen = profile?.last_seen_at
   ? new Date(profile.last_seen_at).getTime()

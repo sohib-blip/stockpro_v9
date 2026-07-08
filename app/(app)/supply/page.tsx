@@ -316,12 +316,21 @@ resetForm();
           <h1 className="text-2xl font-semibold">🚚 Supply Tracker</h1>
         </div>
 
-        <button
-          onClick={openCreate}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
-        >
-          + New Supply
-        </button>
+        <div className="flex gap-3">
+  <a
+    href="/api/supply/export"
+    className="rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-semibold"
+  >
+    📄 Export Excel
+  </a>
+
+  <button
+    onClick={openCreate}
+    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
+  >
+    + New Supply
+  </button>
+</div>
       </div>
 
       {msg && (
@@ -388,7 +397,8 @@ resetForm();
     <th className="text-center">Qty</th>
     <th>Tracking</th>
     <th>Status</th>
-    <th>Import</th>
+    <th>Imported</th>
+<th>Imported at</th>
     <th className="text-right">Actions</th>
   </tr>
 </thead>
@@ -470,6 +480,12 @@ resetForm();
             )}
           </td>
 
+          <td className="text-xs text-slate-400">
+  {row.imported_date
+    ? formatDate(row.imported_date)
+    : "-"}
+</td>
+
           <td className="text-right">
   {row.status !== "DONE" ? (
     <div className="flex justify-end gap-3">
@@ -496,7 +512,7 @@ resetForm();
 
       {filteredRows.length === 0 && (
         <tr>
-          <td colSpan={9} className="py-8 text-center text-slate-500">
+          <td colSpan={10} className="py-8 text-center text-slate-500">
             No supplies found.
           </td>
         </tr>

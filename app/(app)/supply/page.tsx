@@ -339,7 +339,7 @@ const paginatedRows = sortedRows.slice(
 }
 
   return (
-    <div className="space-y-8 max-w-7xl">
+    <div className="space-y-8 w-full">
       <div className="flex items-center justify-between">
         <div>
           <div className="text-xs text-slate-500">Supply</div>

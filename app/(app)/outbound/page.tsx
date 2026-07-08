@@ -205,7 +205,7 @@ if (!actorId) {
   preview?.unknown_imeis?.length > 0;
 
   return (
-    <div className="space-y-10 max-w-6xl">
+    <div className="space-y-10 w-full">
 
       {/* LOADER */}
       {busy && (

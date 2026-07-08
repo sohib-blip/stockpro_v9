@@ -183,7 +183,7 @@ export default function ReturnsPage() {
   }
 
   return (
-    <div className="space-y-8 max-w-5xl">
+    <div className="space-y-8 w-full">
       {busy && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl shadow-xl">

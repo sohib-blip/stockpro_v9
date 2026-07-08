@@ -132,7 +132,7 @@ export default function LabelsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-6 w-full">
       <div>
         <div className="text-xs text-slate-500">Labels</div>
         <h2 className="text-xl font-semibold">QR Label Generator (ZD220)</h2>

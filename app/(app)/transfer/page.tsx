@@ -184,7 +184,7 @@ export default function TransferPage() {
   });
 
   return (
-    <div className="space-y-10 max-w-5xl">
+    <div className="space-y-10 w-full">
       {success && (
         <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
           ✅ Transfer completed

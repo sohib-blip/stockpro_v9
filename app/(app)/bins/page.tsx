@@ -289,7 +289,7 @@ export default function BinsPage() {
   });
 
   return (
-    <div className="space-y-10 max-w-6xl">
+    <div className="space-y-10 w-full">
       <h1 className="text-xl font-semibold">Bins</h1>
 
       <div className="card-glow p-6 space-y-4">

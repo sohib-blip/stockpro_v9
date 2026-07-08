@@ -220,7 +220,7 @@ export default function NRDPage() {
   }
 
   return (
-    <div className="space-y-10 max-w-5xl">
+    <div className="space-y-10 w-full">
       <div>
         <div className="text-xs text-slate-500">NRD</div>
         <h2 className="text-xl font-semibold">NRD Tracker</h2>

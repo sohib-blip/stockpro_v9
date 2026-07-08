@@ -280,7 +280,7 @@ export default function AccessoriesPage() {
   });
 
   return (
-        <div className="space-y-10 max-w-6xl">
+        <div className="space-y-10 w-full">
       <div>
         <div className="text-xs text-slate-500">Accessories</div>
         <h2 className="text-xl font-semibold">Accessories Outbound</h2>

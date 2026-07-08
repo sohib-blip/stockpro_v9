@@ -4,7 +4,7 @@ import Link from "next/link";
 
 export default function DeniedPage() {
   return (
-    <div className="max-w-xl">
+    <div className="w-full max-w-3xl">
       <div className="text-lg font-semibold text-slate-100">Access denied</div>
       <div className="mt-2 text-sm text-slate-400">
         You don’t have permission to access this page. If you think this is a mistake, ask an admin to update your permissions.

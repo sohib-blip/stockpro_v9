@@ -114,7 +114,7 @@ if (salesJson.ok){
 
  return (
 
-<div className="pt-4 px-10 pb-10 space-y-10 max-w-[1500px] mx-auto">
+<div className="pt-4 px-10 pb-10 space-y-10 w-full">
 
 <div className="flex items-center justify-between">
 

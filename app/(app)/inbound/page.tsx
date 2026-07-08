@@ -482,7 +482,7 @@ setManualMsg("");
 });
 
   return (
-    <div className="space-y-8 max-w-5xl">
+  <div className="space-y-8 w-full">
       {/* ✅ GLOBAL LOADER OVERLAY (no layout change, just overlay) */}
       {busy && (
         <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">

@@ -380,17 +380,18 @@ resetForm();
       <div className="card-glow p-6 rounded-xl overflow-hidden">
   <table className="w-full text-sm">
     <thead>
-      <tr className="text-left text-slate-400 border-b border-slate-800">
-        <th className="py-3">Order</th>
-        <th>Route</th>
-        <th>Items</th>
-        <th className="text-center">Qty</th>
-        <th>Tracking</th>
-        <th>Status</th>
-        <th>Import</th>
-        <th className="text-right">Actions</th>
-      </tr>
-    </thead>
+  <tr className="text-left text-slate-400 border-b border-slate-800">
+    <th className="py-3">Order</th>
+    <th>Created by</th>
+    <th>Route</th>
+    <th>Items</th>
+    <th className="text-center">Qty</th>
+    <th>Tracking</th>
+    <th>Status</th>
+    <th>Import</th>
+    <th className="text-right">Actions</th>
+  </tr>
+</thead>
 
     <tbody>
       {filteredRows.map((row) => (
@@ -403,6 +404,12 @@ resetForm();
               Created {formatDate(row.created_at)}
             </div>
           </td>
+
+          <td>
+  <div className="text-sm text-slate-200">
+    {row.created_by || "-"}
+  </div>
+</td>
 
           <td>
             <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold">
@@ -489,7 +496,7 @@ resetForm();
 
       {filteredRows.length === 0 && (
         <tr>
-          <td colSpan={8} className="py-8 text-center text-slate-500">
+          <td colSpan={9} className="py-8 text-center text-slate-500">
             No supplies found.
           </td>
         </tr>

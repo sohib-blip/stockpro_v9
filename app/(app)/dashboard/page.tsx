@@ -116,37 +116,35 @@ if (salesJson.ok){
 
 <div className="pt-4 px-10 pb-10 space-y-10 w-full">
 
-<div className="flex items-center justify-between">
+<div className="grid grid-cols-3 items-center">
+  <div className="flex items-center gap-3">
+    <a
+      href="/api/dashboard/export"
+      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+    >
+      Export Stock
+    </a>
 
-<div className="flex items-center gap-3">
-  <a
-    href="/api/dashboard/export"
-    className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
-  >
-    Export Stock
-  </a>
+    <a
+      href="/api/dashboard/export-count-sheet"
+      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+    >
+      Export Count Sheet
+    </a>
 
-  <a
-    href="/api/dashboard/export-count-sheet"
-    className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
-  >
-    Export Count Sheet
-  </a>
+    <button
+      onClick={() => window.open("/api/accessory-bins/export", "_blank")}
+      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+    >
+      Export Accessories
+    </button>
+  </div>
 
-  <button
-  onClick={() => window.open("/api/accessory-bins/export", "_blank")}
-  className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
->
-  Export Accessories
-</button>
-</div>
+  <h1 className="text-3xl font-semibold tracking-tight text-center">
+    Inventory Dashboard
+  </h1>
 
-<h1 className="text-3xl font-semibold tracking-tight">
-Inventory Dashboard
-</h1>
-
-<div className="w-[120px]"></div>
-
+  <div></div>
 </div>
 
 {/* SEARCH */}

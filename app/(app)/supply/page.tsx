@@ -58,6 +58,7 @@ const pageSize = 20;
   const [msg, setMsg] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [confirmDone, setConfirmDone] = useState(false);
+  const [detailTarget, setDetailTarget] = useState<any | null>(null);
 
   async function loadUser() {
     const { data } = await supabase.auth.getUser();
@@ -450,9 +451,12 @@ const paginatedRows = sortedRows.slice(
       {paginatedRows.map((row) => (
         <tr key={row.id} className="border-b border-slate-800/70">
           <td className="py-4">
-            <div className="font-semibold text-cyan-400">
-              {row.order_number}
-            </div>
+            <button
+  onClick={() => setDetailTarget(row)}
+  className="font-semibold text-cyan-400 hover:text-cyan-300 hover:underline"
+>
+  {row.order_number}
+</button>
             <div className="text-xs text-slate-500">
               Created {formatDate(row.created_at)}
             </div>
@@ -772,6 +776,93 @@ const paginatedRows = sortedRows.slice(
           </div>
         </div>
       )}
+
+{detailTarget && (
+  <div className="fixed inset-0 z-[90] bg-black/60 flex items-center justify-center p-4">
+    <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">
+      <div className="p-5 border-b border-slate-800 flex justify-between">
+        <div>
+          <div className="text-xs text-slate-500">Supply details</div>
+          <div className="text-lg font-semibold text-cyan-400">
+            {detailTarget.order_number}
+          </div>
+        </div>
+
+        <button
+          onClick={() => setDetailTarget(null)}
+          className="text-slate-400 hover:text-slate-200"
+        >
+          Close
+        </button>
+      </div>
+
+      <div className="p-5 space-y-4 text-sm">
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <div className="text-xs text-slate-500">Created by</div>
+            <div>{detailTarget.created_by || "-"}</div>
+          </div>
+
+          <div>
+            <div className="text-xs text-slate-500">Created</div>
+            <div>{formatDate(detailTarget.created_at)}</div>
+          </div>
+
+          <div>
+            <div className="text-xs text-slate-500">Route</div>
+            <div>{detailTarget.from_office} → {detailTarget.to_office}</div>
+          </div>
+
+          <div>
+            <div className="text-xs text-slate-500">Tracking</div>
+            <div className="font-mono">{detailTarget.tracking_number || "-"}</div>
+          </div>
+
+          <div>
+            <div className="text-xs text-slate-500">Status</div>
+            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusClass(detailTarget.status)}`}>
+              {detailTarget.status}
+            </span>
+          </div>
+
+          <div>
+            <div className="text-xs text-slate-500">Imported at</div>
+            <div>{detailTarget.imported_date ? formatDate(detailTarget.imported_date) : "-"}</div>
+          </div>
+        </div>
+
+        <div>
+          <div className="text-xs text-slate-500 mb-2">Items</div>
+
+          <div className="rounded-xl border border-slate-800 overflow-hidden">
+            {(detailTarget.supply_items || []).map((item: any) => (
+              <div
+                key={item.id}
+                className="flex justify-between px-4 py-3 border-b border-slate-800 last:border-b-0"
+              >
+                <div>
+                  <div className="font-semibold">{item.product_name}</div>
+                  <div className="text-xs text-slate-500">{item.product_type}</div>
+                </div>
+
+                <div className="font-bold">{item.qty} pcs</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {detailTarget.comment && (
+          <div>
+            <div className="text-xs text-slate-500">Comment</div>
+            <div className="rounded-xl bg-slate-900 p-3 mt-1">
+              {detailTarget.comment}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  </div>
+)}
 
       <ConfirmDialog
   open={confirmDone}

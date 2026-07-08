@@ -36,6 +36,10 @@ export default function SupplyPage() {
   const [accessories, setAccessories] = useState<any[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
+const [sortKey, setSortKey] = useState("created_at");
+const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+const [page, setPage] = useState(1);
+const pageSize = 20;
 
   const [openModal, setOpenModal] = useState(false);
   const [editing, setEditing] = useState<any | null>(null);
@@ -193,8 +197,6 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
         ),
       };
 
-console.log("SUPPLY SAVE PAYLOAD:", payload);
-
   const res = await fetch(
     editing ? "/api/supply/update" : "/api/supply/create",
     {
@@ -252,6 +254,33 @@ resetForm();
 
     return matchesSearch && matchesStatus;
   });
+
+function sortBy(key: string) {
+  if (sortKey === key) {
+    setSortDir(sortDir === "asc" ? "desc" : "asc");
+  } else {
+    setSortKey(key);
+    setSortDir("asc");
+  }
+
+  setPage(1);
+}
+
+const sortedRows = [...filteredRows].sort((a, b) => {
+  const aValue = a[sortKey] || "";
+  const bValue = b[sortKey] || "";
+
+  return sortDir === "asc"
+    ? String(aValue).localeCompare(String(bValue), undefined, { numeric: true })
+    : String(bValue).localeCompare(String(aValue), undefined, { numeric: true });
+});
+
+const totalPages = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+
+const paginatedRows = sortedRows.slice(
+  (page - 1) * pageSize,
+  page * pageSize
+);
 
   const kpis = {
     total: rows.length,
@@ -390,21 +419,35 @@ resetForm();
   <table className="w-full text-sm">
     <thead>
   <tr className="text-left text-slate-400 border-b border-slate-800">
-    <th className="py-3">Order</th>
+    <th onClick={() => sortBy("order_number")} className="py-3 cursor-pointer">
+      Order {sortKey === "order_number" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+    </th>
+
     <th>Created by</th>
-    <th>Route</th>
+
+    <th onClick={() => sortBy("from_office")} className="cursor-pointer">
+      Route {sortKey === "from_office" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+    </th>
+
     <th>Items</th>
     <th className="text-center">Qty</th>
-    <th>Tracking</th>
-    <th>Status</th>
+
+    <th onClick={() => sortBy("tracking_number")} className="cursor-pointer">
+      Tracking {sortKey === "tracking_number" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+    </th>
+
+    <th onClick={() => sortBy("status")} className="cursor-pointer">
+      Status {sortKey === "status" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+    </th>
+
     <th>Imported</th>
-<th>Imported at</th>
+    <th>Imported at</th>
     <th className="text-right">Actions</th>
   </tr>
 </thead>
 
     <tbody>
-      {filteredRows.map((row) => (
+      {paginatedRows.map((row) => (
         <tr key={row.id} className="border-b border-slate-800/70">
           <td className="py-4">
             <div className="font-semibold text-cyan-400">
@@ -510,7 +553,7 @@ resetForm();
         </tr>
       ))}
 
-      {filteredRows.length === 0 && (
+      {paginatedRows.length === 0 && (
         <tr>
           <td colSpan={10} className="py-8 text-center text-slate-500">
             No supplies found.
@@ -519,6 +562,35 @@ resetForm();
       )}
     </tbody>
   </table>
+</div>
+
+<div className="flex items-center justify-between text-sm text-slate-400">
+  <div>
+    Showing {(page - 1) * pageSize + 1}-
+    {Math.min(page * pageSize, sortedRows.length)} of {sortedRows.length}
+  </div>
+
+  <div className="flex gap-2">
+    <button
+      onClick={() => setPage((p) => Math.max(1, p - 1))}
+      disabled={page === 1}
+      className="rounded-xl border border-slate-800 px-3 py-2 disabled:opacity-40"
+    >
+      Previous
+    </button>
+
+    <div className="px-3 py-2">
+      Page {page} / {totalPages}
+    </div>
+
+    <button
+      onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+      disabled={page === totalPages}
+      className="rounded-xl border border-slate-800 px-3 py-2 disabled:opacity-40"
+    >
+      Next
+    </button>
+  </div>
 </div>
             {openModal && (
         <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">

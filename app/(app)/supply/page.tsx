@@ -214,17 +214,26 @@ console.log("SUPPLY SAVE PAYLOAD:", payload);
 
   setOpenModal(false);
 setConfirmDone(false);
-resetForm();
 
-const freshRes = await fetch(`/api/supply/list?t=${Date.now()}`, {
-  cache: "no-store",
-});
-
-const freshJson = await freshRes.json();
-
-if (freshJson.ok) {
-  setRows(freshJson.rows || []);
+if (editing && json.row) {
+  setRows((prev) =>
+    prev.map((row) =>
+      row.id === json.row.id
+        ? {
+            ...row,
+            status: json.row.status,
+            imported: json.row.imported,
+            imported_date: json.row.imported_date,
+            updated_at: json.row.updated_at,
+          }
+        : row
+    )
+  );
+} else {
+  await loadSupply();
 }
+
+resetForm();
 }
   const filteredRows = rows.filter((row) => {
     const q = search.toLowerCase();

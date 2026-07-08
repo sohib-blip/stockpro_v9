@@ -64,10 +64,19 @@ export default function SupplyPage() {
   async function loadSupply() {
   const res = await fetch(`/api/supply/list?t=${Date.now()}`, {
     cache: "no-store",
+    headers: {
+      "Cache-Control": "no-cache",
+    },
   });
 
   const json = await res.json();
-  if (json.ok) setRows(json.rows || []);
+
+  if (json.ok) {
+    setRows([]);
+    setTimeout(() => {
+      setRows(json.rows || []);
+    }, 0);
+  }
 }
 
 async function loadProducts() {
@@ -204,11 +213,19 @@ console.log("SUPPLY SAVE PAYLOAD:", payload);
   }
 
   setOpenModal(false);
-  setConfirmDone(false);
-  resetForm();
-  await loadSupply();
-}
+setConfirmDone(false);
+resetForm();
 
+const freshRes = await fetch(`/api/supply/list?t=${Date.now()}`, {
+  cache: "no-store",
+});
+
+const freshJson = await freshRes.json();
+
+if (freshJson.ok) {
+  setRows(freshJson.rows || []);
+}
+}
   const filteredRows = rows.filter((row) => {
     const q = search.toLowerCase();
 

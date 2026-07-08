@@ -16,7 +16,7 @@ const OFFICES = [
   { code: "IT", label: "🇮🇹 Italy" },
 ];
 
-const STATUS = ["CREATED", "PENDING", "DONE"] as const;
+const STATUS = ["CREATED", "SHIPPED", "RECEIVED", "IMPORTED"] as const;
 
 type SupplyItem = {
   product_id?: string | null;
@@ -47,7 +47,7 @@ const pageSize = 20;
   const [fromOffice, setFromOffice] = useState("UK");
   const [toOffice, setToOffice] = useState("BE");
   const [tracking, setTracking] = useState("");
-  const [status, setStatus] = useState<"CREATED" | "PENDING" | "DONE">("CREATED");
+  const [status, setStatus] = useState<"CREATED" | "SHIPPED" | "RECEIVED" | "IMPORTED">("CREATED");
   const [comment, setComment] = useState("");
 
   const [items, setItems] = useState<SupplyItem[]>([
@@ -59,6 +59,7 @@ const pageSize = 20;
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [confirmDone, setConfirmDone] = useState(false);
   const [detailTarget, setDetailTarget] = useState<any | null>(null);
+  const [statusHistory, setStatusHistory] = useState<any[]>([]);
 
   async function loadUser() {
     const { data } = await supabase.auth.getUser();
@@ -172,7 +173,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
   }
 
   async function saveSupply(forceDone = false) {
-  if (editing && status === "DONE" && editing.status !== "DONE" && !forceDone) {
+  if (editing && status === "IMPORTED" && editing.status !== "IMPORTED" && !forceDone) {
     setConfirmDone(true);
     return;
   }
@@ -181,22 +182,24 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
   setMsg("");
 
   const payload = editing
-    ? {
-        id: editing.id,
-        status,
-      }
-    : {
-        from_office: fromOffice,
-        to_office: toOffice,
-        tracking_number: tracking,
-        status,
-        comment,
-        created_by: userEmail,
-        created_by_id: userId,
-        items: items.filter(
-          (i) => i.product_name.trim() && Number(i.qty) > 0
-        ),
-      };
+  ? {
+      id: editing.id,
+      status,
+      tracking_number: status === "SHIPPED" ? tracking : editing.tracking_number,
+      changed_by: userEmail,
+      changed_by_id: userId,
+    }
+  : {
+      from_office: fromOffice,
+      to_office: toOffice,
+      status: "CREATED",
+      comment,
+      created_by: userEmail,
+      created_by_id: userId,
+      items: items.filter(
+        (i) => i.product_name.trim() && Number(i.qty) > 0
+      ),
+    };
 
   const res = await fetch(
     editing ? "/api/supply/update" : "/api/supply/create",
@@ -286,16 +289,17 @@ const paginatedRows = sortedRows.slice(
   const kpis = {
     total: rows.length,
     created: rows.filter((r) => r.status === "CREATED").length,
-    pending: rows.filter((r) => r.status === "PENDING").length,
-    done: rows.filter((r) => r.status === "DONE").length,
+    shipped: rows.filter((r) => r.status === "SHIPPED").length,
+received: rows.filter((r) => r.status === "RECEIVED").length,
     imported: rows.filter((r) => r.imported).length,
   };
 
     function statusClass(status: string) {
-    if (status === "DONE") return "bg-green-500/20 text-green-400";
-    if (status === "PENDING") return "bg-yellow-500/20 text-yellow-400";
-    return "bg-blue-500/20 text-blue-400";
-  }
+  if (status === "IMPORTED") return "bg-green-500/20 text-green-400";
+  if (status === "RECEIVED") return "bg-purple-500/20 text-purple-400";
+  if (status === "SHIPPED") return "bg-yellow-500/20 text-yellow-400";
+  return "bg-blue-500/20 text-blue-400";
+}
 
   function formatDate(value?: string | null) {
     if (!value) return "-";
@@ -313,6 +317,20 @@ const paginatedRows = sortedRows.slice(
       0
     );
   }
+
+async function openDetails(row: any) {
+  setDetailTarget(row);
+
+  const res = await fetch(
+    `/api/supply/history?id=${row.id}&t=${Date.now()}`
+  );
+
+  const json = await res.json();
+
+  if (json.ok) {
+    setStatusHistory(json.rows || []);
+  }
+}
 
   async function deleteSupply() {
   if (!deleteTarget) return;
@@ -370,31 +388,31 @@ const paginatedRows = sortedRows.slice(
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <div className="card-glow p-4 rounded-xl">
-          <div className="text-xs text-slate-400">Total</div>
-          <div className="text-2xl font-bold text-cyan-400">{kpis.total}</div>
-        </div>
+  <div className="card-glow p-4 rounded-xl">
+    <div className="text-xs text-slate-400">Total</div>
+    <div className="text-2xl font-bold text-cyan-400">{kpis.total}</div>
+  </div>
 
-        <div className="card-glow p-4 rounded-xl">
-          <div className="text-xs text-slate-400">Created</div>
-          <div className="text-2xl font-bold text-blue-400">{kpis.created}</div>
-        </div>
+  <div className="card-glow p-4 rounded-xl">
+    <div className="text-xs text-slate-400">Created</div>
+    <div className="text-2xl font-bold text-blue-400">{kpis.created}</div>
+  </div>
 
-        <div className="card-glow p-4 rounded-xl">
-          <div className="text-xs text-slate-400">Pending</div>
-          <div className="text-2xl font-bold text-yellow-400">{kpis.pending}</div>
-        </div>
+  <div className="card-glow p-4 rounded-xl">
+    <div className="text-xs text-slate-400">Shipped</div>
+    <div className="text-2xl font-bold text-yellow-400">{kpis.shipped}</div>
+  </div>
 
-        <div className="card-glow p-4 rounded-xl">
-          <div className="text-xs text-slate-400">Done</div>
-          <div className="text-2xl font-bold text-green-400">{kpis.done}</div>
-        </div>
+  <div className="card-glow p-4 rounded-xl">
+    <div className="text-xs text-slate-400">Received</div>
+    <div className="text-2xl font-bold text-purple-400">{kpis.received}</div>
+  </div>
 
-        <div className="card-glow p-4 rounded-xl">
-          <div className="text-xs text-slate-400">Imported</div>
-          <div className="text-2xl font-bold text-purple-400">{kpis.imported}</div>
-        </div>
-      </div>
+  <div className="card-glow p-4 rounded-xl">
+    <div className="text-xs text-slate-400">Imported</div>
+    <div className="text-2xl font-bold text-green-400">{kpis.imported}</div>
+  </div>
+</div>
 
       <div className="card-glow p-4 rounded-xl flex gap-3">
         <input
@@ -452,7 +470,7 @@ const paginatedRows = sortedRows.slice(
         <tr key={row.id} className="border-b border-slate-800/70">
           <td className="py-4">
             <button
-  onClick={() => setDetailTarget(row)}
+  onClick={() => openDetails(row)}
   className="font-semibold text-cyan-400 hover:text-cyan-300 hover:underline"
 >
   {row.order_number}
@@ -534,7 +552,7 @@ const paginatedRows = sortedRows.slice(
 </td>
 
           <td className="text-right">
-  {row.status !== "DONE" ? (
+  {row.status !== "IMPORTED" ? (
     <div className="flex justify-end gap-3">
       <button
         onClick={() => openEdit(row)}
@@ -648,18 +666,19 @@ const paginatedRows = sortedRows.slice(
                   ))}
                 </select>
 
-                <input
-                disabled={!!editing}
-                  value={tracking}
-                  onChange={(e) => setTracking(e.target.value)}
-                  placeholder="Tracking number..."
-                  className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-                />
+                {editing && status === "SHIPPED" && (
+  <input
+    value={tracking}
+    onChange={(e) => setTracking(e.target.value)}
+    placeholder="Tracking number..."
+    className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+  />
+)}
 
                 <select
                   value={status}
                   onChange={(e) =>
-                    setStatus(e.target.value as "CREATED" | "PENDING" | "DONE")
+                    setStatus(e.target.value as "CREATED" | "SHIPPED" | "RECEIVED" | "IMPORTED")
                   }
                   className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
                 >
@@ -859,6 +878,50 @@ const paginatedRows = sortedRows.slice(
             </div>
           </div>
         )}
+
+<div>
+  <div className="text-xs text-slate-500 mb-2">Status history</div>
+
+  <div className="rounded-xl border border-slate-800 overflow-hidden">
+    {statusHistory.length === 0 ? (
+      <div className="p-4 text-center text-slate-500">
+        No history yet
+      </div>
+    ) : (
+      statusHistory.map((h: any) => (
+        <div
+          key={h.id}
+          className="px-4 py-3 border-b border-slate-800 last:border-b-0"
+        >
+          <div className="flex justify-between items-center">
+            <span
+              className={`px-2 py-1 rounded text-xs font-semibold ${statusClass(
+                h.status
+              )}`}
+            >
+              {h.status}
+            </span>
+
+            <span className="text-xs text-slate-500">
+              {formatDate(h.created_at)}
+            </span>
+          </div>
+
+          <div className="mt-2 text-sm text-slate-300">
+            {h.changed_by || "-"}
+          </div>
+
+          {h.tracking_number && (
+            <div className="mt-1 text-xs text-cyan-400 font-mono">
+              Tracking: {h.tracking_number}
+            </div>
+          )}
+        </div>
+      ))
+    )}
+  </div>
+</div>
+
       </div>
     </div>
   </div>
@@ -866,9 +929,9 @@ const paginatedRows = sortedRows.slice(
 
       <ConfirmDialog
   open={confirmDone}
-  title="Mark supply as done?"
-  message="Are you sure? Once this supply is marked as DONE, it will be imported and locked. You will no longer be able to edit or delete it."
-  confirmText={busy ? "Saving..." : "Yes, mark as done"}
+  title="Mark supply as imported?"
+  message="Are you sure? Once this supply is marked as imported, it will be imported and locked. You will no longer be able to edit or delete it."
+  confirmText={busy ? "Saving..." : "Yes, mark as imported"}
   cancelText="Cancel"
   danger
   onConfirm={() => saveSupply(true)}

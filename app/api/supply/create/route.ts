@@ -27,8 +27,6 @@ export async function POST(req: Request) {
     const {
       from_office,
       to_office,
-      tracking_number,
-      status,
       comment,
       created_by,
       created_by_id,
@@ -50,8 +48,6 @@ export async function POST(req: Request) {
     }
 
     const order_number = makeOrderNumber();
-    const finalStatus = status || "CREATED";
-    const isDone = finalStatus === "DONE";
 
     const { data: supply, error: supplyError } = await supabase
       .from("supplies")
@@ -59,10 +55,10 @@ export async function POST(req: Request) {
         order_number,
         from_office,
         to_office,
-        tracking_number: tracking_number || null,
-        status: finalStatus,
-        imported: isDone,
-        imported_date: isDone ? new Date().toISOString() : null,
+        tracking_number: null,
+        status: "CREATED",
+        imported: false,
+        imported_date: null,
         comment: comment || null,
         created_by: created_by || "unknown",
         created_by_id: created_by_id || null,
@@ -71,6 +67,14 @@ export async function POST(req: Request) {
       .single();
 
     if (supplyError) throw supplyError;
+
+    await supabase.from("supply_status_history").insert({
+      supply_id: supply.id,
+      status: "CREATED",
+      tracking_number: null,
+      changed_by: created_by || "unknown",
+      changed_by_id: created_by_id || null,
+    });
 
     const cleanItems = items
       .filter((item: any) => item.product_name && Number(item.qty) > 0)

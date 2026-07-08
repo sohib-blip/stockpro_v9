@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -39,13 +40,26 @@ export async function GET() {
       supply_items: items.filter((item: any) => item.supply_id === supply.id),
     }));
 
-    return NextResponse.json({
-      ok: true,
-      rows,
-    });
+        return NextResponse.json(
+      {
+        ok: true,
+        rows,
+      },
+      {
+        headers: {
+          "Cache-Control":
+            "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Supply list failed" },
+      {
+        ok: false,
+        error: e?.message || "Supply list failed",
+      },
       { status: 500 }
     );
   }

@@ -114,7 +114,7 @@ if (salesJson.ok){
 
  return (
 
-<div className="pt-4 px-10 pb-10 space-y-10 w-full">
+<div className="pt-4 px-2 pb-10 space-y-10 w-full">
 
 <div className="grid grid-cols-3 items-center">
   <div className="flex items-center gap-3">

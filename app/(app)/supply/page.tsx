@@ -53,6 +53,7 @@ export default function SupplyPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [confirmDone, setConfirmDone] = useState(false);
 
   async function loadUser() {
     const { data } = await supabase.auth.getUser();
@@ -156,53 +157,57 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
     setItems((prev) => prev.filter((_, i) => i !== index));
   }
 
-  async function saveSupply() {
-    setBusy(true);
-    setMsg("");
-
-    const cleanItems = items.filter(
-      (i) => i.product_name.trim() && Number(i.qty) > 0
-    );
-
-    if (cleanItems.length === 0) {
-      setBusy(false);
-      setMsg("Add at least one item.");
-      return;
-    }
-
-    const payload = {
-      id: editing?.id,
-      from_office: fromOffice,
-      to_office: toOffice,
-      tracking_number: tracking,
-      status,
-      comment,
-      created_by: userEmail,
-      created_by_id: userId,
-      items: cleanItems,
-    };
-
-    const res = await fetch(
-      editing ? "/api/supply/update" : "/api/supply/create",
-      {
-        method: editing ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }
-    );
-
-    const json = await res.json();
-    setBusy(false);
-
-    if (!json.ok) {
-      setMsg(json.error || "Save failed");
-      return;
-    }
-
-    setOpenModal(false);
-    resetForm();
-    await loadSupply();
+  async function saveSupply(forceDone = false) {
+  if (editing && status === "DONE" && editing.status !== "DONE" && !forceDone) {
+    setConfirmDone(true);
+    return;
   }
+
+  setBusy(true);
+  setMsg("");
+
+  const payload = editing
+    ? {
+        id: editing.id,
+        status,
+      }
+    : {
+        from_office: fromOffice,
+        to_office: toOffice,
+        tracking_number: tracking,
+        status,
+        comment,
+        created_by: userEmail,
+        created_by_id: userId,
+        items: items.filter(
+          (i) => i.product_name.trim() && Number(i.qty) > 0
+        ),
+      };
+
+console.log("SUPPLY SAVE PAYLOAD:", payload);
+
+  const res = await fetch(
+    editing ? "/api/supply/update" : "/api/supply/create",
+    {
+      method: editing ? "PUT" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  const json = await res.json();
+  setBusy(false);
+
+  if (!json.ok) {
+    setMsg(json.error || "Save failed");
+    return;
+  }
+
+  setOpenModal(false);
+  setConfirmDone(false);
+  resetForm();
+  await loadSupply();
+}
 
   const filteredRows = rows.filter((row) => {
     const q = search.toLowerCase();
@@ -433,22 +438,26 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
           </td>
 
           <td className="text-right">
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => openEdit(row)}
-                className="text-cyan-400 hover:text-cyan-300 font-semibold"
-              >
-                Edit
-              </button>
+  {row.status !== "DONE" ? (
+    <div className="flex justify-end gap-3">
+      <button
+        onClick={() => openEdit(row)}
+        className="text-cyan-400 hover:text-cyan-300 font-semibold"
+      >
+        Edit
+      </button>
 
-              <button
-                onClick={() => setDeleteTarget(row)}
-                className="text-red-400 hover:text-red-300 font-semibold"
-              >
-                Delete
-              </button>
-            </div>
-          </td>
+      <button
+        onClick={() => setDeleteTarget(row)}
+        className="text-red-400 hover:text-red-300 font-semibold"
+      >
+        Delete
+      </button>
+    </div>
+  ) : (
+    <span className="text-xs text-slate-500">Locked</span>
+  )}
+</td>
         </tr>
       ))}
 
@@ -631,7 +640,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
                 </button>
 
                 <button
-                  onClick={saveSupply}
+                  onClick={() => saveSupply()}
                   disabled={busy}
                   className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
                 >
@@ -644,6 +653,17 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
       )}
 
       <ConfirmDialog
+  open={confirmDone}
+  title="Mark supply as done?"
+  message="Are you sure? Once this supply is marked as DONE, it will be imported and locked. You will no longer be able to edit or delete it."
+  confirmText={busy ? "Saving..." : "Yes, mark as done"}
+  cancelText="Cancel"
+  danger
+  onConfirm={() => saveSupply(true)}
+  onCancel={() => setConfirmDone(false)}
+/>
+
+<ConfirmDialog
   open={!!deleteTarget}
   title="Delete supply?"
   message={`Are you sure you want to delete ${

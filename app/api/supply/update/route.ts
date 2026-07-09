@@ -26,6 +26,24 @@ export async function PUT(req: Request) {
 
     const isImported = status === "IMPORTED";
 
+    const { data: currentSupply, error: currentError } = await supabase
+  .from("supplies")
+  .select("status")
+  .eq("id", id)
+  .single();
+
+if (currentError) throw currentError;
+
+const currentIndex = VALID_STATUS.indexOf(currentSupply.status);
+const nextIndex = VALID_STATUS.indexOf(status);
+
+if (nextIndex < currentIndex) {
+  return NextResponse.json(
+    { ok: false, error: "You cannot move status backwards" },
+    { status: 400 }
+  );
+}
+
     const updateData: any = {
       status,
       tracking_number: tracking_number || null,

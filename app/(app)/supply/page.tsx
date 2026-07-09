@@ -135,6 +135,12 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
     setOpenModal(true);
   }
 
+function availableStatuses(currentStatus: string) {
+  const currentIndex = STATUS.indexOf(currentStatus as any);
+
+  return STATUS.filter((_, index) => index >= currentIndex);
+}
+
   function openEdit(row: any) {
     setEditing(row);
     setFromOffice(row.from_office || "UK");
@@ -683,11 +689,11 @@ async function openDetails(row: any) {
                   }
                   className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
                 >
-                  {STATUS.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
+                  {availableStatuses(editing?.status || "CREATED").map((s) => (
+  <option key={s} value={s}>
+    {s}
+  </option>
+))}
                 </select>
               </div>
 

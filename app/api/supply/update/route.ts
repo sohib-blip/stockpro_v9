@@ -41,9 +41,9 @@ export async function PUT(req: Request) {
 if (currentError) throw currentError;
 
 const transitions: Record<string, string[]> = {
-  CREATED: ["CREATED", "SHIPPED"],
+  CREATED: ["CREATED", "SHIPPED", "FAILED"],
   SHIPPED: ["SHIPPED", "RECEIVED", "FAILED"],
-  RECEIVED: ["RECEIVED", "IMPORTED"],
+  RECEIVED: ["RECEIVED", "IMPORTED", "FAILED"],
   IMPORTED: ["IMPORTED"],
   FAILED: ["FAILED"],
 };
@@ -53,6 +53,16 @@ if (!transitions[currentSupply.status]?.includes(status)) {
     {
       ok: false,
       error: "Invalid status transition",
+    },
+    { status: 400 }
+  );
+}
+
+if (status === "FAILED" && !failed_reason?.trim()) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: "Failure reason is required",
     },
     { status: 400 }
   );

@@ -21,16 +21,18 @@ export async function GET(req: Request) {
       );
     }
 
-    const { data, error } = await supabase
-      .from("supply_status_history")
-      .select("*")
-      .eq("supply_id", id)
-      .order("created_at", { ascending: true });
+    const { data, error, count } = await supabase
+  .from("supply_status_history")
+  .select("*", { count: "exact" })
+  .eq("supply_id", id)
+  .order("created_at", { ascending: true });
 
-    console.log("HISTORY ID:", id);
-    console.log("HISTORY ERROR:", error);
-    console.log("HISTORY COUNT:", data?.length);
-    console.log("HISTORY STATUSES:", data?.map((r) => r.status));
+console.log("HISTORY ID:", id);
+console.log("HISTORY ERROR:", error);
+console.log("HISTORY COUNT:", data?.length);
+console.log("HISTORY SUPABASE COUNT:", count);
+console.log("HISTORY STATUSES:", data?.map((r) => r.status));
+console.log("HISTORY FULL DATA:", JSON.stringify(data, null, 2));
 
     if (error) throw error;
 

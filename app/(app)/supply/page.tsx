@@ -228,6 +228,7 @@ if (editing && json.row) {
         ? {
             ...row,
             status: json.row.status,
+            tracking_number: json.row.tracking_number,
             imported: json.row.imported,
             imported_date: json.row.imported_date,
             updated_at: json.row.updated_at,

@@ -27,6 +27,11 @@ export async function GET(req: Request) {
       .eq("supply_id", id)
       .order("created_at", { ascending: true });
 
+    console.log("HISTORY ID:", id);
+    console.log("HISTORY ERROR:", error);
+    console.log("HISTORY COUNT:", data?.length);
+    console.log("HISTORY STATUSES:", data?.map((r) => r.status));
+
     if (error) throw error;
 
     return NextResponse.json({

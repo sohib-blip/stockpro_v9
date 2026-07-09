@@ -143,7 +143,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
     setOpenModal(true);
   }
 
-function availableStatuses(currentStatus: string) {
+function availableStatuses(currentStatus: string): Array<(typeof STATUS)[number]> {
   switch (currentStatus) {
     case "CREATED":
       return ["CREATED", "SHIPPED"];
@@ -161,7 +161,7 @@ function availableStatuses(currentStatus: string) {
       return ["FAILED"];
 
     default:
-      return STATUS;
+      return [...STATUS];
   }
 }
 
@@ -252,10 +252,8 @@ function availableStatuses(currentStatus: string) {
 setConfirmDone(false);
 
 await loadSupply();
-
-if (detailTarget?.id === json.row?.id) {
-  await openDetails(json.row);
-}
+setDetailTarget(null);
+setStatusHistory([]);
 
 resetForm();
 }
@@ -352,7 +350,12 @@ async function openDetails(row: any) {
 
   const res = await fetch(
     `/api/supply/history?id=${row.id}&t=${Date.now()}`,
-    { cache: "no-store" }
+    {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache",
+      },
+    }
   );
 
   const json = await res.json();
@@ -919,7 +922,7 @@ async function openDetails(row: any) {
 <div>
   <div className="text-xs text-slate-500 mb-2">Status history</div>
 
-  <div className="rounded-xl border border-slate-800 overflow-hidden">
+ <div className="rounded-xl border border-slate-800 overflow-y-auto max-h-[300px]">
     {statusHistory.length === 0 ? (
       <div className="p-4 text-center text-slate-500">
         No history yet

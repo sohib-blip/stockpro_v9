@@ -251,24 +251,9 @@ function availableStatuses(currentStatus: string) {
   setOpenModal(false);
 setConfirmDone(false);
 
-if (editing && json.row) {
-  setRows((prev) =>
-    prev.map((row) =>
-      row.id === json.row.id
-        ? {
-            ...row,
-            status: json.row.status,
-            tracking_number: json.row.tracking_number,
-            imported: json.row.imported,
-            imported_date: json.row.imported_date,
-            updated_at: json.row.updated_at,
-          }
-        : row
-    )
-  );
-} else {
-  await loadSupply();
-}
+await loadSupply();
+
+resetForm();
 
 resetForm();
 }

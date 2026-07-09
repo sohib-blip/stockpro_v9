@@ -53,7 +53,9 @@ const pageSize = 20;
   const [fromOffice, setFromOffice] = useState("UK");
   const [toOffice, setToOffice] = useState("BE");
   const [tracking, setTracking] = useState("");
-  const [status, setStatus] = useState<"CREATED" | "SHIPPED" | "RECEIVED" | "IMPORTED">("CREATED");
+  const [status, setStatus] = useState<
+  "CREATED" | "SHIPPED" | "RECEIVED" | "IMPORTED" | "FAILED"
+>("CREATED");
   const [comment, setComment] = useState("");
 
   const [items, setItems] = useState<SupplyItem[]>([
@@ -213,7 +215,7 @@ function availableStatuses(currentStatus: string) {
   ? {
       id: editing.id,
       status,
-      tracking_number: status === "SHIPPED" ? tracking : editing.tracking_number,
+      tracking_number: tracking || editing.tracking_number || null,
       changed_by: userEmail,
       changed_by_id: userId,
     }
@@ -321,6 +323,7 @@ const paginatedRows = sortedRows.slice(
     shipped: rows.filter((r) => r.status === "SHIPPED").length,
 received: rows.filter((r) => r.status === "RECEIVED").length,
     imported: rows.filter((r) => r.imported).length,
+    failed: rows.filter((r) => r.status === "FAILED").length,
   };
 
     function statusClass(status: string) {
@@ -425,7 +428,7 @@ async function openDetails(row: any) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
   <div className="card-glow p-4 rounded-xl">
     <div className="text-xs text-slate-400">Total</div>
     <div className="text-2xl font-bold text-cyan-400">{kpis.total}</div>
@@ -450,6 +453,11 @@ async function openDetails(row: any) {
     <div className="text-xs text-slate-400">Imported</div>
     <div className="text-2xl font-bold text-green-400">{kpis.imported}</div>
   </div>
+
+  <div className="card-glow p-4 rounded-xl">
+  <div className="text-xs text-slate-400">Failed</div>
+  <div className="text-2xl font-bold text-red-400">{kpis.failed}</div>
+</div>
 </div>
 
       <div className="card-glow p-4 rounded-xl flex gap-3">
@@ -716,7 +724,9 @@ async function openDetails(row: any) {
                 <select
                   value={status}
                   onChange={(e) =>
-                    setStatus(e.target.value as "CREATED" | "SHIPPED" | "RECEIVED" | "IMPORTED")
+                    setStatus(
+  e.target.value as "CREATED" | "SHIPPED" | "RECEIVED" | "IMPORTED" | "FAILED"
+)
                   }
                   className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
                 >

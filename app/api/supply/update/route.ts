@@ -20,7 +20,7 @@ const VALID_STATUS = [
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { id, status, tracking_number, changed_by, changed_by_id } = body;
+    const { id, status, tracking_number, failed_reason, changed_by, changed_by_id } = body;
 
     if (!id) {
       return NextResponse.json({ ok: false, error: "Missing supply id" }, { status: 400 });
@@ -59,12 +59,13 @@ if (!transitions[currentSupply.status]?.includes(status)) {
 }
 
     const updateData: any = {
-      status,
-      tracking_number: tracking_number || null,
-      imported: isImported,
-      imported_date: isImported ? new Date().toISOString() : null,
-      updated_at: new Date().toISOString(),
-    };
+  status,
+  tracking_number: tracking_number || null,
+  failed_reason: status === "FAILED" ? failed_reason || null : null,
+  imported: isImported,
+  imported_date: isImported ? new Date().toISOString() : null,
+  updated_at: new Date().toISOString(),
+};
 
     const { data, error } = await supabase
       .from("supplies")
@@ -81,6 +82,7 @@ if (!transitions[currentSupply.status]?.includes(status)) {
     supply_id: id,
     status,
     tracking_number: tracking_number || null,
+    failed_reason: status === "FAILED" ? failed_reason || null : null,
     changed_by: changed_by || "unknown",
     changed_by_id: changed_by_id || null,
   });

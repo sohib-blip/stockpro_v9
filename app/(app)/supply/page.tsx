@@ -53,6 +53,7 @@ const pageSize = 20;
   const [fromOffice, setFromOffice] = useState("UK");
   const [toOffice, setToOffice] = useState("BE");
   const [tracking, setTracking] = useState("");
+  const [failedReason, setFailedReason] = useState("");
   const [status, setStatus] = useState<
   "CREATED" | "SHIPPED" | "RECEIVED" | "IMPORTED" | "FAILED"
 >("CREATED");
@@ -133,6 +134,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
     setFromOffice("UK");
     setToOffice("BE");
     setTracking("");
+    setFailedReason("");
     setStatus("CREATED");
     setComment("");
     setItems([{ product_type: "DEVICE", product_name: "", qty: 1 }]);
@@ -170,6 +172,7 @@ function availableStatuses(currentStatus: string): Array<(typeof STATUS)[number]
     setFromOffice(row.from_office || "UK");
     setToOffice(row.to_office || "BE");
     setTracking(row.tracking_number || "");
+    setFailedReason(row.failed_reason || "");
     setStatus(row.status || "CREATED");
     setComment(row.comment || "");
     setItems(
@@ -208,6 +211,11 @@ function availableStatuses(currentStatus: string): Array<(typeof STATUS)[number]
     return;
   }
 
+  if (editing && status === "FAILED" && !failedReason.trim()) {
+  setMsg("Please enter a failure reason.");
+  return;
+}
+
   setBusy(true);
   setMsg("");
 
@@ -216,6 +224,7 @@ function availableStatuses(currentStatus: string): Array<(typeof STATUS)[number]
       id: editing.id,
       status,
       tracking_number: tracking || editing.tracking_number || null,
+      failed_reason: status === "FAILED" ? failedReason : null,
       changed_by: userEmail,
       changed_by_id: userId,
     }
@@ -728,6 +737,15 @@ async function openDetails(row: any) {
   </option>
 ))}
                 </select>
+
+{editing && status === "FAILED" && (
+  <textarea
+    value={failedReason}
+    onChange={(e) => setFailedReason(e.target.value)}
+    placeholder="Reason for failure..."
+    className="md:col-span-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm min-h-[80px]"
+  />
+)}
               </div>
 
               <textarea
@@ -888,6 +906,16 @@ async function openDetails(row: any) {
             <div className="text-xs text-slate-500">Imported at</div>
             <div>{detailTarget.imported_date ? formatDate(detailTarget.imported_date) : "-"}</div>
           </div>
+          
+        {detailTarget.failed_reason && (
+  <div className="col-span-2">
+    <div className="text-xs text-slate-500">Failure reason</div>
+    <div className="rounded-xl bg-red-500/10 border border-red-500/30 p-3 mt-1 text-red-300">
+      {detailTarget.failed_reason}
+    </div>
+  </div>
+)}
+
         </div>
 
         <div>
@@ -956,6 +984,13 @@ async function openDetails(row: any) {
               Tracking: {h.tracking_number}
             </div>
           )}
+
+        {h.failed_reason && (
+  <div className="mt-1 text-xs text-red-400">
+    Reason: {h.failed_reason}
+  </div>
+)}
+
         </div>
       ))
     )}

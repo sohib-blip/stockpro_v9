@@ -9,7 +9,13 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-const VALID_STATUS = ["CREATED", "SHIPPED", "RECEIVED", "IMPORTED"];
+const VALID_STATUS = [
+  "CREATED",
+  "SHIPPED",
+  "RECEIVED",
+  "IMPORTED",
+  "FAILED",
+];
 
 export async function PUT(req: Request) {
   try {
@@ -34,12 +40,20 @@ export async function PUT(req: Request) {
 
 if (currentError) throw currentError;
 
-const currentIndex = VALID_STATUS.indexOf(currentSupply.status);
-const nextIndex = VALID_STATUS.indexOf(status);
+const transitions: Record<string, string[]> = {
+  CREATED: ["CREATED", "SHIPPED"],
+  SHIPPED: ["SHIPPED", "RECEIVED", "FAILED"],
+  RECEIVED: ["RECEIVED", "IMPORTED"],
+  IMPORTED: ["IMPORTED"],
+  FAILED: ["FAILED"],
+};
 
-if (nextIndex < currentIndex) {
+if (!transitions[currentSupply.status]?.includes(status)) {
   return NextResponse.json(
-    { ok: false, error: "You cannot move status backwards" },
+    {
+      ok: false,
+      error: "Invalid status transition",
+    },
     { status: 400 }
   );
 }

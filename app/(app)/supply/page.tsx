@@ -16,7 +16,13 @@ const OFFICES = [
   { code: "IT", label: "🇮🇹 Italy" },
 ];
 
-const STATUS = ["CREATED", "SHIPPED", "RECEIVED", "IMPORTED"] as const;
+const STATUS = [
+  "CREATED",
+  "SHIPPED",
+  "RECEIVED",
+  "IMPORTED",
+  "FAILED",
+] as const;
 
 type SupplyItem = {
   product_id?: string | null;
@@ -136,9 +142,25 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
   }
 
 function availableStatuses(currentStatus: string) {
-  const currentIndex = STATUS.indexOf(currentStatus as any);
+  switch (currentStatus) {
+    case "CREATED":
+      return ["CREATED", "SHIPPED"];
 
-  return STATUS.filter((_, index) => index >= currentIndex);
+    case "SHIPPED":
+      return ["SHIPPED", "RECEIVED", "FAILED"];
+
+    case "RECEIVED":
+      return ["RECEIVED", "IMPORTED"];
+
+    case "IMPORTED":
+      return ["IMPORTED"];
+
+    case "FAILED":
+      return ["FAILED"];
+
+    default:
+      return STATUS;
+  }
 }
 
   function openEdit(row: any) {
@@ -302,9 +324,18 @@ received: rows.filter((r) => r.status === "RECEIVED").length,
   };
 
     function statusClass(status: string) {
-  if (status === "IMPORTED") return "bg-green-500/20 text-green-400";
-  if (status === "RECEIVED") return "bg-purple-500/20 text-purple-400";
-  if (status === "SHIPPED") return "bg-yellow-500/20 text-yellow-400";
+  if (status === "FAILED")
+    return "bg-red-500/20 text-red-400";
+
+  if (status === "IMPORTED")
+    return "bg-green-500/20 text-green-400";
+
+  if (status === "RECEIVED")
+    return "bg-purple-500/20 text-purple-400";
+
+  if (status === "SHIPPED")
+    return "bg-yellow-500/20 text-yellow-400";
+
   return "bg-blue-500/20 text-blue-400";
 }
 
@@ -559,7 +590,7 @@ async function openDetails(row: any) {
 </td>
 
           <td className="text-right">
-  {row.status !== "IMPORTED" ? (
+  {!["IMPORTED", "FAILED"].includes(row.status) ? (
     <div className="flex justify-end gap-3">
       <button
         onClick={() => openEdit(row)}

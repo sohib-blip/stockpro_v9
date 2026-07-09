@@ -253,7 +253,9 @@ setConfirmDone(false);
 
 await loadSupply();
 
-resetForm();
+if (detailTarget?.id === json.row?.id) {
+  await openDetails(json.row);
+}
 
 resetForm();
 }
@@ -346,9 +348,11 @@ received: rows.filter((r) => r.status === "RECEIVED").length,
 
 async function openDetails(row: any) {
   setDetailTarget(row);
+  setStatusHistory([]);
 
   const res = await fetch(
-    `/api/supply/history?id=${row.id}&t=${Date.now()}`
+    `/api/supply/history?id=${row.id}&t=${Date.now()}`,
+    { cache: "no-store" }
   );
 
   const json = await res.json();

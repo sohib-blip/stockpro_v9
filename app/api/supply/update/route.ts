@@ -75,13 +75,17 @@ if (!transitions[currentSupply.status]?.includes(status)) {
 
     if (error) throw error;
 
-    await supabase.from("supply_status_history").insert({
-      supply_id: id,
-      status,
-      tracking_number: tracking_number || null,
-      changed_by: changed_by || "unknown",
-      changed_by_id: changed_by_id || null,
-    });
+    const { error: historyError } = await supabase
+  .from("supply_status_history")
+  .insert({
+    supply_id: id,
+    status,
+    tracking_number: tracking_number || null,
+    changed_by: changed_by || "unknown",
+    changed_by_id: changed_by_id || null,
+  });
+
+if (historyError) throw historyError;
 
     return NextResponse.json({ ok: true, row: data });
   } catch (e: any) {

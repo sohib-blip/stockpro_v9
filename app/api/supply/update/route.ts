@@ -15,67 +15,95 @@ const VALID_STATUS = [
   "RECEIVED",
   "IMPORTED",
   "FAILED",
-];
+] as const;
+
+type SupplyStatus = (typeof VALID_STATUS)[number];
 
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-    const { id, status, tracking_number, failed_reason, changed_by, changed_by_id } = body;
+
+    const {
+      id,
+      status,
+      tracking_number,
+      failed_reason,
+      changed_by,
+      changed_by_id,
+    } = body;
 
     if (!id) {
-      return NextResponse.json({ ok: false, error: "Missing supply id" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Missing supply id" },
+        { status: 400 }
+      );
     }
 
-    if (!VALID_STATUS.includes(status)) {
-      return NextResponse.json({ ok: false, error: "Invalid status" }, { status: 400 });
-    }
+    const requestedStatus = String(status ?? "")
+      .trim()
+      .toUpperCase() as SupplyStatus;
 
-    const isImported = status === "IMPORTED";
+    if (!VALID_STATUS.includes(requestedStatus)) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid status" },
+        { status: 400 }
+      );
+    }
 
     const { data: currentSupply, error: currentError } = await supabase
-  .from("supplies")
-  .select("status")
-  .eq("id", id)
-  .single();
+      .from("supplies")
+      .select("status")
+      .eq("id", id)
+      .single();
 
-if (currentError) throw currentError;
+    if (currentError) throw currentError;
 
-const transitions: Record<string, string[]> = {
-  CREATED: ["CREATED", "SHIPPED", "FAILED"],
-  SHIPPED: ["SHIPPED", "RECEIVED", "FAILED"],
-  RECEIVED: ["RECEIVED", "IMPORTED", "FAILED"],
-  IMPORTED: ["IMPORTED"],
-  FAILED: ["FAILED"],
-};
+    const currentStatus = String(currentSupply.status ?? "")
+      .trim()
+      .toUpperCase() as SupplyStatus;
 
-if (!transitions[currentSupply.status]?.includes(status)) {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "Invalid status transition",
-    },
-    { status: 400 }
-  );
-}
+    const transitions: Record<SupplyStatus, SupplyStatus[]> = {
+      CREATED: ["CREATED", "SHIPPED", "FAILED"],
+      SHIPPED: ["SHIPPED", "RECEIVED", "FAILED"],
+      RECEIVED: ["RECEIVED", "IMPORTED", "FAILED"],
+      IMPORTED: ["IMPORTED"],
+      FAILED: ["FAILED"],
+    };
 
-if (status === "FAILED" && !failed_reason?.trim()) {
-  return NextResponse.json(
-    {
-      ok: false,
-      error: "Failure reason is required",
-    },
-    { status: 400 }
-  );
-}
+    if (!transitions[currentStatus]?.includes(requestedStatus)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Invalid status transition: ${currentStatus} → ${requestedStatus}`,
+        },
+        { status: 400 }
+      );
+    }
 
-    const updateData: any = {
-  status,
-  tracking_number: tracking_number || null,
-  failed_reason: status === "FAILED" ? failed_reason || null : null,
-  imported: isImported,
-  imported_date: isImported ? new Date().toISOString() : null,
-  updated_at: new Date().toISOString(),
-};
+    if (requestedStatus === "FAILED" && !failed_reason?.trim()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Failure reason is required",
+        },
+        { status: 400 }
+      );
+    }
+
+    const isImported = requestedStatus === "IMPORTED";
+    const now = new Date().toISOString();
+
+    const updateData = {
+      status: requestedStatus,
+      tracking_number: tracking_number?.trim() || null,
+      failed_reason:
+        requestedStatus === "FAILED"
+          ? failed_reason.trim()
+          : null,
+      imported: isImported,
+      imported_date: isImported ? now : null,
+      updated_at: now,
+    };
 
     const { data, error } = await supabase
       .from("supplies")
@@ -87,38 +115,40 @@ if (status === "FAILED" && !failed_reason?.trim()) {
     if (error) throw error;
 
     const { data: historyRow, error: historyError } = await supabase
-  .from("supply_status_history")
-  .insert({
-    supply_id: id,
-    status,
-    tracking_number: tracking_number || null,
-    failed_reason:
-      status === "FAILED" ? failed_reason?.trim() || null : null,
-    changed_by: changed_by || "unknown",
-    changed_by_id: changed_by_id || null,
-  })
-  .select("*")
-  .single();
+      .from("supply_status_history")
+      .insert({
+        supply_id: id,
+        status: requestedStatus,
+        tracking_number: tracking_number?.trim() || null,
+        failed_reason:
+          requestedStatus === "FAILED"
+            ? failed_reason.trim()
+            : null,
+        changed_by: changed_by || "unknown",
+        changed_by_id: changed_by_id || null,
+      })
+      .select("*")
+      .single();
 
-if (historyError) {
-  console.error("SUPPLY HISTORY INSERT ERROR:", historyError);
+    if (historyError) {
+      console.error("SUPPLY HISTORY INSERT ERROR:", historyError);
 
-  return NextResponse.json(
-    {
-      ok: false,
-      error: historyError.message,
-      details: historyError.details,
-      code: historyError.code,
-    },
-    { status: 500 }
-  );
-}
+      return NextResponse.json(
+        {
+          ok: false,
+          error: historyError.message,
+          details: historyError.details,
+          code: historyError.code,
+        },
+        { status: 500 }
+      );
+    }
 
-return NextResponse.json({
-  ok: true,
-  row: data,
-  historyRow,
-});
+    return NextResponse.json({
+      ok: true,
+      row: data,
+      historyRow,
+    });
   } catch (e: any) {
     console.error("SUPPLY UPDATE ERROR:", e);
 

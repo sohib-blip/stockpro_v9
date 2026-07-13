@@ -86,20 +86,27 @@ if (status === "FAILED" && !failed_reason?.trim()) {
 
     if (error) throw error;
 
-    const { error: historyError } = await supabase
+    const { data: historyRow, error: historyError } = await supabase
   .from("supply_status_history")
   .insert({
     supply_id: id,
     status,
     tracking_number: tracking_number || null,
-    failed_reason: status === "FAILED" ? failed_reason || null : null,
+    failed_reason:
+      status === "FAILED" ? failed_reason?.trim() || null : null,
     changed_by: changed_by || "unknown",
     changed_by_id: changed_by_id || null,
-  });
+  })
+  .select("*")
+  .single();
 
 if (historyError) throw historyError;
 
-    return NextResponse.json({ ok: true, row: data });
+    return NextResponse.json({
+  ok: true,
+  row: data,
+  historyRow,
+});
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "Supply update failed" },

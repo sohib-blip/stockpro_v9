@@ -145,16 +145,18 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
     setOpenModal(true);
   }
 
-function availableStatuses(currentStatus: string): Array<(typeof STATUS)[number]> {
+function availableStatuses(
+  currentStatus: string
+): Array<(typeof STATUS)[number]> {
   switch (currentStatus) {
     case "CREATED":
-      return ["CREATED", "SHIPPED"];
+      return ["CREATED", "SHIPPED", "FAILED"];
 
     case "SHIPPED":
       return ["SHIPPED", "RECEIVED", "FAILED"];
 
     case "RECEIVED":
-      return ["RECEIVED", "IMPORTED"];
+      return ["RECEIVED", "IMPORTED", "FAILED"];
 
     case "IMPORTED":
       return ["IMPORTED"];
@@ -166,7 +168,6 @@ function availableStatuses(currentStatus: string): Array<(typeof STATUS)[number]
       return [...STATUS];
   }
 }
-
   function openEdit(row: any) {
     setEditing(row);
     setFromOffice(row.from_office || "UK");
@@ -260,9 +261,33 @@ function availableStatuses(currentStatus: string): Array<(typeof STATUS)[number]
   setOpenModal(false);
 setConfirmDone(false);
 
-await loadSupply();
-setDetailTarget(null);
-setStatusHistory([]);
+setRows((prev) =>
+  prev.map((row) =>
+    row.id === json.row.id
+      ? {
+          ...row,
+          ...json.row,
+          supply_items: row.supply_items,
+        }
+      : row
+  )
+);
+
+if (detailTarget?.id === json.row.id) {
+  setDetailTarget((prev: any) =>
+    prev
+      ? {
+          ...prev,
+          ...json.row,
+          supply_items: prev.supply_items,
+        }
+      : prev
+  );
+
+  if (json.historyRow) {
+    setStatusHistory((prev) => [...prev, json.historyRow]);
+  }
+}
 
 resetForm();
 }

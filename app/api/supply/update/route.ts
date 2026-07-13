@@ -100,16 +100,33 @@ if (status === "FAILED" && !failed_reason?.trim()) {
   .select("*")
   .single();
 
-if (historyError) throw historyError;
+if (historyError) {
+  console.error("SUPPLY HISTORY INSERT ERROR:", historyError);
 
-    return NextResponse.json({
+  return NextResponse.json(
+    {
+      ok: false,
+      error: historyError.message,
+      details: historyError.details,
+      code: historyError.code,
+    },
+    { status: 500 }
+  );
+}
+
+return NextResponse.json({
   ok: true,
   row: data,
   historyRow,
 });
   } catch (e: any) {
+    console.error("SUPPLY UPDATE ERROR:", e);
+
     return NextResponse.json(
-      { ok: false, error: e?.message || "Supply update failed" },
+      {
+        ok: false,
+        error: e?.message || "Supply update failed",
+      },
       { status: 500 }
     );
   }

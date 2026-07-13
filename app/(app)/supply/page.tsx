@@ -261,36 +261,14 @@ function availableStatuses(
   setOpenModal(false);
 setConfirmDone(false);
 
-setRows((prev) =>
-  prev.map((row) =>
-    row.id === json.row.id
-      ? {
-          ...row,
-          ...json.row,
-          supply_items: row.supply_items,
-        }
-      : row
-  )
-);
+await loadSupply();
 
-if (detailTarget?.id === json.row.id) {
-  setDetailTarget((prev: any) =>
-    prev
-      ? {
-          ...prev,
-          ...json.row,
-          supply_items: prev.supply_items,
-        }
-      : prev
-  );
-
-  if (json.historyRow) {
-    setStatusHistory((prev) => [...prev, json.historyRow]);
-  }
-}
+setDetailTarget(null);
+setStatusHistory([]);
 
 resetForm();
 }
+
   const filteredRows = rows.filter((row) => {
     const q = search.toLowerCase();
 
@@ -381,21 +359,32 @@ received: rows.filter((r) => r.status === "RECEIVED").length,
 async function openDetails(row: any) {
   setDetailTarget(row);
   setStatusHistory([]);
+  setMsg("");
 
-  const res = await fetch(
-    `/api/supply/history?id=${row.id}&t=${Date.now()}`,
-    {
-      cache: "no-store",
-      headers: {
-        "Cache-Control": "no-cache",
-      },
+  try {
+    const res = await fetch(
+      `/api/supply/history?id=${encodeURIComponent(row.id)}&t=${Date.now()}`,
+      {
+        method: "GET",
+        cache: "no-store",
+        headers: {
+          "Cache-Control": "no-cache, no-store, must-revalidate",
+          Pragma: "no-cache",
+        },
+      }
+    );
+
+    const json = await res.json();
+
+    if (!res.ok || !json.ok) {
+      setMsg(json.error || "Could not load status history");
+      return;
     }
-  );
 
-  const json = await res.json();
-
-  if (json.ok) {
-    setStatusHistory(json.rows || []);
+    setStatusHistory(json.rows ?? []);
+  } catch (error) {
+    console.error("OPEN SUPPLY DETAILS ERROR:", error);
+    setMsg("Could not load status history");
   }
 }
 

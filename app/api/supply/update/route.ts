@@ -9,6 +9,22 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function getSupabaseKeyProjectRef() {
+  try {
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+    if (!key) return "MISSING_KEY";
+
+    const payload = JSON.parse(
+      Buffer.from(key.split(".")[1], "base64url").toString("utf8")
+    );
+
+    return payload.ref || "NO_REF_FOUND";
+  } catch {
+    return "INVALID_KEY";
+  }
+}
+
 const VALID_STATUS = [
   "CREATED",
   "SHIPPED",
@@ -22,6 +38,9 @@ type SupplyStatus = (typeof VALID_STATUS)[number];
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
+
+    console.log("SUPABASE URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
+console.log("SERVICE KEY PROJECT REF:", getSupabaseKeyProjectRef());
 
     const {
       id,

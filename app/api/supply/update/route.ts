@@ -70,10 +70,12 @@ console.log("SERVICE KEY PROJECT REF:", getSupabaseKeyProjectRef());
     }
 
     const { data: currentSupply, error: currentError } = await supabase
-      .from("supplies")
-      .select("status")
-      .eq("id", id)
-      .single();
+  .from("supplies")
+  .select("*")
+  .eq("id", id)
+  .single();
+
+console.log("ROW FROM DB =", JSON.stringify(currentSupply, null, 2));
 
     if (currentError) throw currentError;
 

@@ -16,21 +16,6 @@ const VALID_STATUS = [
 
 type SupplyStatus = (typeof VALID_STATUS)[number];
 
-/**
- * Empêche Supabase de réutiliser une ancienne réponse GET.
- */
-const noStoreFetch: typeof fetch = (input, init) => {
-  return fetch(input, {
-    ...init,
-    cache: "no-store",
-    headers: {
-      ...init?.headers,
-      "Cache-Control": "no-cache, no-store, must-revalidate",
-      Pragma: "no-cache",
-    },
-  });
-};
-
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -38,9 +23,6 @@ const supabase = createClient(
     auth: {
       persistSession: false,
       autoRefreshToken: false,
-    },
-    global: {
-      fetch: noStoreFetch,
     },
   }
 );

@@ -3,27 +3,8 @@ import { createClient } from "@supabase/supabase-js";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
-
-function getSupabaseKeyProjectRef() {
-  try {
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!key) return "MISSING_KEY";
-
-    const payload = JSON.parse(
-      Buffer.from(key.split(".")[1], "base64url").toString("utf8")
-    );
-
-    return payload.ref || "NO_REF_FOUND";
-  } catch {
-    return "INVALID_KEY";
-  }
-}
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const VALID_STATUS = [
   "CREATED",
@@ -35,12 +16,46 @@ const VALID_STATUS = [
 
 type SupplyStatus = (typeof VALID_STATUS)[number];
 
+/**
+ * Empêche Supabase de réutiliser une ancienne réponse GET.
+ */
+const noStoreFetch: typeof fetch = (input, init) => {
+  return fetch(input, {
+    ...init,
+    cache: "no-store",
+    headers: {
+      ...init?.headers,
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      Pragma: "no-cache",
+    },
+  });
+};
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: {
+      fetch: noStoreFetch,
+    },
+  }
+);
+
+const transitions: Record<SupplyStatus, SupplyStatus[]> = {
+  CREATED: ["CREATED", "SHIPPED", "FAILED"],
+  SHIPPED: ["SHIPPED", "RECEIVED", "FAILED"],
+  RECEIVED: ["RECEIVED", "IMPORTED", "FAILED"],
+  IMPORTED: ["IMPORTED"],
+  FAILED: ["FAILED"],
+};
+
 export async function PUT(req: Request) {
   try {
     const body = await req.json();
-
-    console.log("SUPABASE URL:", process.env.NEXT_PUBLIC_SUPABASE_URL);
-console.log("SERVICE KEY PROJECT REF:", getSupabaseKeyProjectRef());
 
     const {
       id,
@@ -53,8 +68,13 @@ console.log("SERVICE KEY PROJECT REF:", getSupabaseKeyProjectRef());
 
     if (!id) {
       return NextResponse.json(
-        { ok: false, error: "Missing supply id" },
-        { status: 400 }
+        {
+          ok: false,
+          error: "Missing supply id",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
@@ -64,95 +84,131 @@ console.log("SERVICE KEY PROJECT REF:", getSupabaseKeyProjectRef());
 
     if (!VALID_STATUS.includes(requestedStatus)) {
       return NextResponse.json(
-        { ok: false, error: "Invalid status" },
-        { status: 400 }
-      );
-    }
-
-    const { data: currentSupply, error: currentError } = await supabase
-  .from("supplies")
-  .select("*")
-  .eq("id", id)
-  .single();
-
-console.log("ROW FROM DB =", JSON.stringify(currentSupply, null, 2));
-
-    if (currentError) throw currentError;
-
-    console.log("========== UPDATE API ==========");
-console.log("ID:", id);
-console.log("DB STATUS:", currentSupply.status);
-console.log("REQUESTED:", requestedStatus);
-
-    const currentStatus = String(currentSupply.status ?? "")
-      .trim()
-      .toUpperCase() as SupplyStatus;
-
-    const transitions: Record<SupplyStatus, SupplyStatus[]> = {
-      CREATED: ["CREATED", "SHIPPED", "FAILED"],
-      SHIPPED: ["SHIPPED", "RECEIVED", "FAILED"],
-      RECEIVED: ["RECEIVED", "IMPORTED", "FAILED"],
-      IMPORTED: ["IMPORTED"],
-      FAILED: ["FAILED"],
-    };
-
-console.log("CURRENT STATUS =", currentStatus);
-console.log("ALLOWED =", transitions[currentStatus]);
-
-    if (!transitions[currentStatus]?.includes(requestedStatus)) {
-      return NextResponse.json(
         {
           ok: false,
-          error: `Invalid status transition: ${currentStatus} → ${requestedStatus}`,
+          error: "Invalid status",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    if (requestedStatus === "FAILED" && !failed_reason?.trim()) {
+    const cleanTrackingNumber =
+      typeof tracking_number === "string" && tracking_number.trim()
+        ? tracking_number.trim()
+        : null;
+
+    const cleanFailedReason =
+      typeof failed_reason === "string" && failed_reason.trim()
+        ? failed_reason.trim()
+        : null;
+
+    if (requestedStatus === "FAILED" && !cleanFailedReason) {
       return NextResponse.json(
         {
           ok: false,
           error: "Failure reason is required",
         },
-        { status: 400 }
+        {
+          status: 400,
+        }
       );
     }
 
-    const isImported = requestedStatus === "IMPORTED";
+    /*
+     * Lecture du statut réellement enregistré dans supplies.
+     */
+    const { data: currentSupply, error: currentError } = await supabase
+      .from("supplies")
+      .select("id, order_number, status")
+      .eq("id", id)
+      .single();
+
+    if (currentError) {
+      console.error("SUPPLY READ ERROR:", currentError);
+      throw currentError;
+    }
+
+    const currentStatus = String(currentSupply.status ?? "")
+      .trim()
+      .toUpperCase() as SupplyStatus;
+
+    console.log("========== SUPPLY UPDATE ==========");
+    console.log({
+      id,
+      orderNumber: currentSupply.order_number,
+      currentStatus,
+      requestedStatus,
+      allowedStatuses: transitions[currentStatus],
+    });
+
+    if (!VALID_STATUS.includes(currentStatus)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Unknown current status: ${currentStatus}`,
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    if (!transitions[currentStatus].includes(requestedStatus)) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Invalid status transition: ${currentStatus} → ${requestedStatus}`,
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
     const now = new Date().toISOString();
+    const isImported = requestedStatus === "IMPORTED";
 
     const updateData = {
       status: requestedStatus,
-      tracking_number: tracking_number?.trim() || null,
+      tracking_number: cleanTrackingNumber,
       failed_reason:
-        requestedStatus === "FAILED"
-          ? failed_reason.trim()
-          : null,
+        requestedStatus === "FAILED" ? cleanFailedReason : null,
       imported: isImported,
       imported_date: isImported ? now : null,
       updated_at: now,
     };
 
-    const { data, error } = await supabase
+    /*
+     * Mise à jour de la commande.
+     * On vérifie aussi l'ancien statut dans le WHERE afin d'éviter
+     * qu'une ancienne requête modifie une commande entre-temps.
+     */
+    const { data: updatedSupply, error: updateError } = await supabase
       .from("supplies")
       .update(updateData)
       .eq("id", id)
+      .eq("status", currentSupply.status)
       .select("*")
       .single();
 
-    if (error) throw error;
+    if (updateError) {
+      console.error("SUPPLY UPDATE ERROR:", updateError);
+      throw updateError;
+    }
 
+    /*
+     * Ajout de la nouvelle ligne dans l'historique.
+     */
     const { data: historyRow, error: historyError } = await supabase
       .from("supply_status_history")
       .insert({
         supply_id: id,
         status: requestedStatus,
-        tracking_number: tracking_number?.trim() || null,
+        tracking_number: cleanTrackingNumber,
         failed_reason:
-          requestedStatus === "FAILED"
-            ? failed_reason.trim()
-            : null,
+          requestedStatus === "FAILED" ? cleanFailedReason : null,
         changed_by: changed_by || "unknown",
         changed_by_id: changed_by_id || null,
       })
@@ -169,24 +225,45 @@ console.log("ALLOWED =", transitions[currentStatus]);
           details: historyError.details,
           code: historyError.code,
         },
-        { status: 500 }
+        {
+          status: 500,
+        }
       );
     }
 
-    return NextResponse.json({
-      ok: true,
-      row: data,
-      historyRow,
-    });
-  } catch (e: any) {
-    console.error("SUPPLY UPDATE ERROR:", e);
+    return NextResponse.json(
+      {
+        ok: true,
+        row: updatedSupply,
+        historyRow,
+      },
+      {
+        status: 200,
+        headers: {
+          "Cache-Control":
+            "no-store, no-cache, must-revalidate, proxy-revalidate",
+          Pragma: "no-cache",
+          Expires: "0",
+        },
+      }
+    );
+  } catch (error: unknown) {
+    console.error("SUPPLY UPDATE FAILED:", error);
+
+    const message =
+      error instanceof Error ? error.message : "Supply update failed";
 
     return NextResponse.json(
       {
         ok: false,
-        error: e?.message || "Supply update failed",
+        error: message,
       },
-      { status: 500 }
+      {
+        status: 500,
+        headers: {
+          "Cache-Control": "no-store",
+        },
+      }
     );
   }
 }

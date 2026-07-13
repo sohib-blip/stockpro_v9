@@ -58,6 +58,11 @@ export async function PUT(req: Request) {
 
     if (currentError) throw currentError;
 
+    console.log("========== UPDATE API ==========");
+console.log("ID:", id);
+console.log("DB STATUS:", currentSupply.status);
+console.log("REQUESTED:", requestedStatus);
+
     const currentStatus = String(currentSupply.status ?? "")
       .trim()
       .toUpperCase() as SupplyStatus;
@@ -69,6 +74,9 @@ export async function PUT(req: Request) {
       IMPORTED: ["IMPORTED"],
       FAILED: ["FAILED"],
     };
+
+console.log("CURRENT STATUS =", currentStatus);
+console.log("ALLOWED =", transitions[currentStatus]);
 
     if (!transitions[currentStatus]?.includes(requestedStatus)) {
       return NextResponse.json(

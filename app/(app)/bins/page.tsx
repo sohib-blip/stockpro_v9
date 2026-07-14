@@ -7,7 +7,8 @@ type AccessoryCategory =
   | "Packages"
   | "Consumables"
   | "Harness"
-  | "Vision";
+  | "Vision"
+  | "Items";
 
 type Bin = {
   id: string;
@@ -629,6 +630,7 @@ export default function BinsPage() {
   <option value="Consumables">Consumables</option>
   <option value="Harness">Harness</option>
   <option value="Vision">Vision</option>
+  <option value="Items">Items</option>
 </select>
 
           <button
@@ -717,6 +719,7 @@ export default function BinsPage() {
       <option value="Consumables">Consumables</option>
       <option value="Harness">Harness</option>
       <option value="Vision">Vision</option>
+      <option value="Items">Items</option>
     </select>
   ) : (
     bin.category || "Consumables"

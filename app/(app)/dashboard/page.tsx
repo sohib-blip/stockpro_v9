@@ -44,6 +44,7 @@ export default function DashboardPage() {
   Vision: true,
   Harness: true,
   Consumables: true,
+  Items: true,
 });
 
 function toggleGroup(category: keyof typeof openGroups) {
@@ -95,6 +96,10 @@ function toggleGroup(category: keyof typeof openGroups) {
   Consumables: filteredAccessories.filter(
     (a: any) => a.category === "Consumables"
   ),
+
+  Items: filteredAccessories.filter(
+  (a: any) => a.category === "Items"
+),
 };
 
  async function loadAll() {
@@ -795,6 +800,13 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
     open={openGroups.Consumables}
     onToggle={() => toggleGroup("Consumables")}
   />
+
+  <AccessoryCategory
+  title="Items"
+  items={groupedAccessories.Items}
+  open={openGroups.Items}
+  onToggle={() => toggleGroup("Items")}
+/>
 </div>
 
 </div>

@@ -13,12 +13,15 @@ const supabase = createClient(
 export async function GET() {
   const { data, error } = await supabase
     .from("accessory_bins")
-    .select("id, name, current_stock, minimum_stock, active")
+    .select("id, name, category, current_stock, minimum_stock, active")
     .eq("active", true)
     .order("name");
 
   if (error) {
-    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json(
+      { ok: false, error: error.message },
+      { status: 500 }
+    );
   }
 
   const rows = (data || []).map((row: any) => {
@@ -26,13 +29,18 @@ export async function GET() {
     const min = Number(row.minimum_stock || 0);
 
     let status = "OK";
-    if (stock <= 0) status = "EMPTY";
-    else if (min > 0 && stock <= min) status = "LOW";
+
+    if (stock <= 0) {
+      status = "EMPTY";
+    } else if (min > 0 && stock <= min) {
+      status = "LOW";
+    }
 
     return {
       id: row.id,
       name: row.name,
       bin: row.name,
+      category: row.category || "Consumables",
       current_stock: stock,
       minimum_stock: min,
       status,
@@ -44,9 +52,12 @@ export async function GET() {
     rows,
     kpis: {
       total_accessories: rows.length,
-      total_qty: rows.reduce((a, b) => a + b.current_stock, 0),
-      low_stock: rows.filter((r) => r.status === "LOW").length,
-      empty_stock: rows.filter((r) => r.status === "EMPTY").length,
+      total_qty: rows.reduce(
+        (total, row) => total + row.current_stock,
+        0
+      ),
+      low_stock: rows.filter((row) => row.status === "LOW").length,
+      empty_stock: rows.filter((row) => row.status === "EMPTY").length,
     },
   });
 }

@@ -10,7 +10,13 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { id, name, current_stock, minimum_stock } = await req.json();
+    const {
+  id,
+  name,
+  current_stock,
+  minimum_stock,
+  category,
+} = await req.json();
 
     if (!id) {
       return NextResponse.json({ ok: false, error: "id required" }, { status: 400 });
@@ -23,10 +29,11 @@ export async function POST(req: Request) {
     const { error } = await supabase
       .from("accessory_bins")
       .update({
-        name: name.trim(),
-        current_stock: Number(current_stock || 0),
-        minimum_stock: Number(minimum_stock || 0),
-      })
+  name: name.trim(),
+  current_stock: Number(current_stock || 0),
+  minimum_stock: Number(minimum_stock || 0),
+  category,
+})
       .eq("id", id);
 
     if (error) throw error;

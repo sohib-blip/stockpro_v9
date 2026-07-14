@@ -12,6 +12,7 @@ import {
  Legend,
  CartesianGrid
 } from "recharts";
+import { motion, AnimatePresence } from "framer-motion";
 
 type KPI = {
  total_bins: number;
@@ -38,6 +39,13 @@ const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
  const [search,setSearch] = useState("");
  const [boxSearch,setBoxSearch] = useState("");
 
+const [openGroups, setOpenGroups] = useState({
+  Packages: true,
+  Vision: true,
+  Harness: true,
+  Consumables: true,
+});
+
  const filteredBins = bins
  .filter((b:any) => Number(b.imei_count) > 0)
  .filter((b:any) =>
@@ -63,6 +71,24 @@ const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
 
  const deviceName =
  bins.find((b:any)=>b.device_id === openDevice)?.device || openDevice;
+
+ const groupedAccessories = {
+  Packages: filteredAccessories.filter(
+    (a: any) => a.category === "Packages"
+  ),
+
+  Vision: filteredAccessories.filter(
+    (a: any) => a.category === "Vision"
+  ),
+
+  Harness: filteredAccessories.filter(
+    (a: any) => a.category === "Harness"
+  ),
+
+  Consumables: filteredAccessories.filter(
+    (a: any) => a.category === "Consumables"
+  ),
+};
 
  async function loadAll() {
 

@@ -16,7 +16,7 @@ export async function GET(req: Request) {
 
   let query = supabase
     .from("accessory_bins")
-    .select("id, name, active, created_at, current_stock, minimum_stock")
+    .select("id, name, category, active, created_at, current_stock, minimum_stock")
     .order("name", { ascending: true });
 
   if (!includeHidden) {

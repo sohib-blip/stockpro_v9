@@ -3,12 +3,19 @@
 import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
+type AccessoryCategory =
+  | "Packages"
+  | "Consumables"
+  | "Harness"
+  | "Vision";
+
 type Bin = {
   id: string;
   name: string;
   active?: boolean;
   current_stock?: number;
   minimum_stock?: number;
+  category?: AccessoryCategory;
 };
 
 export default function BinsPage() {
@@ -21,6 +28,8 @@ export default function BinsPage() {
   const [newAccessoryBin, setNewAccessoryBin] = useState("");
   const [newAccessoryStock, setNewAccessoryStock] = useState(0);
   const [newAccessoryMinStock, setNewAccessoryMinStock] = useState(0);
+  const [newAccessoryCategory, setNewAccessoryCategory] =
+  useState<AccessoryCategory>("Consumables");
 
   const [selectedDevice, setSelectedDevice] = useState<Bin | null>(null);
   const [templateAccessories, setTemplateAccessories] = useState<any[]>([]);
@@ -41,6 +50,8 @@ export default function BinsPage() {
   const [editAccessoryName, setEditAccessoryName] = useState("");
   const [editAccessoryStock, setEditAccessoryStock] = useState(0);
   const [editAccessoryMinStock, setEditAccessoryMinStock] = useState(0);
+  const [editAccessoryCategory, setEditAccessoryCategory] =
+  useState<AccessoryCategory>("Consumables");
 
   const [loading, setLoading] = useState(false);
 
@@ -86,12 +97,15 @@ export default function BinsPage() {
         name: newAccessoryBin,
         current_stock: newAccessoryStock,
         minimum_stock: newAccessoryMinStock,
+        category: newAccessoryCategory,
       }),
     });
 
     setNewAccessoryBin("");
     setNewAccessoryStock(0);
     setNewAccessoryMinStock(0);
+    setNewAccessoryCategory("Consumables");
+
     setLoading(false);
     loadAccessoryBins();
   }
@@ -119,6 +133,7 @@ export default function BinsPage() {
     setEditAccessoryName(bin.name);
     setEditAccessoryStock(Number(bin.current_stock || 0));
     setEditAccessoryMinStock(Number(bin.minimum_stock || 0));
+    setEditAccessoryCategory(bin.category || "Consumables");
   }
 
   function cancelEditAccessory() {
@@ -126,6 +141,7 @@ export default function BinsPage() {
     setEditAccessoryName("");
     setEditAccessoryStock(0);
     setEditAccessoryMinStock(0);
+    setEditAccessoryCategory("Consumables");
   }
 
   async function saveAccessoryEdit(id: string) {
@@ -139,6 +155,7 @@ export default function BinsPage() {
         name: editAccessoryName,
         current_stock: editAccessoryStock,
         minimum_stock: editAccessoryMinStock,
+        category: editAccessoryCategory,
       }),
     });
 
@@ -577,7 +594,7 @@ export default function BinsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
           <input
             value={newAccessoryBin}
             onChange={(e) => setNewAccessoryBin(e.target.value)}
@@ -601,6 +618,19 @@ export default function BinsPage() {
             className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
           />
 
+          <select
+  value={newAccessoryCategory}
+  onChange={(e) =>
+    setNewAccessoryCategory(e.target.value as AccessoryCategory)
+  }
+  className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
+>
+  <option value="Packages">Packages</option>
+  <option value="Consumables">Consumables</option>
+  <option value="Harness">Harness</option>
+  <option value="Vision">Vision</option>
+</select>
+
           <button
             onClick={addAccessoryBin}
             disabled={loading || !newAccessoryBin.trim()}
@@ -613,14 +643,15 @@ export default function BinsPage() {
         <div className="border border-slate-800 rounded-xl overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-900">
-              <tr>
-                <th className="text-left p-3">Accessory</th>
-                <th className="text-right p-3">Stock</th>
-                <th className="text-right p-3">Min stock</th>
-                <th className="text-right p-3">Visibility</th>
-                <th className="text-right p-3">Actions</th>
-              </tr>
-            </thead>
+  <tr>
+    <th className="text-left p-3">Accessory</th>
+    <th className="text-right p-3">Stock</th>
+    <th className="text-right p-3">Min stock</th>
+    <th className="text-left p-3">Category</th>
+    <th className="text-right p-3">Visibility</th>
+    <th className="text-right p-3">Actions</th>
+  </tr>
+</thead>
 
             <tbody>
               {filteredAccessoryBins.map((bin) => {
@@ -672,6 +703,25 @@ export default function BinsPage() {
                         Number(bin.minimum_stock || 0)
                       )}
                     </td>
+
+                    <td className="p-3">
+  {isEditing ? (
+    <select
+      value={editAccessoryCategory}
+      onChange={(e) =>
+        setEditAccessoryCategory(e.target.value as AccessoryCategory)
+      }
+      className="bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
+    >
+      <option value="Packages">Packages</option>
+      <option value="Consumables">Consumables</option>
+      <option value="Harness">Harness</option>
+      <option value="Vision">Vision</option>
+    </select>
+  ) : (
+    bin.category || "Consumables"
+  )}
+</td>
 
                     <td className="p-3 text-right">
                       <button
@@ -730,7 +780,7 @@ export default function BinsPage() {
 
               {filteredAccessoryBins.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-4 text-center text-slate-500">
+                  <td colSpan={6} className="p-4 text-center text-slate-500">
                     No accessories found.
                   </td>
                 </tr>

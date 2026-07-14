@@ -10,7 +10,12 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { name, current_stock, minimum_stock } = await req.json();
+    const {
+      name,
+      current_stock,
+      minimum_stock,
+      category,
+    } = await req.json();
 
     if (!name?.trim()) {
       return NextResponse.json(
@@ -23,6 +28,7 @@ export async function POST(req: Request) {
       name: name.trim(),
       current_stock: Number(current_stock || 0),
       minimum_stock: Number(minimum_stock || 0),
+      category: category || "Consumables",
       active: true,
     });
 
@@ -31,7 +37,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Create accessory failed" },
+      {
+        ok: false,
+        error: e?.message || "Create accessory failed",
+      },
       { status: 500 }
     );
   }

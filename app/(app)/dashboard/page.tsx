@@ -40,11 +40,11 @@ export default function DashboardPage() {
  const [boxSearch,setBoxSearch] = useState("");
 
  const [openGroups, setOpenGroups] = useState({
-  Packages: true,
-  Vision: true,
-  Harness: true,
-  Consumables: true,
-  Items: true,
+  Packages: false,
+  Vision: false,
+  Harness: false,
+  Consumables: false,
+  Items: false,
 });
 
 function toggleGroup(category: keyof typeof openGroups) {

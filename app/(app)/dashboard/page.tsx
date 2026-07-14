@@ -12,7 +12,7 @@ import {
  Legend,
  CartesianGrid
 } from "recharts";
-import { motion, AnimatePresence } from "framer-motion";
+import AccessoryCategory from "@/components/dashboard/AccessoryCategory";
 
 type KPI = {
  total_bins: number;
@@ -26,25 +26,32 @@ export default function DashboardPage() {
  const [kpi, setKpi] = useState<KPI | null>(null);
  const [bins, setBins] = useState<any[]>([]);
  const [accessories, setAccessories] = useState<any[]>([]);
-const [accessoryKpis, setAccessoryKpis] = useState<any>(null);
-const [accessorySearch, setAccessorySearch] = useState("");
+ const [accessoryKpis, setAccessoryKpis] = useState<any>(null);
+ const [accessorySearch, setAccessorySearch] = useState("");
  const [activity, setActivity] = useState<any[]>([]);
  const [drilldown, setDrilldown] = useState<any[]>([]);
  const [flow,setFlow] = useState<any[]>([]);
  const [openDevice, setOpenDevice] = useState<string | null>(null);
  const [topDevices,setTopDevices] = useState<any[]>([]);
-const [salesTable,setSalesTable] = useState<any[]>([]);
-const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
+ const [salesTable,setSalesTable] = useState<any[]>([]);
+ const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
 
  const [search,setSearch] = useState("");
  const [boxSearch,setBoxSearch] = useState("");
 
-const [openGroups, setOpenGroups] = useState({
+ const [openGroups, setOpenGroups] = useState({
   Packages: true,
   Vision: true,
   Harness: true,
   Consumables: true,
 });
+
+function toggleGroup(category: keyof typeof openGroups) {
+  setOpenGroups((prev) => ({
+    ...prev,
+    [category]: !prev[category],
+  }));
+}
 
  const filteredBins = bins
  .filter((b:any) => Number(b.imei_count) > 0)
@@ -760,58 +767,35 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
   </div>
 )}
 
-<table className="w-full text-sm">
+<div className="space-y-3">
+  <AccessoryCategory
+    title="Packages"
+    items={groupedAccessories.Packages}
+    open={openGroups.Packages}
+    onToggle={() => toggleGroup("Packages")}
+  />
 
-<thead>
-<tr className="text-left text-slate-400 border-b border-white/5">
-  <th className="py-2">Accessory</th>
-  <th>Bin</th>
-  <th className="text-right">Qty</th>
-  <th className="text-right">Min stock</th>
-  <th className="text-right">Status</th>
-</tr>
-</thead>
+  <AccessoryCategory
+    title="Vision"
+    items={groupedAccessories.Vision}
+    open={openGroups.Vision}
+    onToggle={() => toggleGroup("Vision")}
+  />
 
-<tbody>
+  <AccessoryCategory
+    title="Harness"
+    items={groupedAccessories.Harness}
+    open={openGroups.Harness}
+    onToggle={() => toggleGroup("Harness")}
+  />
 
-{filteredAccessories.map((a:any)=>(
-<tr
-  key={a.id}
-  className={`
-    border-b border-white/5
-    ${a.status === "LOW" ? "bg-orange-500/10" : ""}
-    ${a.status === "EMPTY" ? "bg-red-500/10" : ""}
-  `}
->
-  <td className="py-2 font-semibold">{a.name}</td>
-  <td>{a.bin}</td>
-  <td className="text-right">{a.current_stock}</td>
-  <td className="text-right">{a.minimum_stock}</td>
-  <td className="text-right">
-    <span
-      className={`px-2 py-1 rounded text-xs font-semibold
-        ${a.status === "OK" ? "bg-green-500/20 text-green-400" : ""}
-        ${a.status === "LOW" ? "bg-yellow-500/20 text-yellow-400" : ""}
-        ${a.status === "EMPTY" ? "bg-red-500/20 text-red-400" : ""}
-      `}
-    >
-      {a.status}
-    </span>
-  </td>
-</tr>
-))}
-
-{filteredAccessories.length === 0 && (
-<tr>
-  <td colSpan={5} className="py-6 text-center text-slate-500">
-    No accessories found
-  </td>
-</tr>
-)}
-
-</tbody>
-
-</table>
+  <AccessoryCategory
+    title="Consumables"
+    items={groupedAccessories.Consumables}
+    open={openGroups.Consumables}
+    onToggle={() => toggleGroup("Consumables")}
+  />
+</div>
 
 </div>
 

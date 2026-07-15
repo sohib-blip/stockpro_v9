@@ -74,6 +74,11 @@ export default function NRDPage() {
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const [showForgottenModal, setShowForgottenModal] = useState(false);
+  const [forgottenModalDismissed, setForgottenModalDismissed] = useState(false);
+
+  const [correctEndTime, setCorrectEndTime] = useState("");
+
 
   useEffect(() => {
     (async () => {
@@ -86,20 +91,25 @@ export default function NRDPage() {
   }, [supabase]);
 
   async function loadCurrent(email = userEmail) {
-    if (!email) return;
+  if (!email) return;
 
-    const res = await fetch(
-      `/api/nrd/current?user_email=${encodeURIComponent(email)}&t=${Date.now()}`,
-      { cache: "no-store" }
-    );
+  const res = await fetch(
+    `/api/nrd/current?user_email=${encodeURIComponent(
+      email
+    )}&t=${Date.now()}`,
+    { cache: "no-store" }
+  );
 
-    const json = await res.json();
+  const json = await res.json();
 
-    if (json.ok) {
-      setActive(json.active || null);
+  if (json.ok) {
+    setActive(json.active || null);
+
+    if (json.active) {
+      setForgottenModalDismissed(false);
     }
   }
-
+}
   async function loadHistory(email = userEmail, month = periodMonth) {
   if (!email) return;
 
@@ -152,13 +162,30 @@ export default function NRDPage() {
       const started = new Date(active.started_at).getTime();
       const now = Date.now();
       setSeconds(Math.max(0, Math.floor((now - started) / 1000)));
+
+      if (
+  now - started >= 8 * 60 * 60 * 1000 &&
+  !showForgottenModal &&
+  !forgottenModalDismissed
+) {
+  const nowDate = new Date();
+const localDateTime = new Date(
+  nowDate.getTime() - nowDate.getTimezoneOffset() * 60_000
+)
+  .toISOString()
+  .slice(0, 16);
+
+setCorrectEndTime(localDateTime);
+
+  setShowForgottenModal(true);
+}
     };
 
     tick();
 
     const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [active]);
+  }, [active, showForgottenModal, forgottenModalDismissed]);
 
   async function startTask() {
     setBusy(true);
@@ -185,42 +212,203 @@ export default function NRDPage() {
     }
 
     setActive(json.row);
-    setSuccessMsg("Task started");
-    setTimeout(() => setSuccessMsg(""), 2000);
+setShowForgottenModal(false);
+setForgottenModalDismissed(false);
+setCorrectEndTime("");
+
+setSuccessMsg("Task started");
+setTimeout(() => setSuccessMsg(""), 2000);
   }
 
   async function stopTask() {
-    setBusy(true);
-    setErrorMsg("");
-    setSuccessMsg("");
+  setBusy(true);
+  setErrorMsg("");
+  setSuccessMsg("");
 
+  const res = await fetch("/api/nrd/stop", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      user_email: userEmail,
+    }),
+  });
+
+  const json = await res.json();
+  setBusy(false);
+
+  if (!json.ok) {
+    setErrorMsg(json.error || "Stop failed");
+    return;
+  }
+
+  setActive(null);
+  setShowForgottenModal(false);
+setForgottenModalDismissed(false);
+setCorrectEndTime("");
+  setSuccessMsg("Task stopped");
+  setTimeout(() => setSuccessMsg(""), 2000);
+
+  await loadHistory(userEmail, periodMonth);
+  await loadStats(userEmail, periodMonth);
+  await loadCurrent(userEmail);
+}
+
+async function stopTaskWithCorrection() {
+  if (!correctEndTime) {
+    setErrorMsg("Please select the real end time.");
+    return;
+  }
+
+  setBusy(true);
+  setErrorMsg("");
+  setSuccessMsg("");
+
+  try {
     const res = await fetch("/api/nrd/stop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         user_email: userEmail,
+        ended_at: new Date(correctEndTime).toISOString(),
       }),
     });
 
     const json = await res.json();
-    setBusy(false);
 
     if (!json.ok) {
-      setErrorMsg(json.error || "Stop failed");
+      setErrorMsg(json.error || "Corrected stop failed");
       return;
     }
 
+    setShowForgottenModal(false);
+    setForgottenModalDismissed(false);
+    setCorrectEndTime("");
     setActive(null);
-    setSuccessMsg("Task stopped");
+    setSuccessMsg("NRD corrected and stopped");
     setTimeout(() => setSuccessMsg(""), 2000);
 
+    await loadCurrent(userEmail);
     await loadHistory(userEmail, periodMonth);
     await loadStats(userEmail, periodMonth);
-    await loadCurrent(userEmail);
+  } catch {
+    setErrorMsg("Corrected stop failed");
+  } finally {
+    setBusy(false);
   }
+}
 
   return (
     <div className="space-y-10 w-full">
+      {showForgottenModal && active && (
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
+    <div className="w-full max-w-lg rounded-2xl border border-orange-500/40 bg-slate-950 shadow-2xl">
+      <div className="border-b border-slate-800 p-5">
+        <div className="text-xs font-semibold uppercase tracking-wider text-orange-400">
+          Review required
+        </div>
+
+        <h2 className="mt-1 text-xl font-semibold">
+          ⚠ Possible forgotten NRD
+        </h2>
+      </div>
+
+      <div className="space-y-5 p-5">
+        <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-4 text-sm">
+          <div className="font-semibold text-orange-300">
+            This NRD has been active for {formatTimer(seconds)}.
+          </div>
+
+          <div className="mt-2 text-slate-300">
+            Check whether the task really ended now or whether you forgot to
+            stop it earlier.
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <div className="text-xs text-slate-500">Task</div>
+            <div className="mt-1 font-semibold">{active.task}</div>
+          </div>
+
+          <div>
+            <div className="text-xs text-slate-500">Started</div>
+            <div className="mt-1">
+              {new Date(active.started_at).toLocaleString("fr-BE")}
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <label className="text-sm font-semibold text-slate-300">
+            Real end date and time
+          </label>
+
+          <input
+            type="datetime-local"
+            value={correctEndTime}
+            min={(() => {
+              const started = new Date(active.started_at);
+
+              return new Date(
+                started.getTime() - started.getTimezoneOffset() * 60_000
+              )
+                .toISOString()
+                .slice(0, 16);
+            })()}
+            max={(() => {
+              const now = new Date();
+
+              return new Date(
+                now.getTime() - now.getTimezoneOffset() * 60_000
+              )
+                .toISOString()
+                .slice(0, 16);
+            })()}
+            onChange={(e) => setCorrectEndTime(e.target.value)}
+            className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-orange-500"
+          />
+
+          <div className="mt-2 text-xs text-slate-500">
+            The NRD duration will be recalculated using this end time.
+          </div>
+        </div>
+
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-800 pt-4 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={() => {
+  setShowForgottenModal(false);
+  setForgottenModalDismissed(true);
+  setCorrectEndTime("");
+}}
+            disabled={busy}
+            className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-900 disabled:opacity-40"
+          >
+            Keep running
+          </button>
+
+          <button
+            type="button"
+            onClick={stopTask}
+            disabled={busy}
+            className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40"
+          >
+            {busy ? "Stopping..." : "It ended now"}
+          </button>
+
+          <button
+            type="button"
+            onClick={stopTaskWithCorrection}
+            disabled={busy || !correctEndTime}
+            className="rounded-xl bg-orange-600 px-4 py-2 text-sm font-semibold hover:bg-orange-700 disabled:opacity-40"
+          >
+            {busy ? "Saving..." : "Correct & stop"}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
       <div>
         <div className="text-xs text-slate-500">NRD</div>
         <h2 className="text-xl font-semibold">NRD Tracker</h2>

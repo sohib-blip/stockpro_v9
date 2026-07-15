@@ -10,61 +10,161 @@ const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 function sb() {
   return createClient(SUPABASE_URL, SERVICE_ROLE, {
-    auth: { persistSession: false },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
   });
 }
 
 export async function POST(req: Request) {
   try {
     const supabase = sb();
-    const { user_email } = await req.json();
 
-    if (!user_email) {
+    const body = await req.json();
+
+    const {
+      user_email,
+      ended_at,
+    } = body;
+
+    if (!user_email?.trim()) {
       return NextResponse.json(
-        { ok: false, error: "Missing user_email" },
-        { status: 400 }
+        {
+          ok: false,
+          error: "Missing user_email",
+        },
+        {
+          status: 400,
+        }
       );
     }
 
-    const { data: active, error: activeErr } = await supabase
+    /*
+     * Recherche du NRD actuellement actif.
+     */
+    const { data: active, error: activeError } = await supabase
       .from("nrd_time_logs")
       .select("*")
-      .eq("user_email", user_email)
+      .eq("user_email", user_email.trim())
       .is("ended_at", null)
       .order("started_at", { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (activeErr) throw activeErr;
+    if (activeError) {
+      console.error("NRD ACTIVE READ ERROR:", activeError);
+      throw activeError;
+    }
 
-    const endedAt = new Date();
+    if (!active) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "No active NRD found",
+        },
+        {
+          status: 404,
+        }
+      );
+    }
+
     const startedAt = new Date(active.started_at);
+
+    /*
+     * Si le frontend envoie ended_at, on utilise l’heure corrigée.
+     * Sinon, on utilise l’heure actuelle.
+     */
+    const selectedEndDate = ended_at
+      ? new Date(ended_at)
+      : new Date();
+
+    if (Number.isNaN(selectedEndDate.getTime())) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Invalid end date",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    /*
+     * La fin ne peut pas être antérieure au début.
+     */
+    if (selectedEndDate.getTime() < startedAt.getTime()) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "End time cannot be before start time",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
+
+    /*
+     * On n’autorise pas une heure de fin dans le futur.
+     * Petite marge de 60 secondes pour éviter un souci de décalage.
+     */
+    if (selectedEndDate.getTime() > Date.now() + 60_000) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "End time cannot be in the future",
+        },
+        {
+          status: 400,
+        }
+      );
+    }
 
     const durationMinutes = Math.max(
       1,
-      Math.round((endedAt.getTime() - startedAt.getTime()) / 60000)
+      Math.round(
+        (selectedEndDate.getTime() - startedAt.getTime()) / 60_000
+      )
     );
 
-    const { data, error } = await supabase
+    const { data: updatedLog, error: updateError } = await supabase
       .from("nrd_time_logs")
       .update({
-        ended_at: endedAt.toISOString(),
+        ended_at: selectedEndDate.toISOString(),
         duration_minutes: durationMinutes,
       })
       .eq("id", active.id)
+      .is("ended_at", null)
       .select("*")
       .single();
 
-    if (error) throw error;
+    if (updateError) {
+      console.error("NRD STOP UPDATE ERROR:", updateError);
+      throw updateError;
+    }
 
     return NextResponse.json({
       ok: true,
-      row: data,
+      row: updatedLog,
     });
-  } catch (e: any) {
+  } catch (error: unknown) {
+    console.error("NRD STOP FAILED:", error);
+
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Stop NRD failed";
+
     return NextResponse.json(
-      { ok: false, error: e?.message || "Stop NRD failed" },
-      { status: 500 }
+      {
+        ok: false,
+        error: message,
+      },
+      {
+        status: 500,
+      }
     );
   }
 }

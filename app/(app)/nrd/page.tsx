@@ -304,11 +304,11 @@ async function stopTaskWithCorrection() {
     <div className="w-full max-w-lg rounded-2xl border border-orange-500/40 bg-slate-950 shadow-2xl">
       <div className="border-b border-slate-800 p-5">
         <div className="text-xs font-semibold uppercase tracking-wider text-orange-400">
-          Review required
+          NRD review
         </div>
 
         <h2 className="mt-1 text-xl font-semibold">
-          ⚠ Possible forgotten NRD
+           Confirm NRD end
         </h2>
       </div>
 
@@ -319,8 +319,7 @@ async function stopTaskWithCorrection() {
           </div>
 
           <div className="mt-2 text-slate-300">
-            Check whether the task really ended now or whether you forgot to
-            stop it earlier.
+            Confirm that the task ended now, or choose the actual end time below.
           </div>
         </div>
 
@@ -478,12 +477,23 @@ async function stopTaskWithCorrection() {
             </button>
           ) : (
             <button
-              onClick={stopTask}
-              disabled={busy}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {busy ? "Stopping..." : "Stop Task"}
-            </button>
+  onClick={() => {
+    const nowDate = new Date();
+
+    const localDateTime = new Date(
+      nowDate.getTime() - nowDate.getTimezoneOffset() * 60_000
+    )
+      .toISOString()
+      .slice(0, 16);
+
+    setCorrectEndTime(localDateTime);
+    setShowForgottenModal(true);
+  }}
+  disabled={busy}
+  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+>
+  {busy ? "Stopping..." : "Stop Task"}
+</button>
           )}
 
           <button

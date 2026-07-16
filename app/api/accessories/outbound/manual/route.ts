@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getApiIdentity } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 
@@ -10,8 +11,8 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { shipment_ref, comment, actor, actor_id, lines, preview } =
-  await req.json();
+    const { shipment_ref, comment, lines, preview } = await req.json();
+    const identity = getApiIdentity(req);
 
     if (!Array.isArray(lines) || lines.length === 0) {
       return NextResponse.json({ ok: false, error: "No lines provided" }, { status: 400 });
@@ -90,8 +91,8 @@ if (String(preview || "") === "1") {
           movement_type: "OUT",
           shipment_ref: shipment_ref || null,
           note: comment || null,
-          actor: actor || "unknown",
-          actor_id: actor_id || null,
+          actor: identity.email,
+          actor_id: identity.userId,
           source: "manual",
           operation_id,
         });

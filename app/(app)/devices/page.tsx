@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 
 type Row = {
   device_id: string;
@@ -22,7 +23,7 @@ export default function DevicesPage() {
   async function load() {
     setLoading(true);
     try {
-      const res = await fetch("/api/dashboard/summary", { cache: "no-store" });
+      const res = await apiFetch("/api/dashboard/summary", { cache: "no-store" });
       const json = await res.json();
       if (!json.ok) throw new Error(json.error || "Failed");
       setRows(json.rows || []);

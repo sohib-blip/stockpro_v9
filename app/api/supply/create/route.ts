@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getApiIdentity } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,10 +29,9 @@ export async function POST(req: Request) {
       from_office,
       to_office,
       comment,
-      created_by,
-      created_by_id,
       items,
     } = body;
+    const identity = getApiIdentity(req);
 
     if (!from_office || !to_office) {
       return NextResponse.json(
@@ -60,8 +60,8 @@ export async function POST(req: Request) {
         imported: false,
         imported_date: null,
         comment: comment || null,
-        created_by: created_by || "unknown",
-        created_by_id: created_by_id || null,
+        created_by: identity.email,
+        created_by_id: identity.userId,
       })
       .select("*")
       .single();
@@ -72,8 +72,8 @@ export async function POST(req: Request) {
       supply_id: supply.id,
       status: "CREATED",
       tracking_number: null,
-      changed_by: created_by || "unknown",
-      changed_by_id: created_by_id || null,
+      changed_by: identity.email,
+      changed_by_id: identity.userId,
     });
 
     const cleanItems = items

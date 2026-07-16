@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getApiIdentity } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -44,9 +45,8 @@ export async function PUT(req: Request) {
       status,
       tracking_number,
       failed_reason,
-      changed_by,
-      changed_by_id,
     } = body;
+    const identity = getApiIdentity(req);
 
     if (!id) {
       return NextResponse.json(
@@ -191,8 +191,8 @@ export async function PUT(req: Request) {
         tracking_number: cleanTrackingNumber,
         failed_reason:
           requestedStatus === "FAILED" ? cleanFailedReason : null,
-        changed_by: changed_by || "unknown",
-        changed_by_id: changed_by_id || null,
+        changed_by: identity.email,
+        changed_by_id: identity.userId,
       })
       .select("*")
       .single();

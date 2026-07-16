@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch } from "@/lib/apiFetch";
 
 type HistoryRow = {
   created_at: string;
@@ -57,7 +58,7 @@ export default function TransferPage() {
     try {
       setLoadingHistory(true);
 
-      const res = await fetch("/api/transfer/history?ts=" + Date.now(), {
+      const res = await apiFetch("/api/transfer/history?ts=" + Date.now(), {
         cache: "no-store",
       });
 
@@ -98,7 +99,7 @@ export default function TransferPage() {
 
     setLoadingPreview(true);
 
-    const res = await fetch("/api/transfer/preview", {
+    const res = await apiFetch("/api/transfer/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -142,7 +143,7 @@ export default function TransferPage() {
       return;
     }
 
-    const res = await fetch("/api/transfer/confirm", {
+    const res = await apiFetch("/api/transfer/confirm", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -4,32 +4,36 @@ Date: 16 July 2026
 
 Scope: static review of the `staging` code only. Production was not modified.
 
-## Finding: API authentication coverage
+## API authentication and authorization
 
-The application currently contains 67 API route files:
+Status on the staging branch: remediated.
 
-- 4 routes contain an explicit request-authentication marker;
-- 63 routes contain no explicit request-authentication marker;
-- 65 routes initialize or use the Supabase service-role client;
-- 61 service-role routes contain no explicit request-authentication marker.
+- Every `/api/*` request is intercepted before its route handler runs.
+- A valid Supabase bearer token is required (`401` otherwise).
+- The caller must have a role and at least one permission mapped to the route
+  (`403` otherwise).
+- Unknown future routes fail closed until an access policy is added.
+- The low-stock cron is the only exception to user authentication and keeps its
+  dedicated `CRON_SECRET` validation.
+- Browser downloads now use the authenticated API client as well.
 
-This is the highest-priority security debt. Supabase service-role credentials
-bypass Row Level Security, so a server route that uses them must authenticate
-and authorize the caller before reading or changing data.
+This is required because Supabase service-role credentials bypass Row Level
+Security. The API middleware now performs the missing authorization before a
+service-role route can read or change data.
 
-The automated security baseline now prevents the number of routes without an
-authentication marker from increasing. This is a guardrail, not the final fix.
+The automated security test enumerates every exported API method and verifies
+that it has an explicit permission mapping.
 
-## Remediation plan
+## Roles and administration
 
-1. Add a shared authenticated API client in the browser.
-2. Require a valid Supabase bearer token in every private API route.
-3. Check the user's permissions for every write or export operation.
-4. Migrate one business area at a time on staging: supply, inbound, outbound,
-   transfers, returns, accessories, then dashboards and exports.
-5. Reduce the baseline in `tests/security/apiAuthCoverage.test.ts` after each
-   migrated route group.
-6. Perform a separate RLS policy review before any production deployment.
+- Roles: `admin`, `operator`, `viewer`.
+- Module permissions: dashboard, inbound, outbound, returns, transfer, labels,
+  bins, accessories, supply, NRD, alerts and administration.
+- Admins can invite users and edit roles/permissions from `/admin`.
+- The last administrator cannot be demoted.
+- Navigation and page access use the same permission model as the API.
+- Direct browser writes to bins, boxes and thresholds are also restricted by
+  RLS permission helpers.
 
 Reference: [Supabase Row Level Security documentation](https://supabase.com/docs/guides/database/postgres/row-level-security).
 

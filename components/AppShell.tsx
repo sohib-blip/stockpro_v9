@@ -4,7 +4,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ReactNode, useState, useEffect } from "react";
+import { ReactNode, useState, useEffect, useMemo } from "react";
 import {
   LayoutDashboard,
   ArrowDownToLine,
@@ -18,23 +18,35 @@ import {
   LogOut,
   Timer,
   Truck,
+  ShieldCheck,
+  BellRing,
 } from "lucide-react";
+import { PermissionKey } from "@/lib/access-control";
+import { useAccess } from "@/components/AccessProvider";
+import { apiFetch } from "@/lib/apiFetch";
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+const NAV: Array<{
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  permission: PermissionKey;
+}> = [
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "can_dashboard" },
 
-  { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
-  { href: "/labels", label: "Labels", icon: Tag },
+  { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine, permission: "can_inbound" },
+  { href: "/labels", label: "Labels", icon: Tag, permission: "can_labels" },
 
-  { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
-  { href: "/accessories", label: "Accessories", icon: Boxes },
-  { href: "/supply", label: "Supply", icon: Truck },
+  { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine, permission: "can_outbound" },
+  { href: "/accessories", label: "Accessories", icon: Boxes, permission: "can_accessories" },
+  { href: "/supply", label: "Supply", icon: Truck, permission: "can_supply" },
 
-  { href: "/returns", label: "Returns", icon: RotateCcw },
-  { href: "/transfer", label: "Transfer", icon: Repeat },
+  { href: "/returns", label: "Returns", icon: RotateCcw, permission: "can_returns" },
+  { href: "/transfer", label: "Transfer", icon: Repeat, permission: "can_transfer" },
 
-  { href: "/nrd", label: "NRD Tracker", icon: Timer },
-  { href: "/bins", label: "Bins", icon: Package },
+  { href: "/nrd", label: "NRD Tracker", icon: Timer, permission: "can_nrd" },
+  { href: "/bins", label: "Bins", icon: Package, permission: "can_bins" },
+  { href: "/alerts", label: "Alerts", icon: BellRing, permission: "can_alerts" },
+  { href: "/admin", label: "Admin", icon: ShieldCheck, permission: "can_admin" },
 ];
 
 export default function AppShell({ children }: { children: ReactNode }) {
@@ -44,8 +56,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
   const [activeNrd, setActiveNrd] = useState<any>(null);
+  const { hasPermission } = useAccess();
 
-  const supabase = createSupabaseBrowserClient();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
 
   async function handleLogout() {
@@ -60,8 +73,8 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
       setEmail(user?.email || null);
 
-      if (user?.email) {
-        const res = await fetch(
+      if (user?.email && hasPermission("can_nrd")) {
+        const res = await apiFetch(
           `/api/nrd/current?user_email=${encodeURIComponent(
             user.email
           )}&t=${Date.now()}`,
@@ -83,7 +96,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     const interval = setInterval(loadUserAndNrd, 5000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [hasPermission, supabase]);
 
   return (
     <div className="min-h-screen flex bg-slate-950 text-slate-100">
@@ -116,7 +129,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
         </div>
 
         <nav className="px-2 py-4 space-y-1 text-sm">
-          {NAV.map((item) => {
+          {NAV.filter((item) => hasPermission(item.permission)).map((item) => {
             const Icon = item.icon;
 
             return (

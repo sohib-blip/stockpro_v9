@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getApiIdentity } from "@/lib/api-identity";
 import { buildInboundMovementRows } from "@/lib/inbound/movements";
 
 export const runtime = "nodejs";
@@ -22,18 +23,12 @@ type LabelPayload = {
 
 export async function POST(req: Request) {
   try {
-    const { labels, actor, actor_id, vendor, shipment_ref } = await req.json();
+    const { labels, vendor, shipment_ref } = await req.json();
+    const identity = getApiIdentity(req);
 
     if (!Array.isArray(labels) || labels.length === 0) {
       return NextResponse.json(
         { ok: false, error: "No labels provided" },
-        { status: 400 }
-      );
-    }
-
-    if (!actor_id) {
-      return NextResponse.json(
-        { ok: false, error: "actor_id required" },
         { status: 400 }
       );
     }
@@ -46,7 +41,7 @@ export async function POST(req: Request) {
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
 .insert({
-  actor: actor || "unknown",
+  actor: identity.email,
   vendor: vendor || "unknown",
   source: "excel",
   shipment_ref: shipment_ref || null
@@ -166,7 +161,7 @@ export async function POST(req: Request) {
           device_id: bin_id,
           status: "IN",
           imported_at: nowIso,
-          imported_by: actor_id,
+          imported_by: identity.userId,
           import_id: batch.batch_id,
         });
 
@@ -187,8 +182,8 @@ export async function POST(req: Request) {
           batchId: batch.batch_id,
           boxId: box_id,
           binId: bin_id,
-          actorId: actor_id,
-          actor: actor || "unknown",
+          actorId: identity.userId,
+          actor: identity.email,
           createdAt: nowIso,
           notes: vendor ? `vendor=${vendor}` : null,
         });

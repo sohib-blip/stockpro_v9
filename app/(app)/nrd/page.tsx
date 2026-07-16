@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
+import { useAccess } from "@/components/AccessProvider";
 
 const NRD_TASKS = [
   "Prepare FMC234",
@@ -59,6 +61,7 @@ function getCurrentPeriodMonth() {
 }
 
 export default function NRDPage() {
+  const { hasPermission } = useAccess();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
   const [userEmail, setUserEmail] = useState("");
@@ -93,7 +96,7 @@ export default function NRDPage() {
   async function loadCurrent(email = userEmail) {
   if (!email) return;
 
-  const res = await fetch(
+  const res = await apiFetch(
     `/api/nrd/current?user_email=${encodeURIComponent(
       email
     )}&t=${Date.now()}`,
@@ -113,7 +116,7 @@ export default function NRDPage() {
   async function loadHistory(email = userEmail, month = periodMonth) {
   if (!email) return;
 
-  const res = await fetch(
+  const res = await apiFetch(
     `/api/nrd/history?user_email=${encodeURIComponent(
       email
     )}&period_month=${encodeURIComponent(month)}&t=${Date.now()}`,
@@ -130,7 +133,7 @@ export default function NRDPage() {
   async function loadStats(email = userEmail, month = periodMonth) {
     if (!email) return;
 
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/nrd/stats?user_email=${encodeURIComponent(
         email
       )}&period_month=${encodeURIComponent(month)}&t=${Date.now()}`,
@@ -192,7 +195,7 @@ setCorrectEndTime(localDateTime);
     setErrorMsg("");
     setSuccessMsg("");
 
-    const res = await fetch("/api/nrd/start", {
+    const res = await apiFetch("/api/nrd/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -225,7 +228,7 @@ setTimeout(() => setSuccessMsg(""), 2000);
   setErrorMsg("");
   setSuccessMsg("");
 
-  const res = await fetch("/api/nrd/stop", {
+  const res = await apiFetch("/api/nrd/stop", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -264,7 +267,7 @@ async function stopTaskWithCorrection() {
   setSuccessMsg("");
 
   try {
-    const res = await fetch("/api/nrd/stop", {
+    const res = await apiFetch("/api/nrd/stop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -507,36 +510,33 @@ async function stopTaskWithCorrection() {
             Refresh
           </button>
 
-<a
-  href={
-    userEmail
-      ? `/api/nrd/export?user_email=${encodeURIComponent(
-          userEmail
-        )}&period_month=${encodeURIComponent(periodMonth)}`
-      : "#"
+<button
+  onClick={() =>
+    downloadApiFile(
+      `/api/nrd/export?user_email=${encodeURIComponent(userEmail)}&period_month=${encodeURIComponent(periodMonth)}`,
+      `nrd-${periodMonth}.xlsx`
+    ).catch((error) => setErrorMsg(error.message))
   }
+  disabled={!userEmail}
   className={`rounded-xl border border-slate-800 bg-slate-950 hover:bg-slate-800 px-4 py-2 font-semibold ${
-    !userEmail ? "opacity-40 pointer-events-none" : ""
+    !userEmail ? "opacity-40" : ""
   }`}
 >
   Export Excel
-</a>
+</button>
 
-{["martine.gevaert@radius.com", "emily.vancauwenberge@radius.com"].includes(
-  userEmail.toLowerCase()
-) && (
-  <a
-    href={
-      userEmail
-        ? `/api/nrd/export-global?user_email=${encodeURIComponent(
-            userEmail
-          )}&period_month=${encodeURIComponent(periodMonth)}`
-        : "#"
+{hasPermission("can_admin") && (
+  <button
+    onClick={() =>
+      downloadApiFile(
+        `/api/nrd/export-global?user_email=${encodeURIComponent(userEmail)}&period_month=${encodeURIComponent(periodMonth)}`,
+        `nrd-global-${periodMonth}.xlsx`
+      ).catch((error) => setErrorMsg(error.message))
     }
     className="rounded-xl border border-purple-500/50 bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 px-4 py-2 font-semibold"
   >
     Export Global Excel
-  </a>
+  </button>
 )}
 
         </div>

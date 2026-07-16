@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function MovementsPage() {
   const [rows, setRows] = useState<any[]>([]);
 
   useEffect(() => {
-    fetch("/api/movements")
+    apiFetch("/api/movements")
       .then(r => r.json())
       .then(d => setRows(d.rows || []));
   }, []);

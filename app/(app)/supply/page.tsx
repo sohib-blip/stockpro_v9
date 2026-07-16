@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
 const OFFICES = [
   { code: "BE", label: "🇧🇪 Belgium" },
@@ -77,7 +78,7 @@ const pageSize = 20;
   }
 
   async function loadSupply() {
-  const res = await fetch(`/api/supply/list?t=${Date.now()}`, {
+  const res = await apiFetch(`/api/supply/list?t=${Date.now()}`, {
     cache: "no-store",
     headers: {
       "Cache-Control": "no-cache",
@@ -96,8 +97,8 @@ const pageSize = 20;
 
 async function loadProducts() {
   const [deviceRes, accessoryRes] = await Promise.all([
-    fetch(`/api/dashboard/bins?t=${Date.now()}`, { cache: "no-store" }),
-    fetch(`/api/accessory-bins/list?t=${Date.now()}`, { cache: "no-store" }),
+    apiFetch(`/api/dashboard/bins?t=${Date.now()}`, { cache: "no-store" }),
+    apiFetch(`/api/accessory-bins/list?t=${Date.now()}`, { cache: "no-store" }),
   ]);
 
   const deviceJson = await deviceRes.json();
@@ -241,7 +242,7 @@ function availableStatuses(
       ),
     };
 
-  const res = await fetch(
+  const res = await apiFetch(
     editing ? "/api/supply/update" : "/api/supply/create",
     {
       method: editing ? "PUT" : "POST",
@@ -362,7 +363,7 @@ async function openDetails(row: any) {
   setMsg("");
 
   try {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/supply/history?id=${encodeURIComponent(row.id)}&t=${Date.now()}`,
       {
         method: "GET",
@@ -394,7 +395,7 @@ async function openDetails(row: any) {
   setBusy(true);
   setMsg("");
 
-  const res = await fetch("/api/supply/delete", {
+  const res = await apiFetch("/api/supply/delete", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id: deleteTarget.id }),
@@ -421,12 +422,16 @@ async function openDetails(row: any) {
         </div>
 
         <div className="flex gap-3">
-  <a
-    href={`/api/supply/export?t=${Date.now()}`}
+  <button
+    onClick={() =>
+      downloadApiFile(`/api/supply/export?t=${Date.now()}`, "supply.xlsx").catch(
+        (error) => setMsg(error.message)
+      )
+    }
     className="rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-semibold"
   >
     📄 Export Excel
-  </a>
+  </button>
 
   <button
     onClick={openCreate}

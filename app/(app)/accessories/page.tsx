@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch } from "@/lib/apiFetch";
 
 type Accessory = {
   id: string;
@@ -59,7 +60,7 @@ export default function AccessoriesPage() {
   }
 
   async function loadAccessories() {
-    const res = await fetch(`/api/accessory-bins/list?t=${Date.now()}`, {
+    const res = await apiFetch(`/api/accessory-bins/list?t=${Date.now()}`, {
       cache: "no-store",
     });
 
@@ -68,7 +69,7 @@ export default function AccessoriesPage() {
   }
 
   async function loadHistory() {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/accessories/outbound/history?t=${Date.now()}`,
       { cache: "no-store" }
     );
@@ -118,7 +119,7 @@ export default function AccessoriesPage() {
       return;
     }
 
-    const res = await fetch("/api/accessories/outbound/manual", {
+    const res = await apiFetch("/api/accessories/outbound/manual", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -152,7 +153,7 @@ export default function AccessoriesPage() {
       (l) => l.accessory_id && Number(l.qty) > 0
     );
 
-    const res = await fetch("/api/accessories/outbound/manual", {
+    const res = await apiFetch("/api/accessories/outbound/manual", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -197,7 +198,7 @@ export default function AccessoriesPage() {
     form.append("actor_id", actorId || "");
     form.append("preview", "1");
 
-    const res = await fetch("/api/accessories/outbound/excel", {
+    const res = await apiFetch("/api/accessories/outbound/excel", {
       method: "POST",
       body: form,
     });
@@ -229,7 +230,7 @@ export default function AccessoriesPage() {
     form.append("actor_id", actorId || "");
     form.append("preview", "0");
 
-    const res = await fetch("/api/accessories/outbound/excel", {
+    const res = await apiFetch("/api/accessories/outbound/excel", {
       method: "POST",
       body: form,
     });

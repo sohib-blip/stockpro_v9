@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getApiIdentity } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 
@@ -11,8 +12,8 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { box_code, source_bin_id, target_floor, actor, actor_id } =
-      await req.json();
+    const { box_code, source_bin_id, target_floor } = await req.json();
+    const identity = getApiIdentity(req);
 
     if (!box_code) {
       return NextResponse.json({ ok: false, error: "Box code required" });
@@ -105,8 +106,8 @@ export async function POST(req: Request) {
         item_id: i.item_id,
         box_id: targetBox.id,
         qty: 1,
-        created_by: actor_id,
-        actor,
+        created_by: identity.userId,
+        actor: identity.email,
         notes: `box_transfer_to_${target_floor}`,
         created_at: nowIso,
       }))

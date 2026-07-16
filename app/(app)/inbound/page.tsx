@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { parseVendorExcel } from "@/lib/inbound/parsers";
 import { toDeviceMatchList } from "@/lib/inbound/vendorParser";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
 type Vendor = "teltonika" | "quicklink" | "digitalmatter" | "truster";
 type HistoryFilter = "all" | "excel" | "manual";
@@ -124,7 +125,7 @@ const [page, setPage] = useState(1);
   async function loadHistory() {
   setLoadingHistory(true);
   try {
-    const res = await fetch(`/api/inbound/history?page=${page}`, {
+    const res = await apiFetch(`/api/inbound/history?page=${page}`, {
       method: "GET",
       cache: "no-store",
       headers: {
@@ -304,7 +305,7 @@ useEffect(() => {
   shipment_ref: shipmentRef || null,
 };
 
-      const res = await fetch("/api/inbound/confirm", {
+      const res = await apiFetch("/api/inbound/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -374,7 +375,7 @@ useEffect(() => {
 
     startBusy("Préparation du preview manuel…");
     try {
-      const res = await fetch("/api/inbound/manual-preview", {
+      const res = await apiFetch("/api/inbound/manual-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -416,7 +417,7 @@ setManualMsg("");
 
     startBusy("Import manuel en cours…");
     try {
-      const res = await fetch("/api/inbound/manual-confirm", {
+      const res = await apiFetch("/api/inbound/manual-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -522,12 +523,17 @@ setManualMsg("");
         </div>
 
         {lastBatchId && (
-          <a
-            href={`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`}
+          <button
+            onClick={() =>
+              downloadApiFile(
+                `/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`,
+                `labels-${lastBatchId}.pdf`
+              ).catch((error) => setErr(error.message))
+            }
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
           >
            QR labels 
-          </a>
+          </button>
         )}
       </div>
 
@@ -818,24 +824,30 @@ setManualMsg("");
                     {h.qty_imeis}
                   </td>
                   <td className="p-2 border-b border-slate-800 text-right">
-                    <a
-                      href={`/api/inbound/export?batch_id=${encodeURIComponent(
-                        h.batch_id
-                      )}`}
+                    <button
+                      onClick={() =>
+                        downloadApiFile(
+                          `/api/inbound/export?batch_id=${encodeURIComponent(h.batch_id)}`,
+                          `inbound-${h.batch_id}.xlsx`
+                        ).catch((error) => setErr(error.message))
+                      }
                       className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
                     >
                       Excel
-                    </a>
+                    </button>
                   </td>
                   <td className="p-2 border-b border-slate-800 text-right">
-                    <a
-                      href={`/api/inbound/labels?batch_id=${encodeURIComponent(
-                        h.batch_id
-                      )}&w_mm=105&h_mm=155`}
+                    <button
+                      onClick={() =>
+                        downloadApiFile(
+                          `/api/inbound/labels?batch_id=${encodeURIComponent(h.batch_id)}&w_mm=105&h_mm=155`,
+                          `labels-${h.batch_id}.pdf`
+                        ).catch((error) => setErr(error.message))
+                      }
                       className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
                     >
                       ZD220 PDF
-                    </a>
+                    </button>
                   </td>
                 </tr>
               ))}

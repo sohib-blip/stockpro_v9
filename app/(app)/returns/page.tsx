@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
 const cancellationReasons = [
   "Lack of Radius accuracy",
@@ -68,7 +69,7 @@ export default function ReturnsPage() {
     setLoadingHistory(true);
 
     try {
-      const res = await fetch(`/api/returns/history?page=${page}&t=${Date.now()}`, {
+      const res = await apiFetch(`/api/returns/history?page=${page}&t=${Date.now()}`, {
         method: "GET",
         cache: "no-store",
         headers: {
@@ -99,7 +100,7 @@ export default function ReturnsPage() {
     setPreview(null);
 
     try {
-      const res = await fetch("/api/returns/preview", {
+      const res = await apiFetch("/api/returns/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imeisText }),
@@ -145,7 +146,7 @@ export default function ReturnsPage() {
     setMsg("");
 
     try {
-      const res = await fetch("/api/returns/confirm", {
+      const res = await apiFetch("/api/returns/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -395,12 +396,16 @@ export default function ReturnsPage() {
           </div>
 
           <div className="flex gap-2">
-            <a
-              href="/api/returns/export"
+            <button
+              onClick={() =>
+                downloadApiFile("/api/returns/export", "returns.xlsx").catch(
+                  (error) => setMsg(`❌ ${error.message}`)
+                )
+              }
               className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
             >
               Export all returns
-            </a>
+            </button>
 
             <button
               onClick={loadHistory}

@@ -1,15 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { permissionsForApi } from "../../lib/access-control";
 
 const API_ROOT = join(process.cwd(), "app", "api");
-const AUTH_MARKERS = [
-  "requireUserFromBearer",
-  "auth.getUser",
-  "getSession",
-  "CRON_SECRET",
-  "authorization",
-];
 
 function findRouteFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -21,14 +15,38 @@ function findRouteFiles(directory: string): string[] {
 }
 
 describe("API authentication coverage", () => {
-  it("does not allow the unauthenticated-route baseline to grow", () => {
-    const routesWithoutAuth = findRouteFiles(API_ROOT).filter((route) => {
+  it("maps every API method to an explicit access policy", () => {
+    const missingPolicies = findRouteFiles(API_ROOT).flatMap((route) => {
       const source = readFileSync(route, "utf8");
-      return !AUTH_MARKERS.some((marker) => source.includes(marker));
+      const methods = Array.from(
+        source.matchAll(/export async function (GET|POST|PUT|PATCH|DELETE)/g),
+        (match) => match[1]
+      );
+      const relative = route
+        .slice(API_ROOT.length)
+        .replace(/\/route\.ts$/, "")
+        .replaceAll("\\", "/");
+      const pathname = `/api${relative}`;
+
+      return methods
+        .filter((method) => {
+          const policy = permissionsForApi(pathname, method);
+          return policy !== null && policy.length === 0;
+        })
+        .map((method) => `${method} ${pathname}`);
     });
 
-    // Existing debt recorded in docs/SECURITY_AUDIT.md. Reduce this number as
-    // routes are migrated; a new unprotected route must never increase it.
-    expect(routesWithoutAuth.length).toBeLessThanOrEqual(63);
+    expect(missingPolicies).toEqual([]);
+  });
+
+  it("keeps the only middleware exception protected by CRON_SECRET", () => {
+    const cron = readFileSync(
+      join(API_ROOT, "cron", "low-stock", "route.ts"),
+      "utf8"
+    );
+
+    expect(permissionsForApi("/api/cron/low-stock", "GET")).toBeNull();
+    expect(cron).toContain("isCronRequestAuthorized");
+    expect(cron).toContain("CRON_SECRET");
   });
 });

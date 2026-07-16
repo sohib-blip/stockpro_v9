@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch } from "@/lib/apiFetch";
 
 type DeviceRow = { device_id: string; device: string };
 
@@ -104,7 +105,7 @@ export default function LabelsPage() {
       return;
     }
 
-    const res = await fetch("/api/labels/generate", {
+    const res = await apiFetch("/api/labels/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

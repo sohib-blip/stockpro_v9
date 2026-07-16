@@ -13,6 +13,7 @@ import {
  CartesianGrid
 } from "recharts";
 import AccessoryCategory from "@/components/dashboard/AccessoryCategory";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
 type KPI = {
  total_bins: number;
@@ -105,12 +106,12 @@ function toggleGroup(category: keyof typeof openGroups) {
  async function loadAll() {
 
 const [kpiRes, binsRes, activityRes, flowRes, salesRes, accessoriesRes] = await Promise.all([
-  fetch("/api/dashboard/summary", { cache: "no-store" }),
-  fetch("/api/dashboard/bins", { cache: "no-store" }),
-  fetch("/api/dashboard/activity", { cache: "no-store" }),
-  fetch("/api/dashboard/device-flow", { cache: "no-store" }),
-  fetch("/api/dashboard/sales", { cache: "no-store" }),
-  fetch("/api/dashboard/accessories", { cache: "no-store" }),
+  apiFetch("/api/dashboard/summary", { cache: "no-store" }),
+  apiFetch("/api/dashboard/bins", { cache: "no-store" }),
+  apiFetch("/api/dashboard/activity", { cache: "no-store" }),
+  apiFetch("/api/dashboard/device-flow", { cache: "no-store" }),
+  apiFetch("/api/dashboard/sales", { cache: "no-store" }),
+  apiFetch("/api/dashboard/accessories", { cache: "no-store" }),
 ]);
 
  const kpiJson = await kpiRes.json();
@@ -139,7 +140,7 @@ if (salesJson.ok){
 
  setOpenDevice(device_id);
 
- const res = await fetch(`/api/dashboard/drilldown?device_id=${device_id}`);
+ const res = await apiFetch(`/api/dashboard/drilldown?device_id=${device_id}`);
  const json = await res.json();
 
  if (json.ok) setDrilldown(json.rows);
@@ -156,22 +157,34 @@ if (salesJson.ok){
 
 <div className="grid grid-cols-3 items-center">
   <div className="flex items-center gap-3">
-    <a
-      href="/api/dashboard/export"
+    <button
+      onClick={() =>
+        downloadApiFile("/api/dashboard/export", "stock.xlsx").catch((error) =>
+          window.alert(error.message)
+        )
+      }
       className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
     >
       Export Stock
-    </a>
+    </button>
 
-    <a
-      href="/api/dashboard/export-count-sheet"
+    <button
+      onClick={() =>
+        downloadApiFile("/api/dashboard/export-count-sheet", "count-sheet.xlsx").catch(
+          (error) => window.alert(error.message)
+        )
+      }
       className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
     >
       Export Count Sheet
-    </a>
+    </button>
 
     <button
-      onClick={() => window.open("/api/accessory-bins/export", "_blank")}
+      onClick={() =>
+        downloadApiFile("/api/accessory-bins/export", "accessories.xlsx").catch(
+          (error) => window.alert(error.message)
+        )
+      }
       className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
     >
       Export Accessories
@@ -584,7 +597,7 @@ onBlur={async(e)=>{
 
  const value = Number(e.target.value)
 
- await fetch("/api/bins/update-min-stock",{
+ await apiFetch("/api/bins/update-min-stock",{
   method:"POST",
   headers:{ "Content-Type":"application/json" },
   body:JSON.stringify({

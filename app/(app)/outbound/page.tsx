@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
 type HistoryRow = {
   operation_id: string;
@@ -58,7 +59,7 @@ const [page, setPage] = useState(1);
   async function loadHistory() {
   setLoadingHistory(true);
   try {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/outbound/history?page=${page}&t=${Date.now()}`,
       {
         method: "GET",
@@ -89,7 +90,7 @@ setPreview(null);
 
     const imeis = imeiInput.match(/\d{15}/g) || [];
 
-    const res = await fetch("/api/outbound/eod-preview", {
+    const res = await apiFetch("/api/outbound/eod-preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imeisText: imeiInput, imeis }),
@@ -125,7 +126,7 @@ setBusy(false);
     const form = new FormData();
     form.append("file", file);
 
-    const res = await fetch("/api/outbound/eod-preview", {
+    const res = await apiFetch("/api/outbound/eod-preview", {
       method: "POST",
       body: form,
     });
@@ -163,7 +164,7 @@ if (!actorId) {
 
     setBusy(true);
 
-    const res = await fetch("/api/outbound/eod-confirm", {
+    const res = await apiFetch("/api/outbound/eod-confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -462,12 +463,17 @@ if (!actorId) {
 <td className="p-2">{h.devices?.join(", ") || "-"}</td>
 <td className="p-2 text-right font-semibold">{h.qty}</td>
           <td className="p-2 text-right">
-            <a
-              href={`/api/outbound/export?operation_id=${encodeURIComponent(h.operation_id)}`}
+            <button
+              onClick={() =>
+                downloadApiFile(
+                  `/api/outbound/export?operation_id=${encodeURIComponent(h.operation_id)}`,
+                  `outbound-${h.operation_id}.xlsx`
+                ).catch((error) => setErrorMsg(error.message))
+              }
               className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
             >
               Excel
-            </a>
+            </button>
           </td>
         </tr>
       ))}

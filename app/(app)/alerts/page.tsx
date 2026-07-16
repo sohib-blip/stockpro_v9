@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useToast } from "@/components/ToastProvider";
+import { apiFetch } from "@/lib/apiFetch";
 
 type SummaryResp = {
   ok: boolean;
@@ -33,7 +34,7 @@ export default function AlertsPage() {
         return;
       }
 
-      const sRes = await fetch("/api/dashboard/summary", {
+      const sRes = await apiFetch("/api/dashboard/summary", {
         headers: { Authorization: `Bearer ${token}` },
       });
       const sJson = (await sRes.json()) as SummaryResp;

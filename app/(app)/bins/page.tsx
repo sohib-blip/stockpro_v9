@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch } from "@/lib/apiFetch";
 
 type AccessoryCategory =
   | "Packages"
@@ -66,7 +67,7 @@ export default function BinsPage() {
   }
 
   async function loadAccessoryBins() {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/accessory-bins/list?include_hidden=1&t=${Date.now()}`,
       { cache: "no-store" }
     );
@@ -91,7 +92,7 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    await fetch("/api/accessory-bins/create", {
+    await apiFetch("/api/accessory-bins/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -119,7 +120,7 @@ export default function BinsPage() {
   async function toggleAccessoryVisibility(id: string, active: boolean) {
     setLoading(true);
 
-    await fetch("/api/accessory-bins/toggle-active", {
+    await apiFetch("/api/accessory-bins/toggle-active", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, active }),
@@ -148,7 +149,7 @@ export default function BinsPage() {
   async function saveAccessoryEdit(id: string) {
     setLoading(true);
 
-    await fetch("/api/accessory-bins/update", {
+    await apiFetch("/api/accessory-bins/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -171,7 +172,7 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    await fetch("/api/accessory-bins/delete", {
+    await apiFetch("/api/accessory-bins/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -184,7 +185,7 @@ export default function BinsPage() {
   async function openTemplate(bin: Bin) {
     setSelectedDevice(bin);
 
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/bins/templates/list?device_id=${bin.id}&t=${Date.now()}`,
       { cache: "no-store" }
     );
@@ -202,7 +203,7 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    const res = await fetch("/api/bins/templates/save", {
+    const res = await apiFetch("/api/bins/templates/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -247,7 +248,7 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    const res = await fetch("/api/bins/templates/save", {
+    const res = await apiFetch("/api/bins/templates/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -278,7 +279,7 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    const res = await fetch("/api/bins/templates/delete", {
+    const res = await apiFetch("/api/bins/templates/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getApiIdentity } from "@/lib/api-identity";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 
@@ -24,8 +25,7 @@ export async function POST(req: Request) {
     const file = form.get("file") as File;
     const shipment_ref = String(form.get("shipment_ref") || "");
     const comment = String(form.get("comment") || "");
-    const actor = String(form.get("actor") || "unknown");
-    const actor_id = String(form.get("actor_id") || "");
+    const identity = getApiIdentity(req);
 
     if (!file) {
       return NextResponse.json(
@@ -229,8 +229,8 @@ if (preview) {
           movement_type: "OUT",
           shipment_ref: shipment_ref || null,
           note: comment || null,
-          actor,
-          actor_id: actor_id || null,
+          actor: identity.email,
+          actor_id: identity.userId,
           source: "excel",
           operation_id,
         });

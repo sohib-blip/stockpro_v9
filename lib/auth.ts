@@ -1,13 +1,11 @@
 import { createClient } from "@supabase/supabase-js";
-
-export type Permissions = {
-  can_dashboard: boolean;
-  can_inbound: boolean;
-  can_outbound: boolean;
-  can_labels: boolean;
-  can_devices: boolean;
-  can_admin: boolean;
-};
+import {
+  AccessProfile,
+  AppRole,
+  EMPTY_PERMISSIONS,
+  normalizePermissions,
+  PermissionKey,
+} from "@/lib/access-control";
 
 export function supabaseAnon() {
   return createClient(
@@ -44,32 +42,71 @@ export async function requireUserFromBearer(req: Request) {
   return { ok: true as const, user: data.user };
 }
 
-export async function getPermissions(userId: string): Promise<Permissions> {
+export async function getAccessProfile(userId: string): Promise<AccessProfile> {
   const sb = supabaseService();
 
-  const { data } = await sb
-    .from("user_permissions")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
+  const [{ data: roleRow, error: roleError }, { data: permissionRow, error: permissionError }] =
+    await Promise.all([
+      sb.from("user_roles").select("role").eq("user_id", userId).maybeSingle(),
+      sb.from("user_permissions").select("*").eq("user_id", userId).maybeSingle(),
+    ]);
 
-  if (!data) {
+  if (roleError || permissionError) {
+    throw roleError || permissionError;
+  }
+
+  return {
+    role: (roleRow?.role as AppRole | undefined) ?? null,
+    permissions: permissionRow
+      ? normalizePermissions(permissionRow)
+      : { ...EMPTY_PERMISSIONS },
+  };
+}
+
+export async function getPermissions(userId: string) {
+  return (await getAccessProfile(userId)).permissions;
+}
+
+export async function authorizeApiRequest(
+  req: Request,
+  required: readonly PermissionKey[]
+) {
+  const session = await requireUserFromBearer(req);
+
+  if (!session.ok) {
     return {
-      can_dashboard: false,
-      can_inbound: false,
-      can_outbound: false,
-      can_labels: false,
-      can_devices: false,
-      can_admin: false,
+      ok: false as const,
+      status: 401,
+      error: "Authentication required",
+    };
+  }
+
+  let access: AccessProfile;
+  try {
+    access = await getAccessProfile(session.user.id);
+  } catch {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Unable to verify permissions",
+    };
+  }
+
+  const isAdmin = access.role === "admin" || access.permissions.can_admin;
+  const allowed =
+    isAdmin || required.some((permission) => access.permissions[permission]);
+
+  if (!allowed) {
+    return {
+      ok: false as const,
+      status: 403,
+      error: access.role ? "Insufficient permissions" : "No role assigned",
     };
   }
 
   return {
-    can_dashboard: !!data.can_dashboard,
-    can_inbound: !!data.can_inbound,
-    can_outbound: !!data.can_outbound,
-    can_labels: !!data.can_labels,
-    can_devices: !!data.can_devices,
-    can_admin: !!data.can_admin,
+    ok: true as const,
+    user: session.user,
+    access,
   };
 }

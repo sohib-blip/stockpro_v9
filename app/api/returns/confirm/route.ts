@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getApiIdentity } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -19,9 +20,8 @@ export async function POST(req: Request) {
       return_ref,
       return_type,
       return_reason,
-      actor,
-      actor_id,
     } = await req.json();
+    const identity = getApiIdentity(req);
 
     if (!Array.isArray(items) || items.length === 0) {
       return NextResponse.json({ ok: false, error: "No items to return" }, { status: 400 });
@@ -37,10 +37,6 @@ export async function POST(req: Request) {
 
     if (!return_reason) {
       return NextResponse.json({ ok: false, error: "Return reason required" }, { status: 400 });
-    }
-
-    if (!actor_id) {
-      return NextResponse.json({ ok: false, error: "actor_id required" }, { status: 400 });
     }
 
     const operation_id = crypto.randomUUID();
@@ -126,8 +122,8 @@ export async function POST(req: Request) {
         device_id,
         imei,
         qty: 1,
-        actor: actor || "unknown",
-        created_by: actor_id,
+        actor: identity.email,
+        created_by: identity.userId,
         created_at: nowIso,
         shipment_ref: return_ref || null,
         source: "customer_return",

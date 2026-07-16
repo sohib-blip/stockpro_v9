@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { resolveApiUserEmail } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -23,22 +24,8 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const {
-      user_email,
-      ended_at,
-    } = body;
-
-    if (!user_email?.trim()) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Missing user_email",
-        },
-        {
-          status: 400,
-        }
-      );
-    }
+    const { user_email: requestedEmail, ended_at } = body;
+    const userEmail = resolveApiUserEmail(req, requestedEmail);
 
     /*
      * Recherche du NRD actuellement actif.
@@ -46,7 +33,7 @@ export async function POST(req: Request) {
     const { data: active, error: activeError } = await supabase
       .from("nrd_time_logs")
       .select("*")
-      .eq("user_email", user_email.trim())
+      .eq("user_email", userEmail)
       .is("ended_at", null)
       .order("started_at", { ascending: false })
       .limit(1)

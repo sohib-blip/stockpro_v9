@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildInboundMovementRows } from "@/lib/inbound/movements";
+import { getApiIdentity } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 
@@ -15,8 +16,8 @@ function sb() {
 
 export async function POST(req: Request) {
   try {
-    const { device, box_no, floor, imeis, actor, actor_id, shipment_ref } =
-  await req.json();
+    const { device, box_no, floor, imeis, shipment_ref } = await req.json();
+    const identity = getApiIdentity(req);
 
     if (!device || !box_no || !Array.isArray(imeis) || imeis.length === 0) {
       return NextResponse.json(
@@ -33,7 +34,7 @@ export async function POST(req: Request) {
     const { data: batch } = await supabase
       .from("inbound_batches")
 .insert({
-  actor: actor || "unknown",
+  actor: identity.email,
   vendor: "manual",
   source: "manual",
   shipment_ref: shipment_ref || null
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
       box_id,
       status: "IN",
       imported_at: nowIso,
-      imported_by: actor_id,
+      imported_by: identity.userId,
       import_id: batch.batch_id,
     }));
 
@@ -93,8 +94,8 @@ export async function POST(req: Request) {
       batchId: batch.batch_id,
       boxId: box_id,
       binId: device,
-      actorId: actor_id,
-      actor: actor || "unknown",
+      actorId: identity.userId,
+      actor: identity.email,
       createdAt: nowIso,
     });
 

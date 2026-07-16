@@ -23,6 +23,7 @@ import {
 import { PermissionKey } from "@/lib/access-control";
 import { useAccess } from "@/components/AccessProvider";
 import { apiFetch } from "@/lib/apiFetch";
+import { signOutCurrentDevice } from "@/lib/session-control";
 
 const NAV: Array<{
   href: string;
@@ -60,8 +61,9 @@ export default function AppShell({ children }: { children: ReactNode }) {
   const router = useRouter();
 
   async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/login");
+    await signOutCurrentDevice(supabase, window.sessionStorage);
+    router.replace("/login");
+    router.refresh();
   }
 
   useEffect(() => {

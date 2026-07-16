@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { STOCKPRO_SESSION_KEY } from "@/lib/session-control";
 
 export default function LoginPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -23,7 +24,7 @@ export default function LoginPage() {
       data: { session },
     } = await supabase.auth.getSession();
 
-    const localSessionId = window.sessionStorage.getItem("stockpro_session_id");
+    const localSessionId = window.sessionStorage.getItem(STOCKPRO_SESSION_KEY);
 
     if (session?.user && localSessionId) {
       window.location.href = "/dashboard";
@@ -31,7 +32,7 @@ export default function LoginPage() {
     }
 
     if (session?.user && !localSessionId) {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
       return;
     }
   };
@@ -53,7 +54,7 @@ export default function LoginPage() {
       return;
     }
 
-    window.sessionStorage.setItem("stockpro_session_id", sessionId);
+    window.sessionStorage.setItem(STOCKPRO_SESSION_KEY, sessionId);
 
     setLoading(false);
     window.location.href = "/dashboard";
@@ -153,7 +154,7 @@ if (isSessionReallyActive) {
     setPendingUserId("");
     setPendingSessionId("");
 
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
 
     setMsg("Login cancelled. Existing session remains active.");
   }

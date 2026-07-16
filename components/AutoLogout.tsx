@@ -5,6 +5,11 @@ import { usePathname, useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { isAuthenticationRoute } from "@/lib/auth-routes";
+import {
+  signOutCurrentDevice,
+  STOCKPRO_SESSION_KEY,
+  touchOwnedSession,
+} from "@/lib/session-control";
 
 const INACTIVITY_LIMIT = 60 * 60 * 1000; // 1 hour
 const SESSION_CHECK_INTERVAL = 30 * 1000; // 30 seconds
@@ -25,28 +30,16 @@ export default function AutoLogout() {
     let sessionChecker: ReturnType<typeof setInterval>;
     let heartbeat: ReturnType<typeof setInterval>;
     let expired = false;
+    let stopping = false;
 
     async function logout(showMessage = false) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      if (stopping) return;
+      stopping = true;
+      if (showMessage) expired = true;
 
-      if (user) {
-        await supabase
-          .from("profiles")
-          .update({
-            current_session_id: null,
-            last_seen_at: new Date().toISOString(),
-          })
-          .eq("user_id", user.id);
-      }
-
-      window.sessionStorage.removeItem("stockpro_session_id");
-
-      await supabase.auth.signOut();
+      await signOutCurrentDevice(supabase, window.sessionStorage);
 
       if (showMessage) {
-        expired = true;
         setSessionExpired(true);
         return;
       }
@@ -56,17 +49,17 @@ export default function AutoLogout() {
     }
 
     function resetTimer() {
-      if (expired) return;
+      if (expired || stopping) return;
 
       clearTimeout(inactivityTimer);
       inactivityTimer = setTimeout(() => logout(false), INACTIVITY_LIMIT);
     }
 
     async function checkSession() {
-      if (expired) return;
+      if (expired || stopping) return;
 
       const localSessionId =
-        window.sessionStorage.getItem("stockpro_session_id");
+        window.sessionStorage.getItem(STOCKPRO_SESSION_KEY);
 
       const {
         data: { user },
@@ -93,8 +86,10 @@ export default function AutoLogout() {
     }
 
     async function updateHeartbeat() {
+      if (expired || stopping) return;
+
       const localSessionId =
-        window.sessionStorage.getItem("stockpro_session_id");
+        window.sessionStorage.getItem(STOCKPRO_SESSION_KEY);
 
       const {
         data: { user },
@@ -102,12 +97,7 @@ export default function AutoLogout() {
 
       if (!user || !localSessionId) return;
 
-      await supabase
-        .from("profiles")
-        .update({
-          last_seen_at: new Date().toISOString(),
-        })
-        .eq("user_id", user.id);
+      await touchOwnedSession(supabase, user.id, localSessionId);
     }
 
     const events = [

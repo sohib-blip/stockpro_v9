@@ -7,6 +7,14 @@ const migration = readFileSync(
   "utf8"
 ).toLowerCase();
 
+const refinement = readFileSync(
+  join(
+    process.cwd(),
+    "supabase/migrations/20260716_refine_rls_policies.sql"
+  ),
+  "utf8"
+).toLowerCase();
+
 const activeTables = [
   "accessory_bins",
   "accessory_movements",
@@ -95,5 +103,20 @@ describe("RLS hardening migration", () => {
     expect(migration.trimStart()).toMatch(/^begin;/);
     expect(migration.trimEnd()).toMatch(/commit;$/);
     expect(migration).not.toContain(" cascade");
+  });
+
+  it("keeps policy helpers outside the exposed API schema", () => {
+    expect(refinement).toContain(
+      "alter function public.is_admin(uuid) set schema private;"
+    );
+    expect(refinement).toContain(
+      "revoke all privileges on function private.is_admin(uuid)"
+    );
+    expect(refinement).toContain("grant usage on schema private");
+  });
+
+  it("requires a real authenticated identity for shared writes", () => {
+    expect(refinement).toContain("(select auth.uid()) is not null");
+    expect(refinement).not.toContain("using (true)\nwith check (true)");
   });
 });

@@ -1,7 +1,32 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-export async function GET() {
+export async function GET(req: Request) {
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (
+    cronSecret &&
+    req.headers.get("authorization") !== `Bearer ${cronSecret}`
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "Unauthorized" },
+      { status: 401 }
+    );
+  }
+
+  const emailFlag = process.env.ENABLE_LOW_STOCK_EMAILS;
+  const emailEnabled =
+    emailFlag === "true" ||
+    (emailFlag === undefined && process.env.VERCEL_ENV === "production");
+
+  if (!emailEnabled) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: "low-stock emails disabled for this environment",
+    });
+  }
+
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!

@@ -39,6 +39,8 @@ const NAV = [
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "";
+  const appEnvironment = process.env.NEXT_PUBLIC_APP_ENV || "production";
+  const isNonProduction = appEnvironment !== "production";
   const [collapsed, setCollapsed] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
   const [activeNrd, setActiveNrd] = useState<any>(null);
@@ -163,6 +165,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <section className="flex-1 p-8">
+        {isNonProduction && (
+          <div className="mb-4 rounded-xl border border-cyan-400/50 bg-cyan-400/10 px-4 py-3 text-center text-sm font-semibold uppercase tracking-[0.18em] text-cyan-200">
+            Environnement de test — aucune operation ne doit concerner du stock reel
+          </div>
+        )}
+
         {activeNrd && (
           <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 px-4 py-3 text-sm flex items-center justify-between">
             <div>

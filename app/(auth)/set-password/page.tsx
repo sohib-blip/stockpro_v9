@@ -1,7 +1,8 @@
 "use client";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { useMemo, useState } from "react";
+import { parseAuthCallbackSession } from "@/lib/auth-callback";
+import { useEffect, useMemo, useState } from "react";
 
 export default function SetPasswordPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -9,6 +10,51 @@ export default function SetPasswordPage() {
   const [confirmation, setConfirmation] = useState("");
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+
+    async function prepareSession() {
+      const callbackSession = parseAuthCallbackSession(window.location.hash);
+
+      if (callbackSession) {
+        const { error } = await supabase.auth.setSession(callbackSession);
+        if (!active) return;
+
+        if (error) {
+          setMessage("Ce lien est invalide ou a expiré. Demandez une nouvelle invitation.");
+          return;
+        }
+
+        window.history.replaceState(
+          null,
+          "",
+          `${window.location.pathname}${window.location.search}`
+        );
+        setSessionReady(true);
+        return;
+      }
+
+      const {
+        data: { session },
+        error,
+      } = await supabase.auth.getSession();
+      if (!active) return;
+
+      if (error || !session) {
+        setMessage("Ce lien est invalide ou a expiré. Demandez une nouvelle invitation.");
+        return;
+      }
+
+      setSessionReady(true);
+    }
+
+    void prepareSession();
+    return () => {
+      active = false;
+    };
+  }, [supabase]);
 
   async function updatePassword() {
     setMessage("");
@@ -18,6 +64,10 @@ export default function SetPasswordPage() {
     }
     if (password !== confirmation) {
       setMessage("Les deux mots de passe ne correspondent pas.");
+      return;
+    }
+    if (!sessionReady) {
+      setMessage("Le lien d'invitation n'est pas encore prêt. Réessayez dans un instant.");
       return;
     }
 
@@ -61,10 +111,14 @@ export default function SetPasswordPage() {
           />
           <button
             onClick={updatePassword}
-            disabled={loading}
+            disabled={loading || !sessionReady}
             className="w-full rounded-xl bg-indigo-600 px-4 py-2 font-semibold hover:bg-indigo-500 disabled:opacity-50"
           >
-            {loading ? "Enregistrement…" : "Enregistrer le mot de passe"}
+            {loading
+              ? "Enregistrement…"
+              : sessionReady
+                ? "Enregistrer le mot de passe"
+                : "Validation du lien…"}
           </button>
         </div>
 

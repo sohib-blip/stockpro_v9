@@ -13,7 +13,6 @@ export const PERMISSION_KEYS = [
   "can_accessories",
   "can_supply",
   "can_nrd",
-  "can_alerts",
   "can_admin",
 ] as const;
 
@@ -36,7 +35,6 @@ export const EMPTY_PERMISSIONS: Permissions = {
   can_accessories: false,
   can_supply: false,
   can_nrd: false,
-  can_alerts: false,
   can_admin: false,
 };
 
@@ -59,7 +57,6 @@ export function permissionsForRole(role: AppRole): Permissions {
       can_accessories: true,
       can_supply: true,
       can_nrd: true,
-      can_alerts: false,
       can_admin: false,
     };
   }
@@ -91,7 +88,6 @@ export function hasPermission(
 export function permissionForPage(pathname: string): PermissionKey | null {
   const rules: Array<[string, PermissionKey]> = [
     ["/admin", "can_admin"],
-    ["/alerts", "can_alerts"],
     ["/dashboard", "can_dashboard"],
     ["/devices", "can_dashboard"],
     ["/movements", "can_dashboard"],
@@ -118,7 +114,7 @@ export function permissionsForApi(
   if (pathname === "/api/cron/low-stock") return null;
 
   if (pathname.startsWith("/api/dashboard/min-stock")) {
-    return ["can_bins", "can_alerts"];
+    return ["can_bins"];
   }
 
   if (pathname.startsWith("/api/dashboard/bins")) {

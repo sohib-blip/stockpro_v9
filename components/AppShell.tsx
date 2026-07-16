@@ -19,7 +19,6 @@ import {
   Timer,
   Truck,
   ShieldCheck,
-  BellRing,
 } from "lucide-react";
 import { PermissionKey } from "@/lib/access-control";
 import { useAccess } from "@/components/AccessProvider";
@@ -45,7 +44,6 @@ const NAV: Array<{
 
   { href: "/nrd", label: "NRD Tracker", icon: Timer, permission: "can_nrd" },
   { href: "/bins", label: "Bins", icon: Package, permission: "can_bins" },
-  { href: "/alerts", label: "Alerts", icon: BellRing, permission: "can_alerts" },
   { href: "/admin", label: "Admin", icon: ShieldCheck, permission: "can_admin" },
 ];
 

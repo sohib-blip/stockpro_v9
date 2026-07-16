@@ -35,7 +35,6 @@ const PERMISSION_LABELS: Array<[PermissionKey, string]> = [
   ["can_accessories", "Accessories"],
   ["can_supply", "Supply"],
   ["can_nrd", "NRD"],
-  ["can_alerts", "Alerts"],
   ["can_admin", "Administration"],
 ];
 

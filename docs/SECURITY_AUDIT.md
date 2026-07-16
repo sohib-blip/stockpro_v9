@@ -28,7 +28,7 @@ that it has an explicit permission mapping.
 
 - Roles: `admin`, `operator`, `viewer`.
 - Module permissions: dashboard, inbound, outbound, returns, transfer, labels,
-  bins, accessories, supply, NRD, alerts and administration.
+  bins, accessories, supply, NRD and administration.
 - Admins can invite users and edit roles/permissions from `/admin`.
 - The last administrator cannot be demoted.
 - Navigation and page access use the same permission model as the API.

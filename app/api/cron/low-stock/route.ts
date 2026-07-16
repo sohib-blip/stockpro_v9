@@ -43,25 +43,20 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, reason: "no subscribers" });
   }
 
-  // thresholds
-  const { data: thresholds } = await supabase
-    .from("device_thresholds")
-    .select("device,min_stock");
+  // Use the exact same min-stock values and stock calculation as Dashboard.
+  const { data: summary, error: summaryError } = await supabase
+    .from("dashboard_bins_view")
+    .select("device,imei_count,min_stock,stock_status")
+    .eq("stock_status", "low");
 
-  const minMap = new Map<string, number>();
-  thresholds?.forEach((t) =>
-    minMap.set(t.device, Number(t.min_stock || 0))
-  );
+  if (summaryError) {
+    return NextResponse.json(
+      { ok: false, error: summaryError.message },
+      { status: 500 }
+    );
+  }
 
-  // stock summary (tu l’as déjà)
-  const { data: summary } = await supabase.rpc(
-    "dashboard_summary_per_device"
-  );
-
-  const low = (summary || []).filter((r: any) => {
-    const min = minMap.get(r.device) ?? 0;
-    return r.in_stock <= min;
-  });
+  const low = summary || [];
 
   if (low.length === 0) {
     return NextResponse.json({ ok: true, reason: "no low stock" });
@@ -70,7 +65,7 @@ export async function GET(req: Request) {
   const html = low
     .map(
       (d: any) =>
-        `<li><b>${d.device}</b> — IN ${d.in_stock} ≤ MIN ${minMap.get(d.device)}</li>`
+        `<li><b>${d.device}</b> — IN ${d.imei_count} ≤ MIN ${d.min_stock}</li>`
     )
     .join("");
 

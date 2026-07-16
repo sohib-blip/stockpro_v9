@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { buildInboundMovementRows } from "@/lib/inbound/movements";
 
 export const runtime = "nodejs";
 
@@ -181,20 +182,15 @@ export async function POST(req: Request) {
 
         if (itemsErr) throw itemsErr;
 
-        const movements = (insertedItems || []).map((it: any) => ({
-  type: "IN",
-  operation_id,
-  batch_id: batch.batch_id,
-  item_id: it.item_id,
-  box_id,
-  device_id: bin_id,
-  imei: it.imei,
-  qty: 1,
-  created_by: actor_id,
-  actor: actor || "unknown",
-  created_at: nowIso,
-  notes: vendor ? `vendor=${vendor}` : null,
-}));
+        const movements = buildInboundMovementRows(insertedItems || [], {
+          operationId: operation_id,
+          batchId: batch.batch_id,
+          boxId: box_id,
+          actorId: actor_id,
+          actor: actor || "unknown",
+          createdAt: nowIso,
+          notes: vendor ? `vendor=${vendor}` : null,
+        });
 
         const { error: movErr } = await supabase
           .from("movements")

@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { isAuthenticationRoute } from "@/lib/auth-routes";
 
 const INACTIVITY_LIMIT = 60 * 60 * 1000; // 1 hour
 const SESSION_CHECK_INTERVAL = 30 * 1000; // 30 seconds
@@ -11,9 +12,13 @@ const HEARTBEAT_INTERVAL = 60 * 1000; // 1 minute
 
 export default function AutoLogout() {
   const router = useRouter();
+  const pathname = usePathname() || "";
+  const isAuthRoute = isAuthenticationRoute(pathname);
   const [sessionExpired, setSessionExpired] = useState(false);
 
   useEffect(() => {
+    if (isAuthRoute) return;
+
     const supabase = createSupabaseBrowserClient();
 
     let inactivityTimer: ReturnType<typeof setTimeout>;
@@ -133,7 +138,9 @@ export default function AutoLogout() {
         window.removeEventListener(event, resetTimer);
       });
     };
-  }, [router]);
+  }, [isAuthRoute, router]);
+
+  if (isAuthRoute) return null;
 
   return (
     <ConfirmDialog

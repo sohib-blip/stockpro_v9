@@ -1,23 +1,24 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  areLowStockEmailsEnabled,
+  isCronRequestAuthorized,
+} from "@/lib/cron/lowStockPolicy";
 
 export async function GET(req: Request) {
   const cronSecret = process.env.CRON_SECRET;
 
-  if (
-    cronSecret &&
-    req.headers.get("authorization") !== `Bearer ${cronSecret}`
-  ) {
+  if (!isCronRequestAuthorized(req.headers.get("authorization"), cronSecret)) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized" },
       { status: 401 }
     );
   }
 
-  const emailFlag = process.env.ENABLE_LOW_STOCK_EMAILS;
-  const emailEnabled =
-    emailFlag === "true" ||
-    (emailFlag === undefined && process.env.VERCEL_ENV === "production");
+  const emailEnabled = areLowStockEmailsEnabled(
+    process.env.ENABLE_LOW_STOCK_EMAILS,
+    process.env.VERCEL_ENV
+  );
 
   if (!emailEnabled) {
     return NextResponse.json({

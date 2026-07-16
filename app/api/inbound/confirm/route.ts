@@ -186,6 +186,7 @@ export async function POST(req: Request) {
           operationId: operation_id,
           batchId: batch.batch_id,
           boxId: box_id,
+          binId: bin_id,
           actorId: actor_id,
           actor: actor || "unknown",
           createdAt: nowIso,

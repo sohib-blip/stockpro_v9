@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 import { buildInboundMovementRows } from "../../lib/inbound/movements";
 
 describe("buildInboundMovementRows", () => {
-  it("references the bin through box_id instead of legacy device_id", () => {
+  it("stores the bin id in the legacy device_id movement column", () => {
     const rows = buildInboundMovementRows(
       [{ item_id: "item-1", imei: "123456789012345" }],
       {
         operationId: "operation-1",
         batchId: "batch-1",
         boxId: "box-for-fmc880",
+        binId: "bin-fmc880",
         actorId: "user-1",
         actor: "tester@example.com",
         createdAt: "2026-07-16T18:00:00.000Z",
@@ -24,6 +25,7 @@ describe("buildInboundMovementRows", () => {
         batch_id: "batch-1",
         item_id: "item-1",
         box_id: "box-for-fmc880",
+        device_id: "bin-fmc880",
         imei: "123456789012345",
         qty: 1,
         created_by: "user-1",
@@ -32,6 +34,6 @@ describe("buildInboundMovementRows", () => {
         notes: "vendor=teltonika",
       },
     ]);
-    expect(rows[0]).not.toHaveProperty("device_id");
+    expect(rows[0].device_id).toBe("bin-fmc880");
   });
 });

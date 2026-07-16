@@ -7,6 +7,7 @@ type InboundMovementContext = {
   operationId: string;
   batchId: string;
   boxId: string;
+  binId: string;
   actorId: string;
   actor: string;
   createdAt: string;
@@ -14,8 +15,8 @@ type InboundMovementContext = {
 };
 
 /**
- * `movements.device_id` still targets the legacy devices table. Inbound now
- * stores inventory by bin, so the bin must be referenced through `box_id`.
+ * `movements.device_id` is a legacy column name that now stores a bin id.
+ * Keeping it populated preserves movement history and outbound exports.
  */
 export function buildInboundMovementRows(
   items: InsertedInboundItem[],
@@ -27,6 +28,7 @@ export function buildInboundMovementRows(
     batch_id: context.batchId,
     item_id: item.item_id,
     box_id: context.boxId,
+    device_id: context.binId,
     imei: item.imei,
     qty: 1,
     created_by: context.actorId,

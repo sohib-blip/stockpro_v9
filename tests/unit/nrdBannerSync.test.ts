@@ -14,11 +14,12 @@ describe("NRD banner synchronization", () => {
     );
 
     expect(shell).toContain(
-      'window.addEventListener("stockpro:nrd-changed", loadUserAndNrd)'
+      'window.addEventListener("stockpro:nrd-changed", handleNrdChanged)'
     );
     expect(shell).toContain(
-      'window.removeEventListener("stockpro:nrd-changed", loadUserAndNrd)'
+      'window.removeEventListener("stockpro:nrd-changed", handleNrdChanged)'
     );
-    expect(page.match(/notifyNrdChanged\(\)/g)?.length).toBeGreaterThanOrEqual(4);
+    expect(page).toContain("notifyNrdChanged(json.row)");
+    expect(page.match(/notifyNrdChanged\(null\)/g)?.length).toBe(2);
   });
 });

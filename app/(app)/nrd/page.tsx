@@ -60,6 +60,10 @@ function getCurrentPeriodMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function notifyNrdChanged() {
+  window.dispatchEvent(new Event("stockpro:nrd-changed"));
+}
+
 export default function NRDPage() {
   const { hasPermission } = useAccess();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -220,6 +224,7 @@ setForgottenModalDismissed(false);
 setCorrectEndTime("");
 
 setSuccessMsg("Task started");
+notifyNrdChanged();
 setTimeout(() => setSuccessMsg(""), 2000);
   }
 
@@ -249,6 +254,7 @@ setTimeout(() => setSuccessMsg(""), 2000);
 setForgottenModalDismissed(false);
 setCorrectEndTime("");
   setSuccessMsg("Task stopped");
+  notifyNrdChanged();
   setTimeout(() => setSuccessMsg(""), 2000);
 
   await loadHistory(userEmail, periodMonth);
@@ -288,6 +294,7 @@ async function stopTaskWithCorrection() {
     setCorrectEndTime("");
     setActive(null);
     setSuccessMsg("NRD corrected and stopped");
+    notifyNrdChanged();
     setTimeout(() => setSuccessMsg(""), 2000);
 
     await loadCurrent(userEmail);

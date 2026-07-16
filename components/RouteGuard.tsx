@@ -22,7 +22,7 @@ export default function RouteGuard({ children }: Props) {
 
     const required = permissionForPage(pathname);
     if (required && !hasPermission(required)) {
-      router.replace("/dashboard");
+      router.replace("/denied");
     }
   }, [hasPermission, loading, pathname, router, user]);
 

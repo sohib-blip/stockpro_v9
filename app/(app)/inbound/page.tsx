@@ -425,6 +425,7 @@ setManualMsg("");
           box_no: manualBox.trim(),
           floor: manualFloor,
           imeis: imeisToInsert,
+          shipment_ref: shipmentRef.trim() || null,
           actor,
           actor_id: actorId,
         }),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   hasPermission,
+  permissionForPage,
   permissionsForApi,
   permissionsForRole,
 } from "../../lib/access-control";
@@ -35,5 +36,9 @@ describe("access control", () => {
 
   it("fails closed for an unknown API route", () => {
     expect(permissionsForApi("/api/new-unmapped-route", "POST")).toEqual([]);
+  });
+
+  it("keeps the access denied page reachable without a business permission", () => {
+    expect(permissionForPage("/denied")).toBeNull();
   });
 });

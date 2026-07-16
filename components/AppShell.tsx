@@ -92,8 +92,12 @@ export default function AppShell({ children }: { children: ReactNode }) {
     loadUserAndNrd();
 
     const interval = setInterval(loadUserAndNrd, 5000);
+    window.addEventListener("stockpro:nrd-changed", loadUserAndNrd);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("stockpro:nrd-changed", loadUserAndNrd);
+    };
   }, [hasPermission, supabase]);
 
   return (

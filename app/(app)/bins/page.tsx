@@ -435,7 +435,7 @@ export default function BinsPage() {
               <button
                 onClick={saveTemplate}
                 disabled={loading || !templateAccessoryId}
-                className="w-full bg-cyan-600 hover:bg-cyan-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
               >
                 Save Rule
               </button>

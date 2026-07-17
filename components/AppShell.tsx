@@ -247,10 +247,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
                 flex items-center gap-3 rounded-xl px-3 py-2
                 transition-all duration-200
                 ${collapsed ? "justify-center" : ""}
-                hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(99,102,241,0.15)]
+                hover:bg-slate-800/80
                 ${
                   isActivePath(pathname, DASHBOARD_ITEM.href)
-                    ? "bg-slate-800 shadow-[0_0_12px_rgba(99,102,241,0.25)]"
+                    ? "bg-slate-800/80 ring-1 ring-inset ring-slate-700/70"
                     : ""
                 }
               `}
@@ -287,7 +287,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
                       transition-all duration-200 hover:bg-slate-800
                       ${
                         isGroupActive
-                          ? "bg-slate-800 text-indigo-300 shadow-[0_0_12px_rgba(99,102,241,0.25)]"
+                          ? "bg-slate-800/80 text-indigo-300 ring-1 ring-inset ring-slate-700/70"
                           : "text-slate-300"
                       }
                     `}
@@ -336,11 +336,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
                             aria-current={isActive ? "page" : undefined}
                             className={`
                               flex items-center gap-3 rounded-xl px-3 py-2
-                              transition-all duration-200 hover:bg-slate-800
-                              hover:shadow-[0_0_12px_rgba(99,102,241,0.15)]
+                              transition-all duration-200 hover:bg-slate-800/80
                               ${
                                 isActive
-                                  ? "bg-slate-800 text-white shadow-[0_0_12px_rgba(99,102,241,0.25)]"
+                                  ? "bg-indigo-500/10 text-indigo-100 ring-1 ring-inset ring-indigo-400/20"
                                   : "text-slate-400"
                               }
                             `}
@@ -371,7 +370,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               flex items-center gap-3 px-3 py-2 rounded-xl w-full
               transition-all duration-200
               ${collapsed ? "justify-center" : ""}
-              hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(239,68,68,0.2)]
+              hover:bg-slate-800/80 hover:text-red-300
             `}
           >
             <LogOut size={18} />

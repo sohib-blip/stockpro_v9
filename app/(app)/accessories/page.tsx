@@ -69,13 +69,27 @@ export default function AccessoriesPage() {
   }
 
   async function loadHistory() {
-    const res = await apiFetch(
-      `/api/accessories/outbound/history?t=${Date.now()}`,
-      { cache: "no-store" }
-    );
+    try {
+      const res = await apiFetch(
+        `/api/accessories/outbound/history?t=${Date.now()}`,
+        { cache: "no-store" }
+      );
 
-    const json = await res.json();
-    if (json.ok) setHistory(json.rows || []);
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        setHistory([]);
+        setErrorMsg(json.error || "History failed");
+        return;
+      }
+
+      setHistory(json.rows || []);
+    } catch (error) {
+      setHistory([]);
+      setErrorMsg(
+        error instanceof Error ? error.message : "History failed"
+      );
+    }
   }
 
   useEffect(() => {

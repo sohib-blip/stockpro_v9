@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  buildAccessoryHistoryRows,
+  type AccessoryHistoryBin,
+  type AccessoryMovementHistoryRow,
+} from "@/lib/accessory-history";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,47 +16,48 @@ const supabase = createClient(
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
+    const { data: movements, error: movementError } = await supabase
       .from("accessory_movements")
-      .select(`
-        id,
-        created_at,
-        shipment_ref,
-        comment,
-        note,
-        qty,
-        actor,
-        source,
-        movement_type,
-        accessory_bins (
-          id,
-          name
-        )
-      `)
+      .select(
+        "id,created_at,shipment_ref,note,qty,actor,source,movement_type,accessory_bin_id"
+      )
       .eq("movement_type", "OUT")
       .order("created_at", { ascending: false })
       .limit(50);
 
-    if (error) throw error;
+    if (movementError) throw movementError;
 
-    const rows = (data || []).map((row: any) => ({
-      id: row.id,
-      created_at: row.created_at,
-      shipment_ref: row.shipment_ref,
-      comment: row.comment || row.note || "",
-      note: row.note || row.comment || "",
-      qty: row.qty,
-      actor: row.actor,
-      source: row.source,
-      movement_type: row.movement_type,
-      accessory_name: row.accessory_bins?.name || "-",
-    }));
+    const typedMovements = (movements || []) as AccessoryMovementHistoryRow[];
+    const accessoryIds = Array.from(
+      new Set(
+        typedMovements
+          .map((movement) => movement.accessory_bin_id)
+          .filter((id): id is string => Boolean(id))
+      )
+    );
 
-    return NextResponse.json({ ok: true, rows });
+    let accessoryBins: AccessoryHistoryBin[] = [];
+
+    if (accessoryIds.length > 0) {
+      const { data, error } = await supabase
+        .from("accessory_bins")
+        .select("id,name")
+        .in("id", accessoryIds);
+
+      if (error) throw error;
+      accessoryBins = (data || []) as AccessoryHistoryBin[];
+    }
+
+    const rows = buildAccessoryHistoryRows(typedMovements, accessoryBins);
+
+    return NextResponse.json(
+      { ok: true, rows },
+      { headers: { "Cache-Control": "no-store" } }
+    );
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: e?.message || "History failed" },
-      { status: 500 }
+      { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }
 }

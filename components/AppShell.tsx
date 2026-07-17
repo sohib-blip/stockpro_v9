@@ -19,46 +19,144 @@ import {
   Timer,
   Truck,
   ShieldCheck,
+  ChevronDown,
+  ClipboardList,
 } from "lucide-react";
 import { PermissionKey } from "@/lib/access-control";
 import { useAccess } from "@/components/AccessProvider";
 import { apiFetch } from "@/lib/apiFetch";
 import { signOutCurrentDevice } from "@/lib/session-control";
 
-const NAV: Array<{
+type NavItem = {
   href: string;
   label: string;
   icon: typeof LayoutDashboard;
   permission: PermissionKey;
-}> = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, permission: "can_dashboard" },
+};
 
-  { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine, permission: "can_inbound" },
-  { href: "/labels", label: "Labels", icon: Tag, permission: "can_labels" },
+type NavGroup = {
+  id: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  items: NavItem[];
+};
 
-  { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine, permission: "can_outbound" },
-  { href: "/accessories", label: "Accessories", icon: Boxes, permission: "can_accessories" },
-  { href: "/supply", label: "Supply", icon: Truck, permission: "can_supply" },
+const DASHBOARD_ITEM: NavItem = {
+  href: "/dashboard",
+  label: "Dashboard",
+  icon: LayoutDashboard,
+  permission: "can_dashboard",
+};
 
-  { href: "/returns", label: "Returns", icon: RotateCcw, permission: "can_returns" },
-  { href: "/transfer", label: "Transfer", icon: Repeat, permission: "can_transfer" },
-
-  { href: "/nrd", label: "NRD Tracker", icon: Timer, permission: "can_nrd" },
-  { href: "/bins", label: "Bins", icon: Package, permission: "can_bins" },
-  { href: "/admin", label: "Admin", icon: ShieldCheck, permission: "can_admin" },
+const NAV_GROUPS: NavGroup[] = [
+  {
+    id: "receiving",
+    label: "Receiving",
+    icon: ArrowDownToLine,
+    items: [
+      { href: "/supply", label: "Supply", icon: Truck, permission: "can_supply" },
+      {
+        href: "/inbound",
+        label: "Inbound Import",
+        icon: ArrowDownToLine,
+        permission: "can_inbound",
+      },
+    ],
+  },
+  {
+    id: "outbound",
+    label: "Outbound",
+    icon: ArrowUpFromLine,
+    items: [
+      {
+        href: "/outbound",
+        label: "Devices",
+        icon: ArrowUpFromLine,
+        permission: "can_outbound",
+      },
+      {
+        href: "/accessories",
+        label: "Accessories",
+        icon: Boxes,
+        permission: "can_accessories",
+      },
+    ],
+  },
+  {
+    id: "inventory",
+    label: "Inventory",
+    icon: Package,
+    items: [
+      {
+        href: "/bins",
+        label: "Stock Settings",
+        icon: Package,
+        permission: "can_bins",
+      },
+      { href: "/labels", label: "Labels", icon: Tag, permission: "can_labels" },
+    ],
+  },
+  {
+    id: "operations",
+    label: "Operations",
+    icon: Repeat,
+    items: [
+      {
+        href: "/returns",
+        label: "Returns",
+        icon: RotateCcw,
+        permission: "can_returns",
+      },
+      {
+        href: "/transfer",
+        label: "Transfers",
+        icon: Repeat,
+        permission: "can_transfer",
+      },
+    ],
+  },
+  {
+    id: "work",
+    label: "Work",
+    icon: ClipboardList,
+    items: [
+      { href: "/nrd", label: "NRD Tracker", icon: Timer, permission: "can_nrd" },
+    ],
+  },
+  {
+    id: "system",
+    label: "System",
+    icon: ShieldCheck,
+    items: [
+      { href: "/admin", label: "Admin", icon: ShieldCheck, permission: "can_admin" },
+    ],
+  },
 ];
+
+function isActivePath(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "";
   const appEnvironment = process.env.NEXT_PUBLIC_APP_ENV || "production";
   const isNonProduction = appEnvironment !== "production";
   const [collapsed, setCollapsed] = useState(false);
+  const activeGroupId =
+    NAV_GROUPS.find((group) =>
+      group.items.some((item) => isActivePath(pathname, item.href))
+    )?.id ?? null;
+  const [openGroupId, setOpenGroupId] = useState<string | null>(activeGroupId);
   const [email, setEmail] = useState<string | null>(null);
   const [activeNrd, setActiveNrd] = useState<any>(null);
   const { hasPermission } = useAccess();
 
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
+
+  useEffect(() => {
+    setOpenGroupId(activeGroupId);
+  }, [activeGroupId]);
 
   async function handleLogout() {
     await signOutCurrentDevice(supabase, window.sessionStorage);
@@ -140,31 +238,124 @@ export default function AppShell({ children }: { children: ReactNode }) {
           </button>
         </div>
 
-        <nav className="px-2 py-4 space-y-1 text-sm">
-          {NAV.filter((item) => hasPermission(item.permission)).map((item) => {
-            const Icon = item.icon;
+        <nav className="h-[calc(100vh-3.5rem)] overflow-y-auto px-2 py-4 pb-28 text-sm">
+          {hasPermission(DASHBOARD_ITEM.permission) && (
+            <Link
+              href={DASHBOARD_ITEM.href}
+              title={collapsed ? DASHBOARD_ITEM.label : undefined}
+              className={`
+                flex items-center gap-3 rounded-xl px-3 py-2
+                transition-all duration-200
+                ${collapsed ? "justify-center" : ""}
+                hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(99,102,241,0.15)]
+                ${
+                  isActivePath(pathname, DASHBOARD_ITEM.href)
+                    ? "bg-slate-800 shadow-[0_0_12px_rgba(99,102,241,0.25)]"
+                    : ""
+                }
+              `}
+            >
+              <LayoutDashboard size={18} className="shrink-0" />
+              {!collapsed && <span>{DASHBOARD_ITEM.label}</span>}
+            </Link>
+          )}
 
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`
-                  flex items-center gap-3 px-3 py-2 rounded-xl
-                  transition-all duration-200
-                  ${collapsed ? "justify-center" : ""}
-                  hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(99,102,241,0.15)]
-                  ${
-                    pathname.startsWith(item.href)
-                      ? "bg-slate-800 shadow-[0_0_12px_rgba(99,102,241,0.25)]"
-                      : ""
-                  }
-                `}
-              >
-                <Icon size={18} className="shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            );
-          })}
+          <div className="mt-3 space-y-1">
+            {NAV_GROUPS.map((group) => {
+              const permittedItems = group.items.filter((item) =>
+                hasPermission(item.permission)
+              );
+              if (permittedItems.length === 0) return null;
+
+              const GroupIcon = group.icon;
+              const isOpen = openGroupId === group.id;
+              const isGroupActive = activeGroupId === group.id;
+
+              if (collapsed) {
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    title={group.label}
+                    aria-label={`Open ${group.label} menu`}
+                    onClick={() => {
+                      setOpenGroupId(group.id);
+                      setCollapsed(false);
+                    }}
+                    className={`
+                      flex w-full items-center justify-center rounded-xl px-3 py-2
+                      transition-all duration-200 hover:bg-slate-800
+                      ${
+                        isGroupActive
+                          ? "bg-slate-800 text-indigo-300 shadow-[0_0_12px_rgba(99,102,241,0.25)]"
+                          : "text-slate-300"
+                      }
+                    `}
+                  >
+                    <GroupIcon size={18} />
+                  </button>
+                );
+              }
+
+              return (
+                <div key={group.id}>
+                  <button
+                    type="button"
+                    aria-expanded={isOpen}
+                    aria-controls={`nav-group-${group.id}`}
+                    onClick={() => setOpenGroupId(isOpen ? null : group.id)}
+                    className={`
+                      flex w-full items-center gap-3 rounded-xl px-3 py-2
+                      text-left font-medium transition-all duration-200 hover:bg-slate-800/80
+                      ${isGroupActive ? "text-indigo-300" : "text-slate-300"}
+                    `}
+                  >
+                    <GroupIcon size={18} className="shrink-0" />
+                    <span className="flex-1">{group.label}</span>
+                    <ChevronDown
+                      size={15}
+                      className={`transition-transform duration-200 ${
+                        isOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
+
+                  {isOpen && (
+                    <div
+                      id={`nav-group-${group.id}`}
+                      className="ml-5 mt-1 space-y-1 border-l border-slate-800 pl-2"
+                    >
+                      {permittedItems.map((item) => {
+                        const Icon = item.icon;
+                        const isActive = isActivePath(pathname, item.href);
+
+                        return (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            aria-current={isActive ? "page" : undefined}
+                            className={`
+                              flex items-center gap-3 rounded-xl px-3 py-2
+                              transition-all duration-200 hover:bg-slate-800
+                              hover:shadow-[0_0_12px_rgba(99,102,241,0.15)]
+                              ${
+                                isActive
+                                  ? "bg-slate-800 text-white shadow-[0_0_12px_rgba(99,102,241,0.25)]"
+                                  : "text-slate-400"
+                              }
+                            `}
+                          >
+                            <Icon size={16} className="shrink-0" />
+                            <span>{item.label}</span>
+                          </Link>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         </nav>
 
         <div className="absolute bottom-4 left-0 w-full px-2 border-t border-slate-800 pt-3">

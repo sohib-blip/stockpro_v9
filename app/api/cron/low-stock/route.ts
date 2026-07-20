@@ -78,7 +78,7 @@ export async function GET(req: Request) {
     body: JSON.stringify({
       from: "StockPro <alerts@stockpro.app>",
       to: subs.map((s) => s.email),
-      subject: `⚠️ LOW STOCK (${low.length})`,
+      subject: `Low Stock Alert — ${low.length} items`,
       html: `<h2>Low stock alert</h2><ul>${html}</ul>`,
     }),
   });

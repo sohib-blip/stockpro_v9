@@ -105,7 +105,7 @@ if (!json.summary) json.summary = [];
 if (!json.ok) {
   setPreview(json);
   setPreviewSource("manual");
-  setErrorMsg("⚠ Confirm blocked. Please correct duplicate, unknown or already outbound IMEIs.");
+  setErrorMsg("Confirmation blocked. Resolve duplicate, unknown, or previously outbound IMEIs.");
   setBusy(false);
   return;
 }
@@ -140,7 +140,7 @@ if (!json.summary) json.summary = [];
 if (!json.ok) {
   setPreview(json);
   setPreviewSource("excel");
-  setErrorMsg("⚠ Confirm blocked. Please correct duplicate, unknown or already outbound IMEIs.");
+  setErrorMsg("Confirmation blocked. Resolve duplicate, unknown, or previously outbound IMEIs.");
   setBusy(false);
   return;
 }
@@ -153,12 +153,12 @@ setBusy(false);
   // ================= CONFIRM =================
   async function confirmOut() {
     if (!preview?.ok || !previewSource) {
-  setErrorMsg("Preview missing");
+  setErrorMsg("Preview the outbound before confirming it.");
   return;
 }
 
 if (!actorId) {
-  setErrorMsg("User not authenticated");
+  setErrorMsg("Your session could not be verified. Please sign in again.");
   return;
 }
 
@@ -194,7 +194,7 @@ if (!actorId) {
 
   function fmtDateTime(iso: string) {
     try {
-      return new Date(iso).toLocaleString();
+      return new Date(iso).toLocaleString("en-GB");
     } catch {
       return iso;
     }
@@ -213,7 +213,7 @@ if (!actorId) {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl flex items-center gap-3 shadow-xl">
             <div className="h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-            <div className="font-semibold text-sm">Processing...</div>
+            <div className="font-semibold text-sm">Processing…</div>
           </div>
         </div>
       )}
@@ -221,14 +221,14 @@ if (!actorId) {
       {/* SUCCESS */}
       {success && (
         <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
-          ✅ Stock OUT confirmed
+          Device outbound completed
         </div>
       )}
 
       {/* HEADER */}
       <div>
         <div className="text-xs text-slate-500">Outbound</div>
-        <h2 className="text-xl font-semibold">Stock Out</h2>
+        <h2 className="text-xl font-semibold">Device Outbound</h2>
         <p className="text-sm text-slate-400 mt-1">
           User: <b>{actor}</b>
         </p>
@@ -246,7 +246,7 @@ if (!actorId) {
 
       {/* MANUAL */}
       <div className="card-glow p-6 relative overflow-hidden">
-        <div className="font-semibold mb-3">Manual Scan</div>
+        <div className="font-semibold mb-3">Manual IMEI Entry</div>
         <textarea
           value={imeiInput}
           onChange={(e) => setImeiInput(e.target.value)}
@@ -256,13 +256,13 @@ if (!actorId) {
           onClick={previewManual}
           className="mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
         >
-          Preview Manual
+          Preview Outbound
         </button>
       </div>
 
       {/* EXCEL */}
       <div className="card-glow p-6 relative overflow-hidden">
-        <div className="font-semibold mb-3">Import End Of Day Report</div>
+        <div className="font-semibold mb-3">End-of-Day Report Import</div>
         <input
           type="file"
           accept=".xlsx,.xls"
@@ -272,7 +272,7 @@ if (!actorId) {
           onClick={previewExcel}
           className="mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
         >
-          Preview Excel
+          Preview Spreadsheet
         </button>
       </div>
 
@@ -307,7 +307,7 @@ if (!actorId) {
           <thead className="bg-slate-950/50">
             <tr>
               <th className="p-2 text-left">IMEI</th>
-              <th className="p-2 text-right">Times found</th>
+              <th className="p-2 text-right">Occurrences</th>
             </tr>
           </thead>
           <tbody>
@@ -324,7 +324,7 @@ if (!actorId) {
 
     {preview.unknown_imeis?.length > 0 && (
       <div>
-        <div className="font-semibold text-yellow-300 mb-2">
+        <div className="font-semibold text-amber-300 mb-2">
           Unknown IMEIs
         </div>
 
@@ -347,8 +347,8 @@ if (!actorId) {
 
     {preview.already_out?.length > 0 && (
       <div>
-        <div className="font-semibold text-orange-300 mb-2">
-          Already OUT IMEIs
+        <div className="font-semibold text-amber-300 mb-2">
+          Already Outbound IMEIs
         </div>
 
         <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
@@ -385,7 +385,7 @@ if (!actorId) {
             <th className="p-2 text-left">Floor</th>
             <th className="p-2 text-right">Detected</th>
             <th className="p-2 text-right">Remaining</th>
-            <th className="p-2 text-right">% After</th>
+            <th className="p-2 text-right">Remaining %</th>
           </tr>
         </thead>
         <tbody>
@@ -408,7 +408,7 @@ if (!actorId) {
       disabled={!preview?.ok || hasPreviewErrors}
       className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
     >
-      Confirm Stock Out
+      Confirm Outbound
     </button>
   </div>
 )}
@@ -417,7 +417,7 @@ if (!actorId) {
       <div className="card-glow p-6 space-y-4 relative overflow-hidden">
 
         <div className="flex items-center justify-between">
-          <div className="font-semibold">Outbound history</div>
+          <div className="font-semibold">Outbound History</div>
 
           <div className="flex gap-3">
             <select
@@ -427,7 +427,7 @@ if (!actorId) {
             >
               <option value="all">All</option>
               <option value="manual">Manual</option>
-              <option value="excel">Excel</option>
+              <option value="excel">Spreadsheet</option>
             </select>
 
             <button
@@ -443,13 +443,13 @@ if (!actorId) {
   <table className="w-full text-sm">
     <thead className="bg-slate-950/50">
       <tr>
-        <th className="p-2 text-left">Date/Time</th>
+        <th className="p-2 text-left">Date and Time</th>
         <th className="p-2 text-left">User</th>
         <th className="p-2 text-left">Source</th>
-        <th className="p-2 text-left">Shipment ref</th>
+        <th className="p-2 text-left">Shipment Reference</th>
 <th className="p-2 text-left">Devices</th>
-<th className="p-2 text-right">Qty</th>
-        <th className="p-2 text-right">Excel</th>
+<th className="p-2 text-right">Quantity</th>
+        <th className="p-2 text-right">Export</th>
       </tr>
     </thead>
 
@@ -472,7 +472,7 @@ if (!actorId) {
               }
               className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
             >
-              Excel
+              Download
             </button>
           </td>
         </tr>

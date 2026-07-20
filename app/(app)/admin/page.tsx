@@ -19,23 +19,23 @@ type ManagedUser = {
 };
 
 const ROLE_LABELS: Record<AppRole, string> = {
-  admin: "Administrateur",
-  operator: "Opérateur",
-  viewer: "Lecture seule",
+  admin: "Administrator",
+  operator: "Operator",
+  viewer: "Read-only",
 };
 
 const PERMISSION_LABELS: Array<[PermissionKey, string]> = [
   ["can_dashboard", "Dashboard"],
-  ["can_inbound", "Inbound"],
-  ["can_outbound", "Outbound"],
-  ["can_returns", "Returns"],
-  ["can_transfer", "Transfer"],
-  ["can_labels", "Labels"],
-  ["can_bins", "Bins"],
-  ["can_accessories", "Accessories"],
-  ["can_supply", "Supply"],
-  ["can_nrd", "NRD"],
-  ["can_admin", "Administration"],
+  ["can_inbound", "Inbound Processing"],
+  ["can_outbound", "Device Outbound"],
+  ["can_returns", "Customer Returns"],
+  ["can_transfer", "Stock Transfers"],
+  ["can_labels", "Label Printing"],
+  ["can_bins", "Inventory Setup"],
+  ["can_accessories", "Accessory Outbound"],
+  ["can_supply", "Supply Orders"],
+  ["can_nrd", "NRD Tracking"],
+  ["can_admin", "User Access"],
 ];
 
 function accessForUser(user: ManagedUser) {
@@ -69,7 +69,7 @@ export default function AdminPage() {
     const response = await apiFetch("/api/admin/users", { cache: "no-store" });
     const body = await response.json().catch(() => null);
     if (!response.ok) {
-      setMessage(body?.error || "Impossible de charger les utilisateurs");
+      setMessage(body?.error || "Unable to load users");
       setLoading(false);
       return;
     }
@@ -116,12 +116,12 @@ export default function AdminPage() {
     setSavingId(null);
 
     if (!response.ok) {
-      setMessage(body?.error || "Impossible d’enregistrer les droits");
+      setMessage(body?.error || "Unable to save permissions");
       await loadUsers();
       return;
     }
 
-    setMessage(`Droits enregistrés pour ${user.email}`);
+    setMessage(`Permissions saved for ${user.email}`);
     await loadUsers();
   }
 
@@ -142,14 +142,14 @@ export default function AdminPage() {
     setInviting(false);
 
     if (!response.ok) {
-      setMessage(body?.error || "Invitation impossible");
+      setMessage(body?.error || "Unable to send invitation");
       return;
     }
 
     setInviteEmail("");
     setInviteRole("viewer");
     setInvitePermissions(permissionsForRole("viewer"));
-    setMessage("Invitation envoyée et accès préparés");
+    setMessage("Invitation sent and access configured");
     await loadUsers();
   }
 
@@ -157,22 +157,22 @@ export default function AdminPage() {
     <div className="space-y-6">
       <div>
         <div className="text-xs uppercase tracking-[0.18em] text-indigo-300">
-          Sécurité
+          Administration
         </div>
-        <h1 className="text-2xl font-bold">Administration des accès</h1>
+        <h1 className="text-2xl font-bold">User Access Management</h1>
         <p className="mt-1 text-sm text-slate-400">
-          Gérez les rôles et les modules autorisés pour chaque collègue.
+          Manage roles and module permissions for each user.
         </p>
       </div>
 
       <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="font-semibold">Inviter un collègue</h2>
+        <h2 className="font-semibold">Invite a User</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px_auto]">
           <input
             type="email"
             value={inviteEmail}
             onChange={(event) => setInviteEmail(event.target.value)}
-            placeholder="collegue@entreprise.com"
+            placeholder="colleague@company.com"
             className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2"
           />
           <select
@@ -193,7 +193,7 @@ export default function AdminPage() {
             disabled={inviting || !inviteEmail.trim()}
             className="rounded-xl bg-indigo-600 px-4 py-2 font-semibold hover:bg-indigo-500 disabled:opacity-50"
           >
-            {inviting ? "Envoi…" : "Envoyer l’invitation"}
+            {inviting ? "Sending…" : "Send Invitation"}
           </button>
         </div>
 
@@ -225,14 +225,14 @@ export default function AdminPage() {
 
       <section className="space-y-4">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold">Utilisateurs ({users.length})</h2>
+          <h2 className="font-semibold">Users ({users.length})</h2>
           <button onClick={loadUsers} className="text-sm text-indigo-300 hover:text-indigo-200">
-            Actualiser
+            Refresh
           </button>
         </div>
 
         {loading ? (
-          <div className="text-sm text-slate-400">Chargement…</div>
+          <div className="text-sm text-slate-400">Loading…</div>
         ) : (
           sortedUsers.map((user) => {
             const access = accessForUser(user);
@@ -241,15 +241,15 @@ export default function AdminPage() {
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     <div className="truncate font-semibold">
-                      {user.email || "Utilisateur sans email"}
+                      {user.email || "User without an email address"}
                       {user.id === currentUserId && (
                         <span className="ml-2 rounded-full bg-indigo-500/20 px-2 py-1 text-[10px] uppercase text-indigo-200">
-                          Vous
+                          Current user
                         </span>
                       )}
                     </div>
                     <div className="mt-1 text-xs text-slate-500">
-                      Dernière connexion : {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString("fr-BE") : "jamais"}
+                      Last sign-in: {user.last_sign_in_at ? new Date(user.last_sign_in_at).toLocaleString("en-GB") : "Never"}
                     </div>
                   </div>
 
@@ -274,7 +274,7 @@ export default function AdminPage() {
                       disabled={savingId === user.id}
                       className="rounded-xl bg-indigo-600 px-4 py-2 text-sm font-semibold hover:bg-indigo-500 disabled:opacity-50"
                     >
-                      {savingId === user.id ? "…" : "Enregistrer"}
+                      {savingId === user.id ? "Saving…" : "Save Changes"}
                     </button>
                   </div>
                 </div>
@@ -307,7 +307,7 @@ export default function AdminPage() {
 
         {!loading && users.length === 0 && (
           <div className="rounded-xl border border-slate-800 p-5 text-sm text-slate-400">
-            Aucun utilisateur trouvé.
+            No users found.
           </div>
         )}
       </section>

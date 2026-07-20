@@ -34,8 +34,8 @@ describe("grouped application navigation", () => {
       "Outbound",
       "Inventory",
       "Operations",
-      "Work",
-      "System",
+      "Productivity",
+      "Administration",
     ]) {
       expect(shell).toContain(`label: "${group}"`);
     }

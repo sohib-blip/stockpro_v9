@@ -329,20 +329,20 @@ received: rows.filter((r) => r.status === "RECEIVED").length,
     return "bg-red-500/20 text-red-400";
 
   if (status === "IMPORTED")
-    return "bg-green-500/20 text-green-400";
+    return "bg-emerald-500/20 text-emerald-400";
 
   if (status === "RECEIVED")
-    return "bg-purple-500/20 text-purple-400";
+    return "bg-cyan-500/20 text-cyan-400";
 
   if (status === "SHIPPED")
-    return "bg-yellow-500/20 text-yellow-400";
+    return "bg-amber-500/20 text-amber-300";
 
-  return "bg-blue-500/20 text-blue-400";
+  return "bg-indigo-500/20 text-indigo-300";
 }
 
   function formatDate(value?: string | null) {
     if (!value) return "-";
-    return new Date(value).toLocaleString("fr-BE", {
+    return new Date(value).toLocaleString("en-GB", {
       day: "2-digit",
       month: "2-digit",
       hour: "2-digit",
@@ -417,8 +417,8 @@ async function openDetails(row: any) {
     <div className="space-y-8 w-full">
       <div className="flex items-center justify-between">
         <div>
-          <div className="text-xs text-slate-500">Supply</div>
-          <h1 className="text-2xl font-semibold">🚚 Supply Tracker</h1>
+          <div className="text-xs text-slate-500">Receiving</div>
+          <h1 className="text-2xl font-semibold">Supply Orders</h1>
         </div>
 
         <div className="flex gap-3">
@@ -430,14 +430,14 @@ async function openDetails(row: any) {
     }
     className="rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-semibold"
   >
-    📄 Export Excel
+    Export Spreadsheet
   </button>
 
   <button
     onClick={openCreate}
     className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
   >
-    + New Supply
+    New Supply Order
   </button>
 </div>
       </div>
@@ -456,22 +456,22 @@ async function openDetails(row: any) {
 
   <div className="card-glow p-4 rounded-xl">
     <div className="text-xs text-slate-400">Created</div>
-    <div className="text-2xl font-bold text-blue-400">{kpis.created}</div>
+    <div className="text-2xl font-bold text-indigo-300">{kpis.created}</div>
   </div>
 
   <div className="card-glow p-4 rounded-xl">
     <div className="text-xs text-slate-400">Shipped</div>
-    <div className="text-2xl font-bold text-yellow-400">{kpis.shipped}</div>
+    <div className="text-2xl font-bold text-amber-300">{kpis.shipped}</div>
   </div>
 
   <div className="card-glow p-4 rounded-xl">
     <div className="text-xs text-slate-400">Received</div>
-    <div className="text-2xl font-bold text-purple-400">{kpis.received}</div>
+    <div className="text-2xl font-bold text-cyan-400">{kpis.received}</div>
   </div>
 
   <div className="card-glow p-4 rounded-xl">
     <div className="text-xs text-slate-400">Imported</div>
-    <div className="text-2xl font-bold text-green-400">{kpis.imported}</div>
+    <div className="text-2xl font-bold text-emerald-400">{kpis.imported}</div>
   </div>
 
   <div className="card-glow p-4 rounded-xl">
@@ -484,7 +484,7 @@ async function openDetails(row: any) {
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search order, tracking, office, item..."
+          placeholder="Search orders, tracking numbers, offices, or items"
           className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
         />
 
@@ -493,7 +493,7 @@ async function openDetails(row: any) {
           onChange={(e) => setStatusFilter(e.target.value)}
           className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
         >
-          <option value="ALL">All status</option>
+          <option value="ALL">All statuses</option>
           {STATUS.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
@@ -515,7 +515,7 @@ async function openDetails(row: any) {
     </th>
 
     <th>Items</th>
-    <th className="text-center">Qty</th>
+    <th className="text-center">Quantity</th>
 
     <th onClick={() => sortBy("tracking_number")} className="cursor-pointer">
       Tracking {sortKey === "tracking_number" ? (sortDir === "asc" ? "↑" : "↓") : ""}
@@ -601,7 +601,7 @@ async function openDetails(row: any) {
 
           <td>
             {row.imported ? (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-400">
+              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400">
                 Imported
               </span>
             ) : (
@@ -644,7 +644,7 @@ async function openDetails(row: any) {
       {paginatedRows.length === 0 && (
         <tr>
           <td colSpan={10} className="py-8 text-center text-slate-500">
-            No supplies found.
+            No supply orders found.
           </td>
         </tr>
       )}
@@ -686,10 +686,10 @@ async function openDetails(row: any) {
             <div className="p-5 border-b border-slate-800 flex justify-between">
               <div>
                 <div className="text-xs text-slate-500">
-                  {editing ? "Edit Supply" : "New Supply"}
+                  {editing ? "Edit Supply Order" : "New Supply Order"}
                 </div>
                 <div className="text-lg font-semibold">
-                  {editing?.order_number || "Create new supply"}
+                  {editing?.order_number || "Create a Supply Order"}
                 </div>
               </div>
 
@@ -736,7 +736,7 @@ async function openDetails(row: any) {
   <input
     value={tracking}
     onChange={(e) => setTracking(e.target.value)}
-    placeholder="Tracking number..."
+    placeholder="Tracking number"
     className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
   />
 )}
@@ -761,7 +761,7 @@ async function openDetails(row: any) {
   <textarea
     value={failedReason}
     onChange={(e) => setFailedReason(e.target.value)}
-    placeholder="Reason for failure..."
+    placeholder="Reason for failure"
     className="md:col-span-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm min-h-[80px]"
   />
 )}
@@ -771,7 +771,7 @@ async function openDetails(row: any) {
               disabled={!!editing}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="Comment..."
+                placeholder="Optional comment"
                 className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm min-h-[80px]"
               />
 
@@ -784,7 +784,7 @@ async function openDetails(row: any) {
     onClick={addItem}
     className="rounded-xl border border-slate-800 px-3 py-2 text-sm font-semibold hover:bg-slate-800"
   >
-    + Add item
+    Add Item
   </button>
 )}
                 </div>
@@ -816,7 +816,7 @@ async function openDetails(row: any) {
     onChange={(e) =>
       updateItem(index, { product_name: e.target.value })
     }
-    placeholder="Search product..."
+    placeholder="Search products"
     className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
   />
 
@@ -865,7 +865,7 @@ async function openDetails(row: any) {
                   disabled={busy}
                   className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
                 >
-                  {busy ? "Saving..." : editing ? "Save changes" : "Create Supply"}
+                  {busy ? "Saving…" : editing ? "Save Changes" : "Create Supply Order"}
                 </button>
               </div>
             </div>
@@ -878,7 +878,7 @@ async function openDetails(row: any) {
     <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">
       <div className="p-5 border-b border-slate-800 flex justify-between">
         <div>
-          <div className="text-xs text-slate-500">Supply details</div>
+          <div className="text-xs text-slate-500">Supply Order Details</div>
           <div className="text-lg font-semibold text-cyan-400">
             {detailTarget.order_number}
           </div>
@@ -967,12 +967,12 @@ async function openDetails(row: any) {
         )}
 
 <div>
-  <div className="text-xs text-slate-500 mb-2">Status history</div>
+  <div className="text-xs text-slate-500 mb-2">Status History</div>
 
  <div className="rounded-xl border border-slate-800 overflow-y-auto max-h-[300px]">
     {statusHistory.length === 0 ? (
       <div className="p-4 text-center text-slate-500">
-        No history yet
+        No status history yet.
       </div>
     ) : (
       statusHistory.map((h: any) => (
@@ -1023,22 +1023,21 @@ async function openDetails(row: any) {
 
       <ConfirmDialog
   open={confirmDone}
-  title="Mark supply as imported?"
-  message="Are you sure? Once this supply is marked as imported, it will be imported and locked. You will no longer be able to edit or delete it."
-  confirmText={busy ? "Saving..." : "Yes, mark as imported"}
+  title="Mark Supply Order as Imported?"
+  message="Once marked as imported, this supply order will be locked and can no longer be edited or deleted."
+  confirmText={busy ? "Saving…" : "Mark as Imported"}
   cancelText="Cancel"
-  danger
   onConfirm={() => saveSupply(true)}
   onCancel={() => setConfirmDone(false)}
 />
 
 <ConfirmDialog
   open={!!deleteTarget}
-  title="Delete supply?"
+  title="Delete Supply Order?"
   message={`Are you sure you want to delete ${
     deleteTarget?.order_number || "this supply"
   }? This action cannot be undone.`}
-  confirmText={busy ? "Deleting..." : "Delete"}
+  confirmText={busy ? "Deleting…" : "Delete"}
   cancelText="Cancel"
   danger
   onConfirm={deleteSupply}

@@ -15,7 +15,7 @@ export async function GET() {
  const { data, error } = await supabase
   .from("dashboard_sales_month")
   .select("device,total_out")
-  .order("total_out", { ascending: false }); // 🔥 TRI AUTOMATIQUE
+  .order("total_out", { ascending: false });
 
  if (error) {
   return NextResponse.json({ ok:false, error:error.message });

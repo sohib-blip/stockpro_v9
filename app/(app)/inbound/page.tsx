@@ -15,14 +15,14 @@ type HistoryRow = {
   actor: string;
   vendor: string;
   source: string;
-  shipment_ref?: string;   // ✅ AJOUT
+  shipment_ref?: string;
   qty_imeis: number;
   qty_boxes: number;
 };
 
 type DeviceRow = {
-  device_id: string; // (on garde le nom pour pas toucher le UI)
-  device: string; // label affiché
+  device_id: string;
+  device: string;
 };
 
 function normName(s: any) {
@@ -40,7 +40,7 @@ export default function InboundPage() {
   const [file, setFile] = useState<File | null>(null);
   const [floor, setFloor] = useState("00");
   const [busy, setBusy] = useState(false);
-  const [busyText, setBusyText] = useState<string>(""); // ✅ NEW (overlay text)
+  const [busyText, setBusyText] = useState<string>("");
   const [result, setResult] = useState<any>(null);
   const [err, setErr] = useState("");
 
@@ -151,7 +151,7 @@ useEffect(() => {
 
   function fmtDateTime(iso: string) {
     try {
-      return new Date(iso).toLocaleString();
+      return new Date(iso).toLocaleString("en-GB");
     } catch {
       return iso;
     }
@@ -167,7 +167,7 @@ useEffect(() => {
 
     if (!file) return setErr("Choose a file.");
 
-    startBusy("Préparation du preview…");
+    startBusy("Preparing spreadsheet preview…");
     try {
       const { data: bins, error: binsErr } = await supabase
         .from("bins")
@@ -203,7 +203,7 @@ useEffect(() => {
           floor,
         }));
 
-        // ✅ Preview details
+        // Build preview details.
         const devicesFound = new Set<string>();
 
         // box_no -> { imeisCount, deviceName }
@@ -222,7 +222,7 @@ useEffect(() => {
             }
             boxAgg[boxNo].imeis += imeiCount;
 
-            // si jamais une même box apparait avec 2 devices différents
+            // Flag boxes that contain more than one device type.
             if (deviceName && boxAgg[boxNo].device && boxAgg[boxNo].device !== deviceName) {
               boxAgg[boxNo].device = "MULTI";
             } else if (deviceName && !boxAgg[boxNo].device) {
@@ -231,7 +231,7 @@ useEffect(() => {
           }
         }
 
-        // ✅ detect unknown bins directly in preview
+        // Detect unknown bins directly in the preview.
         const unknownBins: string[] = [];
         for (const l of parsed.labels || []) {
           const deviceName = String(l.device || "").trim();
@@ -252,8 +252,6 @@ useEffect(() => {
 
       if (!parsed?.ok) {
         setErr(parsed?.error || "Parse failed");
-        // eslint-disable-next-line no-console
-        console.log("PARSE DEBUG:", parsed?.debug);
         return;
       }
 
@@ -326,10 +324,10 @@ useEffect(() => {
       setFile(null);
 
       alert(
-        `Inbound OK ✅\nInserted: ${json.totals.inserted_imeis}\nSkipped(existing): ${json.totals.skipped_existing_imeis}\nBoxes created: ${json.totals.created_boxes}\nBoxes reused: ${json.totals.reused_boxes}`
+        `Inbound completed\nImported: ${json.totals.inserted_imeis}\nSkipped (already in stock): ${json.totals.skipped_existing_imeis}\nBoxes created: ${json.totals.created_boxes}\nBoxes reused: ${json.totals.reused_boxes}`
       );
 
-      // ✅ IMPORTANT: refresh history directly, no reload
+      // Refresh history without reloading the page.
       await loadHistory();
     } catch (e: any) {
       setErr(e?.message || "Confirm failed");
@@ -369,11 +367,11 @@ useEffect(() => {
 
     const imeis = extractManualImeis(manualImeis);
 
-    if (!manualDevice) return setManualMsg("❌ Select a device.");
-    if (!manualBox.trim()) return setManualMsg("❌ Enter box number.");
-    if (imeis.length === 0) return setManualMsg("❌ No valid 15-digit IMEIs found.");
+    if (!manualDevice) return setManualMsg("Select a device.");
+    if (!manualBox.trim()) return setManualMsg("Enter a box number.");
+    if (imeis.length === 0) return setManualMsg("No valid 15-digit IMEIs found.");
 
-    startBusy("Préparation du preview manuel…");
+    startBusy("Preparing manual inbound preview…");
     try {
       const res = await apiFetch("/api/inbound/manual-preview", {
         method: "POST",
@@ -389,15 +387,15 @@ useEffect(() => {
       const json = await res.json();
 
       if (!json.ok) {
-  setManualMsg("❌ " + (json.error || "Manual preview failed"));
+  setManualMsg(json.error || "Manual preview failed");
   return;
 }
 
 setManualPreview(json);
-setManualReadyToImport(true); // 🔥 AJOUTE ICI
+setManualReadyToImport(true);
 setManualMsg("");
     } catch (e: any) {
-      setManualMsg("❌ " + (e?.message || "Manual preview failed"));
+      setManualMsg(e?.message || "Manual preview failed");
     } finally {
       stopBusy();
     }
@@ -407,15 +405,15 @@ setManualMsg("");
     setManualMsg("");
 
     if (!manualReadyToImport) {
-    return setManualMsg("❌ Please preview before importing.");
+    return setManualMsg("Preview the inbound before confirming it.");
   }
 
-    if (!manualPreview?.ok) return setManualMsg("❌ No preview available.");
+    if (!manualPreview?.ok) return setManualMsg("No preview is available.");
 
     const imeisToInsert: string[] = manualPreview.preview_imeis || [];
-    if (imeisToInsert.length === 0) return setManualMsg("❌ Nothing to import (all duplicates?).");
+    if (imeisToInsert.length === 0) return setManualMsg("Nothing to import. All IMEIs may already be in stock.");
 
-    startBusy("Import manuel en cours…");
+    startBusy("Importing manual inbound…");
     try {
       const res = await apiFetch("/api/inbound/manual-confirm", {
         method: "POST",
@@ -434,12 +432,12 @@ setManualMsg("");
       const json = await res.json();
 
       if (!json.ok) {
-        setManualMsg("❌ " + (json.error || "Manual confirm failed"));
+        setManualMsg(json.error || "Manual confirmation failed");
         return;
       }
 
       if (json.inserted === 0) {
-        setManualMsg(`⚠️ Nothing inserted. Skipped existing: ${json.skipped_existing || 0}`);
+        setManualMsg(`Nothing was imported. Existing IMEIs skipped: ${json.skipped_existing || 0}.`);
         setManualPreview(null);
         return;
       }
@@ -451,12 +449,12 @@ setManualMsg("");
       setManualBox("");
 
       const skipped = json.skipped_existing || 0;
-      setManualMsg(`✅ Manual inbound saved (${json.inserted} IMEIs). Skipped existing: ${skipped}`);
+      setManualMsg(`Manual inbound completed: ${json.inserted} IMEIs imported, ${skipped} existing IMEIs skipped.`);
 
-      // ✅ IMPORTANT: refresh history directly, no reload
+      // Refresh history without reloading the page.
       await loadHistory();
     } catch (e: any) {
-      setManualMsg("❌ " + (e?.message || "Manual confirm failed"));
+      setManualMsg(e?.message || "Manual confirmation failed");
     } finally {
       stopBusy();
     }
@@ -485,7 +483,7 @@ setManualMsg("");
 
   return (
   <div className="space-y-8 w-full">
-      {/* ✅ GLOBAL LOADER OVERLAY (no layout change, just overlay) */}
+      {/* Global processing overlay */}
       {busy && (
         <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-950 px-6 py-5 w-full max-w-sm">
@@ -496,7 +494,7 @@ setManualMsg("");
               </div>
             </div>
             <div className="text-xs text-slate-400 mt-2">
-              Don't close the tab 👀
+              Keep this tab open while processing.
             </div>
           </div>
         </div>
@@ -517,7 +515,7 @@ setManualMsg("");
 </div>
         <div>
           <div className="text-xs text-slate-500">Inbound</div>
-          <h2 className="text-xl font-semibold">Inbound Import</h2>
+          <h2 className="text-xl font-semibold">Inbound Processing</h2>
           <p className="text-sm text-slate-400 mt-1">
             User: <b>{actor}</b>
           </p>
@@ -533,15 +531,15 @@ setManualMsg("");
             }
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
           >
-           QR labels 
+           Download Labels
           </button>
         )}
       </div>
 
-      {/* MANUAL IMPORT */}
+      {/* Manual inbound */}
       <div className="card-glow p-6 space-y-4 relative overflow-hidden">
         <div>
-          <div className="font-semibold">Manual Import</div>
+          <div className="font-semibold">Manual Inbound</div>
           <div className="text-xs text-slate-500">
           </div>
         </div>
@@ -592,7 +590,7 @@ setManualMsg("");
     disabled={busy}
     className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
   >
-    Preview Manual Import
+    Preview Manual Inbound
   </button>
 
   {manualReadyToImport && (
@@ -601,7 +599,7 @@ setManualMsg("");
       disabled={busy}
       className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
     >
-      Import (Save)
+      Confirm Inbound
     </button>
   )}
 </div>
@@ -623,9 +621,9 @@ setManualMsg("");
         )}
       </div>
 
-      {/* EXCEL IMPORT */}
+      {/* Spreadsheet import */}
       <div className="card-glow p-6 space-y-3">
-        <div className="font-semibold">Excel Import</div>
+        <div className="font-semibold">Spreadsheet Import</div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <select
@@ -662,7 +660,7 @@ setManualMsg("");
             disabled={busy}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
           >
-            {busy ? "Working…" : "Preview import"}
+            {busy ? "Working…" : "Preview Import"}
           </button>
         </div>
 
@@ -732,7 +730,7 @@ setManualMsg("");
               disabled={busy || (result?.unknown_bins_preview?.length ?? 0) > 0}
               className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
             >
-              Confirm Inbound (Save)
+              Confirm Inbound
             </button>
           </div>
 
@@ -751,7 +749,7 @@ setManualMsg("");
       <div className="card-glow p-6 space-y-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="font-semibold">Inbound history</div>
+            <div className="font-semibold">Inbound History</div>
             <div className="text-xs text-slate-500">
             </div>
           </div>
@@ -771,8 +769,8 @@ setManualMsg("");
               className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
             >
               <option value="all">All</option>
-              <option value="excel">Excel only</option>
-              <option value="manual">Manual only</option>
+              <option value="excel">Spreadsheet</option>
+              <option value="manual">Manual</option>
             </select>
 
             <button
@@ -788,13 +786,13 @@ setManualMsg("");
           <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
             <thead className="bg-slate-950/50">
               <tr>
-                <th className="p-2 border-b border-slate-800 text-left">Date/Time</th>
+                <th className="p-2 border-b border-slate-800 text-left">Date and Time</th>
                 <th className="p-2 border-b border-slate-800 text-left">User</th>
                 <th className="p-2 border-b border-slate-800 text-left">Vendor</th>
                 <th className="p-2 border-b border-slate-800 text-left">Reference</th>
                 <th className="p-2 border-b border-slate-800 text-right">Boxes</th>
                 <th className="p-2 border-b border-slate-800 text-right">IMEIs</th>
-                <th className="p-2 border-b border-slate-800 text-right">Excel</th>
+                <th className="p-2 border-b border-slate-800 text-right">Export</th>
                 <th className="p-2 border-b border-slate-800 text-right">Labels</th>
               </tr>
             </thead>
@@ -834,7 +832,7 @@ setManualMsg("");
                       }
                       className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
                     >
-                      Excel
+                      Download
                     </button>
                   </td>
                   <td className="p-2 border-b border-slate-800 text-right">

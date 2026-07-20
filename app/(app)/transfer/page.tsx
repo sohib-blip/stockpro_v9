@@ -171,7 +171,7 @@ export default function TransferPage() {
   }
 
   function fmtDate(iso: string) {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString("en-GB");
   }
 
   const filteredHistory = history.filter((row) => {
@@ -188,20 +188,20 @@ export default function TransferPage() {
     <div className="space-y-10 w-full">
       {success && (
         <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
-          ✅ Transfer completed
+          Transfer completed
         </div>
       )}
 
       <div>
-        <div className="text-xs text-slate-500">Transfer</div>
-        <h2 className="text-xl font-semibold">Move Multiple Boxes</h2>
+        <div className="text-xs text-slate-500">Operations</div>
+        <h2 className="text-xl font-semibold">Stock Transfer</h2>
       </div>
 
       <div className="card-glow p-6 space-y-4">
         <textarea
           value={boxInput}
           onChange={(e) => setBoxInput(e.target.value)}
-          placeholder="Enter box codes (1 per line)"
+          placeholder="Enter box codes, one per line"
           className="w-full h-28 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3"
         />
 
@@ -223,10 +223,10 @@ export default function TransferPage() {
           onChange={(e) => setTargetFloor(e.target.value)}
           className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
         >
-          <option value="00">To Floor 00</option>
-          <option value="1">To Floor 1</option>
-          <option value="6">To Floor 6</option>
-          <option value="Cabinet">To Cabinet</option>
+          <option value="00">Destination: Floor 00</option>
+          <option value="1">Destination: Floor 1</option>
+          <option value="6">Destination: Floor 6</option>
+          <option value="Cabinet">Destination: Cabinet</option>
         </select>
 
         <button
@@ -234,7 +234,7 @@ export default function TransferPage() {
           disabled={loadingPreview}
           className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
         >
-          {loadingPreview ? "Loading..." : "Preview Transfer"}
+          {loadingPreview ? "Loading…" : "Preview Transfer"}
         </button>
       </div>
 
@@ -273,7 +273,7 @@ export default function TransferPage() {
             disabled={loadingConfirm}
             className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
           >
-            {loadingConfirm ? "Transferring..." : "Confirm Transfer"}
+            {loadingConfirm ? "Transferring…" : "Confirm Transfer"}
           </button>
         </div>
       )}
@@ -288,7 +288,7 @@ export default function TransferPage() {
             <input
               value={searchBox}
               onChange={(e) => setSearchBox(e.target.value)}
-              placeholder="Search box..."
+              placeholder="Search by box code"
               className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
             />
 
@@ -308,7 +308,7 @@ export default function TransferPage() {
               onClick={loadHistory}
               className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm hover:bg-slate-800"
             >
-              {loadingHistory ? "Refreshing..." : "Refresh"}
+              {loadingHistory ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         </div>

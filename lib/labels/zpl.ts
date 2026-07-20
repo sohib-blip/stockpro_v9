@@ -1,10 +1,10 @@
 // lib/labels/zpl.ts
 export function zplForBoxLabel(opts: { device: string; box_no: string; qty: number; qr_payload: string }) {
-  // ZD220 friendly: simple, gros texte, QR centré
-  // qr_payload = imei ligne par ligne
+  // ZD220-friendly layout with large text and a centered QR code.
+  // qr_payload contains one IMEI per line.
   const { device, box_no, qty, qr_payload } = opts;
 
-  // échappe ^ et \ si besoin
+  // Escape ZPL control characters when required.
   const payload = String(qr_payload || "").replace(/\^/g, " ").trim();
 
   return `

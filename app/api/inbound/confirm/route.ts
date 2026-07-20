@@ -37,7 +37,7 @@ export async function POST(req: Request) {
     const nowIso = new Date().toISOString();
     const operation_id = crypto.randomUUID();
 
-    // créer batch inbound
+    // Create the inbound batch.
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
 .insert({
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
 
       if (!bin_id || !box_code) continue;
 
-      // vérifier que le bin existe
+      // Verify that the inventory bin exists.
       const { data: binRow, error: binErr } = await supabase
         .from("bins")
         .select("id,name")

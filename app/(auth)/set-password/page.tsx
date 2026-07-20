@@ -23,7 +23,7 @@ export default function SetPasswordPage() {
         if (!active) return;
 
         if (error) {
-          setMessage("Ce lien est invalide ou a expiré. Demandez une nouvelle invitation.");
+          setMessage("This link is invalid or has expired. Please request a new one.");
           return;
         }
 
@@ -43,7 +43,7 @@ export default function SetPasswordPage() {
       if (!active) return;
 
       if (error || !session) {
-        setMessage("Ce lien est invalide ou a expiré. Demandez une nouvelle invitation.");
+        setMessage("This link is invalid or has expired. Please request a new one.");
         return;
       }
 
@@ -59,15 +59,15 @@ export default function SetPasswordPage() {
   async function updatePassword() {
     setMessage("");
     if (password.length < 8) {
-      setMessage("Le mot de passe doit contenir au moins 8 caractères.");
+      setMessage("Your password must contain at least 8 characters.");
       return;
     }
     if (password !== confirmation) {
-      setMessage("Les deux mots de passe ne correspondent pas.");
+      setMessage("The passwords do not match.");
       return;
     }
     if (!sessionReady) {
-      setMessage("Le lien d'invitation n'est pas encore prêt. Réessayez dans un instant.");
+      setMessage("The access link is not ready yet. Please try again in a moment.");
       return;
     }
 
@@ -84,27 +84,27 @@ export default function SetPasswordPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-950 p-6 text-slate-100">
+    <main className="flex min-h-screen items-center justify-center bg-transparent p-6 text-slate-100">
       <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
         <div className="text-xs uppercase tracking-[0.18em] text-indigo-300">
           StockPro
         </div>
-        <h1 className="mt-2 text-2xl font-bold">Créer votre mot de passe</h1>
+        <h1 className="mt-2 text-2xl font-bold">Set Your Password</h1>
         <p className="mt-2 text-sm text-slate-400">
-          Choisissez votre mot de passe, puis connectez-vous avec votre email.
+          Choose a secure password, then sign in with your email address.
         </p>
 
         <div className="mt-6 space-y-3">
           <input
             type="password"
-            placeholder="Nouveau mot de passe"
+            placeholder="New password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
             className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2"
           />
           <input
             type="password"
-            placeholder="Confirmer le mot de passe"
+            placeholder="Confirm password"
             value={confirmation}
             onChange={(event) => setConfirmation(event.target.value)}
             className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2"
@@ -115,10 +115,10 @@ export default function SetPasswordPage() {
             className="w-full rounded-xl bg-indigo-600 px-4 py-2 font-semibold hover:bg-indigo-500 disabled:opacity-50"
           >
             {loading
-              ? "Enregistrement…"
+              ? "Saving…"
               : sessionReady
-                ? "Enregistrer le mot de passe"
-                : "Validation du lien…"}
+                ? "Save Password"
+                : "Validating Link…"}
           </button>
         </div>
 

@@ -20,7 +20,7 @@ function esc(v: any) {
 
 export async function exportInStockByDevice(supabase: SupabaseClient, toast?: any) {
   try {
-    // adapte les noms de tables/colonnes si nécessaire
+    // Keep these names aligned with the inventory schema.
     const { data, error } = await supabase
       .from("items")
       .select("device, master_box_no, box_no, imei, status, created_at")
@@ -41,7 +41,7 @@ export async function exportInStockByDevice(supabase: SupabaseClient, toast?: an
 
     downloadCsv(`stock_in_${new Date().toISOString().slice(0, 10)}.csv`, csv);
 
-    toast?.success?.("Export téléchargé ✅");
+    toast?.success?.("Export downloaded");
   } catch (e: any) {
     toast?.error?.(e?.message ?? "Export failed");
     throw e;

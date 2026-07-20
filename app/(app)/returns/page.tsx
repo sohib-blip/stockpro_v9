@@ -88,7 +88,7 @@ export default function ReturnsPage() {
 
   function fmtDateTime(iso: string) {
     try {
-      return new Date(iso).toLocaleString("fr-BE");
+      return new Date(iso).toLocaleString("en-GB");
     } catch {
       return iso;
     }
@@ -109,13 +109,13 @@ export default function ReturnsPage() {
       const json = await res.json();
 
       if (!json.ok) {
-        setMsg("❌ " + (json.error || "Preview failed"));
+        setMsg(json.error || "Return preview failed");
         return;
       }
 
       setPreview(json);
     } catch (e: any) {
-      setMsg("❌ " + (e?.message || "Preview failed"));
+      setMsg(e?.message || "Return preview failed");
     } finally {
       setBusy(false);
     }
@@ -123,22 +123,22 @@ export default function ReturnsPage() {
 
   async function confirmReturn() {
     if (!preview?.valid_returns?.length) {
-      setMsg("❌ No valid returns to confirm.");
+      setMsg("No valid returns are available to confirm.");
       return;
     }
 
     if (!returnType) {
-      setMsg("❌ Return type required.");
+      setMsg("Select a return type.");
       return;
     }
 
     if (!returnReason) {
-      setMsg("❌ Return reason required.");
+      setMsg("Select a return reason.");
       return;
     }
 
     if (!targetBox.trim()) {
-      setMsg("❌ Target box required.");
+      setMsg("Enter a destination box.");
       return;
     }
 
@@ -164,11 +164,11 @@ export default function ReturnsPage() {
       const json = await res.json();
 
       if (!json.ok) {
-        setMsg("❌ " + (json.error || "Confirm failed"));
+        setMsg(json.error || "Return confirmation failed");
         return;
       }
 
-      setMsg(`✅ Return saved: ${json.returned} IMEIs returned to stock.`);
+      setMsg(`Return completed: ${json.returned} IMEIs returned to stock.`);
       setPreview(null);
       setImeisText("");
       setReturnRef("");
@@ -177,7 +177,7 @@ export default function ReturnsPage() {
 
       await loadHistory();
     } catch (e: any) {
-      setMsg("❌ " + (e?.message || "Confirm failed"));
+      setMsg(e?.message || "Return confirmation failed");
     } finally {
       setBusy(false);
     }
@@ -188,21 +188,21 @@ export default function ReturnsPage() {
       {busy && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl shadow-xl">
-            Processing...
+            Processing…
           </div>
         </div>
       )}
 
       <div>
         <div className="text-xs text-slate-500">Returns</div>
-        <h2 className="text-xl font-semibold">Customer Return</h2>
+        <h2 className="text-xl font-semibold">Customer Returns</h2>
         <p className="text-sm text-slate-400 mt-1">
           User: <b>{actor}</b>
         </p>
       </div>
 
       <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Return information</div>
+        <div className="font-semibold">Return Information</div>
 
         <input
           value={returnRef}
@@ -301,8 +301,8 @@ export default function ReturnsPage() {
               <div className="text-3xl font-bold">{preview.valid_returns.length}</div>
             </div>
 
-            <div className="rounded-xl border border-orange-800 bg-orange-950/30 p-4">
-              <div className="text-xs text-orange-300">Already in stock</div>
+            <div className="rounded-xl border border-amber-800 bg-amber-950/30 p-4">
+              <div className="text-xs text-amber-300">Already in stock</div>
               <div className="text-3xl font-bold">{preview.already_in_stock.length}</div>
             </div>
 
@@ -389,7 +389,7 @@ export default function ReturnsPage() {
       <div className="card-glow p-6 space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="font-semibold">Returns history</div>
+            <div className="font-semibold">Returns History</div>
             <div className="text-xs text-slate-500">
               All customer returns with reason and export
             </div>
@@ -399,7 +399,7 @@ export default function ReturnsPage() {
             <button
               onClick={() =>
                 downloadApiFile("/api/returns/export", "returns.xlsx").catch(
-                  (error) => setMsg(`❌ ${error.message}`)
+                  (error) => setMsg(error.message)
                 )
               }
               className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
@@ -420,12 +420,12 @@ export default function ReturnsPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-950/50">
               <tr>
-                <th className="p-2 text-left">Date/Time</th>
+                <th className="p-2 text-left">Date and Time</th>
                 <th className="p-2 text-left">User</th>
                 <th className="p-2 text-left">Type</th>
                 <th className="p-2 text-left">Reason</th>
-                <th className="p-2 text-left">Ref</th>
-                <th className="p-2 text-right">Qty</th>
+                <th className="p-2 text-left">Reference</th>
+                <th className="p-2 text-right">Quantity</th>
               </tr>
             </thead>
 

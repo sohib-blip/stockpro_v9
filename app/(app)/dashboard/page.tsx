@@ -204,7 +204,7 @@ if (salesJson.ok){
 
 <input
 type="text"
-placeholder="Search device..."
+placeholder="Search devices"
 value={search}
 onChange={(e)=>setSearch(e.target.value)}
 className="w-full text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-2 outline-none"
@@ -239,7 +239,7 @@ Total boxes
 
 <div className="card-glow rounded-xl p-6 text-center">
 <div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
-Total IMEI
+Total IMEIs
 </div>
 <div className="text-4xl font-bold text-cyan-400">
 {kpi.total_imei}
@@ -248,9 +248,9 @@ Total IMEI
 
 <div className="card-glow rounded-xl p-6 text-center">
 <div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
-Alerts
+Stock Alerts
 </div>
-<div className="text-4xl font-bold text-purple-400">
+<div className="text-4xl font-bold text-amber-300">
 {kpi.alerts}
 </div>
 </div>
@@ -321,7 +321,7 @@ Device Flow Overview
 
 <Bar
  dataKey="out"
- fill="#a855f7"
+ fill="#6366f1"
  name="Outbound"
  radius={[6,6,0,0]}
  barSize={36}
@@ -341,10 +341,10 @@ Device Flow Overview
 <div className="card-glow p-5 rounded-xl">
 
 <div className="text-xs text-slate-400 mb-1">
-Devices sold this month
+Devices Shipped This Month
 </div>
 
-<div className="text-3xl font-bold text-purple-400">
+<div className="text-3xl font-bold text-indigo-300">
 {salesTable.reduce((a,b)=>a+b.total_out,0)}
 </div>
 
@@ -354,7 +354,7 @@ Devices sold this month
 <div className="card-glow p-5 rounded-xl">
 
 <div className="text-xs text-slate-400 mb-1">
-Top device
+Most Shipped Device
 </div>
 
 <div className="text-xl font-semibold text-cyan-400">
@@ -367,7 +367,7 @@ Top device
 <div className="card-glow p-5 rounded-xl">
 
 <div className="text-xs text-slate-400 mb-1">
-IMEI in stock
+IMEIs in Stock
 </div>
 
 <div className="text-3xl font-bold text-cyan-400">
@@ -380,10 +380,10 @@ IMEI in stock
 <div className="card-glow p-5 rounded-xl">
 
 <div className="text-xs text-slate-400 mb-1">
-Low stock alerts
+Low Stock Alerts
 </div>
 
-<div className="text-3xl font-bold text-orange-400">
+<div className="text-3xl font-bold text-amber-300">
 {bins.filter(b => b.min_stock && b.imei_count <= b.min_stock).length}
 </div>
 
@@ -411,7 +411,7 @@ Recent Activity
 
 <div className={
 a.type === "IN"
-? "text-green-400 font-semibold"
+? "text-emerald-400 font-semibold"
 : a.type === "OUT"
 ? "text-red-400 font-semibold"
 : a.type === "RETURN"
@@ -433,19 +433,19 @@ a.type === "IN"
 
 {a.type === "RETURN" && (
 <>
-↩️ Return {a.qty} {a.device}
+Return: {a.qty} {a.device}
 </>
 )}
 
 {a.type === "TRANSFER" && (
 <>
-🔁 Box {a.box_code} ({a.device}) {a.from_floor} → {a.to_floor}
+Transfer: Box {a.box_code} ({a.device}) {a.from_floor} → {a.to_floor}
 </>
 )}
 
 </div>
 <div className="text-slate-400 text-xs">
-{new Date(a.created_at).toLocaleString("fr-BE",{
+{new Date(a.created_at).toLocaleString("en-GB",{
 day:"2-digit",
 month:"2-digit",
 hour:"2-digit",
@@ -469,7 +469,7 @@ className="card-glow p-6 rounded-xl cursor-pointer hover:bg-white/5 transition"
 >
 
 <h2 className="text-lg font-semibold mb-4">
-Top Selling Devices (This Month)
+Most Shipped Devices (This Month)
 </h2>
 
 <div className="space-y-4 max-h-[320px] overflow-y-auto pr-2">
@@ -490,7 +490,7 @@ return(
 </span>
 
 <span className="text-slate-400">
-{d.total_out} sold • {percent}%
+{d.total_out} shipped • {percent}%
 </span>
 
 </div>
@@ -498,7 +498,7 @@ return(
 <div className="w-full bg-white/10 h-2 rounded">
 
 <div
-className="bg-purple-500 h-2 rounded"
+className="bg-indigo-500 h-2 rounded"
 style={{width:`${percent}%`}}
 />
 
@@ -522,7 +522,7 @@ style={{width:`${percent}%`}}
 <div className="card-glow p-6 rounded-xl">
 
 <h2 className="text-lg font-semibold mb-5">
-Bins
+Device Inventory
 </h2>
 
 <table className="w-full text-sm border-collapse">
@@ -533,7 +533,7 @@ Bins
 <th className="py-2">Device</th>
 <th>Boxes</th>
 <th>IMEI</th>
-<th>Min stock</th>
+<th>Minimum Stock</th>
 <th>Status</th>
 </tr>
 
@@ -557,7 +557,7 @@ return (
 <tr
 key={b.device_id}
 className={`cursor-pointer transition
- ${level === "low" ? "bg-orange-500/10" : ""}
+ ${level === "low" ? "bg-amber-500/10" : ""}
  ${level === "critical" ? "bg-red-500/10" : ""}
  hover:bg-white/5`}
 onClick={()=>openDrilldown(b.device_id)}
@@ -623,7 +623,7 @@ onClick={(e)=>{
 
 <span>{b.min_stock ?? 0}</span>
 
-<span className="text-xs text-slate-500">🔒</span>
+<span className="text-xs text-slate-500">Edit</span>
 
 </div>
 
@@ -635,8 +635,8 @@ onClick={(e)=>{
 
 <span
 className={`px-2 py-1 rounded text-xs font-semibold
- ${level === "ok" ? "bg-green-500/20 text-green-400" : ""}
- ${level === "low" ? "bg-yellow-500/20 text-yellow-400" : ""}
+ ${level === "ok" ? "bg-emerald-500/20 text-emerald-400" : ""}
+ ${level === "low" ? "bg-amber-500/20 text-amber-300" : ""}
  ${level === "critical" ? "bg-red-500/20 text-red-400" : ""}
 `}
 >
@@ -685,7 +685,7 @@ Close
 
 <input
 type="text"
-placeholder="Filter box..."
+placeholder="Filter by box code"
 value={boxSearch}
 onChange={(e)=>setBoxSearch(e.target.value)}
 className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-sm outline-none"
@@ -699,7 +699,7 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
 <th className="py-2">Box</th>
 <th>Floor</th>
 <th>Remaining</th>
-<th>Total ever</th>
+<th>Total Received</th>
 <th>%</th>
 </tr>
 
@@ -739,12 +739,12 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
 
 <div className="flex items-center justify-between mb-5">
   <h2 className="text-lg font-semibold">
-    Accessories Stock
+    Accessory Inventory
   </h2>
 
   <input
     type="text"
-    placeholder="Search accessory or bin..."
+    placeholder="Search accessories or bins"
     value={accessorySearch}
     onChange={(e)=>setAccessorySearch(e.target.value)}
     className="w-[300px] text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-2 outline-none"
@@ -762,15 +762,15 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
     </div>
 
     <div className="bg-white/5 rounded-xl p-4">
-      <div className="text-xs text-slate-400 mb-1">Total Qty</div>
-      <div className="text-2xl font-bold text-purple-400">
+      <div className="text-xs text-slate-400 mb-1">Total Quantity</div>
+      <div className="text-2xl font-bold text-indigo-300">
         {accessoryKpis.total_qty}
       </div>
     </div>
 
     <div className="bg-white/5 rounded-xl p-4">
       <div className="text-xs text-slate-400 mb-1">Low Stock</div>
-      <div className="text-2xl font-bold text-orange-400">
+      <div className="text-2xl font-bold text-amber-300">
         {accessoryKpis.low_stock}
       </div>
     </div>

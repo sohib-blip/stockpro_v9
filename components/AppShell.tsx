@@ -54,10 +54,15 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Receiving",
     icon: ArrowDownToLine,
     items: [
-      { href: "/supply", label: "Supply", icon: Truck, permission: "can_supply" },
+      {
+        href: "/supply",
+        label: "Supply Orders",
+        icon: Truck,
+        permission: "can_supply",
+      },
       {
         href: "/inbound",
-        label: "Inbound Import",
+        label: "Inbound Processing",
         icon: ArrowDownToLine,
         permission: "can_inbound",
       },
@@ -70,13 +75,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/outbound",
-        label: "Devices",
+        label: "Device Outbound",
         icon: ArrowUpFromLine,
         permission: "can_outbound",
       },
       {
         href: "/accessories",
-        label: "Accessories",
+        label: "Accessory Outbound",
         icon: Boxes,
         permission: "can_accessories",
       },
@@ -89,11 +94,16 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/bins",
-        label: "Stock Settings",
+        label: "Inventory Setup",
         icon: Package,
         permission: "can_bins",
       },
-      { href: "/labels", label: "Labels", icon: Tag, permission: "can_labels" },
+      {
+        href: "/labels",
+        label: "Label Printing",
+        icon: Tag,
+        permission: "can_labels",
+      },
     ],
   },
   {
@@ -103,13 +113,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       {
         href: "/returns",
-        label: "Returns",
+        label: "Customer Returns",
         icon: RotateCcw,
         permission: "can_returns",
       },
       {
         href: "/transfer",
-        label: "Transfers",
+        label: "Stock Transfers",
         icon: Repeat,
         permission: "can_transfer",
       },
@@ -117,18 +127,23 @@ const NAV_GROUPS: NavGroup[] = [
   },
   {
     id: "work",
-    label: "Work",
+    label: "Productivity",
     icon: ClipboardList,
     items: [
-      { href: "/nrd", label: "NRD Tracker", icon: Timer, permission: "can_nrd" },
+      { href: "/nrd", label: "NRD Tracking", icon: Timer, permission: "can_nrd" },
     ],
   },
   {
     id: "system",
-    label: "System",
+    label: "Administration",
     icon: ShieldCheck,
     items: [
-      { href: "/admin", label: "Admin", icon: ShieldCheck, permission: "can_admin" },
+      {
+        href: "/admin",
+        label: "User Access",
+        icon: ShieldCheck,
+        permission: "can_admin",
+      },
     ],
   },
 ];
@@ -227,7 +242,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
               <div>
                 <div className="font-semibold">StockPro</div>
                 <div className="text-[11px] text-slate-400">
-                  Inventory console
+                  Warehouse operations
                 </div>
               </div>
             )}
@@ -374,7 +389,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             `}
           >
             <LogOut size={18} />
-            {!collapsed && <span>Logout</span>}
+            {!collapsed && <span>Sign out</span>}
           </button>
         </div>
       </aside>
@@ -382,17 +397,17 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <section className="flex-1 p-8">
         {isNonProduction && (
           <div className="mb-4 rounded-xl border border-cyan-400/50 bg-cyan-400/10 px-4 py-3 text-center text-sm font-semibold uppercase tracking-[0.18em] text-cyan-200">
-            Environnement de test — aucune operation ne doit concerner du stock reel
+            Test environment — do not process real inventory
           </div>
         )}
 
         {activeNrd && (
           <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 px-4 py-3 text-sm flex items-center justify-between">
             <div>
-              ⏱ NRD task running: <b>{activeNrd.task}</b>
+              NRD task in progress: <b>{activeNrd.task}</b>
               <span className="text-amber-300/70 ml-2">
                 Started at{" "}
-                {new Date(activeNrd.started_at).toLocaleTimeString()}
+                {new Date(activeNrd.started_at).toLocaleTimeString("en-GB")}
               </span>
             </div>
 

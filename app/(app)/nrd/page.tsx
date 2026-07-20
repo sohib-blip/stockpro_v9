@@ -9,22 +9,22 @@ const NRD_TASKS = [
   "Prepare FMC234",
   "Clean Shelves",
   "Stock Take",
-  "Re-stock",
-  "Receive Incoming Orders",
+  "Restock Inventory",
+  "Receive Incoming Shipments",
   "Returns",
-  "Consumables - Stock Take & Orders",
-  "Preparing DVRs & Adding SIMs",
+  "Consumables: Stock Count and Orders",
+  "Prepare DVRs and Install SIMs",
   "Order Checks",
-  "Mail & Case Handling",
-  "Tidying Up the Workspace",
+  "Mail and Case Handling",
+  "Organize the Workspace",
 
   // New tasks
   "Overtime",
   "Container",
   "Team Meeting",
-  "Stock Revision",
+  "Inventory Review",
   "Training",
-  "Working on StockPro",
+  "StockPro Administration",
 ];
 
 function formatTimer(seconds: number) {
@@ -38,14 +38,14 @@ function formatTimer(seconds: number) {
 }
 
 function formatTime(date: string) {
-  return new Date(date).toLocaleTimeString("fr-BE", {
+  return new Date(date).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
 function formatDate(date: string) {
-  return new Date(date).toLocaleDateString("fr-BE");
+  return new Date(date).toLocaleDateString("en-GB");
 }
 
 function formatHours(minutes: number) {
@@ -313,20 +313,20 @@ async function stopTaskWithCorrection() {
     <div className="space-y-10 w-full">
       {showForgottenModal && active && (
   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-    <div className="w-full max-w-lg rounded-2xl border border-orange-500/40 bg-slate-950 shadow-2xl">
+    <div className="w-full max-w-lg rounded-2xl border border-amber-500/40 bg-slate-950 shadow-2xl">
       <div className="border-b border-slate-800 p-5">
-        <div className="text-xs font-semibold uppercase tracking-wider text-orange-400">
-          NRD review
+        <div className="text-xs font-semibold uppercase tracking-wider text-amber-300">
+          NRD Review
         </div>
 
         <h2 className="mt-1 text-xl font-semibold">
-           Confirm NRD end
+           Confirm NRD End Time
         </h2>
       </div>
 
       <div className="space-y-5 p-5">
-        <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-4 text-sm">
-          <div className="font-semibold text-orange-300">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+          <div className="font-semibold text-amber-300">
             This NRD has been active for {formatTimer(seconds)}.
           </div>
 
@@ -344,14 +344,14 @@ async function stopTaskWithCorrection() {
           <div>
             <div className="text-xs text-slate-500">Started</div>
             <div className="mt-1">
-              {new Date(active.started_at).toLocaleString("fr-BE")}
+              {new Date(active.started_at).toLocaleString("en-GB")}
             </div>
           </div>
         </div>
 
         <div>
           <label className="text-sm font-semibold text-slate-300">
-            Real end date and time
+            Actual End Date and Time
           </label>
 
           <input
@@ -376,7 +376,7 @@ async function stopTaskWithCorrection() {
                 .slice(0, 16);
             })()}
             onChange={(e) => setCorrectEndTime(e.target.value)}
-            className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-orange-500"
+            className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-500"
           />
 
           <div className="mt-2 text-xs text-slate-500">
@@ -395,7 +395,7 @@ async function stopTaskWithCorrection() {
             disabled={busy}
             className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-900 disabled:opacity-40"
           >
-            Keep running
+            Keep Running
           </button>
 
           <button
@@ -404,16 +404,16 @@ async function stopTaskWithCorrection() {
             disabled={busy}
             className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40"
           >
-            {busy ? "Stopping..." : "It ended now"}
+            {busy ? "Stopping…" : "End Now"}
           </button>
 
           <button
             type="button"
             onClick={stopTaskWithCorrection}
             disabled={busy || !correctEndTime}
-            className="rounded-xl bg-orange-600 px-4 py-2 text-sm font-semibold hover:bg-orange-700 disabled:opacity-40"
+            className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold hover:bg-amber-700 disabled:opacity-40"
           >
-            {busy ? "Saving..." : "Correct & stop"}
+            {busy ? "Saving…" : "Save Corrected End Time"}
           </button>
         </div>
       </div>
@@ -422,9 +422,9 @@ async function stopTaskWithCorrection() {
 )}
       <div>
         <div className="text-xs text-slate-500">NRD</div>
-        <h2 className="text-xl font-semibold">NRD Tracker</h2>
+        <h2 className="text-xl font-semibold">NRD Tracking</h2>
         <p className="text-sm text-slate-400 mt-1">
-          User: <b>{userEmail || "loading..."}</b>
+          User: <b>{userEmail || "Loading…"}</b>
         </p>
       </div>
 
@@ -473,7 +473,7 @@ async function stopTaskWithCorrection() {
             <div className="text-slate-400">Active task</div>
             <div className="font-semibold mt-1">{active.task}</div>
             <div className="text-xs text-slate-500 mt-1">
-              Started at: {new Date(active.started_at).toLocaleString()}
+              Started at: {new Date(active.started_at).toLocaleString("en-GB")}
             </div>
           </div>
         )}
@@ -485,7 +485,7 @@ async function stopTaskWithCorrection() {
               disabled={busy || !userEmail}
               className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {busy ? "Starting..." : "Start Task"}
+              {busy ? "Starting…" : "Start Task"}
             </button>
           ) : (
             <button
@@ -504,7 +504,7 @@ async function stopTaskWithCorrection() {
   disabled={busy}
   className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
 >
-  {busy ? "Stopping..." : "Stop Task"}
+  {busy ? "Stopping…" : "Stop Task"}
 </button>
           )}
 
@@ -531,7 +531,7 @@ async function stopTaskWithCorrection() {
     !userEmail ? "opacity-40" : ""
   }`}
 >
-  Export Excel
+  Export Spreadsheet
 </button>
 
 {hasPermission("can_admin") && (
@@ -542,9 +542,9 @@ async function stopTaskWithCorrection() {
         `nrd-global-${periodMonth}.xlsx`
       ).catch((error) => setErrorMsg(error.message))
     }
-    className="rounded-xl border border-purple-500/50 bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 px-4 py-2 font-semibold"
+    className="rounded-xl border border-indigo-500/50 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 px-4 py-2 font-semibold"
   >
-    Export Global Excel
+    Export All Users
   </button>
 )}
 
@@ -571,7 +571,7 @@ async function stopTaskWithCorrection() {
 
         <div className="card-glow p-5 rounded-xl">
           <div className="text-xs text-slate-400 mb-1">Completed tasks</div>
-          <div className="text-3xl font-bold text-purple-400">
+          <div className="text-3xl font-bold text-indigo-300">
             {stats?.tasks_count || 0}
           </div>
         </div>
@@ -595,7 +595,7 @@ async function stopTaskWithCorrection() {
 
                 <div className="w-full bg-white/10 h-2 rounded">
                   <div
-                    className="bg-purple-500 h-2 rounded"
+                    className="bg-indigo-500 h-2 rounded"
                     style={{
                       width: `${
                         stats.total_minutes

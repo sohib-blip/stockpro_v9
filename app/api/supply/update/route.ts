@@ -98,9 +98,7 @@ export async function PUT(req: Request) {
       );
     }
 
-    /*
-     * Lecture du statut réellement enregistré dans supplies.
-     */
+    // Read the status currently stored in the database.
     const { data: currentSupply, error: currentError } = await supabase
       .from("supplies")
       .select("id, order_number, status")
@@ -115,15 +113,6 @@ export async function PUT(req: Request) {
     const currentStatus = String(currentSupply.status ?? "")
       .trim()
       .toUpperCase() as SupplyStatus;
-
-    console.log("========== SUPPLY UPDATE ==========");
-    console.log({
-      id,
-      orderNumber: currentSupply.order_number,
-      currentStatus,
-      requestedStatus,
-      allowedStatuses: transitions[currentStatus],
-    });
 
     if (!VALID_STATUS.includes(currentStatus)) {
       return NextResponse.json(
@@ -162,11 +151,7 @@ export async function PUT(req: Request) {
       updated_at: now,
     };
 
-    /*
-     * Mise à jour de la commande.
-     * On vérifie aussi l'ancien statut dans le WHERE afin d'éviter
-     * qu'une ancienne requête modifie une commande entre-temps.
-     */
+    // Include the previous status to prevent concurrent stale updates.
     const { data: updatedSupply, error: updateError } = await supabase
       .from("supplies")
       .update(updateData)
@@ -180,9 +165,7 @@ export async function PUT(req: Request) {
       throw updateError;
     }
 
-    /*
-     * Ajout de la nouvelle ligne dans l'historique.
-     */
+    // Record the new status in the order history.
     const { data: historyRow, error: historyError } = await supabase
       .from("supply_status_history")
       .insert({

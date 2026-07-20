@@ -27,7 +27,7 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
-    // 🔥 important : un seul operation_id pour tout le batch
+    // Use one operation ID for the entire batch.
     const operation_id = crypto.randomUUID();
 
     const { data, error } = await supabase.rpc("confirm_outbound_batch", {

@@ -8,7 +8,7 @@ type DeviceRow = { device_id: string; device: string };
 
 type DraftLabel = {
   id: string;
-  device_id: string; // ✅ NOW = bin_id (uuid)
+  device_id: string;
   box: string;
   imeisText: string;
 };
@@ -42,7 +42,7 @@ export default function LabelsPage() {
 
   useEffect(() => {
     (async () => {
-      // ✅ NEW SYSTEM: load ACTIVE bins
+      // Load active inventory bins.
       const { data, error } = await supabase
         .from("bins")
         .select("id, name, active")
@@ -93,15 +93,15 @@ export default function LabelsPage() {
     const selected = devices.find((d) => d.device_id === l.device_id);
 
     return {
-      device: selected?.device || "",   // 🔥 ENVOIE LE NOM
-      box_no: l.box.trim(),             // 🔥 aligné avec backend
+      device: selected?.device || "",
+      box_no: l.box.trim(),
       imeis: extractImeis(l.imeisText),
     };
   })
   .filter((l) => l.device && l.box_no && l.imeis.length > 0);
 
     if (payloadLabels.length === 0) {
-      setMsg("❌ Ajoute au moins 1 label valide (bin + box + au moins 1 IMEI).");
+      setMsg("Add at least one valid label with a bin, box number, and IMEI.");
       return;
     }
 
@@ -117,7 +117,7 @@ export default function LabelsPage() {
 
     if (!res.ok) {
       const json = await res.json().catch(() => null);
-      setMsg("❌ " + (json?.error || "Generation failed"));
+      setMsg(json?.error || "Label generation failed");
       return;
     }
 
@@ -135,18 +135,18 @@ export default function LabelsPage() {
   return (
     <div className="space-y-6 w-full">
       <div>
-        <div className="text-xs text-slate-500">Labels</div>
-        <h2 className="text-xl font-semibold">QR Label Generator (ZD220)</h2>
+        <div className="text-xs text-slate-500">Inventory</div>
+        <h2 className="text-xl font-semibold">Warehouse Label Printing</h2>
         <p className="text-sm text-slate-400 mt-1">
         </p>
       </div>
 
       <div className="card-glow p-6 space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="text-sm font-semibold">Label size</div>
+          <div className="text-sm font-semibold">Label Dimensions</div>
 
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-slate-400">W (mm)</span>
+            <span className="text-slate-400">Width (mm)</span>
             <input
               type="number"
               value={wMm}
@@ -156,7 +156,7 @@ export default function LabelsPage() {
           </div>
 
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-slate-400">H (mm)</span>
+            <span className="text-slate-400">Height (mm)</span>
             <input
               type="number"
               value={hMm}
@@ -171,14 +171,14 @@ export default function LabelsPage() {
             onClick={addLabel}
             className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
           >
-            + Add label
+            Add Label
           </button>
 
           <button
             onClick={downloadPdf}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
           >
-            Download PDF (all labels)
+            Download All Labels
           </button>
         </div>
 
@@ -211,7 +211,7 @@ export default function LabelsPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <div className="text-xs text-slate-400">Bin / Device</div>
+                  <div className="text-xs text-slate-400">Inventory Bin</div>
                   <select
                     value={l.device_id}
                     onChange={(e) => updateLabel(l.id, { device_id: e.target.value })}
@@ -227,7 +227,7 @@ export default function LabelsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-xs text-slate-400">Box ID / Box No</div>
+                  <div className="text-xs text-slate-400">Box Number</div>
                   <input
                     value={l.box}
                     onChange={(e) => updateLabel(l.id, { box: e.target.value })}

@@ -6,23 +6,23 @@ export type DevicesDbRow = {
   canonical_name: string;
   device: string | null;
   active?: boolean | null;
-  units_per_imei?: number | null; // ✅ NEW
+  units_per_imei?: number | null;
 };
 
 export type DeviceMatch = {
   canonical: string;
   display: string;
   active: boolean;
-  units_per_imei: number; // ✅ NEW
+  units_per_imei: number;
 };
 
 export type ParsedLabel = {
   vendor: Vendor;
-  device: string; // display name (comme dans Admin > Devices)
-  box_no: string; // master box no (gros carton)
-  qty: number; // ✅ items calculés (IMEI * units_per_imei)
+  device: string; // Display name shown in inventory setup.
+  box_no: string; // Master box number.
+  qty: number; // Item count: IMEIs multiplied by units per IMEI.
   imeis: string[];
-  qr_data: string; // ✅ IMEI only, 1 par ligne
+  qr_data: string; // IMEI values, one per line.
 };
 
 export type ParseCounts = { devices: number; boxes: number; items: number };
@@ -50,7 +50,7 @@ export function toDeviceMatchList(rows: DevicesDbRow[]): DeviceMatch[] {
     const canonicalRaw = String(d.canonical_name || display || "");
 
     return {
-      canonical: canonicalize(canonicalRaw), // ✅ IMPORTANT
+      canonical: canonicalize(canonicalRaw),
       display,
       active: d.active !== false,
       units_per_imei: Number(d.units_per_imei ?? 1) || 1,

@@ -60,7 +60,7 @@ function detectImeiColumn(rows: any[][], maxScanRows = 60): number {
 }
 
 /**
- * TELTONIKA parser (format en blocs horizontaux)
+ * TELTONIKA parser for horizontally grouped blocks.
  */
 export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
@@ -265,7 +265,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
 
 /**
  * QUICKLINK
- * ✅ Fix: auto-match CNHYCV200XEU2025... => CV200
+ * Automatically matches CNHYCV200XEU2025... to CV200.
  */
 export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
@@ -441,10 +441,10 @@ export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[
 
 /**
  * TRUSTED / TRUSTER
- * ✅ 1 Excel = 1 box
- * ✅ accepte "Serialnumber" comme IMEI
- * ✅ auto-detect colonne IMEI si header change
- * ✅ device forcé (ici: Neon-R T7)
+ * One spreadsheet represents one box.
+ * Accepts "Serialnumber" as the IMEI column.
+ * Automatically detects the IMEI column when its header changes.
+ * Uses the configured device name (currently Neon-R T7).
  */
 export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 
-export const runtime = "nodejs"; // 🔥 IMPORTANT
+export const runtime = "nodejs";
 
 export async function POST(req: Request) {
   try {
@@ -23,7 +23,7 @@ export async function POST(req: Request) {
 
     doc.on("end", () => {});
 
-    // 📄 CONTENT
+    // Shipment document content.
     doc.fontSize(18).text("Shipment Report", { align: "center" });
     doc.moveDown();
     doc.fontSize(12).text("Shipment Ref: " + (shipment_ref || "N/A"));

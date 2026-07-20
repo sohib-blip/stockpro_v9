@@ -35,7 +35,7 @@ export async function GET(req: Request) {
     const rows = (data || []).map((r: any) => ({
       ...r,
 
-      // compatibilité UI
+      // Keep the response compatible with the inbound history table.
       qty_boxes: r.qty_boxes ?? r.boxes ?? 0,
       qty_imeis: r.qty_imeis ?? r.imeis ?? 0,
     }));

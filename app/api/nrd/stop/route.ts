@@ -58,10 +58,7 @@ export async function POST(req: Request) {
 
     const startedAt = new Date(active.started_at);
 
-    /*
-     * Si le frontend envoie ended_at, on utilise l’heure corrigée.
-     * Sinon, on utilise l’heure actuelle.
-     */
+    // Use the corrected end time when supplied; otherwise use the current time.
     const selectedEndDate = ended_at
       ? new Date(ended_at)
       : new Date();
@@ -78,9 +75,7 @@ export async function POST(req: Request) {
       );
     }
 
-    /*
-     * La fin ne peut pas être antérieure au début.
-     */
+    // The task cannot end before it started.
     if (selectedEndDate.getTime() < startedAt.getTime()) {
       return NextResponse.json(
         {
@@ -93,10 +88,7 @@ export async function POST(req: Request) {
       );
     }
 
-    /*
-     * On n’autorise pas une heure de fin dans le futur.
-     * Petite marge de 60 secondes pour éviter un souci de décalage.
-     */
+    // Reject future end times, allowing 60 seconds for minor clock differences.
     if (selectedEndDate.getTime() > Date.now() + 60_000) {
       return NextResponse.json(
         {

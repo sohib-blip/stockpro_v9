@@ -70,7 +70,7 @@ export async function POST(req: Request) {
 
       let y = qrY - 20;
 
-      // 🔥 FIX DEVICE NAME
+      // Resolve the display name for the selected inventory bin.
       const deviceName =
         label.device ||
         label.device_name ||

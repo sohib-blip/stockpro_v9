@@ -16,7 +16,7 @@ export async function POST(req: Request) {
   try {
     const { device, box_no, floor, imeis } = await req.json();
 
-    const bin_id = String(device || "").trim(); // ✅ device = bin_id
+    const bin_id = String(device || "").trim();
     const box_code = String(box_no || "").trim();
 
     if (!bin_id || !box_code || !Array.isArray(imeis)) {
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
 
     const supabase = sb();
 
-    // ✅ Optional: check bin exists
+    // Verify that the selected bin exists.
     const { data: bin, error: binErr } = await supabase
       .from("bins")
       .select("id, name")

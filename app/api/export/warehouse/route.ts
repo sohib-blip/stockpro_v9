@@ -51,7 +51,7 @@ export async function GET() {
       .from("boxes")
       .select("box_id, box_no, device_id, floor");
 
-    // 🔥 now unlimited items
+    // Export all matching items.
     const items = await fetchAllItems(supabase);
 
     const deviceMap: Record<string, string> = {};

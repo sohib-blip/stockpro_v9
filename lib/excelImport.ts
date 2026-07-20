@@ -48,7 +48,7 @@ function findHeaderRow(rows: any[][]): number {
   return Math.min(1, rows.length - 1);
 }
 
-// ✅ Smart: choose the column that contains the MOST 15-digit numbers in the first N rows
+// Choose the column with the most 15-digit values in the sample rows.
 function pickImeiColByData(rows: any[][], headerRowIdx: number): number {
   const header = rows[headerRowIdx] ?? [];
   const colCount = header.length;
@@ -72,7 +72,7 @@ function pickImeiColByData(rows: any[][], headerRowIdx: number): number {
   return bestCol; // -1 if none
 }
 
-// ✅ Smart: box column usually looks like "025-36" or "22060" (short non-empty, not 15-digit)
+// Box values are usually short, non-empty values such as "025-36" or "22060".
 function pickBoxColByData(rows: any[][], headerRowIdx: number, avoidCols: number[]): number {
   const header = rows[headerRowIdx] ?? [];
   const colCount = header.length;
@@ -113,7 +113,7 @@ function pickBoxColByData(rows: any[][], headerRowIdx: number, avoidCols: number
   return bestCol;
 }
 
-// ✅ Device column: usually a text with letters (not numeric), often contains model like FMC...
+// Device columns usually contain a model name rather than numeric-only values.
 function pickDeviceColByData(rows: any[][], headerRowIdx: number, avoidCols: number[]): number {
   const header = rows[headerRowIdx] ?? [];
   const colCount = header.length;

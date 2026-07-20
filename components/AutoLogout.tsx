@@ -135,7 +135,7 @@ export default function AutoLogout() {
   return (
     <ConfirmDialog
       open={sessionExpired}
-      title="🔒 Session expired"
+      title="Session expired"
       message={
         "Someone has signed in to your account from another device.\n\nFor security reasons, this session has been closed."
       }

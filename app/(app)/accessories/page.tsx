@@ -79,7 +79,7 @@ export default function AccessoriesPage() {
 
       if (!res.ok || !json.ok) {
         setHistory([]);
-        setErrorMsg(json.error || "History failed");
+        setErrorMsg(json.error || "Unable to load accessory outbound history");
         return;
       }
 
@@ -87,7 +87,7 @@ export default function AccessoriesPage() {
     } catch (error) {
       setHistory([]);
       setErrorMsg(
-        error instanceof Error ? error.message : "History failed"
+        error instanceof Error ? error.message : "Unable to load accessory outbound history"
       );
     }
   }
@@ -188,7 +188,7 @@ export default function AccessoriesPage() {
     }
 
     closePreview();
-    setSuccessMsg("Accessories outbound confirmed");
+    setSuccessMsg("Accessory outbound completed");
     setLines([{ accessory_id: "", qty: 1 }]);
     setShipmentRef("");
     setComment("");
@@ -221,7 +221,7 @@ export default function AccessoriesPage() {
     setBusy(false);
 
     if (!json.ok) {
-      setErrorMsg(json.error || "Excel preview failed");
+      setErrorMsg(json.error || "Spreadsheet preview failed");
       return;
     }
 
@@ -252,12 +252,12 @@ export default function AccessoriesPage() {
     const json = await res.json();
 
     if (!json.ok) {
-      setErrorMsg(json.error || "Excel outbound failed");
+      setErrorMsg(json.error || "Spreadsheet outbound failed");
       return;
     }
 
     closePreview();
-    setSuccessMsg("Excel outbound imported");
+    setSuccessMsg("Spreadsheet outbound completed");
     setFile(null);
     setShipmentRef("");
     setComment("");
@@ -297,10 +297,10 @@ export default function AccessoriesPage() {
   return (
         <div className="space-y-10 w-full">
       <div>
-        <div className="text-xs text-slate-500">Accessories</div>
-        <h2 className="text-xl font-semibold">Accessories Outbound</h2>
+        <div className="text-xs text-slate-500">Outbound</div>
+        <h2 className="text-xl font-semibold">Accessory Outbound</h2>
         <p className="text-sm text-slate-400 mt-1">
-          Manual outbound, Excel outbound and history for accessories.
+          Process manual or spreadsheet-based accessory shipments.
         </p>
       </div>
 
@@ -308,7 +308,7 @@ export default function AccessoriesPage() {
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl flex items-center gap-3 shadow-xl">
             <div className="h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-            <div className="font-semibold text-sm">Processing...</div>
+            <div className="font-semibold text-sm">Processing…</div>
           </div>
         </div>
       )}
@@ -320,7 +320,7 @@ export default function AccessoriesPage() {
               <div>
                 <div className="text-xs text-slate-500">Preview</div>
                 <div className="font-semibold text-lg">
-                  Confirm accessories outbound
+                  Confirm Accessory Outbound
                 </div>
               </div>
 
@@ -342,9 +342,9 @@ export default function AccessoriesPage() {
                   <thead className="bg-slate-900">
                     <tr>
                       <th className="p-3 text-left">Accessory</th>
-                      <th className="p-3 text-right">Qty</th>
-                      <th className="p-3 text-right">Current stock</th>
-                      <th className="p-3 text-right">After</th>
+                      <th className="p-3 text-right">Quantity</th>
+                      <th className="p-3 text-right">Current Stock</th>
+                      <th className="p-3 text-right">Stock After</th>
                     </tr>
                   </thead>
 
@@ -394,7 +394,7 @@ export default function AccessoriesPage() {
     <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
   )}
 
-  {busy ? "Processing..." : "Confirm outbound"}
+  {busy ? "Processing…" : "Confirm Outbound"}
 </button>
 </div>
               </div>
@@ -416,27 +416,27 @@ export default function AccessoriesPage() {
       )}
 
       <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Shipment</div>
+        <div className="font-semibold">Shipment Details</div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <input
             value={shipmentRef}
             onChange={(e) => setShipmentRef(e.target.value)}
-            placeholder="Shipment reference..."
+            placeholder="Shipment reference"
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           />
 
           <input
             value={comment}
             onChange={(e) => setComment(e.target.value)}
-            placeholder="Comment optional..."
+            placeholder="Optional comment"
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           />
         </div>
       </div>
 
       <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Manual Outbound</div>
+        <div className="font-semibold">Manual Accessory Outbound</div>
 
         <div className="space-y-3">
           {lines.map((line, index) => (
@@ -485,20 +485,20 @@ export default function AccessoriesPage() {
             onClick={addLine}
             className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
           >
-            + Add line
+            Add Line
           </button>
 
           <button
             onClick={previewManualOutbound}
             className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold"
           >
-            Preview Shipment
+            Preview Outbound
           </button>
         </div>
       </div>
 
       <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Excel Outbound</div>
+        <div className="font-semibold">Spreadsheet Outbound</div>
 
         <div className="flex flex-wrap gap-3 items-center">
           <input
@@ -512,7 +512,7 @@ export default function AccessoriesPage() {
             disabled={!file}
             className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
           >
-            Preview Excel
+            Preview Spreadsheet
           </button>
         </div>
 
@@ -523,10 +523,10 @@ export default function AccessoriesPage() {
 
       <div className="card-glow p-6 space-y-4">
         <div className="flex justify-between items-center">
-          <div className="font-semibold">History</div>
+          <div className="font-semibold">Accessory Outbound History</div>
 
           <input
-            placeholder="Search history..."
+            placeholder="Search outbound history"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -540,7 +540,7 @@ export default function AccessoriesPage() {
                 <th className="p-2 text-left">Date</th>
                 <th className="p-2 text-left">Shipment</th>
                 <th className="p-2 text-left">Accessory</th>
-                <th className="p-2 text-right">Qty</th>
+                <th className="p-2 text-right">Quantity</th>
                 <th className="p-2 text-left">User</th>
                 <th className="p-2 text-left">Comment</th>
               </tr>
@@ -550,7 +550,7 @@ export default function AccessoriesPage() {
               {filteredHistory.map((h) => (
                 <tr key={h.id} className="border-t border-slate-800">
                   <td className="p-2">
-                    {new Date(h.created_at).toLocaleString()}
+                    {new Date(h.created_at).toLocaleString("en-GB")}
                   </td>
                   <td className="p-2">{h.shipment_ref || "-"}</td>
                   <td className="p-2">{h.accessory_name || "-"}</td>

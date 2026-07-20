@@ -89,15 +89,12 @@ export function permissionForPage(pathname: string): PermissionKey | null {
   const rules: Array<[string, PermissionKey]> = [
     ["/admin", "can_admin"],
     ["/dashboard", "can_dashboard"],
-    ["/devices", "can_dashboard"],
-    ["/movements", "can_dashboard"],
     ["/inbound", "can_inbound"],
     ["/outbound", "can_outbound"],
     ["/returns", "can_returns"],
     ["/transfer", "can_transfer"],
     ["/labels", "can_labels"],
     ["/bins", "can_bins"],
-    ["/boxes", "can_bins"],
     ["/accessories", "can_accessories"],
     ["/supply", "can_supply"],
     ["/nrd", "can_nrd"],
@@ -129,8 +126,6 @@ export function permissionsForApi(
   }
 
   if (pathname.startsWith("/api/dashboard")) return ["can_dashboard"];
-  if (pathname.startsWith("/api/movements")) return ["can_dashboard"];
-
   if (pathname.startsWith("/api/accessory-bins")) {
     if (method === "GET") {
       return ["can_dashboard", "can_accessories", "can_bins", "can_supply"];

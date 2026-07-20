@@ -73,11 +73,6 @@ const checks = [
     allowed: { admin: [200], operator: [200], viewer: [200] },
   },
   {
-    name: "Movements",
-    path: "/api/movements",
-    allowed: { admin: [200], operator: [200], viewer: [200] },
-  },
-  {
     name: "Inbound history",
     path: "/api/inbound/history?page=1",
     allowed: { admin: [200], operator: [200] },

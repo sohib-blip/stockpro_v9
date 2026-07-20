@@ -238,6 +238,7 @@ if (!actorId) {
       <div className="card-glow p-6 relative overflow-hidden">
         <div className="font-semibold mb-2">Shipment reference</div>
         <input
+          aria-label="Outbound shipment reference"
           value={shipmentRef}
           onChange={(e) => setShipmentRef(e.target.value)}
           className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -248,6 +249,7 @@ if (!actorId) {
       <div className="card-glow p-6 relative overflow-hidden">
         <div className="font-semibold mb-3">Manual IMEI Entry</div>
         <textarea
+          aria-label="Outbound IMEIs"
           value={imeiInput}
           onChange={(e) => setImeiInput(e.target.value)}
           className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
@@ -265,6 +267,7 @@ if (!actorId) {
         <div className="font-semibold mb-3">End-of-Day Report Import</div>
         <input
           type="file"
+          aria-label="Outbound spreadsheet file"
           accept=".xlsx,.xls"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />

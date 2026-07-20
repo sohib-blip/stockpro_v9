@@ -447,6 +447,7 @@ async function stopTaskWithCorrection() {
           <div>
             <div className="text-xs text-slate-400 mb-2">Task</div>
             <select
+              aria-label="NRD task"
               value={task}
               onChange={(e) => setTask(e.target.value)}
               disabled={!!active}

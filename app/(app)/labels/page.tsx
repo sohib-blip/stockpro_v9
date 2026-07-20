@@ -149,6 +149,7 @@ export default function LabelsPage() {
             <span className="text-slate-400">Width (mm)</span>
             <input
               type="number"
+              aria-label="Label width"
               value={wMm}
               onChange={(e) => setWMm(Number(e.target.value))}
               className="w-24 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
@@ -159,6 +160,7 @@ export default function LabelsPage() {
             <span className="text-slate-400">Height (mm)</span>
             <input
               type="number"
+              aria-label="Label height"
               value={hMm}
               onChange={(e) => setHMm(Number(e.target.value))}
               className="w-24 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
@@ -213,6 +215,7 @@ export default function LabelsPage() {
                 <div className="space-y-2">
                   <div className="text-xs text-slate-400">Inventory Bin</div>
                   <select
+                    aria-label={`Label ${idx + 1} inventory bin`}
                     value={l.device_id}
                     onChange={(e) => updateLabel(l.id, { device_id: e.target.value })}
                     className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -229,6 +232,7 @@ export default function LabelsPage() {
                 <div className="space-y-2">
                   <div className="text-xs text-slate-400">Box Number</div>
                   <input
+                    aria-label={`Label ${idx + 1} box number`}
                     value={l.box}
                     onChange={(e) => updateLabel(l.id, { box: e.target.value })}
                     placeholder="ex: BOX-000123"
@@ -246,6 +250,7 @@ export default function LabelsPage() {
                 </div>
 
                 <textarea
+                  aria-label={`Label ${idx + 1} IMEIs`}
                   value={l.imeisText}
                   onChange={(e) => updateLabel(l.id, { imeisText: e.target.value })}
                   placeholder="IMEI"

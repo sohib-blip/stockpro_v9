@@ -707,6 +707,7 @@ async function openDetails(row: any) {
             <div className="p-5 space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <select
+                  aria-label="Supply origin office"
                 disabled={!!editing}
                   value={fromOffice}
                   onChange={(e) => setFromOffice(e.target.value)}
@@ -720,6 +721,7 @@ async function openDetails(row: any) {
                 </select>
 
                 <select
+                  aria-label="Supply destination office"
                   disabled={!!editing}
                   value={toOffice}
                   onChange={(e) => setToOffice(e.target.value)}
@@ -795,6 +797,7 @@ async function openDetails(row: any) {
                     className="grid grid-cols-1 md:grid-cols-[140px_1fr_100px_90px] gap-3"
                   >
                     <select
+                      aria-label={`Supply item ${index + 1} type`}
                     disabled={!!editing}
                       value={item.product_type}
                       onChange={(e) =>
@@ -810,6 +813,7 @@ async function openDetails(row: any) {
 
                     <>
   <input
+    aria-label={`Supply item ${index + 1} product`}
   disabled={!!editing}
     list={`products-${index}`}
     value={item.product_name}
@@ -828,8 +832,9 @@ async function openDetails(row: any) {
 </>
 
                     <input
-                    disabled={!!editing}
+                      disabled={!!editing}
                       type="number"
+                      aria-label={`Supply item ${index + 1} quantity`}
                       min={1}
                       value={item.qty}
                       onChange={(e) =>

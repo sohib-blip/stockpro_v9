@@ -199,6 +199,7 @@ export default function TransferPage() {
 
       <div className="card-glow p-6 space-y-4">
         <textarea
+          aria-label="Transfer box codes"
           value={boxInput}
           onChange={(e) => setBoxInput(e.target.value)}
           placeholder="Enter box codes, one per line"
@@ -206,6 +207,7 @@ export default function TransferPage() {
         />
 
         <select
+          aria-label="Transfer source device"
           value={sourceBinId}
           onChange={(e) => setSourceBinId(e.target.value)}
           className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
@@ -219,6 +221,7 @@ export default function TransferPage() {
         </select>
 
         <select
+          aria-label="Transfer destination floor"
           value={targetFloor}
           onChange={(e) => setTargetFloor(e.target.value)}
           className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"

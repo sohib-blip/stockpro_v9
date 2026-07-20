@@ -205,6 +205,7 @@ export default function ReturnsPage() {
         <div className="font-semibold">Return Information</div>
 
         <input
+          aria-label="Return reference"
           value={returnRef}
           onChange={(e) => setReturnRef(e.target.value)}
           placeholder="Return reference / customer / note"
@@ -213,6 +214,7 @@ export default function ReturnsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <select
+            aria-label="Return type"
             value={returnType}
             onChange={(e) => {
               setReturnType(e.target.value);
@@ -227,6 +229,7 @@ export default function ReturnsPage() {
 
           {returnType && (
             <select
+              aria-label="Return reason"
               value={returnReason}
               onChange={(e) => setReturnReason(e.target.value)}
               className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -246,6 +249,7 @@ export default function ReturnsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input
+            aria-label="Return target box"
             value={targetBox}
             onChange={(e) => setTargetBox(e.target.value)}
             placeholder="Target return box, ex: RETURN-001"
@@ -253,6 +257,7 @@ export default function ReturnsPage() {
           />
 
           <select
+            aria-label="Return target floor"
             value={targetFloor}
             onChange={(e) => setTargetFloor(e.target.value)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -265,6 +270,7 @@ export default function ReturnsPage() {
         </div>
 
         <textarea
+          aria-label="Returned IMEIs"
           value={imeisText}
           onChange={(e) => setImeisText(e.target.value)}
           placeholder="Scan or paste returned IMEIs here, one per line"

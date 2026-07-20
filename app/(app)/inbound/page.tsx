@@ -507,6 +507,7 @@ setManualMsg("");
   <div className="font-semibold mb-2">Reference / note</div>
 
   <input
+    aria-label="Inbound reference"
     value={shipmentRef}
     onChange={(e) => setShipmentRef(e.target.value)}
     placeholder="ex: Teltonika delivery 18/03"
@@ -546,6 +547,7 @@ setManualMsg("");
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <select
+            aria-label="Manual inbound device"
             value={manualDevice}
             onChange={(e) => setManualDevice(e.target.value)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -559,6 +561,7 @@ setManualMsg("");
           </select>
 
           <input
+            aria-label="Manual inbound box"
             placeholder="Box number"
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
             value={manualBox}
@@ -566,6 +569,7 @@ setManualMsg("");
           />
 
           <select
+            aria-label="Manual inbound floor"
             value={manualFloor}
             onChange={(e) => setManualFloor(e.target.value)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -578,6 +582,7 @@ setManualMsg("");
         </div>
 
         <textarea
+          aria-label="Manual inbound IMEIs"
           placeholder="Scan or paste IMEIs (one per line). Only 15-digit kept."
           className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
           value={manualImeis}
@@ -627,6 +632,7 @@ setManualMsg("");
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <select
+            aria-label="Inbound spreadsheet vendor"
             value={vendor}
             onChange={(e) => setVendor(e.target.value as Vendor)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -639,12 +645,14 @@ setManualMsg("");
 
           <input
             type="file"
+            aria-label="Inbound spreadsheet file"
             accept=".xlsx,.xls"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           />
 
           <select
+            aria-label="Inbound spreadsheet floor"
             value={floor}
             onChange={(e) => setFloor(e.target.value)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"

@@ -420,6 +420,7 @@ export default function AccessoriesPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <input
+            aria-label="Accessory shipment reference"
             value={shipmentRef}
             onChange={(e) => setShipmentRef(e.target.value)}
             placeholder="Shipment reference"
@@ -427,6 +428,7 @@ export default function AccessoriesPage() {
           />
 
           <input
+            aria-label="Accessory shipment comment"
             value={comment}
             onChange={(e) => setComment(e.target.value)}
             placeholder="Optional comment"
@@ -445,6 +447,7 @@ export default function AccessoriesPage() {
               className="grid grid-cols-1 md:grid-cols-[1fr_160px_100px] gap-3"
             >
               <select
+                aria-label={`Accessory line ${index + 1}`}
                 value={line.accessory_id}
                 onChange={(e) =>
                   updateLine(index, { accessory_id: e.target.value })
@@ -461,6 +464,7 @@ export default function AccessoriesPage() {
 
               <input
                 type="number"
+                aria-label={`Accessory quantity ${index + 1}`}
                 min={1}
                 value={line.qty}
                 onChange={(e) =>
@@ -503,6 +507,7 @@ export default function AccessoriesPage() {
         <div className="flex flex-wrap gap-3 items-center">
           <input
             type="file"
+            aria-label="Accessory spreadsheet file"
             accept=".xlsx,.xls"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
           />

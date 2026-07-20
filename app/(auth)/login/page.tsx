@@ -3,7 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import ConfirmDialog from "@/components/ConfirmDialog";
-import { STOCKPRO_SESSION_KEY } from "@/lib/session-control";
+import {
+  STOCKPRO_SESSION_KEY,
+  STOCKPRO_SESSION_NOTICE_KEY,
+} from "@/lib/session-control";
 import { Package } from "lucide-react";
 
 export default function LoginPage() {
@@ -20,26 +23,36 @@ export default function LoginPage() {
   const [pendingSessionId, setPendingSessionId] = useState("");
 
   useEffect(() => {
-  const check = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
-
-    const localSessionId = window.sessionStorage.getItem(STOCKPRO_SESSION_KEY);
-
-    if (session?.user && localSessionId) {
-      window.location.href = "/dashboard";
-      return;
+    const reason =
+      new URLSearchParams(window.location.search).get("reason") ||
+      window.sessionStorage.getItem(STOCKPRO_SESSION_NOTICE_KEY);
+    if (reason === "session-expired") {
+      setMsg(
+        "Your previous session was closed because this account signed in on another device."
+      );
+      window.sessionStorage.removeItem(STOCKPRO_SESSION_NOTICE_KEY);
     }
 
-    if (session?.user && !localSessionId) {
-      await supabase.auth.signOut({ scope: "local" });
-      return;
-    }
-  };
+    const check = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-  check();
-}, [supabase]);
+      const localSessionId = window.sessionStorage.getItem(STOCKPRO_SESSION_KEY);
+
+      if (session?.user && localSessionId) {
+        window.location.href = "/dashboard";
+        return;
+      }
+
+      if (session?.user && !localSessionId) {
+        await supabase.auth.signOut({ scope: "local" });
+        return;
+      }
+    };
+
+    check();
+  }, [supabase]);
   async function completeLogin(userId: string, sessionId: string) {
     const { error: profileError } = await supabase
       .from("profiles")

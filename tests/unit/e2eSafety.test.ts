@@ -32,4 +32,10 @@ describe("E2E staging safety", () => {
     expect(stagingRun).toContain("run.manualBox");
     expect(stagingRun).toContain("run.returnBox");
   });
+
+  it("removes legacy movement references before deleting the E2E bin", () => {
+    expect(stagingRun).toContain(
+      'from("movements").delete().eq("device_id", run.bin.id)'
+    );
+  });
 });

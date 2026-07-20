@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const STOCKPRO_SESSION_KEY = "stockpro_session_id";
+export const STOCKPRO_SESSION_NOTICE_KEY = "stockpro_session_notice";
 
 type SessionStorage = Pick<Storage, "getItem" | "removeItem">;
 

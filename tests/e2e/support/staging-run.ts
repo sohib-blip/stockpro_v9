@@ -158,6 +158,9 @@ export async function cleanupStagingRun(
   if (itemIds.length) await supabase.from("movements").delete().in("item_id", itemIds);
   if (boxIds.length) await supabase.from("movements").delete().in("box_id", boxIds);
   await supabase.from("movements").delete().in("imei", imeis);
+  if (run.bin.id) {
+    await supabase.from("movements").delete().eq("device_id", run.bin.id);
+  }
   await supabase.from("items").delete().in("imei", imeis);
   if (run.bin.id) {
     await supabase

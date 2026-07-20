@@ -107,11 +107,14 @@ test.describe.serial("StockPro staging end-to-end", () => {
       await secondPage.getByRole("button", { name: "Take over session" }).click();
       await expect(secondPage).toHaveURL(/\/dashboard$/);
 
+      await expect(firstPage).toHaveURL(/\/login(?:\?reason=session-expired)?$/, {
+        timeout: 35_000,
+      });
       await expect(
-        firstPage.getByRole("heading", { name: "Session expired" })
-      ).toBeVisible({ timeout: 35_000 });
-      await firstPage.getByRole("button", { name: "Login again" }).click();
-      await expect(firstPage).toHaveURL(/\/login$/);
+        firstPage.getByText(
+          "Your previous session was closed because this account signed in on another device."
+        )
+      ).toBeVisible();
       await signOut(secondPage);
     } finally {
       await firstContext.close();

@@ -310,12 +310,13 @@ if (!actorId) {
 
       {/* PREVIEW */}
 {preview && (
-  <div className="prototype-preview-card p-6 space-y-5 relative overflow-hidden">
-    <div className="flex justify-between">
+  <div className="prototype-preview-card relative overflow-hidden">
+    <div className="prototype-preview-content">
+    <div className="prototype-preview-heading">
       <div className="font-semibold">
         Preview ({previewSource})
       </div>
-      <div className="text-xs text-slate-400">
+      <div>
         {preview.totalDetected ?? 0} IMEIs
       </div>
     </div>
@@ -400,7 +401,8 @@ if (!actorId) {
     )}
 
     {preview.summary?.length > 0 && (
-      <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+      <div className="prototype-preview-table-scroll">
+      <table className="w-full text-sm">
         <thead className="bg-slate-950/50">
           <tr>
             <th className="p-2 text-left">Device</th>
@@ -424,15 +426,19 @@ if (!actorId) {
           ))}
         </tbody>
       </table>
+      </div>
     )}
-
+    </div>
+    <div className="prototype-preview-actions">
     <button
+      type="button"
       onClick={confirmOut}
       disabled={!preview?.ok || hasPreviewErrors}
-      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+      className="prototype-button confirm disabled:opacity-40 disabled:cursor-not-allowed"
     >
       Confirm Outbound
     </button>
+    </div>
   </div>
 )}
 

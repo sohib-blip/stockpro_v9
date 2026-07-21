@@ -4,9 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
+  CartesianGrid,
+  LabelList,
   ResponsiveContainer,
   Tooltip,
   XAxis,
+  YAxis,
 } from "recharts";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
@@ -153,6 +156,14 @@ export default function DashboardPage() {
     chartStart,
     chartStart + CHART_PAGE_SIZE
   );
+  const visibleInbound = chartData.reduce(
+    (total, row) => total + row.inbound,
+    0
+  );
+  const visibleOutbound = chartData.reduce(
+    (total, row) => total + row.outbound,
+    0
+  );
 
   const totalShipped = topDevices.reduce(
     (total, row) => total + Number(row.total_out || 0),
@@ -297,63 +308,120 @@ export default function DashboardPage() {
           <div className="prototype-card-heading">
             <h2>Device inbound vs outbound</h2>
             <div className="chart-legend" aria-label="Chart legend">
-              <span><i className="inbound" />Inbound</span>
-              <span><i className="outbound" />Outbound</span>
+              <span>
+                <i className="inbound" />
+                Inbound <strong>{visibleInbound.toLocaleString("en-GB")}</strong>
+              </span>
+              <span>
+                <i className="outbound" />
+                Outbound <strong>{visibleOutbound.toLocaleString("en-GB")}</strong>
+              </span>
             </div>
           </div>
           <div className="dashboard-chart-viewport">
-          <div className="dashboard-chart">
-            {chartData.length > 0 ? (
-              <ResponsiveContainer
-                width="100%"
-                height="100%"
-                minWidth={0}
-                initialDimension={{ width: 1, height: 170 }}
-              >
-                <BarChart data={chartData} barCategoryGap="20%">
-                  <XAxis
-                    dataKey="device"
-                    axisLine={false}
-                    tickLine={false}
-                    interval={0}
-                    height={34}
-                    tickFormatter={(value: string) =>
-                      value.length > 11
-                        ? `${value.slice(0, 6)}…${value.slice(-4)}`
-                        : value
-                    }
-                    tick={{ fill: "var(--muted)", fontSize: 11 }}
-                  />
-                  <Tooltip
-                    cursor={{ fill: "var(--surface-subtle)" }}
-                    contentStyle={{
-                      background: "var(--surface-elevated)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 8,
-                      color: "var(--foreground)",
-                      fontSize: 12,
-                    }}
-                  />
-                  <Bar
-                    dataKey="inbound"
-                    name="Inbound"
-                    fill="var(--brand)"
-                    radius={[3, 3, 0, 0]}
-                    maxBarSize={48}
-                  />
-                  <Bar
-                    dataKey="outbound"
-                    name="Outbound"
-                    fill="var(--chart-secondary)"
-                    radius={[3, 3, 0, 0]}
-                    maxBarSize={48}
-                  />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="prototype-empty">No device movement yet</div>
-            )}
-          </div>
+            <div className="dashboard-chart">
+              {chartData.length > 0 ? (
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                  minWidth={0}
+                  initialDimension={{ width: 1, height: 170 }}
+                >
+                  <BarChart
+                    data={chartData}
+                    barCategoryGap="18%"
+                    margin={{ top: 24, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid
+                      vertical={false}
+                      stroke="var(--border)"
+                      strokeDasharray="3 3"
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      width={42}
+                      allowDecimals={false}
+                      tick={{ fill: "var(--muted)", fontSize: 10.5 }}
+                      tickFormatter={(value: number) =>
+                        value >= 1000
+                          ? `${Math.round(value / 100) / 10}k`
+                          : String(value)
+                      }
+                    />
+                    <XAxis
+                      dataKey="device"
+                      axisLine={false}
+                      tickLine={false}
+                      interval={0}
+                      height={34}
+                      tickFormatter={(value: string) =>
+                        value.length > 11
+                          ? `${value.slice(0, 6)}…${value.slice(-4)}`
+                          : value
+                      }
+                      tick={{ fill: "var(--muted)", fontSize: 11 }}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "var(--surface-subtle)" }}
+                      contentStyle={{
+                        background: "var(--surface-elevated)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        color: "var(--foreground)",
+                        fontSize: 12,
+                      }}
+                      formatter={(value, name) => [
+                        Number(value ?? 0).toLocaleString("en-GB"),
+                        String(name),
+                      ]}
+                    />
+                    <Bar
+                      dataKey="inbound"
+                      name="Inbound"
+                      fill="var(--brand)"
+                      radius={[3, 3, 0, 0]}
+                      maxBarSize={48}
+                    >
+                      <LabelList
+                        dataKey="inbound"
+                        position="top"
+                        fill="var(--muted-strong)"
+                        fontSize={10}
+                        formatter={(value) => {
+                          const numericValue = Number(value ?? 0);
+                          return numericValue > 0
+                            ? numericValue.toLocaleString("en-GB")
+                            : "";
+                        }}
+                      />
+                    </Bar>
+                    <Bar
+                      dataKey="outbound"
+                      name="Outbound"
+                      fill="var(--chart-secondary)"
+                      radius={[3, 3, 0, 0]}
+                      maxBarSize={48}
+                    >
+                      <LabelList
+                        dataKey="outbound"
+                        position="top"
+                        fill="var(--muted-strong)"
+                        fontSize={10}
+                        formatter={(value) => {
+                          const numericValue = Number(value ?? 0);
+                          return numericValue > 0
+                            ? numericValue.toLocaleString("en-GB")
+                            : "";
+                        }}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="prototype-empty">No device movement yet</div>
+              )}
+            </div>
           </div>
           {allChartData.length > CHART_PAGE_SIZE && (
             <div className="dashboard-chart-pagination">

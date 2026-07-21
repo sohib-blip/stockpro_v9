@@ -335,12 +335,12 @@ export default function AccessoriesPage() {
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="prototype-preview-content">
               <div className="text-sm text-slate-400">
                 Please review the stock changes before confirming.
               </div>
 
-              <div className="border border-slate-800 rounded-xl overflow-hidden">
+              <div className="prototype-preview-table-scroll">
                 <table className="w-full text-sm">
                   <thead className="bg-slate-900">
                     <tr>
@@ -378,29 +378,27 @@ export default function AccessoriesPage() {
                 </table>
               </div>
 
-              <div className="flex justify-end gap-3">
-  <div className="flex justify-end gap-3">
-  <button
-  onClick={closePreview}
-  disabled={busy}
-  className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
->
-  Cancel
-</button>
-
-  <button
-  onClick={confirmPreview}
-  disabled={busy || previewRows.length === 0}
-  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[180px]"
->
-  {busy && (
-    <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-  )}
-
-  {busy ? "Processing…" : "Confirm Outbound"}
-</button>
-</div>
-              </div>
+            </div>
+            <div className="prototype-preview-actions">
+              <button
+                type="button"
+                onClick={confirmPreview}
+                disabled={busy || previewRows.length === 0}
+                className="prototype-button confirm disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {busy && (
+                  <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                )}
+                {busy ? "Processing…" : "Confirm Outbound"}
+              </button>
+              <button
+                type="button"
+                onClick={closePreview}
+                disabled={busy}
+                className="prototype-button secondary disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
             </div>
           </div>
         </div>

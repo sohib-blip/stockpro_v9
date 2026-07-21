@@ -298,10 +298,11 @@ export default function ReturnsPage() {
       </div>
 
       {preview?.ok && (
-        <div className="prototype-preview-card p-6 space-y-5">
-          <div className="flex justify-between items-center">
+        <div className="prototype-preview-card">
+          <div className="prototype-preview-content">
+          <div className="prototype-preview-heading">
             <div className="font-semibold">Return Preview</div>
-            <div className="text-sm text-slate-400">
+            <div>
               Scanned: {preview.total_scanned}
             </div>
           </div>
@@ -327,7 +328,8 @@ export default function ReturnsPage() {
             <div>
               <div className="font-semibold mb-2">Return details</div>
 
-              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+              <div className="prototype-preview-table-scroll is-wide">
+              <table className="w-full text-sm">
                 <thead className="bg-slate-950/50">
                   <tr>
                     <th className="p-2 text-left">IMEI</th>
@@ -356,6 +358,7 @@ export default function ReturnsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 
@@ -374,22 +377,25 @@ export default function ReturnsPage() {
             </div>
           )}
 
-          <div className="flex gap-3">
+          </div>
+          <div className="prototype-preview-actions">
             <button
+              type="button"
               onClick={confirmReturn}
               disabled={busy || preview.valid_returns.length === 0}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
+              className="prototype-button confirm"
             >
               Confirm Return
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 setPreview(null);
                 setMsg("");
               }}
               disabled={busy}
-              className="rounded-xl border border-slate-800 bg-slate-950 hover:bg-slate-800 px-4 py-2 font-semibold disabled:opacity-50"
+              className="prototype-button secondary"
             >
               Cancel Preview
             </button>

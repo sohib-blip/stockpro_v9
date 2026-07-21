@@ -682,10 +682,9 @@ setManualMsg("");
       )}
       </div>
 
-            {result?.ok && (
+      {result?.ok && (
         <div className="prototype-preview-card">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* LEFT */}
+          <div className="prototype-preview-content">
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <div className="font-semibold">
@@ -735,24 +734,25 @@ setManualMsg("");
               )}
             </div>
 
-            {/* RIGHT */}
+            {hasUnknownExcelDevices && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
+                <div className="font-semibold">Import blocked</div>
+                <div className="mt-1">
+                  Unknown devices found: <b>{result.unknown_devices.join(", ")}</b>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="prototype-preview-actions">
             <button
+              type="button"
               onClick={confirmExcelInbound}
               disabled={busy || (result?.unknown_bins_preview?.length ?? 0) > 0}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
+              className="prototype-button confirm"
             >
               Confirm Inbound
             </button>
           </div>
-
-          {hasUnknownExcelDevices && (
-            <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
-              <div className="font-semibold">Import blocked</div>
-              <div className="mt-1">
-                Unknown devices found: <b>{result.unknown_devices.join(", ")}</b>
-              </div>
-            </div>
-          )}
         </div>
       )}
 

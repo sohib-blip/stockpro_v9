@@ -258,42 +258,46 @@ export default function TransferPage() {
       </div>
 
       {preview?.preview && (
-        <div className="prototype-preview-card p-6 space-y-5">
-          <div className="flex justify-between items-center">
-            <div className="font-semibold text-lg">Transfer Preview</div>
-            <div className="text-sm text-slate-400">
-              {preview.total_boxes} boxes • {preview.total_items} IMEIs
+        <div className="prototype-preview-card">
+          <div className="prototype-preview-content">
+            <div className="prototype-preview-heading">
+              <div className="font-semibold text-lg">Transfer Preview</div>
+              <div>{preview.total_boxes} boxes • {preview.total_items} IMEIs</div>
+            </div>
+
+            <div className="prototype-preview-table-scroll">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-950/50">
+                  <tr>
+                    <th className="p-2 text-left">Box</th>
+                    <th className="p-2 text-left">Device</th>
+                    <th className="p-2 text-left">Current Floor</th>
+                    <th className="p-2 text-right">IMEIs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.boxes.map((b: any, i: number) => (
+                    <tr key={i} className="hover:bg-slate-950/40">
+                      <td className="p-2 font-semibold">{b.box_code}</td>
+                      <td className="p-2">{b.device}</td>
+                      <td className="p-2">{b.current_floor}</td>
+                      <td className="p-2 text-right">{b.imei_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-
-          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="p-2 text-left">Box</th>
-                <th className="p-2 text-left">Device</th>
-                <th className="p-2 text-left">Current Floor</th>
-                <th className="p-2 text-right">IMEIs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.boxes.map((b: any, i: number) => (
-                <tr key={i} className="hover:bg-slate-950/40">
-                  <td className="p-2 font-semibold">{b.box_code}</td>
-                  <td className="p-2">{b.device}</td>
-                  <td className="p-2">{b.current_floor}</td>
-                  <td className="p-2 text-right">{b.imei_count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <button
-            onClick={confirmTransfer}
-            disabled={loadingConfirm}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
-          >
-            {loadingConfirm ? "Transferring…" : "Confirm Transfer"}
-          </button>
+          <div className="prototype-preview-actions">
+            <button
+              type="button"
+              onClick={confirmTransfer}
+              disabled={loadingConfirm}
+              className="prototype-button confirm"
+            >
+              {loadingConfirm ? "Transferring…" : "Confirm Transfer"}
+            </button>
+          </div>
         </div>
       )}
 

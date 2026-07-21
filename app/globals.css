@@ -616,6 +616,12 @@ body {
   gap: 5px;
 }
 
+.chart-legend strong {
+  color: var(--foreground);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+}
+
 .chart-legend i {
   width: 10px;
   height: 10px;
@@ -1348,6 +1354,42 @@ body {
   box-shadow: var(--shadow-card);
 }
 
+.prototype-preview-content {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding: 20px 24px;
+}
+
+.prototype-preview-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.prototype-preview-heading > :last-child {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.prototype-preview-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.prototype-preview-table-scroll table {
+  min-width: 640px;
+  border: 0 !important;
+}
+
+.prototype-preview-table-scroll.is-wide table {
+  min-width: 900px;
+}
+
 .prototype-empty-preview {
   min-height: 420px;
   display: flex;
@@ -1482,12 +1524,32 @@ body {
 
 .prototype-preview-footer {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
+  align-items: flex-start;
+  justify-content: flex-start;
+  flex-direction: column;
+  gap: 10px;
   padding: 14px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-subtle);
   color: var(--muted);
   font-size: 12.5px;
+}
+
+.prototype-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 24px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.prototype-preview-footer .prototype-button,
+.prototype-preview-actions .prototype-button {
+  min-width: 190px;
+  justify-content: center;
 }
 
 .prototype-button.confirm {
@@ -2629,7 +2691,6 @@ main.min-h-screen {
 
   .prototype-data-toolbar,
   .prototype-pagination,
-  .prototype-preview-footer,
   .prototype-success-banner,
   .label-header-actions {
     align-items: stretch;
@@ -2665,6 +2726,27 @@ main.min-h-screen {
 
   .prototype-preview-summary {
     grid-template-columns: 1fr;
+  }
+
+  .prototype-preview-content,
+  .prototype-preview-footer,
+  .prototype-preview-actions {
+    padding-inline: 16px;
+  }
+
+  .prototype-preview-heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .prototype-preview-actions,
+  .prototype-preview-footer {
+    align-items: stretch;
+  }
+
+  .prototype-preview-actions .prototype-button,
+  .prototype-preview-footer .prototype-button {
+    width: 100%;
   }
 
   .prototype-preview-chips {

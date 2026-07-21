@@ -485,15 +485,15 @@ setManualMsg("");
   <div className="space-y-8 w-full">
       {/* ✅ GLOBAL LOADER OVERLAY (no layout change, just overlay) */}
       {busy && (
-        <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
-          <div className="rounded-2xl border border-slate-800 bg-slate-950 px-6 py-5 w-full max-w-sm">
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 p-4">
+          <div className="sp-card w-full max-w-sm">
             <div className="flex items-center gap-3">
-              <div className="h-4 w-4 rounded-full border-2 border-slate-400 border-t-transparent animate-spin" />
-              <div className="font-semibold text-sm text-slate-200">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-sp-primary border-t-transparent" />
+              <div className="text-sm font-semibold text-sp-text">
                 {busyText || "Working…"}
               </div>
             </div>
-            <div className="text-xs text-slate-400 mt-2">
+            <div className="mt-2 text-xs text-sp-muted">
               Don't close the tab 👀
             </div>
           </div>
@@ -501,22 +501,11 @@ setManualMsg("");
       )}
 
       {/* HEADER */}
-      <div className="flex items-center justify-between gap-3">
-        {/* SHIPMENT NOTE */}
-<div className="card-glow p-6">
-  <div className="font-semibold mb-2">Reference / note</div>
-
-  <input
-    value={shipmentRef}
-    onChange={(e) => setShipmentRef(e.target.value)}
-    placeholder="ex: Teltonika delivery 18/03"
-    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-  />
-</div>
+      <div className="sp-page-header">
         <div>
-          <div className="text-xs text-slate-500">Inbound</div>
-          <h2 className="text-xl font-semibold">Inbound Import</h2>
-          <p className="text-sm text-slate-400 mt-1">
+          <div className="sp-eyebrow">Inbound</div>
+          <h1 className="sp-title">Inbound Import</h1>
+          <p className="sp-desc">
             User: <b>{actor}</b>
           </p>
         </div>
@@ -524,26 +513,38 @@ setManualMsg("");
         {lastBatchId && (
           <a
             href={`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
+            className="sp-btn sp-btn-primary"
           >
            QR labels 
           </a>
         )}
       </div>
 
+      {/* SHIPMENT NOTE */}
+      <div className="sp-card">
+        <label className="sp-label" htmlFor="inbound-shipment-ref">
+          Reference / note
+        </label>
+        <input
+          id="inbound-shipment-ref"
+          value={shipmentRef}
+          onChange={(e) => setShipmentRef(e.target.value)}
+          placeholder="ex: Teltonika delivery 18/03"
+          className="sp-input"
+        />
+      </div>
+
       {/* MANUAL IMPORT */}
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
+      <div className="sp-card space-y-4">
         <div>
-          <div className="font-semibold">Manual Import</div>
-          <div className="text-xs text-slate-500">
-          </div>
+          <div className="font-semibold text-sp-text">Manual Import</div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
           <select
             value={manualDevice}
             onChange={(e) => setManualDevice(e.target.value)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            className="sp-select"
           >
             {devices.length === 0 && <option value="">No active devices found</option>}
             {devices.map((d) => (
@@ -555,7 +556,7 @@ setManualMsg("");
 
           <input
             placeholder="Box number"
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            className="sp-input"
             value={manualBox}
             onChange={(e) => setManualBox(e.target.value)}
           />
@@ -563,7 +564,7 @@ setManualMsg("");
           <select
             value={manualFloor}
             onChange={(e) => setManualFloor(e.target.value)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            className="sp-select"
           >
             <option value="00">Floor 00</option>
             <option value="1">Floor 1</option>
@@ -574,7 +575,7 @@ setManualMsg("");
 
         <textarea
           placeholder="Scan or paste IMEIs (one per line). Only 15-digit kept."
-          className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
+          className="sp-textarea h-40"
           value={manualImeis}
           onChange={(e) => setManualImeis(e.target.value)}
         />
@@ -583,7 +584,7 @@ setManualMsg("");
   <button
     onClick={previewManualImport}
     disabled={busy}
-    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
+    className="sp-btn sp-btn-primary"
   >
     Preview Manual Import
   </button>
@@ -592,39 +593,55 @@ setManualMsg("");
     <button
       onClick={confirmManualImport}
       disabled={busy}
-      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
+      className="sp-btn sp-btn-primary"
     >
       Import (Save)
     </button>
   )}
 </div>
         {manualMsg && (
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm">
+          <div
+            className={`sp-alert ${
+              manualMsg.startsWith("✅")
+                ? "sp-alert-ok"
+                : manualMsg.startsWith("⚠️")
+                  ? "sp-alert-warn"
+                  : "sp-alert-err"
+            }`}
+          >
             {manualMsg}
           </div>
         )}
 
         {manualPreview?.ok && (
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm space-y-2">
+          <div className="sp-card sp-card-tight space-y-2 text-sm">
             <div className="font-semibold">Manual Preview</div>
-            <div>
-              Scanned: <b>{manualPreview.total_scanned}</b> • New:{" "}
-              <b>{manualPreview.valid_new}</b> • Duplicates:{" "}
-              <b>{manualPreview.duplicates}</b>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="sp-badge sp-badge-neutral">
+                Scanned: <b>{manualPreview.total_scanned}</b>
+              </span>
+              •
+              <span className="sp-badge sp-badge-ok">
+                New: <b>{manualPreview.valid_new}</b>
+              </span>
+              •
+              <span className="sp-badge sp-badge-err">
+                Duplicates: <b>{manualPreview.duplicates}</b>
+              </span>
             </div>
           </div>
         )}
       </div>
 
       {/* EXCEL IMPORT */}
-      <div className="card-glow p-6 space-y-3">
-        <div className="font-semibold">Excel Import</div>
+      <div className="sp-card space-y-3">
+        <div className="font-semibold text-sp-text">Excel Import</div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <select
             value={vendor}
             onChange={(e) => setVendor(e.target.value as Vendor)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            className="sp-select"
           >
             <option value="teltonika">Teltonika</option>
             <option value="quicklink">Quicklink</option>
@@ -636,13 +653,13 @@ setManualMsg("");
             type="file"
             accept=".xlsx,.xls"
             onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            className="sp-btn sp-btn-ghost w-full min-w-0"
           />
 
           <select
             value={floor}
             onChange={(e) => setFloor(e.target.value)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            className="sp-select"
           >
             <option value="00">Floor 00</option>
             <option value="1">Floor 1</option>
@@ -653,21 +670,21 @@ setManualMsg("");
           <button
             onClick={parseExcel}
             disabled={busy}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            className="sp-btn sp-btn-primary"
           >
             {busy ? "Working…" : "Preview import"}
           </button>
         </div>
 
         {err && (
-          <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
+          <div className="sp-alert sp-alert-err">
             {err}
           </div>
         )}
       </div>
 
             {result?.ok && (
-        <div className="card-glow p-6 space-y-4 relative overflow-hidden">
+        <div className="sp-card space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
             {/* LEFT */}
             <div className="space-y-2">
@@ -677,41 +694,41 @@ setManualMsg("");
                 </div>
 
                 {(result?.unknown_bins_preview?.length ?? 0) > 0 ? (
-                  <span className="px-2 py-1 text-xs rounded-lg bg-rose-900/60 text-rose-200 border border-rose-800">
+                  <span className="sp-badge sp-badge-err">
                     ERROR
                   </span>
                 ) : (
-                  <span className="px-2 py-1 text-xs rounded-lg bg-emerald-900/60 text-emerald-200 border border-emerald-800">
+                  <span className="sp-badge sp-badge-ok">
                     OK
                   </span>
                 )}
               </div>
 
               {result?.devices_found?.length > 0 && (
-                <div className="text-xs text-slate-400">
+                <div className="text-xs text-sp-secondary">
                   <b>Devices detected:</b> {result.devices_found.join(", ")}
                 </div>
               )}
 
               {result?.unknown_bins_preview?.length > 0 && (
-                <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-xs text-rose-200">
+                <div className="sp-alert sp-alert-err text-xs">
                   <div className="font-semibold">Unknown bins detected</div>
                   <div className="mt-1">{result.unknown_bins_preview.join(", ")}</div>
                 </div>
               )}
 
               {result?.box_breakdown?.length > 0 && (
-                <div className="text-xs text-slate-400 space-y-1">
+                <div className="space-y-1 text-xs text-sp-secondary">
                   <b>Boxes detected:</b>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
                     {result.box_breakdown.map((b: any) => (
                       <div
                         key={`${b.box_no}-${b.device}`}
-                        className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1"
+                        className="rounded-lg border border-sp-border bg-sp-surface-2 px-2 py-1"
                       >
                         <div className="font-semibold">{b.box_no}</div>
-                        <div className="text-[11px] text-slate-400">{b.device || "—"}</div>
-                        <div className="text-[11px] text-slate-500">{b.imeis} IMEIs</div>
+                        <div className="text-[11px] text-sp-secondary">{b.device || "—"}</div>
+                        <div className="text-[11px] text-sp-muted">{b.imeis} IMEIs</div>
                       </div>
                     ))}
                   </div>
@@ -723,14 +740,14 @@ setManualMsg("");
             <button
               onClick={confirmExcelInbound}
               disabled={busy || (result?.unknown_bins_preview?.length ?? 0) > 0}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
+              className="sp-btn sp-btn-primary"
             >
               Confirm Inbound (Save)
             </button>
           </div>
 
           {hasUnknownExcelDevices && (
-            <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
+            <div className="sp-alert sp-alert-err">
               <div className="font-semibold">Import blocked</div>
               <div className="mt-1">
                 Unknown devices found: <b>{result.unknown_devices.join(", ")}</b>
@@ -741,27 +758,25 @@ setManualMsg("");
       )}
 
       {/* HISTORY */}
-      <div className="card-glow p-6 space-y-3">
-        <div className="flex items-center justify-between gap-3">
+      <div className="sp-card space-y-3">
+        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <div>
             <div className="font-semibold">Inbound history</div>
-            <div className="text-xs text-slate-500">
-            </div>
           </div>
 
-          <div className="flex gap-2 items-center">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
 
             <input
   placeholder="Search user / vendor / reference"
   value={search}
   onChange={(e) => setSearch(e.target.value)}
-  className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm w-56"
+  className="sp-input sm:w-56"
 />
 
             <select
               value={historyFilter}
               onChange={(e) => setHistoryFilter(e.target.value as HistoryFilter)}
-              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+              className="sp-select sm:w-auto"
             >
               <option value="all">All</option>
               <option value="excel">Excel only</option>
@@ -770,39 +785,39 @@ setManualMsg("");
 
             <button
               onClick={loadHistory}
-              className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+              className="sp-btn sp-btn-ghost"
             >
               {loadingHistory ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         </div>
 
-        <div className="max-h-[400px] overflow-y-auto border border-slate-800 rounded-xl">
-          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-            <thead className="bg-slate-950/50">
+        <div className="max-h-[400px] overflow-auto rounded-lg border border-sp-border">
+          <table className="sp-table">
+            <thead>
               <tr>
-                <th className="p-2 border-b border-slate-800 text-left">Date/Time</th>
-                <th className="p-2 border-b border-slate-800 text-left">User</th>
-                <th className="p-2 border-b border-slate-800 text-left">Vendor</th>
-                <th className="p-2 border-b border-slate-800 text-left">Reference</th>
-                <th className="p-2 border-b border-slate-800 text-right">Boxes</th>
-                <th className="p-2 border-b border-slate-800 text-right">IMEIs</th>
-                <th className="p-2 border-b border-slate-800 text-right">Excel</th>
-                <th className="p-2 border-b border-slate-800 text-right">Labels</th>
+                <th>Date/Time</th>
+                <th>User</th>
+                <th>Vendor</th>
+                <th>Reference</th>
+                <th className="text-right">Boxes</th>
+                <th className="text-right">IMEIs</th>
+                <th className="text-right">Excel</th>
+                <th className="text-right">Labels</th>
               </tr>
             </thead>
             <tbody>
               {filteredHistory.map((h) => (
-                <tr key={h.batch_id} className="hover:bg-slate-950/40">
-                  <td className="p-2 border-b border-slate-800">
+                <tr key={h.batch_id}>
+                  <td>
                     {fmtDateTime(h.created_at)}
                   </td>
-                  <td className="p-2 border-b border-slate-800">{h.actor}</td>
-                  <td className="p-2 border-b border-slate-800">{h.vendor}</td>
-          <td className="p-2 border-b border-slate-800">
+                  <td>{h.actor}</td>
+                  <td>{h.vendor}</td>
+          <td>
   {h.shipment_ref ? (
     <span
-      className="px-2 py-1 text-xs rounded-lg bg-slate-800 border border-slate-700 max-w-[220px] truncate inline-block"
+      className="sp-badge sp-badge-neutral inline-block max-w-[220px] truncate"
       title={h.shipment_ref}
     >
       {h.shipment_ref}
@@ -811,28 +826,28 @@ setManualMsg("");
     "-"
   )}
 </td>     
-                  <td className="p-2 border-b border-slate-800 text-right font-semibold">
+                  <td className="text-right font-semibold">
                     {h.qty_boxes}
                   </td>
-                  <td className="p-2 border-b border-slate-800 text-right font-semibold">
+                  <td className="text-right font-semibold">
                     {h.qty_imeis}
                   </td>
-                  <td className="p-2 border-b border-slate-800 text-right">
+                  <td className="text-right">
                     <a
                       href={`/api/inbound/export?batch_id=${encodeURIComponent(
                         h.batch_id
                       )}`}
-                      className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
+                      className="sp-btn sp-btn-ghost"
                     >
                       Excel
                     </a>
                   </td>
-                  <td className="p-2 border-b border-slate-800 text-right">
+                  <td className="text-right">
                     <a
                       href={`/api/inbound/labels?batch_id=${encodeURIComponent(
                         h.batch_id
                       )}&w_mm=105&h_mm=155`}
-                      className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
+                      className="sp-btn sp-btn-ghost"
                     >
                       ZD220 PDF
                     </a>
@@ -842,7 +857,7 @@ setManualMsg("");
 
               {filteredHistory.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="p-3 text-slate-400">
+                  <td colSpan={8} className="p-3 text-sp-muted">
                     No inbound batches for this filter.
                   </td>
                 </tr>
@@ -854,18 +869,18 @@ setManualMsg("");
 
   <button
     onClick={() => setPage((p) => Math.max(1, p - 1))}
-    className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
+    className="sp-btn sp-btn-ghost"
   >
     Previous
   </button>
 
-  <div className="text-sm text-slate-400">
+  <div className="text-sm text-sp-secondary">
     Page {page}
   </div>
 
   <button
     onClick={() => setPage((p) => p + 1)}
-    className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
+    className="sp-btn sp-btn-ghost"
   >
     Next
   </button>

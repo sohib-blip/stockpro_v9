@@ -1,46 +1,119 @@
 "use client";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { getUserRole } from "@/lib/getUserRoles";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ReactNode, useState, useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ReactNode, useEffect, useState } from "react";
 import {
-  LayoutDashboard,
   ArrowDownToLine,
   ArrowUpFromLine,
-  Tag,
-  Menu,
-  Package,
   Boxes,
-  Repeat,
-  RotateCcw,
+  LayoutDashboard,
   LogOut,
+  Repeat,
+  ShieldCheck,
   Timer,
-  Truck,
 } from "lucide-react";
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+type NavTab = {
+  href: string;
+  label: string;
+};
 
-  { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
-  { href: "/labels", label: "Labels", icon: Tag },
+type NavGroup = {
+  href: string;
+  label: string;
+  icon: typeof LayoutDashboard;
+  tabs?: NavTab[];
+  adminOnly?: boolean;
+};
 
-  { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
-  { href: "/accessories", label: "Accessories", icon: Boxes },
-  { href: "/supply", label: "Supply", icon: Truck },
-
-  { href: "/returns", label: "Returns", icon: RotateCcw },
-  { href: "/transfer", label: "Transfer", icon: Repeat },
-
-  { href: "/nrd", label: "NRD Tracker", icon: Timer },
-  { href: "/bins", label: "Bins", icon: Package },
+const NAV_GROUPS: NavGroup[] = [
+  {
+    href: "/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    href: "/supply",
+    label: "Receiving",
+    icon: ArrowDownToLine,
+    tabs: [
+      { href: "/supply", label: "Supply Orders" },
+      { href: "/inbound", label: "Inbound Processing" },
+    ],
+  },
+  {
+    href: "/outbound",
+    label: "Outbound",
+    icon: ArrowUpFromLine,
+    tabs: [
+      { href: "/outbound", label: "Device Outbound" },
+      { href: "/accessories", label: "Accessory Outbound" },
+    ],
+  },
+  {
+    href: "/bins",
+    label: "Inventory",
+    icon: Boxes,
+    tabs: [
+      { href: "/bins", label: "Inventory Setup" },
+      { href: "/labels", label: "Label Printing" },
+    ],
+  },
+  {
+    href: "/returns",
+    label: "Operations",
+    icon: Repeat,
+    tabs: [
+      { href: "/returns", label: "Customer Returns" },
+      { href: "/transfer", label: "Stock Transfers" },
+    ],
+  },
+  {
+    href: "/nrd",
+    label: "NRD",
+    icon: Timer,
+  },
+  {
+    href: "/admin",
+    label: "Admin",
+    icon: ShieldCheck,
+    adminOnly: true,
+  },
 ];
+
+function isRouteActive(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function isGroupActive(pathname: string, group: NavGroup) {
+  const routes = group.tabs?.map((tab) => tab.href) ?? [group.href];
+  return routes.some((href) => isRouteActive(pathname, href));
+}
+
+function getEmailInitials(email: string | null) {
+  if (!email) return "?";
+
+  const name = email.split("@")[0];
+  const parts = name.split(/[._\s-]+/).filter(Boolean);
+
+  if (parts.length > 1) {
+    return parts
+      .slice(0, 2)
+      .map((part) => part[0])
+      .join("")
+      .toUpperCase();
+  }
+
+  return name.slice(0, 2).toUpperCase();
+}
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "";
-  const [collapsed, setCollapsed] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
+  const [role, setRole] = useState<string | null>(null);
   const [activeNrd, setActiveNrd] = useState<any>(null);
 
   const supabase = createSupabaseBrowserClient();
@@ -57,6 +130,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       const user = data?.user;
 
       setEmail(user?.email || null);
+      setRole(await getUserRole());
 
       if (user?.email) {
         const res = await fetch(
@@ -83,110 +157,121 @@ export default function AppShell({ children }: { children: ReactNode }) {
     return () => clearInterval(interval);
   }, []);
 
+  const visibleNavGroups =
+    role === "viewer"
+      ? NAV_GROUPS.filter((group) => group.href === "/dashboard")
+      : NAV_GROUPS.filter((group) => !group.adminOnly || role === "admin");
+
+  const activeGroup = visibleNavGroups.find((group) =>
+    isGroupActive(pathname, group)
+  );
+
   return (
-    <div className="min-h-screen flex bg-slate-950 text-slate-100">
-      <aside
-        className={[
-          "h-screen sticky top-0 shrink-0 relative",
-          "bg-slate-950 border-r border-slate-800/80",
-          "transition-all duration-300",
-          collapsed ? "w-[72px]" : "w-[260px]",
-        ].join(" ")}
-      >
-        <div className="h-14 flex items-center justify-between px-3 border-b border-slate-800/80">
-          <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-xl bg-indigo-600 grid place-items-center">
-              <Package size={18} className="text-white" />
-            </div>
-            {!collapsed && (
-              <div>
-                <div className="font-semibold">StockPro</div>
-                <div className="text-[11px] text-slate-400">
-                  Inventory console
-                </div>
-              </div>
-            )}
-          </div>
+    <div className="min-h-screen bg-sp-bg text-sp-body">
+      <div className="sp-banner-test">
+        TEST ENVIRONMENT — DO NOT PROCESS REAL INVENTORY
+      </div>
 
-          <button onClick={() => setCollapsed(!collapsed)}>
-            <Menu size={18} />
-          </button>
-        </div>
-
-        <nav className="px-2 py-4 space-y-1 text-sm">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`
-                  flex items-center gap-3 px-3 py-2 rounded-xl
-                  transition-all duration-200
-                  ${collapsed ? "justify-center" : ""}
-                  hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(99,102,241,0.15)]
-                  ${
-                    pathname.startsWith(item.href)
-                      ? "bg-slate-800 shadow-[0_0_12px_rgba(99,102,241,0.25)]"
-                      : ""
-                  }
-                `}
-              >
-                <Icon size={18} className="shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="absolute bottom-4 left-0 w-full px-2 border-t border-slate-800 pt-3">
-          {!collapsed && email && (
-            <div className="px-3 py-2 text-xs text-slate-400 truncate">
-              {email}
-            </div>
-          )}
-
-          <button
-            onClick={handleLogout}
-            className={`
-              flex items-center gap-3 px-3 py-2 rounded-xl w-full
-              transition-all duration-200
-              ${collapsed ? "justify-center" : ""}
-              hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(239,68,68,0.2)]
-            `}
-          >
-            <LogOut size={18} />
-            {!collapsed && <span>Logout</span>}
-          </button>
-        </div>
-      </aside>
-
-      <section className="flex-1 p-8">
-        {activeNrd && (
-          <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 px-4 py-3 text-sm flex items-center justify-between">
-            <div>
-              ⏱ NRD task running: <b>{activeNrd.task}</b>
-              <span className="text-amber-300/70 ml-2">
-                Started at{" "}
-                {new Date(activeNrd.started_at).toLocaleTimeString()}
+      {activeNrd && (
+        <div className="sp-banner-nrd">
+          <div className="mx-auto flex max-w-[1360px] items-center justify-between gap-4 px-6">
+            <div className="flex min-w-0 items-center justify-center gap-2">
+              <Timer size={15} aria-hidden="true" />
+              <span className="truncate">
+                NRD task running: <b>{activeNrd.task}</b>
+                <span className="ml-2 font-normal">
+                  Started at{" "}
+                  {new Date(activeNrd.started_at).toLocaleTimeString("en-GB")}
+                </span>
               </span>
             </div>
 
-            <Link href="/nrd" className="text-xs underline font-semibold">
+            <Link href="/nrd" className="shrink-0 text-xs font-semibold underline">
               Open NRD
             </Link>
           </div>
-        )}
-
-        <div
-          className={`mx-auto w-full transition-all duration-300 ${
-            collapsed ? "max-w-[1400px]" : "max-w-screen-xl"
-          }`}
-        >
-          {children}
         </div>
-      </section>
+      )}
+
+      <header className="sticky top-0 z-40">
+        <div className="flex h-[60px] items-center border-b border-sp-border bg-sp-surface px-10">
+          <div className="flex shrink-0 items-baseline gap-3">
+            <Link href="/dashboard" className="text-base font-bold text-sp-text">
+              StockPro
+            </Link>
+            <span className="hidden text-[12.5px] text-sp-muted lg:inline">
+              Warehouse operations
+            </span>
+          </div>
+
+          <nav
+            aria-label="Primary navigation"
+            className="mx-8 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto"
+          >
+            {visibleNavGroups.map((group) => {
+              const Icon = group.icon;
+              const active = isGroupActive(pathname, group);
+
+              return (
+                <Link
+                  key={group.label}
+                  href={group.href}
+                  className={`sp-nav-item flex shrink-0 items-center gap-2 ${
+                    active ? "sp-nav-item-active" : ""
+                  }`}
+                >
+                  <Icon
+                    size={15}
+                    aria-hidden="true"
+                    className={active ? "text-sp-primary" : "text-sp-secondary"}
+                  />
+                  <span>{group.label}</span>
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="flex shrink-0 items-center gap-3">
+            {email && (
+              <span className="hidden max-w-48 truncate text-[12.5px] text-sp-secondary xl:block">
+                {email}
+              </span>
+            )}
+            <div className="sp-avatar" aria-label={email || "Signed-in user"}>
+              {getEmailInitials(email)}
+            </div>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="sp-btn sp-btn-ghost"
+            >
+              <LogOut size={15} aria-hidden="true" className="text-sp-secondary" />
+              <span>Sign out</span>
+            </button>
+          </div>
+        </div>
+
+        {activeGroup?.tabs && (
+          <nav
+            aria-label={`${activeGroup.label} navigation`}
+            className="flex gap-6 border-b border-sp-border bg-sp-surface px-10 py-2"
+          >
+            {activeGroup.tabs.map((tab) => (
+              <Link
+                key={tab.href}
+                href={tab.href}
+                className={`sp-tab ${
+                  isRouteActive(pathname, tab.href) ? "sp-tab-active" : ""
+                }`}
+              >
+                {tab.label}
+              </Link>
+            ))}
+          </nav>
+        )}
+      </header>
+
+      <main className="mx-auto w-full max-w-[1360px] px-6 py-6">{children}</main>
     </div>
   );
 }

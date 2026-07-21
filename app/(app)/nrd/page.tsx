@@ -298,47 +298,47 @@ async function stopTaskWithCorrection() {
 }
 
   return (
-    <div className="space-y-10 w-full">
+    <div className="space-y-6 w-full">
       {showForgottenModal && active && (
-  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-    <div className="w-full max-w-lg rounded-2xl border border-orange-500/40 bg-slate-950 shadow-2xl">
-      <div className="border-b border-slate-800 p-5">
-        <div className="text-xs font-semibold uppercase tracking-wider text-orange-400">
+  <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+    <div className="sp-card sp-card-flush w-full max-w-lg">
+      <div className="border-b border-sp-border p-5">
+        <div className="sp-eyebrow text-sp-warn">
           NRD review
         </div>
 
-        <h2 className="mt-1 text-xl font-semibold">
+        <h2 className="mt-1 text-xl font-semibold text-sp-text">
            Confirm NRD end
         </h2>
       </div>
 
       <div className="space-y-5 p-5">
-        <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-4 text-sm">
-          <div className="font-semibold text-orange-300">
+        <div className="sp-alert sp-alert-warn">
+          <div className="font-semibold">
             This NRD has been active for {formatTimer(seconds)}.
           </div>
 
-          <div className="mt-2 text-slate-300">
+          <div className="mt-2">
             Confirm that the task ended now, or choose the actual end time below.
           </div>
         </div>
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <div className="text-xs text-slate-500">Task</div>
-            <div className="mt-1 font-semibold">{active.task}</div>
+            <div className="sp-kpi-label">Task</div>
+            <div className="mt-1 font-semibold text-sp-text">{active.task}</div>
           </div>
 
           <div>
-            <div className="text-xs text-slate-500">Started</div>
-            <div className="mt-1">
+            <div className="sp-kpi-label">Started</div>
+            <div className="mt-1 text-sp-body">
               {new Date(active.started_at).toLocaleString("fr-BE")}
             </div>
           </div>
         </div>
 
         <div>
-          <label className="text-sm font-semibold text-slate-300">
+          <label className="sp-label">
             Real end date and time
           </label>
 
@@ -364,24 +364,24 @@ async function stopTaskWithCorrection() {
                 .slice(0, 16);
             })()}
             onChange={(e) => setCorrectEndTime(e.target.value)}
-            className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-orange-500"
+            className="sp-input"
           />
 
-          <div className="mt-2 text-xs text-slate-500">
+          <div className="mt-2 text-xs text-sp-muted">
             The NRD duration will be recalculated using this end time.
           </div>
         </div>
 
-        <div className="flex flex-col-reverse gap-3 border-t border-slate-800 pt-4 sm:flex-row sm:justify-end">
+        <div className="flex flex-col-reverse gap-3 border-t border-sp-border pt-4 sm:flex-row sm:justify-end">
           <button
             type="button"
             onClick={() => {
   setShowForgottenModal(false);
   setForgottenModalDismissed(true);
   setCorrectEndTime("");
-}}
+            }}
             disabled={busy}
-            className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-900 disabled:opacity-40"
+            className="sp-btn sp-btn-ghost"
           >
             Keep running
           </button>
@@ -390,7 +390,7 @@ async function stopTaskWithCorrection() {
             type="button"
             onClick={stopTask}
             disabled={busy}
-            className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40"
+            className="sp-btn sp-btn-danger"
           >
             {busy ? "Stopping..." : "It ended now"}
           </button>
@@ -399,7 +399,7 @@ async function stopTaskWithCorrection() {
             type="button"
             onClick={stopTaskWithCorrection}
             disabled={busy || !correctEndTime}
-            className="rounded-xl bg-orange-600 px-4 py-2 text-sm font-semibold hover:bg-orange-700 disabled:opacity-40"
+            className="sp-btn sp-btn-danger"
           >
             {busy ? "Saving..." : "Correct & stop"}
           </button>
@@ -408,37 +408,35 @@ async function stopTaskWithCorrection() {
     </div>
   </div>
 )}
-      <div>
-        <div className="text-xs text-slate-500">NRD</div>
-        <h2 className="text-xl font-semibold">NRD Tracker</h2>
-        <p className="text-sm text-slate-400 mt-1">
+      <div className="sp-page-header">
+        <div>
+        <div className="sp-eyebrow">NRD</div>
+        <h2 className="sp-title">NRD Tracker</h2>
+        <p className="sp-desc">
           User: <b>{userEmail || "loading..."}</b>
         </p>
+        </div>
       </div>
 
       {errorMsg && (
-        <div className="bg-red-600/20 border border-red-500 text-red-300 px-4 py-3 rounded-xl text-sm">
-          {errorMsg}
-        </div>
+        <div className="sp-alert sp-alert-err">{errorMsg}</div>
       )}
 
       {successMsg && (
-        <div className="bg-emerald-600/20 border border-emerald-500 text-emerald-300 px-4 py-3 rounded-xl text-sm">
-          {successMsg}
-        </div>
+        <div className="sp-alert sp-alert-ok">{successMsg}</div>
       )}
 
-      <div className="card-glow p-6 space-y-5 relative overflow-hidden">
-        <div className="font-semibold">Current NRD Task</div>
+      <section className="sp-card space-y-5">
+        <div className="font-semibold text-sp-text">Current NRD Task</div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
-            <div className="text-xs text-slate-400 mb-2">Task</div>
+            <label className="sp-label">Task</label>
             <select
               value={task}
               onChange={(e) => setTask(e.target.value)}
               disabled={!!active}
-              className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+              className="sp-select"
             >
               {NRD_TASKS.map((t) => (
                 <option key={t} value={t}>
@@ -448,19 +446,19 @@ async function stopTaskWithCorrection() {
             </select>
           </div>
 
-          <div>
-            <div className="text-xs text-slate-400 mb-2">Timer</div>
-            <div className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-2xl font-semibold tracking-widest">
+          <div className="sp-card sp-card-tight bg-sp-primary-tint text-center">
+            <div className="sp-kpi-label">Timer</div>
+            <div className="mt-2 font-mono text-4xl font-bold tracking-[0.14em] text-sp-primary sm:text-5xl">
               {formatTimer(seconds)}
             </div>
           </div>
         </div>
 
         {active && (
-          <div className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-3 text-sm">
-            <div className="text-slate-400">Active task</div>
-            <div className="font-semibold mt-1">{active.task}</div>
-            <div className="text-xs text-slate-500 mt-1">
+          <div className="rounded-lg border border-sp-border bg-sp-bg-soft px-4 py-3 text-sm">
+            <div className="text-sp-secondary">Active task</div>
+            <div className="font-semibold mt-1 text-sp-text">{active.task}</div>
+            <div className="text-xs text-sp-muted mt-1">
               Started at: {new Date(active.started_at).toLocaleString()}
             </div>
           </div>
@@ -471,7 +469,7 @@ async function stopTaskWithCorrection() {
             <button
               onClick={startTask}
               disabled={busy || !userEmail}
-              className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+              className="sp-btn sp-btn-primary"
             >
               {busy ? "Starting..." : "Start Task"}
             </button>
@@ -490,7 +488,7 @@ async function stopTaskWithCorrection() {
     setShowForgottenModal(true);
   }}
   disabled={busy}
-  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+  className="sp-btn sp-btn-danger"
 >
   {busy ? "Stopping..." : "Stop Task"}
 </button>
@@ -502,7 +500,7 @@ async function stopTaskWithCorrection() {
               loadStats(userEmail, periodMonth);
             }}
             disabled={busy || !userEmail}
-            className="rounded-xl border border-slate-800 bg-slate-950 hover:bg-slate-800 px-4 py-2 font-semibold disabled:opacity-40"
+            className="sp-btn sp-btn-ghost"
           >
             Refresh
           </button>
@@ -515,7 +513,7 @@ async function stopTaskWithCorrection() {
         )}&period_month=${encodeURIComponent(periodMonth)}`
       : "#"
   }
-  className={`rounded-xl border border-slate-800 bg-slate-950 hover:bg-slate-800 px-4 py-2 font-semibold ${
+  className={`sp-btn sp-btn-ghost ${
     !userEmail ? "opacity-40 pointer-events-none" : ""
   }`}
 >
@@ -533,60 +531,60 @@ async function stopTaskWithCorrection() {
           )}&period_month=${encodeURIComponent(periodMonth)}`
         : "#"
     }
-    className="rounded-xl border border-purple-500/50 bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 px-4 py-2 font-semibold"
+    className="sp-btn sp-btn-ghost text-sp-primary"
   >
     Export Global Excel
   </a>
 )}
 
         </div>
-      </div>
+      </section>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="card-glow p-5 rounded-xl">
-          <div className="text-xs text-slate-400 mb-1">Selected month</div>
+        <div className="sp-card sp-card-tight">
+          <div className="sp-kpi-label mb-2">Selected month</div>
           <input
             type="month"
             value={periodMonth}
             onChange={(e) => setPeriodMonth(e.target.value)}
-            className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            className="sp-select"
           />
         </div>
 
-        <div className="card-glow p-5 rounded-xl">
-          <div className="text-xs text-slate-400 mb-1">Total time</div>
-          <div className="text-3xl font-bold text-cyan-400">
+        <div className="sp-card sp-card-tight">
+          <div className="sp-kpi-label">Total time</div>
+          <div className="sp-kpi-value">
             {formatHours(Number(stats?.total_minutes || 0))}
           </div>
         </div>
 
-        <div className="card-glow p-5 rounded-xl">
-          <div className="text-xs text-slate-400 mb-1">Completed tasks</div>
-          <div className="text-3xl font-bold text-purple-400">
+        <div className="sp-card sp-card-tight">
+          <div className="sp-kpi-label">Completed tasks</div>
+          <div className="sp-kpi-value">
             {stats?.tasks_count || 0}
           </div>
         </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
-        <div className="font-semibold">Task Breakdown</div>
+      <section className="sp-card space-y-4">
+        <div className="font-semibold text-sp-text">Task Breakdown</div>
 
         <div className="space-y-3">
           {stats?.by_task?.length ? (
             stats.by_task.map((row: any) => (
               <div key={row.task}>
                 <div className="flex justify-between text-sm mb-1">
-                  <span className="text-cyan-400 font-semibold">
+                  <span className="text-sp-body font-semibold">
                     {row.task}
                   </span>
-                  <span className="text-slate-400">
+                  <span className="text-sp-muted">
                     {formatHours(Number(row.minutes || 0))}
                   </span>
                 </div>
 
-                <div className="w-full bg-white/10 h-2 rounded">
+                <div className="w-full bg-sp-bg h-2 rounded-full">
                   <div
-                    className="bg-purple-500 h-2 rounded"
+                    className="bg-sp-primary h-2 rounded-full"
                     style={{
                       width: `${
                         stats.total_minutes
@@ -603,51 +601,51 @@ async function stopTaskWithCorrection() {
               </div>
             ))
           ) : (
-            <div className="text-sm text-slate-500">
+            <div className="text-sm text-sp-muted">
               No completed NRD tasks for this month.
             </div>
           )}
         </div>
-      </div>
+      </section>
 
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
-        <div className="flex justify-between items-center">
-          <div className="font-semibold">My NRD History</div>
-          <div className="text-xs text-slate-400">
+      <section className="sp-card sp-card-flush">
+        <div className="flex justify-between items-center px-6 py-5">
+          <div className="font-semibold text-sp-text">My NRD History</div>
+          <div className="text-xs text-sp-muted">
             Last {history.length} activities
           </div>
         </div>
 
-        <div className="border border-slate-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-950/50">
+        <div className="overflow-x-auto border-t border-sp-border">
+          <table className="sp-table">
+            <thead>
               <tr>
-                <th className="p-2 text-left">Date</th>
-                <th className="p-2 text-left">Start</th>
-                <th className="p-2 text-left">End</th>
-                <th className="p-2 text-left">Task</th>
-                <th className="p-2 text-right">Minutes</th>
+                <th>Date</th>
+                <th>Start</th>
+                <th>End</th>
+                <th>Task</th>
+                <th className="text-right">Minutes</th>
               </tr>
             </thead>
 
             <tbody>
               {history.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="p-4 text-center text-slate-500">
+                  <td colSpan={5} className="text-center text-sp-muted">
                     No NRD history yet.
                   </td>
                 </tr>
               )}
 
               {history.map((row) => (
-                <tr key={row.id} className="border-t border-slate-800">
-                  <td className="p-2">{formatDate(row.started_at)}</td>
-                  <td className="p-2">{formatTime(row.started_at)}</td>
-                  <td className="p-2">
+                <tr key={row.id}>
+                  <td>{formatDate(row.started_at)}</td>
+                  <td>{formatTime(row.started_at)}</td>
+                  <td>
                     {row.ended_at ? formatTime(row.ended_at) : "-"}
                   </td>
-                  <td className="p-2">{row.task}</td>
-                  <td className="p-2 text-right font-semibold">
+                  <td>{row.task}</td>
+                  <td className="text-right font-semibold">
                     {row.duration_minutes ?? "-"}
                   </td>
                 </tr>
@@ -655,7 +653,7 @@ async function stopTaskWithCorrection() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

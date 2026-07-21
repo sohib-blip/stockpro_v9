@@ -152,49 +152,49 @@ if (salesJson.ok){
 
  return (
 
-<div className="pt-4 px-2 pb-10 space-y-10 w-full">
+<div className="w-full space-y-8 pb-10">
 
-<div className="grid grid-cols-3 items-center">
-  <div className="flex items-center gap-3">
+<div className="sp-page-header">
+  <div>
+    <div className="sp-eyebrow">Inventory</div>
+    <h1 className="sp-title">Inventory Dashboard</h1>
+    <p className="sp-desc">Stock, movement, and accessory overview</p>
+  </div>
+
+  <div className="flex flex-wrap items-center gap-2">
     <a
       href="/api/dashboard/export"
-      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+      className="sp-btn sp-btn-ghost"
     >
       Export Stock
     </a>
 
     <a
       href="/api/dashboard/export-count-sheet"
-      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+      className="sp-btn sp-btn-ghost"
     >
       Export Count Sheet
     </a>
 
     <button
       onClick={() => window.open("/api/accessory-bins/export", "_blank")}
-      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+      className="sp-btn sp-btn-ghost"
     >
       Export Accessories
     </button>
   </div>
-
-  <h1 className="text-3xl font-semibold tracking-tight text-center">
-    Inventory Dashboard
-  </h1>
-
-  <div></div>
 </div>
 
 {/* SEARCH */}
 
-<div className="card-glow p-4 rounded-xl">
+<div className="sp-card sp-card-tight">
 
 <input
 type="text"
 placeholder="Search device..."
 value={search}
 onChange={(e)=>setSearch(e.target.value)}
-className="w-full text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-2 outline-none"
+className="sp-input"
 />
 
 </div>
@@ -206,38 +206,38 @@ className="w-full text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-
 
 <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
 
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+<div className="sp-card">
+<div className="sp-kpi-label">
 Total bins
 </div>
-<div className="text-4xl font-bold text-cyan-400">
+<div className="sp-kpi-value">
 {kpi.total_bins}
 </div>
 </div>
 
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+<div className="sp-card">
+<div className="sp-kpi-label">
 Total boxes
 </div>
-<div className="text-4xl font-bold text-cyan-400">
+<div className="sp-kpi-value">
 {kpi.total_boxes}
 </div>
 </div>
 
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+<div className="sp-card">
+<div className="sp-kpi-label">
 Total IMEI
 </div>
-<div className="text-4xl font-bold text-cyan-400">
+<div className="sp-kpi-value">
 {kpi.total_imei}
 </div>
 </div>
 
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+<div className="sp-card">
+<div className="sp-kpi-label">
 Alerts
 </div>
-<div className="text-4xl font-bold text-purple-400">
+<div className="sp-kpi-value">
 {kpi.alerts}
 </div>
 </div>
@@ -248,13 +248,13 @@ Alerts
 
 {/* GRAPH */}
 
-<div className="card-glow p-6 rounded-xl">
+<div className="sp-card">
 
 {/* GRAPH */}
 
-<div className="card-glow p-2 rounded-xl md:col-span-3">
+<div className="md:col-span-3">
 
-<h2 className="text-lg font-semibold mb-6">
+<h2 className="mb-6 text-lg font-semibold text-sp-text">
 Device Flow Overview
 </h2>
 
@@ -270,7 +270,7 @@ Device Flow Overview
 
 <CartesianGrid
  strokeDasharray="3 3"
- stroke="rgba(255,255,255,0.05)"
+ stroke="#e6e4de"
 />
 
 <XAxis
@@ -279,28 +279,31 @@ Device Flow Overview
  textAnchor="end"
  interval={0}
  height={110}
- tick={{ fill:"#94a3b8", fontSize:12 }}
+ tick={{ fill:"#8a8f9b", fontSize:12 }}
 />
 
 <YAxis
  allowDecimals={false}
  domain={[0,'auto']}
- tick={{ fill:"#94a3b8", fontSize:12 }}
+ tick={{ fill:"#8a8f9b", fontSize:12 }}
 />
 
 <Tooltip
  contentStyle={{
-  background:"#020617",
-  border:"1px solid rgba(255,255,255,0.08)",
-  borderRadius:"10px"
+  background:"#ffffff",
+  border:"1px solid #e6e4de",
+  borderRadius:"8px",
+  color:"#20242c"
  }}
+ labelStyle={{ color:"#20242c" }}
+ itemStyle={{ color:"#3a4150" }}
 />
 
 <Legend/>
 
 <Bar
  dataKey="in"
- fill="#38bdf8"
+ fill="#1d4ed8"
  name="Inbound"
  radius={[6,6,0,0]}
  barSize={36}
@@ -308,7 +311,7 @@ Device Flow Overview
 
 <Bar
  dataKey="out"
- fill="#a855f7"
+ fill="#047857"
  name="Outbound"
  radius={[6,6,0,0]}
  barSize={36}
@@ -325,52 +328,52 @@ Device Flow Overview
 
 <div className="grid md:grid-cols-4 gap-6">
 
-<div className="card-glow p-5 rounded-xl">
+<div className="sp-card sp-card-tight">
 
-<div className="text-xs text-slate-400 mb-1">
+<div className="sp-kpi-label">
 Devices sold this month
 </div>
 
-<div className="text-3xl font-bold text-purple-400">
+<div className="sp-kpi-value">
 {salesTable.reduce((a,b)=>a+b.total_out,0)}
 </div>
 
 </div>
 
 
-<div className="card-glow p-5 rounded-xl">
+<div className="sp-card sp-card-tight">
 
-<div className="text-xs text-slate-400 mb-1">
+<div className="sp-kpi-label">
 Top device
 </div>
 
-<div className="text-xl font-semibold text-cyan-400">
+<div className="sp-kpi-value">
 {topDevices[0]?.device || "-"}
 </div>
 
 </div>
 
 
-<div className="card-glow p-5 rounded-xl">
+<div className="sp-card sp-card-tight">
 
-<div className="text-xs text-slate-400 mb-1">
+<div className="sp-kpi-label">
 IMEI in stock
 </div>
 
-<div className="text-3xl font-bold text-cyan-400">
+<div className="sp-kpi-value">
 {kpi?.total_imei ?? 0}
 </div>
 
 </div>
 
 
-<div className="card-glow p-5 rounded-xl">
+<div className="sp-card sp-card-tight">
 
-<div className="text-xs text-slate-400 mb-1">
+<div className="sp-kpi-label">
 Low stock alerts
 </div>
 
-<div className="text-3xl font-bold text-orange-400">
+<div className="sp-kpi-value">
 {bins.filter(b => b.min_stock && b.imei_count <= b.min_stock).length}
 </div>
 
@@ -384,9 +387,9 @@ Low stock alerts
 
 {/* RECENT ACTIVITY */}
 
-<div className="card-glow p-5 rounded-xl">
+<div className="sp-card">
 
-<h2 className="text-md font-semibold mb-4">
+<h2 className="mb-4 text-md font-semibold text-sp-text">
 Recent Activity
 </h2>
 
@@ -398,12 +401,12 @@ Recent Activity
 
 <div className={
 a.type === "IN"
-? "text-green-400 font-semibold"
+? "text-sp-ok font-semibold"
 : a.type === "OUT"
-? "text-red-400 font-semibold"
+? "text-sp-err font-semibold"
 : a.type === "RETURN"
-? "text-emerald-400 font-semibold"
-: "text-cyan-400 font-semibold"
+? "text-sp-ok font-semibold"
+: "text-sp-info font-semibold"
 }>
 
 {a.type === "IN" && (
@@ -431,7 +434,7 @@ a.type === "IN"
 )}
 
 </div>
-<div className="text-slate-400 text-xs">
+<div className="text-xs text-sp-muted">
 {new Date(a.created_at).toLocaleString("fr-BE",{
 day:"2-digit",
 month:"2-digit",
@@ -452,10 +455,10 @@ minute:"2-digit"
 {/* TOP SELLING DEVICES */}
 
 <div
-className="card-glow p-6 rounded-xl cursor-pointer hover:bg-white/5 transition"
+className="sp-card cursor-pointer transition-colors hover:bg-sp-bg-soft"
 >
 
-<h2 className="text-lg font-semibold mb-4">
+<h2 className="mb-4 text-lg font-semibold text-sp-text">
 Top Selling Devices (This Month)
 </h2>
 
@@ -472,20 +475,20 @@ return(
 
 <div className="flex justify-between text-sm mb-1">
 
-<span className="text-cyan-400 font-semibold">
+<span className="font-semibold text-sp-primary">
 {d.device}
 </span>
 
-<span className="text-slate-400">
+<span className="text-sp-muted">
 {d.total_out} sold • {percent}%
 </span>
 
 </div>
 
-<div className="w-full bg-white/10 h-2 rounded">
+<div className="h-2 w-full rounded bg-sp-border">
 
 <div
-className="bg-purple-500 h-2 rounded"
+className="h-2 rounded bg-sp-primary"
 style={{width:`${percent}%`}}
 />
 
@@ -506,18 +509,19 @@ style={{width:`${percent}%`}}
 
 {/* BINS */}
 
-<div className="card-glow p-6 rounded-xl">
+<div className="sp-card sp-card-flush">
 
-<h2 className="text-lg font-semibold mb-5">
+<h2 className="px-6 pb-4 pt-5 text-lg font-semibold text-sp-text">
 Bins
 </h2>
 
-<table className="w-full text-sm border-collapse">
+<div className="overflow-x-auto">
+<table className="sp-table">
 
 <thead>
 
-<tr className="text-left text-slate-400 border-b border-white/5">
-<th className="py-2">Device</th>
+<tr>
+<th>Device</th>
 <th>Boxes</th>
 <th>IMEI</th>
 <th>Min stock</th>
@@ -544,13 +548,12 @@ return (
 <tr
 key={b.device_id}
 className={`cursor-pointer transition
- ${level === "low" ? "bg-orange-500/10" : ""}
- ${level === "critical" ? "bg-red-500/10" : ""}
- hover:bg-white/5`}
+ ${level === "low" ? "bg-sp-warn-bg" : ""}
+ ${level === "critical" ? "bg-sp-err-bg" : ""}`}
 onClick={()=>openDrilldown(b.device_id)}
 >
 
-<td className="py-2">{b.device}</td>
+<td>{b.device}</td>
 
 <td>{b.boxes_count}</td>
 
@@ -564,7 +567,7 @@ onClick={()=>openDrilldown(b.device_id)}
 type="number"
 value={b.min_stock ?? 0}
 autoFocus
-className="w-16 bg-black/40 border border-white/10 rounded px-2 py-1 text-sm"
+className="sp-input w-16 py-1"
 
 onChange={(e)=>{
 
@@ -601,7 +604,7 @@ onBlur={async(e)=>{
 ) : (
 
 <div
-className="cursor-pointer flex items-center gap-2 text-slate-300 hover:text-white transition"
+className="flex cursor-pointer items-center gap-2 text-sp-body transition-colors hover:text-sp-primary"
 onClick={(e)=>{
  e.stopPropagation()
  setEditingMinStock(b.device_id)
@@ -610,7 +613,7 @@ onClick={(e)=>{
 
 <span>{b.min_stock ?? 0}</span>
 
-<span className="text-xs text-slate-500">🔒</span>
+<span className="text-xs text-sp-muted">🔒</span>
 
 </div>
 
@@ -621,10 +624,10 @@ onClick={(e)=>{
 <td>
 
 <span
-className={`px-2 py-1 rounded text-xs font-semibold
- ${level === "ok" ? "bg-green-500/20 text-green-400" : ""}
- ${level === "low" ? "bg-yellow-500/20 text-yellow-400" : ""}
- ${level === "critical" ? "bg-red-500/20 text-red-400" : ""}
+className={`sp-badge
+ ${level === "ok" ? "sp-badge-ok" : ""}
+ ${level === "low" ? "sp-badge-low" : ""}
+ ${level === "critical" ? "sp-badge-empty" : ""}
 `}
 >
 
@@ -645,6 +648,7 @@ className={`px-2 py-1 rounded text-xs font-semibold
 </tbody>
 
 </table>
+</div>
 
 </div>
 
@@ -653,17 +657,17 @@ className={`px-2 py-1 rounded text-xs font-semibold
 
 {openDevice && (
 
-<div className="card-glow p-6 rounded-xl">
+<div className="sp-card">
 
 <div className="flex justify-between items-center mb-5">
 
-<h2 className="text-lg font-semibold">
+<h2 className="text-lg font-semibold text-sp-text">
 Device {deviceName}
 </h2>
 
 <button
 onClick={()=>setOpenDevice(null)}
-className="text-sm border px-3 py-1 rounded hover:bg-white/10"
+className="sp-btn sp-btn-ghost"
 >
 Close
 </button>
@@ -675,15 +679,16 @@ type="text"
 placeholder="Filter box..."
 value={boxSearch}
 onChange={(e)=>setBoxSearch(e.target.value)}
-className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-sm outline-none"
+className="sp-input mb-4"
 />
 
-<table className="w-full text-sm">
+<div className="overflow-x-auto">
+<table className="sp-table">
 
 <thead>
 
-<tr className="text-left text-slate-400 border-b border-white/5">
-<th className="py-2">Box</th>
+<tr>
+<th>Box</th>
 <th>Floor</th>
 <th>Remaining</th>
 <th>Total ever</th>
@@ -702,7 +707,7 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
 .map((d)=>(
 <tr key={d.box_id}>
 
-<td className="py-2">{d.box_code}</td>
+<td>{d.box_code}</td>
 <td>{d.floor}</td>
 <td>{d.remaining}</td>
 <td>{d.total_ever}</td>
@@ -714,6 +719,7 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
 </tbody>
 
 </table>
+</div>
 
 </div>
 
@@ -722,10 +728,10 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
 
 {/* ACCESSORIES STOCK */}
 
-<div className="card-glow p-6 rounded-xl">
+<div className="sp-card">
 
-<div className="flex items-center justify-between mb-5">
-  <h2 className="text-lg font-semibold">
+<div className="mb-5 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
+  <h2 className="text-lg font-semibold text-sp-text">
     Accessories Stock
   </h2>
 
@@ -734,37 +740,37 @@ className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 t
     placeholder="Search accessory or bin..."
     value={accessorySearch}
     onChange={(e)=>setAccessorySearch(e.target.value)}
-    className="w-[300px] text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-2 outline-none"
+    className="sp-input sm:w-[300px]"
   />
 </div>
 
 {accessoryKpis && (
   <div className="grid md:grid-cols-4 gap-4 mb-6">
 
-    <div className="bg-white/5 rounded-xl p-4">
-      <div className="text-xs text-slate-400 mb-1">Accessories</div>
-      <div className="text-2xl font-bold text-cyan-400">
+    <div className="sp-card sp-card-tight">
+      <div className="sp-kpi-label">Accessories</div>
+      <div className="sp-kpi-value">
         {accessoryKpis.total_accessories}
       </div>
     </div>
 
-    <div className="bg-white/5 rounded-xl p-4">
-      <div className="text-xs text-slate-400 mb-1">Total Qty</div>
-      <div className="text-2xl font-bold text-purple-400">
+    <div className="sp-card sp-card-tight">
+      <div className="sp-kpi-label">Total Qty</div>
+      <div className="sp-kpi-value">
         {accessoryKpis.total_qty}
       </div>
     </div>
 
-    <div className="bg-white/5 rounded-xl p-4">
-      <div className="text-xs text-slate-400 mb-1">Low Stock</div>
-      <div className="text-2xl font-bold text-orange-400">
+    <div className="sp-card sp-card-tight">
+      <div className="sp-kpi-label">Low Stock</div>
+      <div className="sp-kpi-value">
         {accessoryKpis.low_stock}
       </div>
     </div>
 
-    <div className="bg-white/5 rounded-xl p-4">
-      <div className="text-xs text-slate-400 mb-1">Empty</div>
-      <div className="text-2xl font-bold text-red-400">
+    <div className="sp-card sp-card-tight">
+      <div className="sp-kpi-label">Empty</div>
+      <div className="sp-kpi-value">
         {accessoryKpis.empty_stock}
       </div>
     </div>

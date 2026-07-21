@@ -133,34 +133,35 @@ export default function LabelsPage() {
 
   return (
     <div className="space-y-6 w-full">
-      <div>
-        <div className="text-xs text-slate-500">Labels</div>
-        <h2 className="text-xl font-semibold">QR Label Generator (ZD220)</h2>
-        <p className="text-sm text-slate-400 mt-1">
-        </p>
+      <div className="sp-page-header">
+        <div>
+          <div className="sp-eyebrow">Labels</div>
+          <h2 className="sp-title">QR Label Generator (ZD220)</h2>
+          <p className="sp-desc"></p>
+        </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4">
+      <div className="sp-card space-y-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="text-sm font-semibold">Label size</div>
+          <div className="text-sm font-semibold text-sp-text">Label size</div>
 
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-slate-400">W (mm)</span>
+            <label className="sp-label mb-0">W (mm)</label>
             <input
               type="number"
               value={wMm}
               onChange={(e) => setWMm(Number(e.target.value))}
-              className="w-24 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
+              className="sp-input w-24"
             />
           </div>
 
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-slate-400">H (mm)</span>
+            <label className="sp-label mb-0">H (mm)</label>
             <input
               type="number"
               value={hMm}
               onChange={(e) => setHMm(Number(e.target.value))}
-              className="w-24 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
+              className="sp-input w-24"
             />
           </div>
 
@@ -168,23 +169,21 @@ export default function LabelsPage() {
 
           <button
             onClick={addLabel}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+            className="sp-btn sp-btn-ghost"
           >
             + Add label
           </button>
 
           <button
             onClick={downloadPdf}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
+            className="sp-btn sp-btn-primary"
           >
             Download PDF (all labels)
           </button>
         </div>
 
         {msg && (
-          <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
-            {msg}
-          </div>
+          <div className="sp-alert sp-alert-err">{msg}</div>
         )}
       </div>
 
@@ -194,14 +193,14 @@ export default function LabelsPage() {
           return (
             <div
               key={l.id}
-              className="card-glow p-6 space-y-4"
+              className="sp-card space-y-4"
             >
               <div className="flex items-center justify-between gap-3">
-                <div className="font-semibold">Label #{idx + 1}</div>
+                <div className="font-semibold text-sp-text">Label #{idx + 1}</div>
                 {labels.length > 1 && (
                   <button
                     onClick={() => removeLabel(l.id)}
-                    className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                    className="sp-btn sp-btn-ghost"
                   >
                     Remove
                   </button>
@@ -210,11 +209,11 @@ export default function LabelsPage() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <div className="text-xs text-slate-400">Bin / Device</div>
+                  <label className="sp-label">Bin / Device</label>
                   <select
                     value={l.device_id}
                     onChange={(e) => updateLabel(l.id, { device_id: e.target.value })}
-                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+                    className="sp-select"
                   >
                     {devices.length === 0 && <option value="">No bins</option>}
                     {devices.map((d) => (
@@ -226,21 +225,21 @@ export default function LabelsPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <div className="text-xs text-slate-400">Box ID / Box No</div>
+                  <label className="sp-label">Box ID / Box No</label>
                   <input
                     value={l.box}
                     onChange={(e) => updateLabel(l.id, { box: e.target.value })}
                     placeholder="ex: BOX-000123"
-                    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+                    className="sp-input"
                   />
                 </div>
               </div>
 
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-slate-400">IMEIs</div>
-                  <div className="text-xs text-slate-400">
-                    Detected: <b className="text-slate-200">{imeis.length}</b>
+                  <label className="sp-label mb-0">IMEIs</label>
+                  <div className="text-xs text-sp-muted">
+                    Detected: <b className="sp-badge sp-badge-brand">{imeis.length}</b>
                   </div>
                 </div>
 
@@ -248,7 +247,7 @@ export default function LabelsPage() {
                   value={l.imeisText}
                   onChange={(e) => updateLabel(l.id, { imeisText: e.target.value })}
                   placeholder="IMEI"
-                  className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
+                  className="sp-textarea h-32"
                 />
               </div>
             </div>

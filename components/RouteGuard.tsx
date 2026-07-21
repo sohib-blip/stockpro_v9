@@ -55,6 +55,11 @@ export default function RouteGuard({ children }: Props) {
         return;
       }
 
+      if (pathname.startsWith("/admin") && role !== "admin") {
+        router.push("/dashboard");
+        return;
+      }
+
       if (
         (pathname.startsWith("/inbound") ||
           pathname.startsWith("/outbound") ||

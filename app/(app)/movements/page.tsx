@@ -12,12 +12,14 @@ export default function MovementsPage() {
   }, []);
 
   return (
-    <div className="space-y-4">
-      <h2 className="text-xl font-semibold">Movements History</h2>
+    <div className="space-y-6">
+      <div className="sp-page-header">
+        <h1 className="sp-title">Movements History</h1>
+      </div>
 
-      <div className="rounded-xl border border-slate-800 bg-slate-900 p-4">
+      <div className="sp-card">
         {rows.map(r => (
-          <div key={r.movement_id} className="text-sm border-b border-slate-800 py-2">
+          <div key={r.movement_id} className="border-b border-sp-border py-2 text-sm text-sp-body last:border-b-0">
             {r.type} — {r.imei} — {r.created_at}
           </div>
         ))}

@@ -184,164 +184,167 @@ export default function TransferPage() {
   });
 
   return (
-    <div className="space-y-10 w-full">
+    <div className="w-full">
       {success && (
-        <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
+        <div className="sp-alert sp-alert-ok fixed bottom-6 right-6 z-40">
           ✅ Transfer completed
         </div>
       )}
 
-      <div>
-        <div className="text-xs text-slate-500">Transfer</div>
-        <h2 className="text-xl font-semibold">Move Multiple Boxes</h2>
+      <div className="sp-page-header">
+        <div>
+          <div className="sp-eyebrow">Transfer</div>
+          <h1 className="sp-title">Move Multiple Boxes</h1>
+        </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4">
-        <textarea
-          value={boxInput}
-          onChange={(e) => setBoxInput(e.target.value)}
-          placeholder="Enter box codes (1 per line)"
-          className="w-full h-28 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3"
-        />
+      <div className="space-y-6">
+        <div className="sp-card space-y-4">
+          <textarea
+            value={boxInput}
+            onChange={(e) => setBoxInput(e.target.value)}
+            placeholder="Enter box codes (1 per line)"
+            className="sp-textarea h-28"
+          />
 
-        <select
-          value={sourceBinId}
-          onChange={(e) => setSourceBinId(e.target.value)}
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
-        >
-          <option value="">Select device</option>
-          {bins.map((bin) => (
-            <option key={bin.id} value={bin.id}>
-              {bin.name}
-            </option>
-          ))}
-        </select>
+          <select
+            value={sourceBinId}
+            onChange={(e) => setSourceBinId(e.target.value)}
+            className="sp-select"
+          >
+            <option value="">Select device</option>
+            {bins.map((bin) => (
+              <option key={bin.id} value={bin.id}>
+                {bin.name}
+              </option>
+            ))}
+          </select>
 
-        <select
-          value={targetFloor}
-          onChange={(e) => setTargetFloor(e.target.value)}
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
-        >
-          <option value="00">To Floor 00</option>
-          <option value="1">To Floor 1</option>
-          <option value="6">To Floor 6</option>
-          <option value="Cabinet">To Cabinet</option>
-        </select>
+          <select
+            value={targetFloor}
+            onChange={(e) => setTargetFloor(e.target.value)}
+            className="sp-select"
+          >
+            <option value="00">To Floor 00</option>
+            <option value="1">To Floor 1</option>
+            <option value="6">To Floor 6</option>
+            <option value="Cabinet">To Cabinet</option>
+          </select>
 
-        <button
-          onClick={previewTransfer}
-          disabled={loadingPreview}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
-        >
-          {loadingPreview ? "Loading..." : "Preview Transfer"}
-        </button>
-      </div>
+          <button
+            onClick={previewTransfer}
+            disabled={loadingPreview}
+            className="sp-btn sp-btn-primary"
+          >
+            {loadingPreview ? "Loading..." : "Preview Transfer"}
+          </button>
+        </div>
 
-      {preview?.preview && (
-        <div className="card-glow p-6 space-y-5">
-          <div className="flex justify-between items-center">
-            <div className="font-semibold text-lg">Transfer Preview</div>
-            <div className="text-sm text-slate-400">
-              {preview.total_boxes} boxes • {preview.total_items} IMEIs
+        {preview?.preview && (
+          <div className="sp-card space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="text-lg font-semibold text-sp-text">Transfer Preview</div>
+              <div className="text-sm text-sp-muted">
+                {preview.total_boxes} boxes • {preview.total_items} IMEIs
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-lg border border-sp-border">
+              <table className="sp-table">
+                <thead>
+                  <tr>
+                    <th>Box</th>
+                    <th>Device</th>
+                    <th>Current Floor</th>
+                    <th className="text-right">IMEIs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.boxes.map((b: any, i: number) => (
+                    <tr key={i}>
+                      <td className="font-semibold">{b.box_code}</td>
+                      <td>{b.device}</td>
+                      <td>{b.current_floor}</td>
+                      <td className="text-right">{b.imei_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <button
+              onClick={confirmTransfer}
+              disabled={loadingConfirm}
+              className="sp-btn sp-btn-primary"
+            >
+              {loadingConfirm ? "Transferring..." : "Confirm Transfer"}
+            </button>
+          </div>
+        )}
+
+        {errorMsg && <div className="sp-alert sp-alert-err">{errorMsg}</div>}
+
+        <div className="sp-card space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="font-semibold text-sp-text">Transfer History</div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                value={searchBox}
+                onChange={(e) => setSearchBox(e.target.value)}
+                placeholder="Search box..."
+                className="sp-input max-w-xs"
+              />
+
+              <select
+                value={filterFloor}
+                onChange={(e) => setFilterFloor(e.target.value)}
+                className="sp-select w-auto"
+              >
+                <option value="all">All floors</option>
+                <option value="00">Floor 00</option>
+                <option value="1">Floor 1</option>
+                <option value="6">Floor 6</option>
+                <option value="Cabinet">Cabinet</option>
+              </select>
+
+              <button onClick={loadHistory} className="sp-btn sp-btn-ghost">
+                {loadingHistory ? "Refreshing..." : "Refresh"}
+              </button>
             </div>
           </div>
 
-          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="p-2 text-left">Box</th>
-                <th className="p-2 text-left">Device</th>
-                <th className="p-2 text-left">Current Floor</th>
-                <th className="p-2 text-right">IMEIs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.boxes.map((b: any, i: number) => (
-                <tr key={i} className="hover:bg-slate-950/40">
-                  <td className="p-2 font-semibold">{b.box_code}</td>
-                  <td className="p-2">{b.device}</td>
-                  <td className="p-2">{b.current_floor}</td>
-                  <td className="p-2 text-right">{b.imei_count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <button
-            onClick={confirmTransfer}
-            disabled={loadingConfirm}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
-          >
-            {loadingConfirm ? "Transferring..." : "Confirm Transfer"}
-          </button>
-        </div>
-      )}
-
-      {errorMsg && <div className="text-red-500 text-sm">{errorMsg}</div>}
-
-      <div className="card-glow p-6 space-y-4">
-        <div className="flex flex-wrap gap-3 justify-between items-center">
-          <div className="font-semibold">Transfer History</div>
-
-          <div className="flex flex-wrap gap-2 items-center">
-            <input
-              value={searchBox}
-              onChange={(e) => setSearchBox(e.target.value)}
-              placeholder="Search box..."
-              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-            />
-
-            <select
-              value={filterFloor}
-              onChange={(e) => setFilterFloor(e.target.value)}
-              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
-            >
-              <option value="all">All floors</option>
-              <option value="00">Floor 00</option>
-              <option value="1">Floor 1</option>
-              <option value="6">Floor 6</option>
-              <option value="Cabinet">Cabinet</option>
-            </select>
-
-            <button
-              onClick={loadHistory}
-              className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm hover:bg-slate-800"
-            >
-              {loadingHistory ? "Refreshing..." : "Refresh"}
-            </button>
-          </div>
-        </div>
-
-        <div className="max-h-[400px] overflow-y-auto border border-slate-800 rounded-xl">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="p-2 text-left">Date</th>
-                <th className="p-2 text-left">User</th>
-                <th className="p-2 text-left">Box</th>
-                <th className="p-2 text-left">Floor</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredHistory.map((h, i) => (
-                <tr key={i} className="hover:bg-slate-950/40">
-                  <td className="p-2">{fmtDate(h.created_at)}</td>
-                  <td className="p-2">{h.actor}</td>
-                  <td className="p-2 font-semibold">{h.boxes?.box_code}</td>
-                  <td className="p-2">{h.boxes?.floor}</td>
-                </tr>
-              ))}
-
-              {filteredHistory.length === 0 && (
+          <div className="max-h-[400px] overflow-x-auto overflow-y-auto rounded-lg border border-sp-border">
+            <table className="sp-table">
+              <thead>
                 <tr>
-                  <td colSpan={4} className="p-3 text-slate-400">
-                    No transfers found.
-                  </td>
+                  <th>Date</th>
+                  <th>User</th>
+                  <th>Box</th>
+                  <th>Floor</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {filteredHistory.map((h, i) => (
+                  <tr key={i}>
+                    <td>{fmtDate(h.created_at)}</td>
+                    <td>{h.actor}</td>
+                    <td className="font-semibold">{h.boxes?.box_code}</td>
+                    <td>{h.boxes?.floor}</td>
+                  </tr>
+                ))}
+
+                {filteredHistory.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="text-sp-muted">
+                      No transfers found.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

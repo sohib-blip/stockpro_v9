@@ -4,6 +4,12 @@ import { useState, useEffect } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import ConfirmDialog from "@/components/ConfirmDialog";
 
+function getMessageTone(message: string) {
+  if (message.startsWith("📧")) return "sp-alert-info";
+  if (message.includes("cancelled")) return "sp-alert-warn";
+  return "sp-alert-err";
+}
+
 export default function LoginPage() {
   const supabase = createSupabaseBrowserClient();
 
@@ -18,26 +24,27 @@ export default function LoginPage() {
   const [pendingSessionId, setPendingSessionId] = useState("");
 
   useEffect(() => {
-  const check = async () => {
-    const {
-      data: { session },
-    } = await supabase.auth.getSession();
+    const check = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-    const localSessionId = window.sessionStorage.getItem("stockpro_session_id");
+      const localSessionId = window.sessionStorage.getItem("stockpro_session_id");
 
-    if (session?.user && localSessionId) {
-      window.location.href = "/dashboard";
-      return;
-    }
+      if (session?.user && localSessionId) {
+        window.location.href = "/dashboard";
+        return;
+      }
 
-    if (session?.user && !localSessionId) {
-      await supabase.auth.signOut();
-      return;
-    }
-  };
+      if (session?.user && !localSessionId) {
+        await supabase.auth.signOut();
+        return;
+      }
+    };
 
-  check();
-}, [supabase]);
+    check();
+  }, [supabase]);
+
   async function completeLogin(userId: string, sessionId: string) {
     const { error: profileError } = await supabase
       .from("profiles")
@@ -90,53 +97,53 @@ export default function LoginPage() {
     const sessionId = crypto.randomUUID();
 
     let { data: profile, error: profileReadError } = await supabase
-  .from("profiles")
-  .select("current_session_id,last_seen_at")
-  .eq("user_id", user.id)
-  .maybeSingle();
+      .from("profiles")
+      .select("current_session_id,last_seen_at")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-if (profileReadError) {
-  setLoading(false);
-  setMsg(profileReadError.message);
-  return;
-}
+    if (profileReadError) {
+      setLoading(false);
+      setMsg(profileReadError.message);
+      return;
+    }
 
-if (!profile) {
-  const { error: insertProfileError } = await supabase.from("profiles").insert({
-    user_id: user.id,
-    email: user.email,
-    current_session_id: null,
-    last_seen_at: null,
-  });
+    if (!profile) {
+      const { error: insertProfileError } = await supabase.from("profiles").insert({
+        user_id: user.id,
+        email: user.email,
+        current_session_id: null,
+        last_seen_at: null,
+      });
 
-  if (insertProfileError) {
-    setLoading(false);
-    setMsg(insertProfileError.message);
-    return;
-  }
+      if (insertProfileError) {
+        setLoading(false);
+        setMsg(insertProfileError.message);
+        return;
+      }
 
-  profile = {
-    current_session_id: null,
-    last_seen_at: null,
-  };
-}
+      profile = {
+        current_session_id: null,
+        last_seen_at: null,
+      };
+    }
 
     const lastSeen = profile?.last_seen_at
-  ? new Date(profile.last_seen_at).getTime()
-  : 0;
+      ? new Date(profile.last_seen_at).getTime()
+      : 0;
 
-const isSessionReallyActive =
-  profile?.current_session_id &&
-  lastSeen &&
-  Date.now() - lastSeen < 2 * 60 * 1000;
+    const isSessionReallyActive =
+      profile?.current_session_id &&
+      lastSeen &&
+      Date.now() - lastSeen < 2 * 60 * 1000;
 
-if (isSessionReallyActive) {
-  setPendingUserId(user.id);
-  setPendingSessionId(sessionId);
-  setShowSessionDialog(true);
-  setLoading(false);
-  return;
-}
+    if (isSessionReallyActive) {
+      setPendingUserId(user.id);
+      setPendingSessionId(sessionId);
+      setShowSessionDialog(true);
+      setLoading(false);
+      return;
+    }
 
     await completeLogin(user.id, sessionId);
   }
@@ -182,7 +189,7 @@ if (isSessionReallyActive) {
   }
 
   return (
-    <main className="min-h-screen p-6 flex items-center justify-center bg-slate-950 text-slate-100">
+    <main className="flex min-h-screen items-center justify-center bg-sp-bg p-6 text-sp-body">
       <ConfirmDialog
         open={showSessionDialog}
         title="🔒 Active session detected"
@@ -196,51 +203,75 @@ if (isSessionReallyActive) {
         onCancel={cancelTakeOver}
       />
 
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/60 shadow-sm p-6">
-        <h1 className="text-2xl font-bold mb-2">🔐 Login</h1>
-
-        <p className="text-sm text-slate-400 mb-5">
-          Sign in to access the dashboard.
-        </p>
-
-        <label className="text-sm text-slate-300">Email</label>
-        <input
-          type="email"
-          className="w-full rounded-lg border border-slate-800 bg-slate-950/60 p-2 mb-3 outline-none focus:ring-2 focus:ring-slate-700"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="test@gmail.com"
-        />
-
-        <label className="text-sm text-slate-300">Password</label>
-        <input
-          type="password"
-          className="w-full rounded-lg border border-slate-800 bg-slate-950/60 p-2 mb-4 outline-none focus:ring-2 focus:ring-slate-700"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="min 6 characters"
-        />
-
-        <div className="flex flex-col gap-2">
-          <button
-            type="button"
-            onClick={signIn}
-            disabled={loading}
-            className="w-full rounded-lg bg-slate-800 text-slate-100 hover:bg-slate-700 px-4 py-2 font-semibold disabled:opacity-50"
-          >
-            {loading ? "..." : "Sign in"}
-          </button>
-
-          <button
-            type="button"
-            onClick={resetPassword}
-            className="text-xs text-slate-400 hover:text-slate-200"
-          >
-            Forgot password?
-          </button>
+      <div className="sp-card sp-card-flush w-full max-w-md">
+        <div className="sp-banner-test">
+          TEST ENVIRONMENT — DO NOT PROCESS REAL INVENTORY
         </div>
 
-        {msg && <p className="mt-4 text-sm text-slate-200">{msg}</p>}
+        <div className="p-6">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-sp-text">StockPro</h1>
+            <p className="mt-1 text-sm font-medium text-sp-secondary">
+              Warehouse operations
+            </p>
+            <p className="mt-2 text-sm text-sp-muted">
+              Sign in to access the dashboard.
+            </p>
+          </div>
+
+          <div className="mb-4">
+            <label htmlFor="email" className="sp-label">
+              Email
+            </label>
+            <input
+              id="email"
+              type="email"
+              className="sp-input"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="test@gmail.com"
+            />
+          </div>
+
+          <div className="mb-5">
+            <label htmlFor="password" className="sp-label">
+              Password
+            </label>
+            <input
+              id="password"
+              type="password"
+              className="sp-input"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="min 6 characters"
+            />
+          </div>
+
+          <div className="flex flex-col gap-3">
+            <button
+              type="button"
+              onClick={signIn}
+              disabled={loading}
+              className="sp-btn sp-btn-primary w-full"
+            >
+              {loading ? "..." : "Sign in"}
+            </button>
+
+            <button
+              type="button"
+              onClick={resetPassword}
+              className="self-center text-xs font-medium text-sp-primary hover:text-sp-primary-hover"
+            >
+              Forgot password?
+            </button>
+          </div>
+
+          {msg && (
+            <p className={`sp-alert mt-5 ${getMessageTone(msg)}`} role="status">
+              {msg}
+            </p>
+          )}
+        </div>
       </div>
     </main>
   );

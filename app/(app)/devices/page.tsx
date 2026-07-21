@@ -50,60 +50,61 @@ export default function DevicesPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+      <div className="sp-page-header">
         <div>
-          <div className="text-xs text-slate-500">Inventory</div>
-          <h2 className="text-xl font-semibold">Devices inventory</h2>
-          <p className="text-sm text-slate-400 mt-1">
+          <div className="sp-eyebrow">Inventory</div>
+          <h1 className="sp-title">Devices inventory</h1>
+          <p className="sp-desc">
             Search + totals par device.
           </p>
         </div>
 
         <button
           onClick={load}
-          className="rounded-xl border border-slate-800 bg-slate-900 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+          className="sp-btn sp-btn-ghost"
         >
           Refresh
         </button>
       </div>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900 p-4 space-y-3">
+      <div className="sp-card space-y-3">
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search device…"
-          className="w-full md:w-[360px] rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          className="sp-input md:w-[360px]"
         />
 
         {loading ? (
-          <div className="text-sm text-slate-300">Loading…</div>
+          <div className="sp-desc">Loading…</div>
         ) : (
-          <div className="overflow-auto">
-            <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-              <thead className="bg-slate-950/50">
+          <div className="sp-card sp-card-flush">
+            <div className="overflow-x-auto">
+              <table className="sp-table">
+                <thead>
                 <tr>
-                  <th className="text-left p-2 border-b border-slate-800">Device</th>
-                  <th className="text-right p-2 border-b border-slate-800">Items</th>
-                  <th className="text-right p-2 border-b border-slate-800">IMEIs</th>
-                  <th className="text-right p-2 border-b border-slate-800">Boxes</th>
-                  <th className="text-right p-2 border-b border-slate-800">Units/IMEI</th>
-                  <th className="text-right p-2 border-b border-slate-800">Min</th>
+                  <th>Device</th>
+                  <th className="text-right">Items</th>
+                  <th className="text-right">IMEIs</th>
+                  <th className="text-right">Boxes</th>
+                  <th className="text-right">Units/IMEI</th>
+                  <th className="text-right">Min</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((r) => (
-                  <tr key={r.device_id} className="hover:bg-slate-950/40">
-                    <td className="p-2 border-b border-slate-800">
-                      <div className="font-semibold">{r.device}</div>
-                      <div className="text-xs text-slate-500">{r.canonical_name}</div>
+                  <tr key={r.device_id}>
+                    <td>
+                      <div className="font-semibold text-sp-text">{r.device}</div>
+                      <div className="text-xs text-sp-muted">{r.canonical_name}</div>
                     </td>
-                    <td className="p-2 border-b border-slate-800 text-right font-semibold">
+                    <td className="text-right font-semibold">
                       {r.items}
                     </td>
-                    <td className="p-2 border-b border-slate-800 text-right">{r.imeis}</td>
-                    <td className="p-2 border-b border-slate-800 text-right">{r.boxes}</td>
-                    <td className="p-2 border-b border-slate-800 text-right">{r.units_per_imei}</td>
-                    <td className="p-2 border-b border-slate-800 text-right">
+                    <td className="text-right">{r.imeis}</td>
+                    <td className="text-right">{r.boxes}</td>
+                    <td className="text-right">{r.units_per_imei}</td>
+                    <td className="text-right">
                       {r.min_stock}
                     </td>
                   </tr>
@@ -111,13 +112,14 @@ export default function DevicesPage() {
 
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="p-3 text-slate-400">
+                    <td colSpan={6} className="sp-desc">
                       No devices.
                     </td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

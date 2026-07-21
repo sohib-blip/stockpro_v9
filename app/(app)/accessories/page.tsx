@@ -280,78 +280,71 @@ export default function AccessoriesPage() {
   });
 
   return (
-        <div className="space-y-10 w-full">
-      <div>
-        <div className="text-xs text-slate-500">Accessories</div>
-        <h2 className="text-xl font-semibold">Accessories Outbound</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Manual outbound, Excel outbound and history for accessories.
-        </p>
+    <div className="w-full">
+      <div className="sp-page-header">
+        <div>
+          <div className="sp-eyebrow">Accessories</div>
+          <h1 className="sp-title">Accessories Outbound</h1>
+          <p className="sp-desc">
+            Manual outbound, Excel outbound and history for accessories.
+          </p>
+        </div>
       </div>
 
       {busy && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl flex items-center gap-3 shadow-xl">
-            <div className="h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-            <div className="font-semibold text-sm">Processing...</div>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="sp-card sp-card-tight flex items-center gap-3">
+            <div className="h-5 w-5 animate-spin rounded-full border-2 border-sp-primary border-t-transparent" />
+            <div className="text-sm font-semibold text-sp-text">Processing...</div>
           </div>
         </div>
       )}
 
       {previewOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="sp-card w-full max-w-3xl space-y-5">
+            <div className="flex items-start justify-between gap-4 border-b border-sp-border pb-4">
               <div>
-                <div className="text-xs text-slate-500">Preview</div>
-                <div className="font-semibold text-lg">
+                <div className="sp-eyebrow">Preview</div>
+                <div className="text-lg font-semibold text-sp-text">
                   Confirm accessories outbound
                 </div>
               </div>
 
-              <button
-                onClick={closePreview}
-                className="text-slate-400 hover:text-slate-200 text-sm"
-              >
+              <button onClick={closePreview} className="sp-btn sp-btn-ghost">
                 Close
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
-              <div className="text-sm text-slate-400">
+            <div className="space-y-4">
+              <div className="text-sm text-sp-muted">
                 Please review the stock changes before confirming.
               </div>
 
-              <div className="border border-slate-800 rounded-xl overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-900">
+              <div className="overflow-x-auto rounded-lg border border-sp-border">
+                <table className="sp-table">
+                  <thead>
                     <tr>
-                      <th className="p-3 text-left">Accessory</th>
-                      <th className="p-3 text-right">Qty</th>
-                      <th className="p-3 text-right">Current stock</th>
-                      <th className="p-3 text-right">After</th>
+                      <th>Accessory</th>
+                      <th className="text-right">Qty</th>
+                      <th className="text-right">Current stock</th>
+                      <th className="text-right">After</th>
                     </tr>
                   </thead>
 
                   <tbody>
                     {previewRows.map((row) => (
-                      <tr
-                        key={row.accessory_bin_id}
-                        className="border-t border-slate-800"
-                      >
-                        <td className="p-3 font-semibold">{row.accessory}</td>
-                        <td className="p-3 text-right">{row.qty}</td>
-                        <td className="p-3 text-right">{row.current_stock}</td>
-                        <td className="p-3 text-right">{row.after_stock}</td>
+                      <tr key={row.accessory_bin_id}>
+                        <td className="font-semibold">{row.accessory}</td>
+                        <td className="text-right">{row.qty}</td>
+                        <td className="text-right">{row.current_stock}</td>
+                        <td className="text-right">{row.after_stock}</td>
                       </tr>
                     ))}
 
                     {previewRows.length === 0 && (
                       <tr>
-                        <td
-                          colSpan={4}
-                          className="p-4 text-center text-slate-500"
-                        >
+                        <td colSpan={4} className="text-center text-sp-muted">
                           No preview rows.
                         </td>
                       </tr>
@@ -361,199 +354,186 @@ export default function AccessoriesPage() {
               </div>
 
               <div className="flex justify-end gap-3">
-  <div className="flex justify-end gap-3">
-  <button
-  onClick={closePreview}
-  disabled={busy}
-  className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed"
->
-  Cancel
-</button>
+                <button
+                  onClick={closePreview}
+                  disabled={busy}
+                  className="sp-btn sp-btn-ghost"
+                >
+                  Cancel
+                </button>
 
-  <button
-  onClick={confirmPreview}
-  disabled={busy || previewRows.length === 0}
-  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-w-[180px]"
->
-  {busy && (
-    <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-  )}
-
-  {busy ? "Processing..." : "Confirm outbound"}
-</button>
-</div>
+                <button
+                  onClick={confirmPreview}
+                  disabled={busy || previewRows.length === 0}
+                  className="sp-btn sp-btn-primary min-w-[180px]"
+                >
+                  {busy && (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  )}
+                  {busy ? "Processing..." : "Confirm outbound"}
+                </button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {errorMsg && (
-        <div className="bg-red-600/20 border border-red-500 text-red-300 px-4 py-3 rounded-xl text-sm">
-          {errorMsg}
+      <div className="space-y-6">
+        {errorMsg && <div className="sp-alert sp-alert-err">{errorMsg}</div>}
+
+        {successMsg && <div className="sp-alert sp-alert-ok">{successMsg}</div>}
+
+        <div className="sp-card space-y-4">
+          <div className="font-semibold text-sp-text">Shipment</div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <input
+              value={shipmentRef}
+              onChange={(e) => setShipmentRef(e.target.value)}
+              placeholder="Shipment reference..."
+              className="sp-input"
+            />
+
+            <input
+              value={comment}
+              onChange={(e) => setComment(e.target.value)}
+              placeholder="Comment optional..."
+              className="sp-input"
+            />
+          </div>
         </div>
-      )}
 
-      {successMsg && (
-        <div className="bg-emerald-600/20 border border-emerald-500 text-emerald-300 px-4 py-3 rounded-xl text-sm">
-          {successMsg}
-        </div>
-      )}
+        <div className="sp-card space-y-4">
+          <div className="font-semibold text-sp-text">Manual Outbound</div>
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Shipment</div>
+          <div className="space-y-3">
+            {lines.map((line, index) => (
+              <div
+                key={index}
+                className="grid grid-cols-1 gap-3 md:grid-cols-[1fr_160px_100px]"
+              >
+                <select
+                  value={line.accessory_id}
+                  onChange={(e) =>
+                    updateLine(index, { accessory_id: e.target.value })
+                  }
+                  className="sp-select"
+                >
+                  <option value="">Select accessory</option>
+                  {accessories.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} — stock {a.current_stock ?? 0}
+                    </option>
+                  ))}
+                </select>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <input
-            value={shipmentRef}
-            onChange={(e) => setShipmentRef(e.target.value)}
-            placeholder="Shipment reference..."
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
+                <input
+                  type="number"
+                  min={1}
+                  value={line.qty}
+                  onChange={(e) =>
+                    updateLine(index, { qty: Number(e.target.value) })
+                  }
+                  className="sp-input"
+                />
 
-          <input
-            value={comment}
-            onChange={(e) => setComment(e.target.value)}
-            placeholder="Comment optional..."
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
-        </div>
-      </div>
+                <button
+                  onClick={() => removeLine(index)}
+                  disabled={lines.length === 1}
+                  className="sp-btn sp-btn-ghost border-[var(--sp-err-border)] text-[var(--sp-err-text)] hover:bg-[var(--sp-err-soft)]"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+          </div>
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Manual Outbound</div>
+          <div className="flex flex-wrap gap-3">
+            <button onClick={addLine} className="sp-btn sp-btn-ghost">
+              + Add line
+            </button>
 
-        <div className="space-y-3">
-          {lines.map((line, index) => (
-            <div
-              key={index}
-              className="grid grid-cols-1 md:grid-cols-[1fr_160px_100px] gap-3"
+            <button
+              onClick={previewManualOutbound}
+              className="sp-btn sp-btn-primary"
             >
-              <select
-                value={line.accessory_id}
-                onChange={(e) =>
-                  updateLine(index, { accessory_id: e.target.value })
-                }
-                className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-              >
-                <option value="">Select accessory</option>
-                {accessories.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name} — stock {a.current_stock ?? 0}
-                  </option>
-                ))}
-              </select>
-
-              <input
-                type="number"
-                min={1}
-                value={line.qty}
-                onChange={(e) =>
-                  updateLine(index, { qty: Number(e.target.value) })
-                }
-                className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-              />
-
-              <button
-                onClick={() => removeLine(index)}
-                disabled={lines.length === 1}
-                className="rounded-xl border border-slate-800 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-40"
-              >
-                Remove
-              </button>
-            </div>
-          ))}
+              Preview Shipment
+            </button>
+          </div>
         </div>
 
-        <div className="flex gap-3">
-          <button
-            onClick={addLine}
-            className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
-          >
-            + Add line
-          </button>
+        <div className="sp-card space-y-4">
+          <div className="font-semibold text-sp-text">Excel Outbound</div>
 
-          <button
-            onClick={previewManualOutbound}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold"
-          >
-            Preview Shipment
-          </button>
-        </div>
-      </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+              className="sp-input max-w-md"
+            />
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Excel Outbound</div>
+            <button
+              onClick={previewExcelOutbound}
+              disabled={!file}
+              className="sp-btn sp-btn-primary"
+            >
+              Preview Excel
+            </button>
+          </div>
 
-        <div className="flex flex-wrap gap-3 items-center">
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-          />
-
-          <button
-            onClick={previewExcelOutbound}
-            disabled={!file}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
-          >
-            Preview Excel
-          </button>
+          <div className="text-xs text-sp-muted">
+            Reads IMEI and Item Type, then calculates accessories automatically.
+          </div>
         </div>
 
-        <div className="text-xs text-slate-500">
-          Reads IMEI and Item Type, then calculates accessories automatically.
-        </div>
-      </div>
+        <div className="sp-card space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="font-semibold text-sp-text">History</div>
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="flex justify-between items-center">
-          <div className="font-semibold">History</div>
+            <input
+              placeholder="Search history..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="sp-input max-w-xs"
+            />
+          </div>
 
-          <input
-            placeholder="Search history..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
-        </div>
-
-        <div className="border border-slate-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="p-2 text-left">Date</th>
-                <th className="p-2 text-left">Shipment</th>
-                <th className="p-2 text-left">Accessory</th>
-                <th className="p-2 text-right">Qty</th>
-                <th className="p-2 text-left">User</th>
-                <th className="p-2 text-left">Comment</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {filteredHistory.map((h) => (
-                <tr key={h.id} className="border-t border-slate-800">
-                  <td className="p-2">
-                    {new Date(h.created_at).toLocaleString()}
-                  </td>
-                  <td className="p-2">{h.shipment_ref || "-"}</td>
-                  <td className="p-2">{h.accessory_name || "-"}</td>
-                  <td className="p-2 text-right">{h.qty}</td>
-                  <td className="p-2">{h.actor || "-"}</td>
-                  <td className="p-2">{h.comment || h.note || "-"}</td>
-                </tr>
-              ))}
-
-              {filteredHistory.length === 0 && (
+          <div className="overflow-x-auto rounded-lg border border-sp-border">
+            <table className="sp-table">
+              <thead>
                 <tr>
-                  <td colSpan={6} className="p-4 text-center text-slate-500">
-                    No history yet.
-                  </td>
+                  <th>Date</th>
+                  <th>Shipment</th>
+                  <th>Accessory</th>
+                  <th className="text-right">Qty</th>
+                  <th>User</th>
+                  <th>Comment</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+
+              <tbody>
+                {filteredHistory.map((h) => (
+                  <tr key={h.id}>
+                    <td>{new Date(h.created_at).toLocaleString()}</td>
+                    <td>{h.shipment_ref || "-"}</td>
+                    <td>{h.accessory_name || "-"}</td>
+                    <td className="text-right">{h.qty}</td>
+                    <td>{h.actor || "-"}</td>
+                    <td>{h.comment || h.note || "-"}</td>
+                  </tr>
+                ))}
+
+                {filteredHistory.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-center text-sp-muted">
+                      No history yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>

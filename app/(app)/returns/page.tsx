@@ -183,286 +183,289 @@ export default function ReturnsPage() {
   }
 
   return (
-    <div className="space-y-8 w-full">
+    <div className="w-full">
       {busy && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
-          <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl shadow-xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="sp-card sp-card-tight text-sm font-semibold text-sp-text">
             Processing...
           </div>
         </div>
       )}
 
-      <div>
-        <div className="text-xs text-slate-500">Returns</div>
-        <h2 className="text-xl font-semibold">Customer Return</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          User: <b>{actor}</b>
-        </p>
+      <div className="sp-page-header">
+        <div>
+          <div className="sp-eyebrow">Returns</div>
+          <h1 className="sp-title">Customer Return</h1>
+          <p className="sp-desc">
+            User: <b>{actor}</b>
+          </p>
+        </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Return information</div>
+      <div className="space-y-6">
+        <div className="sp-card space-y-4">
+          <div className="font-semibold text-sp-text">Return information</div>
 
-        <input
-          value={returnRef}
-          onChange={(e) => setReturnRef(e.target.value)}
-          placeholder="Return reference / customer / note"
-          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-        />
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          <select
-            value={returnType}
-            onChange={(e) => {
-              setReturnType(e.target.value);
-              setReturnReason("");
-            }}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          >
-            <option value="">Choose return type</option>
-            <option value="cancellation_stop">Cancellation stop</option>
-            <option value="technical_stop">Technical stop</option>
-          </select>
-
-          {returnType && (
-            <select
-              value={returnReason}
-              onChange={(e) => setReturnReason(e.target.value)}
-              className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-            >
-              <option value="">Choose reason</option>
-              {(returnType === "cancellation_stop"
-                ? cancellationReasons
-                : technicalReasons
-              ).map((reason) => (
-                <option key={reason} value={reason}>
-                  {reason}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input
-            value={targetBox}
-            onChange={(e) => setTargetBox(e.target.value)}
-            placeholder="Target return box, ex: RETURN-001"
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+            value={returnRef}
+            onChange={(e) => setReturnRef(e.target.value)}
+            placeholder="Return reference / customer / note"
+            className="sp-input"
           />
 
-          <select
-            value={targetFloor}
-            onChange={(e) => setTargetFloor(e.target.value)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          >
-            <option value="00">Floor 00</option>
-            <option value="1">Floor 1</option>
-            <option value="6">Floor 6</option>
-            <option value="Cabinet">Cabinet</option>
-          </select>
-        </div>
-
-        <textarea
-          value={imeisText}
-          onChange={(e) => setImeisText(e.target.value)}
-          placeholder="Scan or paste returned IMEIs here, one per line"
-          className="w-full h-40 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
-        />
-
-        <button
-          onClick={previewReturn}
-          disabled={busy}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
-        >
-          Preview Return
-        </button>
-      </div>
-
-      {msg && (
-        <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm">
-          {msg}
-        </div>
-      )}
-
-      {preview?.ok && (
-        <div className="card-glow p-6 space-y-5">
-          <div className="flex justify-between items-center">
-            <div className="font-semibold">Return Preview</div>
-            <div className="text-sm text-slate-400">
-              Scanned: {preview.total_scanned}
-            </div>
-          </div>
-
-          <div className="grid md:grid-cols-3 gap-4">
-            <div className="rounded-xl border border-emerald-800 bg-emerald-950/30 p-4">
-              <div className="text-xs text-emerald-300">Valid returns</div>
-              <div className="text-3xl font-bold">{preview.valid_returns.length}</div>
-            </div>
-
-            <div className="rounded-xl border border-orange-800 bg-orange-950/30 p-4">
-              <div className="text-xs text-orange-300">Already in stock</div>
-              <div className="text-3xl font-bold">{preview.already_in_stock.length}</div>
-            </div>
-
-            <div className="rounded-xl border border-red-800 bg-red-950/30 p-4">
-              <div className="text-xs text-red-300">Unknown IMEI</div>
-              <div className="text-3xl font-bold">{preview.unknown_imeis.length}</div>
-            </div>
-          </div>
-
-          {preview.valid_returns?.length > 0 && (
-            <div>
-              <div className="font-semibold mb-2">Return details</div>
-
-              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-                <thead className="bg-slate-950/50">
-                  <tr>
-                    <th className="p-2 text-left">IMEI</th>
-                    <th className="p-2 text-left">Device / Bin</th>
-                    <th className="p-2 text-left">Previous box</th>
-                    <th className="p-2 text-left">Previous floor</th>
-                    <th className="p-2 text-left">Return type</th>
-                    <th className="p-2 text-left">Reason</th>
-                    <th className="p-2 text-left">Target box</th>
-                    <th className="p-2 text-left">Target floor</th>
-                  </tr>
-                </thead>
-
-                <tbody>
-                  {preview.valid_returns.map((item: any) => (
-                    <tr key={item.imei} className="border-t border-slate-800">
-                      <td className="p-2">{item.imei}</td>
-                      <td className="p-2 font-semibold text-cyan-400">{item.device}</td>
-                      <td className="p-2">{item.previous_box || "-"}</td>
-                      <td className="p-2">{item.previous_floor || "-"}</td>
-                      <td className="p-2">{returnType || "-"}</td>
-                      <td className="p-2">{returnReason || "-"}</td>
-                      <td className="p-2">{targetBox || "-"}</td>
-                      <td className="p-2">{targetFloor || "-"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {(preview.already_in_stock?.length > 0 || preview.unknown_imeis?.length > 0) && (
-            <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-xs space-y-2">
-              {preview.already_in_stock?.length > 0 && (
-                <div>
-                  <b>Already in stock:</b> {preview.already_in_stock.join(", ")}
-                </div>
-              )}
-              {preview.unknown_imeis?.length > 0 && (
-                <div>
-                  <b>Unknown IMEI:</b> {preview.unknown_imeis.join(", ")}
-                </div>
-              )}
-            </div>
-          )}
-
-          <div className="flex gap-3">
-            <button
-              onClick={confirmReturn}
-              disabled={busy || preview.valid_returns.length === 0}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
-            >
-              Confirm Return
-            </button>
-
-            <button
-              onClick={() => {
-                setPreview(null);
-                setMsg("");
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <select
+              value={returnType}
+              onChange={(e) => {
+                setReturnType(e.target.value);
+                setReturnReason("");
               }}
-              disabled={busy}
-              className="rounded-xl border border-slate-800 bg-slate-950 hover:bg-slate-800 px-4 py-2 font-semibold disabled:opacity-50"
+              className="sp-select"
             >
-              Cancel Preview
-            </button>
-          </div>
-        </div>
-      )}
+              <option value="">Choose return type</option>
+              <option value="cancellation_stop">Cancellation stop</option>
+              <option value="technical_stop">Technical stop</option>
+            </select>
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <div className="font-semibold">Returns history</div>
-            <div className="text-xs text-slate-500">
-              All customer returns with reason and export
+            {returnType && (
+              <select
+                value={returnReason}
+                onChange={(e) => setReturnReason(e.target.value)}
+                className="sp-select"
+              >
+                <option value="">Choose reason</option>
+                {(returnType === "cancellation_stop"
+                  ? cancellationReasons
+                  : technicalReasons
+                ).map((reason) => (
+                  <option key={reason} value={reason}>
+                    {reason}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            <input
+              value={targetBox}
+              onChange={(e) => setTargetBox(e.target.value)}
+              placeholder="Target return box, ex: RETURN-001"
+              className="sp-input"
+            />
+
+            <select
+              value={targetFloor}
+              onChange={(e) => setTargetFloor(e.target.value)}
+              className="sp-select"
+            >
+              <option value="00">Floor 00</option>
+              <option value="1">Floor 1</option>
+              <option value="6">Floor 6</option>
+              <option value="Cabinet">Cabinet</option>
+            </select>
+          </div>
+
+          <textarea
+            value={imeisText}
+            onChange={(e) => setImeisText(e.target.value)}
+            placeholder="Scan or paste returned IMEIs here, one per line"
+            className="sp-textarea h-40"
+          />
+
+          <button
+            onClick={previewReturn}
+            disabled={busy}
+            className="sp-btn sp-btn-primary"
+          >
+            Preview Return
+          </button>
+        </div>
+
+        {msg && (
+          <div
+            className={`sp-alert ${msg.startsWith("✅") ? "sp-alert-ok" : "sp-alert-err"}`}
+          >
+            {msg}
+          </div>
+        )}
+
+        {preview?.ok && (
+          <div className="sp-card space-y-5">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="font-semibold text-sp-text">Return Preview</div>
+              <div className="text-sm text-sp-muted">
+                Scanned: {preview.total_scanned}
+              </div>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="sp-card sp-card-tight">
+                <div className="sp-badge sp-badge-ok">Valid returns</div>
+                <div className="sp-kpi-value">{preview.valid_returns.length}</div>
+              </div>
+
+              <div className="sp-card sp-card-tight">
+                <div className="sp-badge sp-badge-low">Already in stock</div>
+                <div className="sp-kpi-value">{preview.already_in_stock.length}</div>
+              </div>
+
+              <div className="sp-card sp-card-tight">
+                <div className="sp-badge sp-badge-empty">Unknown IMEI</div>
+                <div className="sp-kpi-value">{preview.unknown_imeis.length}</div>
+              </div>
+            </div>
+
+            {preview.valid_returns?.length > 0 && (
+              <div className="space-y-2">
+                <div className="font-semibold text-sp-text">Return details</div>
+
+                <div className="overflow-x-auto rounded-lg border border-sp-border">
+                  <table className="sp-table">
+                    <thead>
+                      <tr>
+                        <th>IMEI</th>
+                        <th>Device / Bin</th>
+                        <th>Previous box</th>
+                        <th>Previous floor</th>
+                        <th>Return type</th>
+                        <th>Reason</th>
+                        <th>Target box</th>
+                        <th>Target floor</th>
+                      </tr>
+                    </thead>
+
+                    <tbody>
+                      {preview.valid_returns.map((item: any) => (
+                        <tr key={item.imei}>
+                          <td>{item.imei}</td>
+                          <td className="font-semibold text-sp-primary">{item.device}</td>
+                          <td>{item.previous_box || "-"}</td>
+                          <td>{item.previous_floor || "-"}</td>
+                          <td>{returnType || "-"}</td>
+                          <td>{returnReason || "-"}</td>
+                          <td>{targetBox || "-"}</td>
+                          <td>{targetFloor || "-"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {(preview.already_in_stock?.length > 0 ||
+              preview.unknown_imeis?.length > 0) && (
+              <div className="sp-alert sp-alert-warn space-y-2 text-xs">
+                {preview.already_in_stock?.length > 0 && (
+                  <div>
+                    <b>Already in stock:</b> {preview.already_in_stock.join(", ")}
+                  </div>
+                )}
+                {preview.unknown_imeis?.length > 0 && (
+                  <div>
+                    <b>Unknown IMEI:</b> {preview.unknown_imeis.join(", ")}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                onClick={confirmReturn}
+                disabled={busy || preview.valid_returns.length === 0}
+                className="sp-btn sp-btn-primary"
+              >
+                Confirm Return
+              </button>
+
+              <button
+                onClick={() => {
+                  setPreview(null);
+                  setMsg("");
+                }}
+                disabled={busy}
+                className="sp-btn sp-btn-ghost"
+              >
+                Cancel Preview
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="sp-card space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold text-sp-text">Returns history</div>
+              <div className="text-xs text-sp-muted">
+                All customer returns with reason and export
+              </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <a href="/api/returns/export" className="sp-btn sp-btn-ghost">
+                Export all returns
+              </a>
+
+              <button onClick={loadHistory} className="sp-btn sp-btn-ghost">
+                {loadingHistory ? "Refreshing…" : "Refresh"}
+              </button>
             </div>
           </div>
 
-          <div className="flex gap-2">
-            <a
-              href="/api/returns/export"
-              className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+          <div className="max-h-[400px] overflow-x-auto overflow-y-auto rounded-lg border border-sp-border">
+            <table className="sp-table">
+              <thead>
+                <tr>
+                  <th>Date/Time</th>
+                  <th>User</th>
+                  <th>Type</th>
+                  <th>Reason</th>
+                  <th>Ref</th>
+                  <th className="text-right">Qty</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.operation_id}>
+                    <td>{fmtDateTime(h.created_at)}</td>
+                    <td>{h.actor}</td>
+                    <td>{h.return_type || "-"}</td>
+                    <td>{h.return_reason || "-"}</td>
+                    <td>{h.return_ref || "-"}</td>
+                    <td className="text-right font-semibold">{h.qty}</td>
+                  </tr>
+                ))}
+
+                {history.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="text-sp-muted">
+                      No returns yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex items-center justify-between pt-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              className="sp-btn sp-btn-ghost"
             >
-              Export all returns
-            </a>
+              Previous
+            </button>
+
+            <div className="text-sm text-sp-muted">Page {page}</div>
 
             <button
-              onClick={loadHistory}
-              className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+              onClick={() => setPage((p) => p + 1)}
+              className="sp-btn sp-btn-ghost"
             >
-              {loadingHistory ? "Refreshing…" : "Refresh"}
+              Next
             </button>
           </div>
-        </div>
-
-        <div className="max-h-[400px] overflow-y-auto border border-slate-800 rounded-xl">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="p-2 text-left">Date/Time</th>
-                <th className="p-2 text-left">User</th>
-                <th className="p-2 text-left">Type</th>
-                <th className="p-2 text-left">Reason</th>
-                <th className="p-2 text-left">Ref</th>
-                <th className="p-2 text-right">Qty</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              {history.map((h) => (
-                <tr key={h.operation_id} className="border-t border-slate-800">
-                  <td className="p-2">{fmtDateTime(h.created_at)}</td>
-                  <td className="p-2">{h.actor}</td>
-                  <td className="p-2">{h.return_type || "-"}</td>
-                  <td className="p-2">{h.return_reason || "-"}</td>
-                  <td className="p-2">{h.return_ref || "-"}</td>
-                  <td className="p-2 text-right font-semibold">{h.qty}</td>
-                </tr>
-              ))}
-
-              {history.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="p-3 text-slate-400">
-                    No returns yet.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="flex justify-between items-center pt-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
-          >
-            Previous
-          </button>
-
-          <div className="text-sm text-slate-400">Page {page}</div>
-
-          <button
-            onClick={() => setPage((p) => p + 1)}
-            className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
-          >
-            Next
-          </button>
         </div>
       </div>
     </div>

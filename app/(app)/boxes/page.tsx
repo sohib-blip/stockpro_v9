@@ -31,48 +31,52 @@ export default function BoxesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <div className="text-xs text-slate-500">Warehouse</div>
-        <h2 className="text-xl font-semibold">Boxes</h2>
+      <div className="sp-page-header">
+        <div>
+          <div className="sp-eyebrow">Warehouse</div>
+          <h1 className="sp-title">Boxes</h1>
+        </div>
       </div>
 
       {loading ? (
-        <div>Loading…</div>
+        <div className="sp-card">
+          <p className="sp-desc">Loading…</p>
+        </div>
       ) : (
-        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-          <thead className="bg-slate-950/50">
-            <tr>
-              <th className="p-2 border-b border-slate-800 text-left">Device</th>
-              <th className="p-2 border-b border-slate-800 text-left">Box</th>
-              <th className="p-2 border-b border-slate-800 text-left">Floor</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r) => (
-              <tr key={r.box_id}>
-                <td className="p-2 border-b border-slate-800">
-                  {r.devices?.device}
-                </td>
-                <td className="p-2 border-b border-slate-800">{r.box_no}</td>
-                <td className="p-2 border-b border-slate-800">
-                 <select
-  value={r.floor || ""}
-  onChange={(e) =>
-    updateFloor(r.box_id, e.target.value)
-  }
-  className="border border-slate-800 bg-slate-950 rounded-lg px-2 py-1"
->
-  <option value="">—</option>
-  <option value="00">00</option>
-  <option value="1">1</option>
-  <option value="6">6</option>
-  <option value="Cabinet">Cabinet</option>
-</select>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className="sp-card sp-card-flush">
+          <div className="overflow-x-auto">
+            <table className="sp-table">
+              <thead>
+                <tr>
+                  <th>Device</th>
+                  <th>Box</th>
+                  <th>Floor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r) => (
+                  <tr key={r.box_id}>
+                    <td>{r.devices?.device}</td>
+                    <td>{r.box_no}</td>
+                    <td>
+                      <select
+                        value={r.floor || ""}
+                        onChange={(e) => updateFloor(r.box_id, e.target.value)}
+                        className="sp-select w-auto py-1"
+                      >
+                        <option value="">—</option>
+                        <option value="00">00</option>
+                        <option value="1">1</option>
+                        <option value="6">6</option>
+                        <option value="Cabinet">Cabinet</option>
+                      </select>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
       )}
     </div>
   );

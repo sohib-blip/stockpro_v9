@@ -307,53 +307,58 @@ export default function BinsPage() {
   });
 
   return (
-    <div className="space-y-10 w-full">
-      <h1 className="text-xl font-semibold">Bins</h1>
+    <div className="space-y-6 w-full">
+      <div className="sp-page-header">
+        <div>
+          <div className="sp-eyebrow">Inventory</div>
+          <h1 className="sp-title">Bins</h1>
+        </div>
+      </div>
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Device Bins</div>
+      <section className="sp-card space-y-4">
+        <div className="sp-tab sp-tab-active w-fit">Device Bins</div>
 
-        <div className="flex gap-2 items-center">
+        <div className="flex flex-wrap gap-2 items-center">
           <input
             value={newBin}
             onChange={(e) => setNewBin(e.target.value)}
             placeholder="New device bin..."
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-64"
+            className="sp-input w-full sm:w-64"
           />
 
           <button
             onClick={addBin}
             disabled={loading}
-            className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+            className="sp-btn sp-btn-primary"
           >
             Add
           </button>
         </div>
 
-        <div className="border border-slate-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900">
+        <div className="overflow-x-auto rounded-lg border border-sp-border">
+          <table className="sp-table">
+            <thead>
               <tr>
-                <th className="text-left p-3">Name</th>
-                <th className="text-right p-3">Actions</th>
+                <th>Name</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
 
             <tbody>
               {bins.map((bin) => (
-                <tr key={bin.id} className="border-t border-slate-800">
-                  <td className="p-3">{bin.name}</td>
-                  <td className="p-3 text-right space-x-4">
+                <tr key={bin.id}>
+                  <td>{bin.name}</td>
+                  <td className="text-right space-x-3">
                     <button
                       onClick={() => openTemplate(bin)}
-                      className="text-cyan-400 hover:text-cyan-300"
+                      className="font-semibold text-sp-primary hover:text-sp-primary-hover"
                     >
                       Template
                     </button>
 
                     <button
                       onClick={() => deleteBin(bin.id)}
-                      className="text-rose-400 hover:text-rose-500"
+                      className="font-semibold text-sp-err hover:underline"
                     >
                       Delete
                     </button>
@@ -363,7 +368,7 @@ export default function BinsPage() {
 
               {bins.length === 0 && (
                 <tr>
-                  <td colSpan={2} className="p-4 text-center text-slate-500">
+                  <td colSpan={2} className="text-center text-sp-muted">
                     No device bins yet
                   </td>
                 </tr>
@@ -371,16 +376,21 @@ export default function BinsPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
 
       {selectedDevice && (
-        <div className="card-glow p-6 space-y-4">
+        <section className="sp-card space-y-4">
           <div className="flex items-center justify-between">
-            <div className="font-semibold">Template for {selectedDevice.name}</div>
+            <div>
+              <div className="sp-tab sp-tab-active w-fit">Automatic Accessory Rules</div>
+              <div className="mt-3 font-semibold text-sp-text">
+                Template for {selectedDevice.name}
+              </div>
+            </div>
 
             <button
               onClick={() => setSelectedDevice(null)}
-              className="text-sm border border-slate-800 px-3 py-1 rounded-lg hover:bg-slate-800"
+              className="sp-btn sp-btn-ghost"
             >
               Close
             </button>
@@ -388,12 +398,12 @@ export default function BinsPage() {
 
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Accessory</label>
+              <label className="sp-label">Accessory</label>
 
               <select
                 value={templateAccessoryId}
                 onChange={(e) => setTemplateAccessoryId(e.target.value)}
-                className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+                className="sp-select"
               >
                 <option value="">Select accessory...</option>
                 {templateAccessories.map((a) => (
@@ -405,56 +415,56 @@ export default function BinsPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Quantity to include</label>
+              <label className="sp-label">Quantity to include</label>
 
               <input
                 type="number"
                 min={1}
                 value={templateQty}
                 onChange={(e) => setTemplateQty(Number(e.target.value))}
-                className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+                className="sp-input"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">For every X devices</label>
+              <label className="sp-label">For every X devices</label>
 
               <input
                 type="number"
                 min={1}
                 value={templatePerDevices}
                 onChange={(e) => setTemplatePerDevices(Number(e.target.value))}
-                className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+                className="sp-input"
               />
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-transparent">Action</label>
+              <label className="sp-label text-transparent">Action</label>
 
               <button
                 onClick={saveTemplate}
                 disabled={loading || !templateAccessoryId}
-                className="w-full bg-cyan-600 hover:bg-cyan-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+                className="sp-btn sp-btn-primary w-full"
               >
                 Save Rule
               </button>
             </div>
           </div>
 
-          <div className="text-xs text-slate-500">
+          <div className="text-xs text-sp-muted">
             Example: If an order contains <b>25 devices</b> and the rule is{" "}
             <b>1 every 5 devices</b>, StockPro will automatically remove{" "}
             <b>5 accessories</b>.
           </div>
 
-          <div className="border border-slate-800 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-900">
+          <div className="overflow-x-auto rounded-lg border border-sp-border">
+            <table className="sp-table">
+              <thead>
                 <tr>
-                  <th className="text-left p-3">Accessory</th>
-                  <th className="text-right p-3">Qty</th>
-                  <th className="text-right p-3">Per devices</th>
-                  <th className="text-right p-3">Actions</th>
+                  <th>Accessory</th>
+                  <th className="text-right">Qty</th>
+                  <th className="text-right">Per devices</th>
+                  <th className="text-right">Actions</th>
                 </tr>
               </thead>
 
@@ -463,15 +473,15 @@ export default function BinsPage() {
                   const isEditingTemplate = editingTemplateId === t.id;
 
                   return (
-                    <tr key={t.id} className="border-t border-slate-800">
-                      <td className="p-3">
+                    <tr key={t.id}>
+                      <td>
                         {isEditingTemplate ? (
                           <select
                             value={editTemplateAccessoryId}
                             onChange={(e) =>
                               setEditTemplateAccessoryId(e.target.value)
                             }
-                            className="bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm w-full"
+                            className="sp-select"
                           >
                             {templateAccessories.map((a) => (
                               <option key={a.id} value={a.id}>
@@ -484,7 +494,7 @@ export default function BinsPage() {
                         )}
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="text-right">
                         {isEditingTemplate ? (
                           <input
                             type="number"
@@ -493,14 +503,14 @@ export default function BinsPage() {
                             onChange={(e) =>
                               setEditTemplateQty(Number(e.target.value))
                             }
-                            className="w-20 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+                            className="sp-input ml-auto w-20 text-right"
                           />
                         ) : (
                           t.quantity
                         )}
                       </td>
 
-                      <td className="p-3 text-right">
+                      <td className="text-right">
                         {isEditingTemplate ? (
                           <input
                             type="number"
@@ -509,26 +519,26 @@ export default function BinsPage() {
                             onChange={(e) =>
                               setEditTemplatePerDevices(Number(e.target.value))
                             }
-                            className="w-20 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+                            className="sp-input ml-auto w-20 text-right"
                           />
                         ) : (
                           t.per_devices
                         )}
                       </td>
 
-                      <td className="p-3 text-right space-x-3">
+                      <td className="text-right space-x-3">
                         {isEditingTemplate ? (
                           <>
                             <button
                               onClick={saveTemplateEdit}
-                              className="text-emerald-400 hover:text-emerald-300"
+                              className="font-semibold text-sp-ok hover:underline"
                             >
                               Save
                             </button>
 
                             <button
                               onClick={cancelEditTemplate}
-                              className="text-slate-400 hover:text-slate-300"
+                              className="font-semibold text-sp-secondary hover:text-sp-text"
                             >
                               Cancel
                             </button>
@@ -537,14 +547,14 @@ export default function BinsPage() {
                           <>
                             <button
                               onClick={() => startEditTemplate(t)}
-                              className="text-cyan-400 hover:text-cyan-300"
+                              className="font-semibold text-sp-primary hover:text-sp-primary-hover"
                             >
                               Edit
                             </button>
 
                             <button
                               onClick={() => deleteTemplate(t.id)}
-                              className="text-rose-400 hover:text-rose-500"
+                              className="font-semibold text-sp-err hover:underline"
                             >
                               Delete
                             </button>
@@ -557,7 +567,7 @@ export default function BinsPage() {
 
                 {templates.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="p-4 text-center text-slate-500">
+                    <td colSpan={4} className="text-center text-sp-muted">
                       No template rules yet
                     </td>
                   </tr>
@@ -565,28 +575,28 @@ export default function BinsPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </section>
       )}
 
-      <div className="card-glow p-6 space-y-4">
+      <section className="sp-card space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-semibold text-lg">Accessories</div>
-            <div className="text-xs text-slate-500 mt-1">
+            <div className="sp-tab sp-tab-active w-fit">Accessory Inventory</div>
+            <div className="text-xs text-sp-muted mt-3">
               Create accessories, define stock levels and choose if they are
               visible in outbound/dashboard.
             </div>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex border-b border-sp-border">
             {(["all", "show", "hide"] as const).map((f) => (
               <button
                 key={f}
                 onClick={() => setAccessoryFilter(f)}
-                className={`px-3 py-1 rounded-lg text-xs font-semibold ${
+                className={`sp-tab ${
                   accessoryFilter === f
-                    ? "bg-indigo-600 text-white"
-                    : "bg-slate-800 text-slate-400"
+                    ? "sp-tab-active"
+                    : ""
                 }`}
               >
                 {f.toUpperCase()}
@@ -600,7 +610,7 @@ export default function BinsPage() {
             value={newAccessoryBin}
             onChange={(e) => setNewAccessoryBin(e.target.value)}
             placeholder="Accessory name (QR Guide, Wipe...)"
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
+            className="sp-input"
           />
 
           <input
@@ -608,7 +618,7 @@ export default function BinsPage() {
             value={newAccessoryStock}
             onChange={(e) => setNewAccessoryStock(Number(e.target.value))}
             placeholder="Initial stock"
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
+            className="sp-input"
           />
 
           <input
@@ -616,7 +626,7 @@ export default function BinsPage() {
             value={newAccessoryMinStock}
             onChange={(e) => setNewAccessoryMinStock(Number(e.target.value))}
             placeholder="Minimum stock alert"
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
+            className="sp-input"
           />
 
           <select
@@ -624,7 +634,7 @@ export default function BinsPage() {
   onChange={(e) =>
     setNewAccessoryCategory(e.target.value as AccessoryCategory)
   }
-  className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
+  className="sp-select"
 >
   <option value="Packages">Packages</option>
   <option value="Consumables">Consumables</option>
@@ -636,22 +646,22 @@ export default function BinsPage() {
           <button
             onClick={addAccessoryBin}
             disabled={loading || !newAccessoryBin.trim()}
-            className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+            className="sp-btn sp-btn-primary"
           >
             Create Accessory
           </button>
         </div>
 
-        <div className="border border-slate-800 rounded-xl overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-900">
+        <div className="overflow-x-auto rounded-lg border border-sp-border">
+          <table className="sp-table">
+            <thead>
   <tr>
-    <th className="text-left p-3">Accessory</th>
-    <th className="text-right p-3">Stock</th>
-    <th className="text-right p-3">Min stock</th>
-    <th className="text-left p-3">Category</th>
-    <th className="text-right p-3">Visibility</th>
-    <th className="text-right p-3">Actions</th>
+    <th>Accessory</th>
+    <th className="text-right">Stock</th>
+    <th className="text-right">Min stock</th>
+    <th>Category</th>
+    <th className="text-right">Visibility</th>
+    <th className="text-right">Actions</th>
   </tr>
 </thead>
 
@@ -661,22 +671,22 @@ export default function BinsPage() {
                 const isEditing = editingAccessoryId === bin.id;
 
                 return (
-                  <tr key={bin.id} className="border-t border-slate-800">
-                    <td className="p-3">
+                  <tr key={bin.id}>
+                    <td>
                       {isEditing ? (
                         <input
                           value={editAccessoryName}
                           onChange={(e) =>
                             setEditAccessoryName(e.target.value)
                           }
-                          className="w-full bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
+                          className="sp-input"
                         />
                       ) : (
                         bin.name
                       )}
                     </td>
 
-                    <td className="p-3 text-right">
+                    <td className="text-right">
                       {isEditing ? (
                         <input
                           type="number"
@@ -684,14 +694,14 @@ export default function BinsPage() {
                           onChange={(e) =>
                             setEditAccessoryStock(Number(e.target.value))
                           }
-                          className="w-24 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+                          className="sp-input ml-auto w-24 text-right"
                         />
                       ) : (
                         Number(bin.current_stock || 0)
                       )}
                     </td>
 
-                    <td className="p-3 text-right">
+                    <td className="text-right">
                       {isEditing ? (
                         <input
                           type="number"
@@ -699,21 +709,21 @@ export default function BinsPage() {
                           onChange={(e) =>
                             setEditAccessoryMinStock(Number(e.target.value))
                           }
-                          className="w-24 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+                          className="sp-input ml-auto w-24 text-right"
                         />
                       ) : (
                         Number(bin.minimum_stock || 0)
                       )}
                     </td>
 
-                    <td className="p-3">
+                    <td>
   {isEditing ? (
     <select
       value={editAccessoryCategory}
       onChange={(e) =>
         setEditAccessoryCategory(e.target.value as AccessoryCategory)
       }
-      className="bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
+      className="sp-select"
     >
       <option value="Packages">Packages</option>
       <option value="Consumables">Consumables</option>
@@ -722,39 +732,41 @@ export default function BinsPage() {
       <option value="Items">Items</option>
     </select>
   ) : (
-    bin.category || "Consumables"
+    <span className="sp-badge sp-badge-info">
+      {bin.category || "Consumables"}
+    </span>
   )}
 </td>
 
-                    <td className="p-3 text-right">
+                    <td className="text-right">
                       <button
                         onClick={() =>
                           toggleAccessoryVisibility(bin.id, !isActive)
                         }
                         disabled={isEditing}
-                        className={`px-3 py-1 rounded text-xs font-semibold disabled:opacity-40 ${
+                        className={`sp-badge disabled:opacity-40 ${
                           isActive
-                            ? "bg-green-500/20 text-green-400"
-                            : "bg-slate-700 text-slate-300"
+                            ? "sp-badge-ok"
+                            : "sp-badge-neutral"
                         }`}
                       >
                         {isActive ? "SHOW" : "HIDE"}
                       </button>
                     </td>
 
-                    <td className="p-3 text-right space-x-3">
+                    <td className="text-right space-x-3">
                       {isEditing ? (
                         <>
                           <button
                             onClick={() => saveAccessoryEdit(bin.id)}
-                            className="text-emerald-400 hover:text-emerald-300"
+                            className="font-semibold text-sp-ok hover:underline"
                           >
                             Save
                           </button>
 
                           <button
                             onClick={cancelEditAccessory}
-                            className="text-slate-400 hover:text-slate-300"
+                            className="font-semibold text-sp-secondary hover:text-sp-text"
                           >
                             Cancel
                           </button>
@@ -763,14 +775,14 @@ export default function BinsPage() {
                         <>
                           <button
                             onClick={() => startEditAccessory(bin)}
-                            className="text-cyan-400 hover:text-cyan-300"
+                            className="font-semibold text-sp-primary hover:text-sp-primary-hover"
                           >
                             Edit
                           </button>
 
                           <button
                             onClick={() => deleteAccessory(bin.id)}
-                            className="text-rose-400 hover:text-rose-500"
+                            className="font-semibold text-sp-err hover:underline"
                           >
                             Delete
                           </button>
@@ -783,7 +795,7 @@ export default function BinsPage() {
 
               {filteredAccessoryBins.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-4 text-center text-slate-500">
+                  <td colSpan={6} className="text-center text-sp-muted">
                     No accessories found.
                   </td>
                 </tr>
@@ -791,7 +803,7 @@ export default function BinsPage() {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   );
 }

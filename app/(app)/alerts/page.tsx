@@ -113,11 +113,11 @@ export default function AlertsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="sp-page-header">
         <div>
-          <div className="text-xs text-slate-500">Monitoring</div>
-          <h2 className="text-xl font-semibold">🚨 Stock Alerts</h2>
-          <p className="text-sm text-slate-400 mt-1">
+          <div className="sp-eyebrow">Monitoring</div>
+          <h1 className="sp-title">🚨 Stock Alerts</h1>
+          <p className="sp-desc">
             Global min stock thresholds (shared). Alerts when in_stock ≤ min_stock.
           </p>
         </div>
@@ -125,33 +125,34 @@ export default function AlertsPage() {
         <button
           onClick={loadAll}
           disabled={loading}
-          className="rounded-xl bg-slate-900 border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800 disabled:opacity-50"
+          className="sp-btn sp-btn-ghost"
         >
           {loading ? "Refreshing…" : "Refresh"}
         </button>
       </div>
 
       {!summary ? null : summary.ok ? (
-        <div className="bg-slate-900 rounded-2xl border border-slate-800 p-4">
+        <div className="sp-card space-y-3">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-3">
-            <div className="text-sm font-semibold">Devices</div>
+            <div className="font-semibold text-sp-text">Devices</div>
             <input
               value={deviceFilter}
               onChange={(e) => setDeviceFilter(e.target.value)}
               placeholder="Filter device…"
-              className="w-full md:w-[280px] border border-slate-800 bg-slate-950 text-slate-100 placeholder:text-slate-400 rounded-xl px-3 py-2 text-sm"
+              className="sp-input md:w-[280px]"
             />
           </div>
 
-          <div className="overflow-auto">
-            <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-              <thead className="bg-slate-950/50">
+          <div className="sp-card sp-card-flush">
+            <div className="overflow-x-auto">
+              <table className="sp-table">
+                <thead>
                 <tr>
-                  <th className="text-left p-2 border-b border-slate-800">Device</th>
-                  <th className="text-right p-2 border-b border-slate-800">In stock</th>
-                  <th className="text-right p-2 border-b border-slate-800">Min stock</th>
-                  <th className="text-left p-2 border-b border-slate-800">Status</th>
-                  <th className="text-right p-2 border-b border-slate-800">Action</th>
+                  <th>Device</th>
+                  <th className="text-right">In stock</th>
+                  <th className="text-right">Min stock</th>
+                  <th>Status</th>
+                  <th className="text-right">Action</th>
                 </tr>
               </thead>
               <tbody>
@@ -159,35 +160,29 @@ export default function AlertsPage() {
                   const isAlert = r.status === "ALERT";
                   const currentDraft = draft[r.device];
                   return (
-                    <tr key={r.device} className={isAlert ? "bg-rose-950/30" : "hover:bg-slate-950/40"}>
-                      <td className="p-2 border-b border-slate-800">{r.device || "UNKNOWN"}</td>
-                      <td className="p-2 border-b border-slate-800 text-right font-semibold">
+                    <tr key={r.device}>
+                      <td>{r.device || "UNKNOWN"}</td>
+                      <td className="text-right font-semibold">
                         {Number(r.in_stock ?? 0)}
                       </td>
-                      <td className="p-2 border-b border-slate-800 text-right">
+                      <td className="text-right">
                         <input
                           value={currentDraft ?? String(r.min)}
                           onChange={(e) =>
                             setDraft((d) => ({ ...d, [r.device]: e.target.value.replace(/[^\d]/g, "") }))
                           }
-                          className="w-[90px] text-right border border-slate-800 bg-slate-950 text-slate-100 rounded-lg px-2 py-1"
+                          className="sp-input w-[90px] text-right"
                         />
                       </td>
-                      <td className="p-2 border-b border-slate-800">
-                        <span
-                          className={`inline-flex rounded-lg border px-2 py-1 text-xs font-semibold ${
-                            isAlert
-                              ? "border-rose-900/60 bg-rose-950/40 text-rose-200"
-                              : "border-emerald-900/60 bg-emerald-950/40 text-emerald-200"
-                          }`}
-                        >
+                      <td>
+                        <span className={`sp-badge ${isAlert ? "sp-badge-low" : "sp-badge-ok"}`}>
                           {isAlert ? "⚠️ LOW" : "✅ OK"}
                         </span>
                       </td>
-                      <td className="p-2 border-b border-slate-800 text-right">
+                      <td className="text-right">
                         <button
                           onClick={() => saveMin(r.device)}
-                          className="rounded-lg border border-slate-800 bg-slate-900 px-3 py-2 text-xs font-semibold hover:bg-slate-800"
+                          className="sp-btn sp-btn-ghost"
                         >
                           Save
                         </button>
@@ -197,21 +192,22 @@ export default function AlertsPage() {
                 })}
                 {enriched.length === 0 && (
                   <tr>
-                    <td className="p-3 text-sm text-slate-400" colSpan={5}>
+                    <td className="sp-desc" colSpan={5}>
                       No devices.
                     </td>
                   </tr>
                 )}
               </tbody>
             </table>
+            </div>
           </div>
 
-          <div className="mt-3 text-xs text-slate-500">
+          <div className="text-xs text-sp-muted">
             Note: editing requires admin rights (RLS). If Save fails, add your user as admin in <code>user_roles</code>.
           </div>
         </div>
       ) : (
-        <div className="rounded-2xl border border-rose-900/60 bg-rose-950/40 p-4 text-sm text-rose-200">
+        <div className="sp-alert sp-alert-err">
           {summary.error || "Alerts error"}
         </div>
       )}

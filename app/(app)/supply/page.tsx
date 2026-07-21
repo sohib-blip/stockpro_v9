@@ -325,18 +325,18 @@ received: rows.filter((r) => r.status === "RECEIVED").length,
 
     function statusClass(status: string) {
   if (status === "FAILED")
-    return "bg-red-500/20 text-red-400";
+    return "sp-badge-err";
 
   if (status === "IMPORTED")
-    return "bg-green-500/20 text-green-400";
+    return "sp-badge-ok";
 
   if (status === "RECEIVED")
-    return "bg-purple-500/20 text-purple-400";
+    return "sp-badge-info";
 
   if (status === "SHIPPED")
-    return "bg-yellow-500/20 text-yellow-400";
+    return "sp-badge-low";
 
-  return "bg-blue-500/20 text-blue-400";
+  return "sp-badge-neutral";
 }
 
   function formatDate(value?: string | null) {
@@ -413,24 +413,24 @@ async function openDetails(row: any) {
 }
 
   return (
-    <div className="space-y-8 w-full">
-      <div className="flex items-center justify-between">
+    <div className="w-full space-y-8">
+      <div className="sp-page-header">
         <div>
-          <div className="text-xs text-slate-500">Supply</div>
-          <h1 className="text-2xl font-semibold">🚚 Supply Tracker</h1>
+          <div className="sp-eyebrow">Supply</div>
+          <h1 className="sp-title">🚚 Supply Tracker</h1>
         </div>
 
         <div className="flex gap-3">
   <a
     href={`/api/supply/export?t=${Date.now()}`}
-    className="rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-semibold"
+    className="sp-btn sp-btn-ghost"
   >
     📄 Export Excel
   </a>
 
   <button
     onClick={openCreate}
-    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
+    className="sp-btn sp-btn-primary"
   >
     + New Supply
   </button>
@@ -438,55 +438,55 @@ async function openDetails(row: any) {
       </div>
 
       {msg && (
-        <div className="rounded-xl border border-red-500 bg-red-500/20 px-4 py-3 text-sm text-red-300">
+        <div className="sp-alert sp-alert-err">
           {msg}
         </div>
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Total</div>
-    <div className="text-2xl font-bold text-cyan-400">{kpis.total}</div>
+  <div className="sp-card sp-card-tight">
+    <div className="sp-kpi-label">Total</div>
+    <div className="sp-kpi-value">{kpis.total}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Created</div>
-    <div className="text-2xl font-bold text-blue-400">{kpis.created}</div>
+  <div className="sp-card sp-card-tight">
+    <div className="sp-kpi-label">Created</div>
+    <div className="sp-kpi-value">{kpis.created}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Shipped</div>
-    <div className="text-2xl font-bold text-yellow-400">{kpis.shipped}</div>
+  <div className="sp-card sp-card-tight">
+    <div className="sp-kpi-label">Shipped</div>
+    <div className="sp-kpi-value">{kpis.shipped}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Received</div>
-    <div className="text-2xl font-bold text-purple-400">{kpis.received}</div>
+  <div className="sp-card sp-card-tight">
+    <div className="sp-kpi-label">Received</div>
+    <div className="sp-kpi-value">{kpis.received}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Imported</div>
-    <div className="text-2xl font-bold text-green-400">{kpis.imported}</div>
+  <div className="sp-card sp-card-tight">
+    <div className="sp-kpi-label">Imported</div>
+    <div className="sp-kpi-value">{kpis.imported}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-  <div className="text-xs text-slate-400">Failed</div>
-  <div className="text-2xl font-bold text-red-400">{kpis.failed}</div>
+  <div className="sp-card sp-card-tight">
+  <div className="sp-kpi-label">Failed</div>
+  <div className="sp-kpi-value">{kpis.failed}</div>
 </div>
 </div>
 
-      <div className="card-glow p-4 rounded-xl flex gap-3">
+      <div className="sp-card sp-card-tight flex flex-col gap-3 sm:flex-row">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search order, tracking, office, item..."
-          className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          className="sp-input flex-1"
         />
 
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          className="sp-select sm:w-auto"
         >
           <option value="ALL">All status</option>
           {STATUS.map((s) => (
@@ -495,10 +495,11 @@ async function openDetails(row: any) {
         </select>
       </div>
 
-      <div className="card-glow p-6 rounded-xl overflow-hidden">
-  <table className="w-full text-sm">
+      <div className="sp-card sp-card-flush">
+  <div className="overflow-x-auto">
+  <table className="sp-table">
     <thead>
-  <tr className="text-left text-slate-400 border-b border-slate-800">
+  <tr>
     <th onClick={() => sortBy("order_number")} className="py-3 cursor-pointer">
       Order {sortKey === "order_number" ? (sortDir === "asc" ? "↑" : "↓") : ""}
     </th>
@@ -528,27 +529,27 @@ async function openDetails(row: any) {
 
     <tbody>
       {paginatedRows.map((row) => (
-        <tr key={row.id} className="border-b border-slate-800/70">
-          <td className="py-4">
+        <tr key={row.id}>
+          <td>
             <button
   onClick={() => openDetails(row)}
-  className="font-semibold text-cyan-400 hover:text-cyan-300 hover:underline"
+  className="sp-btn sp-btn-ghost"
 >
   {row.order_number}
 </button>
-            <div className="text-xs text-slate-500">
+            <div className="text-xs text-sp-muted">
               Created {formatDate(row.created_at)}
             </div>
           </td>
 
           <td>
-  <div className="text-sm text-slate-200">
+  <div className="text-sm text-sp-body">
     {row.created_by || "-"}
   </div>
 </td>
 
           <td>
-            <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold">
+            <span className="sp-badge sp-badge-neutral">
               {row.from_office} → {row.to_office}
             </span>
           </td>
@@ -557,17 +558,17 @@ async function openDetails(row: any) {
             <div className="space-y-1">
               {(row.supply_items || []).slice(0, 2).map((item: any) => (
                 <div key={item.id}>
-                  <span className="font-semibold text-slate-100">
+                  <span className="font-semibold text-sp-text">
                     {item.product_name}
                   </span>
-                  <span className="ml-2 text-xs text-slate-500">
+                  <span className="ml-2 text-xs text-sp-muted">
                     {item.qty} pcs
                   </span>
                 </div>
               ))}
 
               {(row.supply_items || []).length > 2 && (
-                <div className="text-xs text-slate-500">
+                <div className="text-xs text-sp-muted">
                   +{row.supply_items.length - 2} more
                 </div>
               )}
@@ -575,18 +576,18 @@ async function openDetails(row: any) {
           </td>
 
           <td className="text-center">
-            <span className="inline-flex min-w-12 justify-center rounded-xl bg-slate-800 px-3 py-1 font-bold text-slate-100">
+            <span className="sp-badge sp-badge-neutral min-w-12 justify-center">
               {totalQty(row)}
             </span>
           </td>
 
-          <td className="font-mono text-slate-300 max-w-[160px] truncate">
+          <td className="max-w-[160px] truncate font-mono">
             {row.tracking_number || "-"}
           </td>
 
           <td>
             <span
-              className={`px-3 py-1 rounded-full text-xs font-semibold ${statusClass(
+              className={`sp-badge ${statusClass(
                 row.status
               )}`}
             >
@@ -596,17 +597,17 @@ async function openDetails(row: any) {
 
           <td>
             {row.imported ? (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-400">
+              <span className="sp-badge sp-badge-ok">
                 Imported
               </span>
             ) : (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 text-slate-400">
+              <span className="sp-badge sp-badge-neutral">
                 Not imported
               </span>
             )}
           </td>
 
-          <td className="text-xs text-slate-400">
+          <td className="text-xs text-sp-muted">
   {row.imported_date
     ? formatDate(row.imported_date)
     : "-"}
@@ -617,20 +618,20 @@ async function openDetails(row: any) {
     <div className="flex justify-end gap-3">
       <button
         onClick={() => openEdit(row)}
-        className="text-cyan-400 hover:text-cyan-300 font-semibold"
+        className="sp-btn sp-btn-ghost"
       >
         Edit
       </button>
 
       <button
         onClick={() => setDeleteTarget(row)}
-        className="text-red-400 hover:text-red-300 font-semibold"
+        className="sp-btn sp-btn-danger"
       >
         Delete
       </button>
     </div>
   ) : (
-    <span className="text-xs text-slate-500">Locked</span>
+    <span className="text-xs text-sp-muted">Locked</span>
   )}
 </td>
         </tr>
@@ -638,16 +639,17 @@ async function openDetails(row: any) {
 
       {paginatedRows.length === 0 && (
         <tr>
-          <td colSpan={10} className="py-8 text-center text-slate-500">
+          <td colSpan={10} className="py-8 text-center text-sp-muted">
             No supplies found.
           </td>
         </tr>
       )}
     </tbody>
   </table>
+  </div>
 </div>
 
-<div className="flex items-center justify-between text-sm text-slate-400">
+<div className="flex items-center justify-between text-sm text-sp-secondary">
   <div>
     Showing {(page - 1) * pageSize + 1}-
     {Math.min(page * pageSize, sortedRows.length)} of {sortedRows.length}
@@ -657,7 +659,7 @@ async function openDetails(row: any) {
     <button
       onClick={() => setPage((p) => Math.max(1, p - 1))}
       disabled={page === 1}
-      className="rounded-xl border border-slate-800 px-3 py-2 disabled:opacity-40"
+      className="sp-btn sp-btn-ghost"
     >
       Previous
     </button>
@@ -669,18 +671,18 @@ async function openDetails(row: any) {
     <button
       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
       disabled={page === totalPages}
-      className="rounded-xl border border-slate-800 px-3 py-2 disabled:opacity-40"
+      className="sp-btn sp-btn-ghost"
     >
       Next
     </button>
   </div>
 </div>
             {openModal && (
-        <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-3xl rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">
-            <div className="p-5 border-b border-slate-800 flex justify-between">
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 p-4">
+          <div className="sp-card w-full max-w-3xl p-0">
+            <div className="flex justify-between border-b border-sp-border p-5">
               <div>
-                <div className="text-xs text-slate-500">
+                <div className="sp-eyebrow">
                   {editing ? "Edit Supply" : "New Supply"}
                 </div>
                 <div className="text-lg font-semibold">
@@ -693,7 +695,7 @@ async function openDetails(row: any) {
                   setOpenModal(false);
                   resetForm();
                 }}
-                className="text-slate-400 hover:text-slate-200"
+                className="sp-btn sp-btn-ghost"
               >
                 Close
               </button>
@@ -705,7 +707,7 @@ async function openDetails(row: any) {
                 disabled={!!editing}
                   value={fromOffice}
                   onChange={(e) => setFromOffice(e.target.value)}
-                  className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+                  className="sp-select"
                 >
                   {OFFICES.map((o) => (
                     <option key={o.code} value={o.code}>
@@ -718,7 +720,7 @@ async function openDetails(row: any) {
                   disabled={!!editing}
                   value={toOffice}
                   onChange={(e) => setToOffice(e.target.value)}
-                  className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+                  className="sp-select"
                 >
                   {OFFICES.map((o) => (
                     <option key={o.code} value={o.code}>
@@ -732,7 +734,7 @@ async function openDetails(row: any) {
     value={tracking}
     onChange={(e) => setTracking(e.target.value)}
     placeholder="Tracking number..."
-    className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+    className="sp-input"
   />
 )}
 
@@ -743,7 +745,7 @@ async function openDetails(row: any) {
   e.target.value as "CREATED" | "SHIPPED" | "RECEIVED" | "IMPORTED" | "FAILED"
 )
                   }
-                  className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+                  className="sp-select"
                 >
                   {availableStatuses(editing?.status || "CREATED").map((s) => (
   <option key={s} value={s}>
@@ -757,7 +759,7 @@ async function openDetails(row: any) {
     value={failedReason}
     onChange={(e) => setFailedReason(e.target.value)}
     placeholder="Reason for failure..."
-    className="md:col-span-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm min-h-[80px]"
+    className="sp-textarea min-h-[80px] md:col-span-2"
   />
 )}
               </div>
@@ -767,7 +769,7 @@ async function openDetails(row: any) {
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Comment..."
-                className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm min-h-[80px]"
+                className="sp-textarea min-h-[80px]"
               />
 
               <div className="space-y-3">
@@ -777,7 +779,7 @@ async function openDetails(row: any) {
                   {!editing && (
   <button
     onClick={addItem}
-    className="rounded-xl border border-slate-800 px-3 py-2 text-sm font-semibold hover:bg-slate-800"
+    className="sp-btn sp-btn-ghost"
   >
     + Add item
   </button>
@@ -797,7 +799,7 @@ async function openDetails(row: any) {
                           product_type: e.target.value as "DEVICE" | "ACCESSORY",
                         })
                       }
-                      className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+                      className="sp-select"
                     >
                       <option value="DEVICE">Device</option>
                       <option value="ACCESSORY">Accessory</option>
@@ -812,7 +814,7 @@ async function openDetails(row: any) {
       updateItem(index, { product_name: e.target.value })
     }
     placeholder="Search product..."
-    className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+    className="sp-input"
   />
 
   <datalist id={`products-${index}`}>
@@ -830,13 +832,13 @@ async function openDetails(row: any) {
                       onChange={(e) =>
                         updateItem(index, { qty: Number(e.target.value) })
                       }
-                      className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm text-right"
+                      className="sp-input text-right"
                     />
 
                     <button
                       onClick={() => removeItem(index)}
                       disabled={!!editing || items.length === 1}
-                      className="rounded-xl border border-slate-800 px-3 py-2 text-sm hover:bg-slate-800 disabled:opacity-40"
+                      className="sp-btn sp-btn-ghost"
                     >
                       Remove
                     </button>
@@ -844,13 +846,13 @@ async function openDetails(row: any) {
                 ))}
               </div>
 
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-800">
+              <div className="flex justify-end gap-3 border-t border-sp-border pt-4">
                 <button
                   onClick={() => {
                     setOpenModal(false);
                     resetForm();
                   }}
-                  className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+                  className="sp-btn sp-btn-ghost"
                 >
                   Cancel
                 </button>
@@ -858,7 +860,7 @@ async function openDetails(row: any) {
                 <button
                   onClick={() => saveSupply()}
                   disabled={busy}
-                  className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                  className="sp-btn sp-btn-primary"
                 >
                   {busy ? "Saving..." : editing ? "Save changes" : "Create Supply"}
                 </button>
@@ -869,19 +871,19 @@ async function openDetails(row: any) {
       )}
 
 {detailTarget && (
-  <div className="fixed inset-0 z-[90] bg-black/60 flex items-center justify-center p-4">
-    <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">
-      <div className="p-5 border-b border-slate-800 flex justify-between">
+  <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/40 p-4">
+    <div className="sp-card w-full max-w-2xl p-0">
+      <div className="flex justify-between border-b border-sp-border p-5">
         <div>
-          <div className="text-xs text-slate-500">Supply details</div>
-          <div className="text-lg font-semibold text-cyan-400">
+          <div className="sp-eyebrow">Supply details</div>
+          <div className="text-lg font-semibold text-sp-primary">
             {detailTarget.order_number}
           </div>
         </div>
 
         <button
           onClick={() => setDetailTarget(null)}
-          className="text-slate-400 hover:text-slate-200"
+          className="sp-btn sp-btn-ghost"
         >
           Close
         </button>
@@ -890,41 +892,41 @@ async function openDetails(row: any) {
       <div className="p-5 space-y-4 text-sm">
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <div className="text-xs text-slate-500">Created by</div>
+            <div className="sp-label">Created by</div>
             <div>{detailTarget.created_by || "-"}</div>
           </div>
 
           <div>
-            <div className="text-xs text-slate-500">Created</div>
+            <div className="sp-label">Created</div>
             <div>{formatDate(detailTarget.created_at)}</div>
           </div>
 
           <div>
-            <div className="text-xs text-slate-500">Route</div>
+            <div className="sp-label">Route</div>
             <div>{detailTarget.from_office} → {detailTarget.to_office}</div>
           </div>
 
           <div>
-            <div className="text-xs text-slate-500">Tracking</div>
+            <div className="sp-label">Tracking</div>
             <div className="font-mono">{detailTarget.tracking_number || "-"}</div>
           </div>
 
           <div>
-            <div className="text-xs text-slate-500">Status</div>
-            <span className={`px-3 py-1 rounded-full text-xs font-semibold ${statusClass(detailTarget.status)}`}>
+            <div className="sp-label">Status</div>
+            <span className={`sp-badge ${statusClass(detailTarget.status)}`}>
               {detailTarget.status}
             </span>
           </div>
 
           <div>
-            <div className="text-xs text-slate-500">Imported at</div>
+            <div className="sp-label">Imported at</div>
             <div>{detailTarget.imported_date ? formatDate(detailTarget.imported_date) : "-"}</div>
           </div>
           
         {detailTarget.failed_reason && (
   <div className="col-span-2">
-    <div className="text-xs text-slate-500">Failure reason</div>
-    <div className="rounded-xl bg-red-500/10 border border-red-500/30 p-3 mt-1 text-red-300">
+    <div className="sp-label">Failure reason</div>
+    <div className="sp-alert sp-alert-err mt-1">
       {detailTarget.failed_reason}
     </div>
   </div>
@@ -933,17 +935,17 @@ async function openDetails(row: any) {
         </div>
 
         <div>
-          <div className="text-xs text-slate-500 mb-2">Items</div>
+          <div className="sp-label mb-2">Items</div>
 
-          <div className="rounded-xl border border-slate-800 overflow-hidden">
+          <div className="overflow-hidden rounded-lg border border-sp-border">
             {(detailTarget.supply_items || []).map((item: any) => (
               <div
                 key={item.id}
-                className="flex justify-between px-4 py-3 border-b border-slate-800 last:border-b-0"
+                className="flex justify-between border-b border-sp-border px-4 py-3 last:border-b-0"
               >
                 <div>
                   <div className="font-semibold">{item.product_name}</div>
-                  <div className="text-xs text-slate-500">{item.product_type}</div>
+                  <div className="text-xs text-sp-muted">{item.product_type}</div>
                 </div>
 
                 <div className="font-bold">{item.qty} pcs</div>
@@ -954,53 +956,53 @@ async function openDetails(row: any) {
 
         {detailTarget.comment && (
           <div>
-            <div className="text-xs text-slate-500">Comment</div>
-            <div className="rounded-xl bg-slate-900 p-3 mt-1">
+            <div className="sp-label">Comment</div>
+            <div className="mt-1 rounded-lg bg-sp-surface-2 p-3 text-sp-body">
               {detailTarget.comment}
             </div>
           </div>
         )}
 
 <div>
-  <div className="text-xs text-slate-500 mb-2">Status history</div>
+  <div className="sp-label mb-2">Status history</div>
 
- <div className="rounded-xl border border-slate-800 overflow-y-auto max-h-[300px]">
+ <div className="max-h-[300px] overflow-y-auto rounded-lg border border-sp-border">
     {statusHistory.length === 0 ? (
-      <div className="p-4 text-center text-slate-500">
+      <div className="p-4 text-center text-sp-muted">
         No history yet
       </div>
     ) : (
       statusHistory.map((h: any) => (
         <div
           key={h.id}
-          className="px-4 py-3 border-b border-slate-800 last:border-b-0"
+          className="border-b border-sp-border px-4 py-3 last:border-b-0"
         >
           <div className="flex justify-between items-center">
             <span
-              className={`px-2 py-1 rounded text-xs font-semibold ${statusClass(
+              className={`sp-badge ${statusClass(
                 h.status
               )}`}
             >
               {h.status}
             </span>
 
-            <span className="text-xs text-slate-500">
+            <span className="text-xs text-sp-muted">
               {formatDate(h.created_at)}
             </span>
           </div>
 
-          <div className="mt-2 text-sm text-slate-300">
+          <div className="mt-2 text-sm text-sp-body">
             {h.changed_by || "-"}
           </div>
 
           {h.tracking_number && (
-            <div className="mt-1 text-xs text-cyan-400 font-mono">
+            <div className="mt-1 font-mono text-xs text-sp-primary">
               Tracking: {h.tracking_number}
             </div>
           )}
 
         {h.failed_reason && (
-  <div className="mt-1 text-xs text-red-400">
+  <div className="sp-alert sp-alert-err mt-1 text-xs">
     Reason: {h.failed_reason}
   </div>
 )}

@@ -16,20 +16,20 @@ export default function AccessoryCategory({
   onToggle,
 }: Props) {
   return (
-    <div className="border border-white/10 rounded-xl overflow-hidden mb-4">
+    <div className="mb-4 overflow-hidden rounded-xl border border-sp-border bg-sp-surface">
 
       <button
   type="button"
   onClick={onToggle}
-  className="w-full flex items-center justify-between px-5 py-4 bg-white/5 hover:bg-white/10 transition"
+  className="flex w-full items-center justify-between bg-sp-surface-2 px-5 py-4 text-sp-body transition-colors hover:bg-sp-bg"
 >
         <div className="flex items-center gap-3">
 
-          <span className="font-semibold">
+          <span className="font-semibold text-sp-text">
             {title}
           </span>
 
-          <span className="text-xs bg-cyan-500/20 text-cyan-400 px-2 py-1 rounded-full">
+          <span className="sp-badge sp-badge-brand">
             {items.length}
           </span>
 
@@ -38,6 +38,7 @@ export default function AccessoryCategory({
         <motion.span
           animate={{ rotate: open ? 90 : 0 }}
           transition={{ duration: 0.2 }}
+          className="text-sp-muted"
         >
           ▶
         </motion.span>
@@ -54,12 +55,13 @@ export default function AccessoryCategory({
       className="overflow-hidden"
     >
 
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto">
+            <table className="sp-table">
 
               <thead>
 
-                <tr className="text-left text-slate-400 border-b border-white/5">
-                  <th className="py-3 px-4">Accessory</th>
+                <tr>
+                  <th>Accessory</th>
                   <th>Qty</th>
                   <th>Min</th>
                   <th>Status</th>
@@ -71,12 +73,9 @@ export default function AccessoryCategory({
 
                 {items.map((a: any) => (
 
-                  <tr
-                    key={a.id}
-                    className="border-b border-white/5"
-                  >
+                  <tr key={a.id}>
 
-                    <td className="py-3 px-4 font-medium">
+                    <td className="font-medium">
                       {a.name}
                     </td>
 
@@ -91,20 +90,20 @@ export default function AccessoryCategory({
                     <td>
 
                       <span
-                        className={`px-2 py-1 rounded text-xs font-semibold
+                        className={`sp-badge
                           ${
                             a.status === "OK"
-                              ? "bg-green-500/20 text-green-400"
+                              ? "sp-badge-ok"
                               : ""
                           }
                           ${
                             a.status === "LOW"
-                              ? "bg-yellow-500/20 text-yellow-400"
+                              ? "sp-badge-low"
                               : ""
                           }
                           ${
                             a.status === "EMPTY"
-                              ? "bg-red-500/20 text-red-400"
+                              ? "sp-badge-empty"
                               : ""
                           }
                         `}
@@ -121,6 +120,7 @@ export default function AccessoryCategory({
               </tbody>
 
             </table>
+            </div>
 
           </motion.div>
 

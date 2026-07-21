@@ -98,7 +98,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await login(page, "admin");
     await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
     await page.getByRole("link", { name: "Admin", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "User Access Management" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "User Access" })).toBeVisible();
     await expect(page.getByText(run.users.operator.email)).toBeVisible();
     await expect(page.getByText(run.users.viewer.email)).toBeVisible();
     await signOut(page);
@@ -169,7 +169,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
     await page.goto("/admin");
     await expect(page).toHaveURL(/\/denied$/);
-    await expect(page.getByText("Access denied")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "You don't have access to this page" })).toBeVisible();
     await signOut(page);
   });
 
@@ -183,9 +183,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
       ["/outbound", "Device Outbound"],
       ["/accessories", "Accessory Outbound"],
       ["/bins", "Inventory Setup"],
-      ["/labels", "Warehouse Label Printing"],
+      ["/labels", "Label Printing"],
       ["/returns", "Customer Returns"],
-      ["/transfer", "Stock Transfer"],
+      ["/transfer", "Stock Transfers"],
       ["/nrd", "NRD Tracking"],
     ] as const;
 
@@ -208,9 +208,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByLabel("Manual inbound box").fill(run.manualBox);
     await page.getByLabel("Manual inbound floor").selectOption("00");
     await page.getByLabel("Manual inbound IMEIs").fill(run.manualImei);
-    await page.getByRole("button", { name: "Preview Manual Inbound" }).click();
-    await expect(page.getByText("Manual Preview")).toBeVisible();
-    await expect(page.getByText(/New:\s*1/)).toBeVisible();
+    await page.getByRole("button", { name: "Preview Inbound" }).click();
+    await expect(page.getByText("Preview ready — no blocking problems")).toBeVisible();
+    await expect(page.getByText("1 valid")).toBeVisible();
     await page.getByRole("button", { name: "Confirm Inbound" }).click();
     await expect(page.getByText(/Manual inbound completed: 1 IMEIs imported/)).toBeVisible();
 
@@ -264,6 +264,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await login(page, "operator");
 
     await page.goto("/inbound");
+    await page.getByRole("button", { name: "Spreadsheet Import" }).click();
     await page.getByLabel("Inbound reference").fill(`E2E spreadsheet ${run.stamp}`);
     await page.getByLabel("Inbound spreadsheet vendor").selectOption("quicklink");
     await page.getByLabel("Inbound spreadsheet file").setInputFiles(file);
@@ -276,10 +277,11 @@ test.describe.serial("StockPro staging end-to-end", () => {
       await dialog.accept();
     });
     await page.getByRole("button", { name: "Confirm Inbound" }).click();
-    await expect(page.getByRole("button", { name: "Download Labels" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Download ZD220 label PDF" })).toBeVisible();
     expect((await readItem(run.spreadsheetImei))?.status).toBe("IN");
 
     await page.goto("/outbound");
+    await page.getByRole("button", { name: "End-of-Day Report" }).click();
     await page.getByLabel("Outbound shipment reference").fill(`E2E-XLSX-OUT-${run.stamp}`);
     await page.getByLabel("Outbound spreadsheet file").setInputFiles(file);
     await page.getByRole("button", { name: "Preview Spreadsheet" }).click();
@@ -305,6 +307,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByText("Accessory outbound completed")).toBeVisible();
     expect(await readAccessoryStock(run.accessory.id)).toBe(8);
 
+    await page.getByRole("button", { name: "Spreadsheet" }).click();
     await page.getByLabel("Accessory shipment reference").fill(`E2E-ACC-XLSX-${run.stamp}`);
     await page.getByLabel("Accessory spreadsheet file").setInputFiles(file);
     await page.getByRole("button", { name: "Preview Spreadsheet" }).click();
@@ -327,7 +330,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(binRow).toHaveCount(0);
 
     await page.goto("/supply");
-    await page.getByRole("button", { name: "New Supply Order" }).click();
+    await page.getByRole("button", { name: "+ New Order" }).click();
     await page.getByLabel("Supply origin office").selectOption("UK");
     await page.getByLabel("Supply destination office").selectOption("BE");
     await page.getByLabel("Supply item 1 type").selectOption("DEVICE");
@@ -335,7 +338,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByLabel("Supply item 1 quantity").fill("3");
     await page.getByPlaceholder("Optional comment").fill(`E2E supply ${run.stamp}`);
     await page.getByRole("button", { name: "Create Supply Order" }).click();
-    await page.getByPlaceholder("Search orders, tracking numbers, offices, or items").fill(run.bin.name);
+    await page.getByPlaceholder("Search order or tracking…").fill(run.bin.name);
     await expect(page.getByRole("row", { name: new RegExp(run.bin.name) })).toBeVisible();
 
     await page.goto("/labels");
@@ -343,7 +346,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByLabel("Label 1 box number").fill(run.returnBox);
     await page.getByLabel("Label 1 IMEIs").fill(run.manualImei);
     const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: "Download All Labels" }).click();
+    await page.getByRole("button", { name: /Download all labels — PDF/ }).click();
     const download = await downloadPromise;
     expect(download.suggestedFilename()).toMatch(/\.pdf$/);
     expect(await download.createReadStream()).not.toBeNull();
@@ -353,13 +356,11 @@ test.describe.serial("StockPro staging end-to-end", () => {
   test("starts and stops an NRD task", async ({ page }) => {
     await login(page, "operator");
     await page.goto("/nrd");
-    await page.getByLabel("NRD task").selectOption("Training");
+    await page.getByLabel("NRD task", { exact: true }).selectOption("Training");
     await page.getByRole("button", { name: "Start Task" }).click();
     await expect(page.getByText("Task started")).toBeVisible();
-    await expect(page.getByText("Active task").locator("..").getByText("Training")).toBeVisible();
-    await page.getByRole("button", { name: "Stop Task" }).click();
-    await expect(page.getByRole("heading", { name: "Confirm NRD End Time" })).toBeVisible();
-    await page.getByRole("button", { name: "End Now" }).click();
+    await expect(page.locator(".nrd-overview-card.active").getByText("Training", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Stop now" }).click();
     await expect(page.getByText("Task stopped")).toBeVisible();
     await signOut(page);
   });

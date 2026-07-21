@@ -154,19 +154,18 @@ export default function AdminPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <div className="text-xs uppercase tracking-[0.18em] text-indigo-300">
-          Administration
-        </div>
-        <h1 className="text-2xl font-bold">User Access Management</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Manage roles and module permissions for each user.
+    <div className="prototype-page prototype-module-page admin-prototype-page">
+      <div className="prototype-page-header">
+        <div>
+        <h1>User Access</h1>
+        <p>
+          Invite colleagues and manage roles and module permissions.
         </p>
+        </div>
       </div>
 
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-        <h2 className="font-semibold">Invite a User</h2>
+      <section className="prototype-card admin-invite-card">
+        <h2>Invite a colleague</h2>
         <div className="mt-4 grid gap-3 md:grid-cols-[1fr_220px_auto]">
           <input
             type="email"
@@ -191,7 +190,7 @@ export default function AdminPage() {
           <button
             onClick={inviteUser}
             disabled={inviting || !inviteEmail.trim()}
-            className="rounded-xl bg-indigo-600 px-4 py-2 font-semibold hover:bg-indigo-500 disabled:opacity-50"
+            className="prototype-button primary"
           >
             {inviting ? "Sending…" : "Send Invitation"}
           </button>
@@ -223,8 +222,8 @@ export default function AdminPage() {
         </div>
       )}
 
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
+      <section className="prototype-card admin-users-card">
+        <div className="admin-users-heading">
           <h2 className="font-semibold">Users ({users.length})</h2>
           <button onClick={loadUsers} className="text-sm text-indigo-300 hover:text-indigo-200">
             Refresh
@@ -237,7 +236,7 @@ export default function AdminPage() {
           sortedUsers.map((user) => {
             const access = accessForUser(user);
             return (
-              <article key={user.id} className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
+              <article key={user.id} className="admin-user-row">
                 <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
                     <div className="truncate font-semibold">

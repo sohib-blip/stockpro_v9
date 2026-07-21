@@ -39,6 +39,7 @@ const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
 
   const filteredHistory =
     filter === "all"
@@ -206,7 +207,7 @@ if (!actorId) {
   preview?.unknown_imeis?.length > 0;
 
   return (
-    <div className="space-y-10 w-full">
+    <div className="prototype-page prototype-module-page outbound-prototype-page">
 
       {/* LOADER */}
       {busy && (
@@ -226,46 +227,58 @@ if (!actorId) {
       )}
 
       {/* HEADER */}
-      <div>
-        <div className="text-xs text-slate-500">Outbound</div>
-        <h2 className="text-xl font-semibold">Device Outbound</h2>
-        <p className="text-sm text-slate-400 mt-1">
+      <div className="prototype-page-header">
+        <div>
+        <h1>Device Outbound</h1>
+        <p>
           Remove IMEI-tracked devices from stock. Devices become OUT on confirmation.
         </p>
-        <p className="mt-1 text-xs text-slate-500">User: <b>{actor}</b></p>
+        </div>
+        <button type="button" className="prototype-button secondary" onClick={() => document.getElementById("outbound-history")?.scrollIntoView({ behavior: "smooth" })}>History &amp; exports</button>
       </div>
 
+      <div className="prototype-process-grid">
+      <div className="prototype-process-input-column">
+        <div className="prototype-segmented-control">
+          <button type="button" className={inputMode === "manual" ? "is-active" : ""} onClick={() => setInputMode("manual")}>Manual IMEIs</button>
+          <button type="button" className={inputMode === "spreadsheet" ? "is-active" : ""} onClick={() => setInputMode("spreadsheet")}>End-of-Day Report</button>
+        </div>
+
       {/* SHIPMENT */}
-      <div className="card-glow p-6 relative overflow-hidden">
-        <div className="font-semibold mb-2">Shipment reference</div>
+      <div className="prototype-shared-reference">
+        <label htmlFor="outbound-reference">Shipment reference</label>
         <input
+          id="outbound-reference"
           aria-label="Outbound shipment reference"
           value={shipmentRef}
           onChange={(e) => setShipmentRef(e.target.value)}
-          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
         />
       </div>
 
       {/* MANUAL */}
-      <div className="card-glow p-6 relative overflow-hidden">
-        <div className="font-semibold mb-3">Manual IMEI Entry</div>
+      {inputMode === "manual" && (
+      <div className="prototype-input-card">
+        <div className="prototype-field-heading"><label htmlFor="outbound-imeis">IMEIs — scan or paste, one per line</label><span>{(imeiInput.match(/\d{15}/g) || []).length} detected</span></div>
         <textarea
+          id="outbound-imeis"
           aria-label="Outbound IMEIs"
           value={imeiInput}
           onChange={(e) => setImeiInput(e.target.value)}
-          className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
+          className="prototype-imei-textarea"
         />
         <button
           onClick={previewManual}
-          className="mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
+          className="prototype-button primary grow mt-4"
         >
           Preview Outbound
         </button>
       </div>
+      )}
 
       {/* EXCEL */}
-      <div className="card-glow p-6 relative overflow-hidden">
-        <div className="font-semibold mb-3">End-of-Day Report Import</div>
+      {inputMode === "spreadsheet" && (
+      <div className="prototype-input-card">
+        <div className="prototype-input-section-title">End-of-Day Report Import</div>
         <input
           type="file"
           aria-label="Outbound spreadsheet file"
@@ -274,16 +287,22 @@ if (!actorId) {
         />
         <button
           onClick={previewExcel}
-          className="mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
+          className="prototype-button primary mt-4"
         >
           Preview Spreadsheet
         </button>
       </div>
+      )}
+      </div>
 
 {/* ERROR MESSAGE */}
-{errorMsg && (
-  <div className="bg-red-600/20 border border-red-500 text-red-300 px-4 py-3 rounded-xl text-sm">
+{errorMsg && !preview && (
+  <div className="prototype-preview-card prototype-error-preview">
+    <div className="prototype-error-banner"><span>!</span><div><strong>Outbound blocked</strong><p>{errorMsg}</p></div></div>
+    {preview && <div className="prototype-preview-chips"><span>{preview.duplicates?.length || 0} duplicates</span><span>{preview.unknown_imeis?.length || 0} unknown</span><span>{preview.already_out?.length || 0} already out</span></div>}
+    <div className="p-6 text-sm text-red-300">
     {errorMsg}
+    </div>
   </div>
 )}
 
@@ -291,7 +310,7 @@ if (!actorId) {
 
       {/* PREVIEW */}
 {preview && (
-  <div className="card-glow p-6 space-y-5 relative overflow-hidden">
+  <div className="prototype-preview-card p-6 space-y-5 relative overflow-hidden">
     <div className="flex justify-between">
       <div className="font-semibold">
         Preview ({previewSource})
@@ -417,8 +436,17 @@ if (!actorId) {
   </div>
 )}
 
+      {!preview && !errorMsg && (
+        <div className="prototype-empty-preview">
+          <div className="prototype-empty-icon"><span /></div>
+          <strong>No preview yet</strong>
+          <p>Enter a shipment reference and IMEIs, then run <b>Preview Outbound</b>. Stock changes only after confirmation.</p>
+        </div>
+      )}
+      </div>
+
       {/* HISTORY */}
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
+      <div id="outbound-history" className="prototype-card prototype-history-card space-y-4 relative overflow-hidden">
 
         <div className="flex items-center justify-between">
           <div className="font-semibold">Outbound History</div>

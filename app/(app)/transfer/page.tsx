@@ -185,22 +185,27 @@ export default function TransferPage() {
   });
 
   return (
-    <div className="space-y-10 w-full">
+    <div className="prototype-page prototype-module-page transfer-prototype-page">
       {success && (
         <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
           Transfer completed
         </div>
       )}
 
-      <div>
-        <div className="text-xs text-slate-500">Operations</div>
-        <h2 className="text-xl font-semibold">Stock Transfer</h2>
-        <p className="mt-1 text-sm text-slate-400">
-          Move complete boxes between warehouse floors.
+      <div className="prototype-page-header">
+        <div>
+        <h1>Stock Transfers</h1>
+        <p>
+          Move complete boxes between warehouse floors. Device stock status does not change.
         </p>
+        </div>
+        <button type="button" className="prototype-button secondary" onClick={() => document.getElementById("transfer-history")?.scrollIntoView({ behavior: "smooth" })}>History</button>
       </div>
 
-      <div className="card-glow p-6 space-y-4">
+      <div className="prototype-process-grid transfer-process-grid">
+      <div className="prototype-process-input-column">
+      <div className="prototype-input-card space-y-4">
+        <div className="prototype-input-section-title">Transfer boxes</div>
         <textarea
           aria-label="Transfer box codes"
           value={boxInput}
@@ -238,14 +243,15 @@ export default function TransferPage() {
         <button
           onClick={previewTransfer}
           disabled={loadingPreview}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
+          className="prototype-button primary grow"
         >
           {loadingPreview ? "Loading…" : "Preview Transfer"}
         </button>
       </div>
+      </div>
 
       {preview?.preview && (
-        <div className="card-glow p-6 space-y-5">
+        <div className="prototype-preview-card p-6 space-y-5">
           <div className="flex justify-between items-center">
             <div className="font-semibold text-lg">Transfer Preview</div>
             <div className="text-sm text-slate-400">
@@ -284,9 +290,18 @@ export default function TransferPage() {
         </div>
       )}
 
+      {!preview?.preview && (
+        <div className="prototype-empty-preview">
+          <div className="prototype-empty-icon"><span /></div>
+          <strong>No preview yet</strong>
+          <p>Select a device bin and destination, enter complete box codes, then preview every movement before confirmation.</p>
+        </div>
+      )}
+      </div>
+
       {errorMsg && <div className="text-red-500 text-sm">{errorMsg}</div>}
 
-      <div className="card-glow p-6 space-y-4">
+      <div id="transfer-history" className="prototype-card prototype-history-card space-y-4">
         <div className="flex flex-wrap gap-3 justify-between items-center">
           <div className="font-semibold">Transfer History</div>
 

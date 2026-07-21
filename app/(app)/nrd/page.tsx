@@ -310,7 +310,7 @@ async function stopTaskWithCorrection() {
 }
 
   return (
-    <div className="space-y-10 w-full">
+    <div className="prototype-page prototype-module-page nrd-prototype-page">
       {showForgottenModal && active && (
   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
     <div className="w-full max-w-lg rounded-2xl border border-amber-500/40 bg-slate-950 shadow-2xl">
@@ -420,15 +420,17 @@ async function stopTaskWithCorrection() {
     </div>
   </div>
 )}
-      <div>
-        <div className="text-xs text-slate-500">NRD</div>
-        <h2 className="text-xl font-semibold">NRD Tracking</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Track time spent on non-routine warehouse duties.
+      <div className="prototype-page-header">
+        <div>
+        <h1>NRD Tracking</h1>
+        <p>
+          Track time spent on non-routine duties. One task can run at a time.
         </p>
-        <p className="mt-1 text-xs text-slate-500">
-          User: <b>{userEmail || "Loading…"}</b>
-        </p>
+        </div>
+        <div className="prototype-page-actions">
+          <button type="button" className="prototype-button secondary" disabled={!userEmail} onClick={() => downloadApiFile(`/api/nrd/export?user_email=${encodeURIComponent(userEmail)}&period_month=${encodeURIComponent(periodMonth)}`, `nrd-${periodMonth}.xlsx`).catch((error) => setErrorMsg(error.message))}>My Excel export</button>
+          {hasPermission("can_admin") && <button type="button" className="prototype-button secondary" onClick={() => downloadApiFile(`/api/nrd/export-global?user_email=${encodeURIComponent(userEmail)}&period_month=${encodeURIComponent(periodMonth)}`, `nrd-global-${periodMonth}.xlsx`).catch((error) => setErrorMsg(error.message))}>All users (admin)</button>}
+        </div>
       </div>
 
       {errorMsg && (
@@ -443,14 +445,37 @@ async function stopTaskWithCorrection() {
         </div>
       )}
 
-      <div className="card-glow p-6 space-y-5 relative overflow-hidden">
+      <div className="nrd-overview-grid">
+        <section className={`nrd-overview-card active ${active ? "is-running" : ""}`}>
+          <div className="prototype-eyebrow">Active task</div>
+          <strong>{active?.task || "No active task"}</strong>
+          <div className="nrd-timer">{formatTimer(seconds)}</div>
+          <p>{active ? `Started ${new Date(active.started_at).toLocaleString("en-GB")}` : "Start a duty from the next card"}</p>
+          {active && <div className="prototype-page-actions"><button type="button" className="prototype-button danger" onClick={stopTask} disabled={busy}>Stop now</button><button type="button" className="prototype-button secondary" onClick={() => { const nowDate = new Date(); setCorrectEndTime(new Date(nowDate.getTime() - nowDate.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)); setShowForgottenModal(true); }} disabled={busy}>Stop with corrected end time…</button></div>}
+        </section>
+
+        <section className="nrd-overview-card start">
+          <div className="prototype-eyebrow">Start a task</div>
+          <select aria-label="NRD task" value={task} onChange={(e) => setTask(e.target.value)} disabled={!!active}>{NRD_TASKS.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+          <p>Stock take · Cleaning shelves · Training · Meetings · Container work · Order checks…</p>
+          <button type="button" className="prototype-button primary" onClick={startTask} disabled={busy || !userEmail || !!active}>{active ? "Start (stop the active task first)" : busy ? "Starting…" : "Start Task"}</button>
+        </section>
+
+        <section className="nrd-overview-card summary">
+          <div className="nrd-month-row"><input type="month" value={periodMonth} onChange={(e) => setPeriodMonth(e.target.value)} /><span>Month summary</span></div>
+          <div className="nrd-summary-values"><div><strong>{formatHours(Number(stats?.total_minutes || 0))}</strong><span>total time</span></div><div><strong>{stats?.tasks_count || 0}</strong><span>completed tasks</span></div></div>
+          <div className="nrd-mini-breakdown">{stats?.by_task?.slice(0, 3).map((row: any) => { const width = stats.total_minutes ? Math.round((Number(row.minutes || 0) / Number(stats.total_minutes || 1)) * 100) : 0; return <div key={row.task}><div><span>{row.task}</span><small>{formatHours(Number(row.minutes || 0))}</small></div><i><span style={{ width: `${width}%` }} /></i></div>; })}</div>
+        </section>
+      </div>
+
+      <div className="hidden">
         <div className="font-semibold">Current NRD Task</div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <div className="text-xs text-slate-400 mb-2">Task</div>
             <select
-              aria-label="NRD task"
+              aria-label="Legacy NRD task"
               value={task}
               onChange={(e) => setTask(e.target.value)}
               disabled={!!active}
@@ -555,7 +580,7 @@ async function stopTaskWithCorrection() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="hidden">
         <div className="card-glow p-5 rounded-xl">
           <div className="text-xs text-slate-400 mb-1">Selected month</div>
           <input
@@ -581,7 +606,7 @@ async function stopTaskWithCorrection() {
         </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
+      <div className="hidden">
         <div className="font-semibold">Task Breakdown</div>
 
         <div className="space-y-3">
@@ -623,7 +648,7 @@ async function stopTaskWithCorrection() {
         </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
+      <div className="prototype-card prototype-history-card space-y-4 relative overflow-hidden">
         <div className="flex justify-between items-center">
           <div className="font-semibold">My NRD History</div>
           <div className="text-xs text-slate-400">

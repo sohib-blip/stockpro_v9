@@ -20,6 +20,12 @@ describe("theme and language preferences", () => {
     expect(translateUiText("nl", "Customer Returns")).toBe("Klantretouren");
     expect(translateUiText("fr", "Page 3")).toBe("Page 3");
     expect(translateUiText("nl", "Floor 6")).toBe("Verdieping 6");
+    expect(translateUiText("fr", "Most shipped devices")).toBe(
+      "Appareils les plus expédiés"
+    );
+    expect(
+      translateUiText("nl", "3 low · 2 empty — see tables below")
+    ).toBe("3 laag · 2 leeg — zie de tabellen hieronder");
   });
 
   it("persists device-local theme and locale choices", () => {

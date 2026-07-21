@@ -70,6 +70,7 @@ const [page, setPage] = useState(1);
   const [manualPreview, setManualPreview] = useState<any>(null);
   const [manualReadyToImport, setManualReadyToImport] = useState(false);
   const [manualMsg, setManualMsg] = useState<string>("");
+  const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
 
   // Zebra label size (default 105x155mm)
   const LABEL_W = 105;
@@ -482,7 +483,7 @@ setManualMsg("");
 });
 
   return (
-  <div className="space-y-8 w-full">
+  <div className="prototype-page prototype-module-page inbound-prototype-page">
       {/* Global processing overlay */}
       {busy && (
         <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
@@ -501,52 +502,56 @@ setManualMsg("");
       )}
 
       {/* HEADER */}
-      <div className="flex items-center justify-between gap-3">
-        {/* SHIPMENT NOTE */}
-<div className="card-glow p-6">
-  <div className="font-semibold mb-2">Reference / note</div>
-
-  <input
-    aria-label="Inbound reference"
-    value={shipmentRef}
-    onChange={(e) => setShipmentRef(e.target.value)}
-    placeholder="ex: Teltonika delivery 18/03"
-    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-  />
-</div>
+      <div className="prototype-page-header">
         <div>
-          <div className="text-xs text-slate-500">Inbound</div>
-          <h2 className="text-xl font-semibold">Inbound Processing</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            Register received devices and assign each IMEI to a box and location.
+          <h1>Inbound Processing</h1>
+          <p>
+            Register received IMEIs, boxes and floors. Nothing changes until you confirm.
           </p>
-          <p className="mt-1 text-xs text-slate-500">User: <b>{actor}</b></p>
         </div>
+        <button
+          type="button"
+          className="prototype-button secondary"
+          onClick={() => document.getElementById("inbound-history")?.scrollIntoView({ behavior: "smooth" })}
+        >
+          History &amp; exports
+        </button>
+      </div>
 
-        {lastBatchId && (
-          <button
-            onClick={() =>
-              downloadApiFile(
-                `/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`,
-                `labels-${lastBatchId}.pdf`
-              ).catch((error) => setErr(error.message))
-            }
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
-          >
-           Download Labels
-          </button>
-        )}
+      <div className="prototype-stepper" aria-label="Inbound progress">
+        <div className={`prototype-step ${!manualPreview && !result && !lastBatchId ? "is-active" : "is-complete"}`}><span>{manualPreview || result || lastBatchId ? "✓" : "1"}</span><strong>Input</strong></div>
+        <i />
+        <div className={`prototype-step ${manualPreview || result ? "is-active" : lastBatchId ? "is-complete" : ""}`}><span>{lastBatchId ? "✓" : "2"}</span><strong>Preview</strong></div>
+        <i />
+        <div className={`prototype-step ${lastBatchId ? "is-active" : ""}`}><span>3</span><strong>Confirm</strong></div>
       </div>
 
       {/* Manual inbound */}
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
-        <div>
-          <div className="font-semibold">Manual Inbound</div>
-          <div className="text-xs text-slate-500">
-          </div>
+      <div className="prototype-process-grid">
+      <div className="prototype-process-input-column">
+        <div className="prototype-segmented-control">
+          <button type="button" className={inputMode === "manual" ? "is-active" : ""} onClick={() => setInputMode("manual")}>Manual Inbound</button>
+          <button type="button" className={inputMode === "spreadsheet" ? "is-active" : ""} onClick={() => setInputMode("spreadsheet")}>Spreadsheet Import</button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="prototype-shared-reference">
+          <label htmlFor="inbound-reference">Reference or note <span>(optional)</span></label>
+          <input
+            id="inbound-reference"
+            aria-label="Inbound reference"
+            value={shipmentRef}
+            onChange={(e) => setShipmentRef(e.target.value)}
+            placeholder="e.g. Teltonika delivery 21/07"
+          />
+        </div>
+
+      {inputMode === "manual" && (
+      <div className="prototype-input-card">
+        <div>
+          <div className="prototype-input-section-title">Manual Inbound</div>
+        </div>
+
+        <div className="inbound-manual-fields">
           <select
             aria-label="Manual inbound device"
             value={manualDevice}
@@ -582,10 +587,12 @@ setManualMsg("");
           </select>
         </div>
 
+        <div className="prototype-field-heading"><label htmlFor="manual-imeis">IMEIs — scan or paste, one per line</label><span>{extractManualImeis(manualImeis).length} detected</span></div>
         <textarea
+          id="manual-imeis"
           aria-label="Manual inbound IMEIs"
           placeholder="Scan or paste IMEIs (one per line). Only 15-digit kept."
-          className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
+          className="prototype-imei-textarea"
           value={manualImeis}
           onChange={(e) => setManualImeis(e.target.value)}
         />
@@ -594,20 +601,11 @@ setManualMsg("");
   <button
     onClick={previewManualImport}
     disabled={busy}
-    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
+    className="prototype-button primary grow"
   >
-    Preview Manual Inbound
+    Preview Inbound
   </button>
 
-  {manualReadyToImport && (
-    <button
-      onClick={confirmManualImport}
-      disabled={busy}
-      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
-    >
-      Confirm Inbound
-    </button>
-  )}
 </div>
         {manualMsg && (
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm">
@@ -616,7 +614,7 @@ setManualMsg("");
         )}
 
         {manualPreview?.ok && (
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm space-y-2">
+          <div className="hidden">
             <div className="font-semibold">Manual Preview</div>
             <div>
               Scanned: <b>{manualPreview.total_scanned}</b> • New:{" "}
@@ -626,10 +624,12 @@ setManualMsg("");
           </div>
         )}
       </div>
+      )}
 
       {/* Spreadsheet import */}
-      <div className="card-glow p-6 space-y-3">
-        <div className="font-semibold">Spreadsheet Import</div>
+      {inputMode === "spreadsheet" && (
+      <div className="prototype-input-card">
+        <div className="prototype-input-section-title">Spreadsheet Import</div>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
           <select
@@ -667,7 +667,7 @@ setManualMsg("");
           <button
             onClick={parseExcel}
             disabled={busy}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            className="prototype-button primary"
           >
             {busy ? "Working…" : "Preview Import"}
           </button>
@@ -679,9 +679,11 @@ setManualMsg("");
           </div>
         )}
       </div>
+      )}
+      </div>
 
             {result?.ok && (
-        <div className="card-glow p-6 space-y-4 relative overflow-hidden">
+        <div className="prototype-preview-card">
           <div className="flex flex-wrap items-center justify-between gap-3">
             {/* LEFT */}
             <div className="space-y-2">
@@ -754,8 +756,54 @@ setManualMsg("");
         </div>
       )}
 
+      {manualPreview?.ok && !result?.ok && (
+        <div className="prototype-preview-card">
+          <div className="prototype-success-banner">
+            <span>✓</span>
+            <div><strong>Preview ready — no blocking problems</strong><p>{manualPreview.valid_new} devices will be added to stock.</p></div>
+          </div>
+          <div className="prototype-preview-chips">
+            <span className="success">{manualPreview.valid_new} valid</span>
+            <span>{manualPreview.duplicates} duplicates</span>
+            <span>1 box</span>
+          </div>
+          <div className="prototype-preview-summary">
+            <div><span>Device bin</span><strong>{devices.find((device) => device.device_id === manualDevice)?.device || "—"}</strong></div>
+            <div><span>Box</span><strong>{manualBox || "—"}</strong></div>
+            <div><span>Floor</span><strong>Floor {manualFloor}</strong></div>
+            <div><span>New IMEIs</span><strong>{manualPreview.valid_new}</strong></div>
+          </div>
+          <div className="prototype-preview-footer">
+            <span>No blocking errors. Review the summary before confirmation.</span>
+            <button type="button" onClick={confirmManualImport} disabled={busy || !manualReadyToImport} className="prototype-button confirm">Confirm Inbound</button>
+          </div>
+        </div>
+      )}
+
+      {!manualPreview?.ok && !result?.ok && (
+        <div className="prototype-empty-preview">
+          <div className="prototype-empty-icon"><span /></div>
+          <strong>No preview yet</strong>
+          <p>Fill in the box, scan or paste IMEIs, then run <b>Preview Inbound</b>. You will see every device and problem before anything is committed.</p>
+        </div>
+      )}
+      </div>
+
+      {lastBatchId && (
+        <div className="prototype-completion-card">
+          <div className="prototype-success-banner">
+            <span>✓</span>
+            <div><strong>Inbound completed</strong><p>{shipmentRef || "Manual inbound"} · {actor}</p></div>
+            <div className="prototype-page-actions">
+              <button type="button" className="prototype-button secondary" onClick={() => downloadApiFile(`/api/inbound/export?batch_id=${encodeURIComponent(lastBatchId)}`, `inbound-${lastBatchId}.xlsx`).catch((error) => setErr(error.message))}>Download batch Excel</button>
+              <button type="button" className="prototype-button confirm" onClick={() => downloadApiFile(`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`, `labels-${lastBatchId}.pdf`).catch((error) => setErr(error.message))}>Download ZD220 label PDF</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* HISTORY */}
-      <div className="card-glow p-6 space-y-3">
+      <div id="inbound-history" className="prototype-card prototype-history-card">
         <div className="flex items-center justify-between gap-3">
           <div>
             <div className="font-semibold">Inbound History</div>

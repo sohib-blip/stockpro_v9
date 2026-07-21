@@ -4,7 +4,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useMemo, useState } from "react";
-import { LogOut, Menu, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
 import { PermissionKey } from "@/lib/access-control";
 import { useAccess } from "@/components/AccessProvider";
 import PreferenceControls from "@/components/PreferenceControls";
@@ -218,7 +218,10 @@ export default function AppShell({ children }: { children: ReactNode }) {
                   className={`primary-nav-link ${active ? "is-active" : ""}`}
                   aria-current={active ? "page" : undefined}
                 >
-                  {t(group.label)}
+                  <span>{t(group.label)}</span>
+                  {group.items.length > 1 && (
+                    <span className="primary-nav-chevron" aria-hidden="true">▾</span>
+                  )}
                 </Link>
               );
             })}
@@ -231,7 +234,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
               {initialsFor(email)}
             </span>
             <button type="button" className="signout-button" onClick={handleLogout}>
-              <LogOut size={15} aria-hidden="true" />
               <span>{t("Sign out")}</span>
             </button>
           </div>
@@ -269,7 +271,6 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <div className="mobile-account-row">
               <PreferenceControls />
               <button type="button" className="signout-button" onClick={handleLogout}>
-                <LogOut size={15} aria-hidden="true" />
                 {t("Sign out")}
               </button>
             </div>

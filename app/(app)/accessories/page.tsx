@@ -50,6 +50,7 @@ export default function AccessoriesPage() {
     null
   );
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
+  const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
 
   async function loadUser() {
     const { data } = await supabase.auth.getUser();
@@ -295,13 +296,15 @@ export default function AccessoriesPage() {
   });
 
   return (
-        <div className="space-y-10 w-full">
-      <div>
-        <div className="text-xs text-slate-500">Outbound</div>
-        <h2 className="text-xl font-semibold">Accessory Outbound</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Process manual or spreadsheet-based accessory shipments.
+        <div className="prototype-page prototype-module-page accessories-prototype-page">
+      <div className="prototype-page-header">
+        <div>
+        <h1>Accessory Outbound</h1>
+        <p>
+          Remove accessories manually or from a spreadsheet. Automatic rules apply to IMEI rows.
         </p>
+        </div>
+        <button type="button" className="prototype-button secondary" onClick={() => document.getElementById("accessory-history")?.scrollIntoView({ behavior: "smooth" })}>History</button>
       </div>
 
       {busy && (
@@ -415,8 +418,15 @@ export default function AccessoriesPage() {
         </div>
       )}
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Shipment Details</div>
+      <div className="prototype-process-grid accessories-process-grid">
+      <div className="prototype-process-input-column">
+        <div className="prototype-segmented-control">
+          <button type="button" className={inputMode === "manual" ? "is-active" : ""} onClick={() => setInputMode("manual")}>Manual</button>
+          <button type="button" className={inputMode === "spreadsheet" ? "is-active" : ""} onClick={() => setInputMode("spreadsheet")}>Spreadsheet</button>
+        </div>
+
+      <div className="prototype-input-card">
+        <div className="prototype-input-section-title">Shipment details</div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <input
@@ -437,8 +447,9 @@ export default function AccessoriesPage() {
         </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Manual Accessory Outbound</div>
+      {inputMode === "manual" && (
+      <div className="prototype-input-card accessory-lines-card">
+        <div className="prototype-input-section-title">Accessory lines</div>
 
         <div className="space-y-3">
           {lines.map((line, index) => (
@@ -487,22 +498,24 @@ export default function AccessoriesPage() {
         <div className="flex gap-3">
           <button
             onClick={addLine}
-            className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
+            className="prototype-button secondary"
           >
-            Add Line
+            + Add accessory line
           </button>
 
           <button
             onClick={previewManualOutbound}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold"
+            className="prototype-button primary grow"
           >
             Preview Outbound
           </button>
         </div>
       </div>
+      )}
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Spreadsheet Outbound</div>
+      {inputMode === "spreadsheet" && (
+      <div className="prototype-input-card">
+        <div className="prototype-input-section-title">Spreadsheet Outbound</div>
 
         <div className="flex flex-wrap gap-3 items-center">
           <input
@@ -515,7 +528,7 @@ export default function AccessoriesPage() {
           <button
             onClick={previewExcelOutbound}
             disabled={!file}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
+            className="prototype-button primary"
           >
             Preview Spreadsheet
           </button>
@@ -525,8 +538,17 @@ export default function AccessoriesPage() {
           Reads IMEI and Item Type, then calculates accessories automatically.
         </div>
       </div>
+      )}
+      </div>
 
-      <div className="card-glow p-6 space-y-4">
+      <div className="prototype-empty-preview">
+        <div className="prototype-empty-icon"><span /></div>
+        <strong>No preview yet</strong>
+        <p>Add accessory lines or select a spreadsheet, then preview every stock change before confirmation.</p>
+      </div>
+      </div>
+
+      <div id="accessory-history" className="prototype-card prototype-history-card space-y-4">
         <div className="flex justify-between items-center">
           <div className="font-semibold">Accessory Outbound History</div>
 

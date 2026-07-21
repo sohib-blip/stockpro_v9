@@ -133,16 +133,24 @@ export default function LabelsPage() {
   }
 
   return (
-    <div className="space-y-6 w-full">
-      <div>
-        <div className="text-xs text-slate-500">Inventory</div>
-        <h2 className="text-xl font-semibold">Warehouse Label Printing</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Create print-ready labels for warehouse boxes and IMEIs.
+    <div className="prototype-page prototype-module-page labels-prototype-page">
+      <div className="prototype-page-header">
+        <div>
+        <h1>Label Printing</h1>
+        <p>
+          Generate ZD220 warehouse box labels. Only unique 15-digit IMEIs are included.
         </p>
+        </div>
+        <div className="label-header-actions">
+          <label>Size <input type="number" aria-label="Label width" value={wMm} onChange={(e) => setWMm(Number(e.target.value))} /></label>
+          <span>×</span>
+          <input type="number" aria-label="Label height" value={hMm} onChange={(e) => setHMm(Number(e.target.value))} />
+          <button type="button" className="prototype-button secondary" onClick={addLabel}>+ Add label</button>
+          <button type="button" className="prototype-button primary" onClick={downloadPdf}>Download all labels — PDF ({labels.length})</button>
+        </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4">
+      <div className="hidden">
         <div className="flex flex-wrap items-center gap-3">
           <div className="text-sm font-semibold">Label Dimensions</div>
 
@@ -192,13 +200,14 @@ export default function LabelsPage() {
         )}
       </div>
 
-      <div className="space-y-4">
+      <div className="labels-workspace">
+      <div className="labels-editor-grid">
         {labels.map((l, idx) => {
           const imeis = extractImeis(l.imeisText);
           return (
             <div
               key={l.id}
-              className="card-glow p-6 space-y-4"
+              className="prototype-label-card"
             >
               <div className="flex items-center justify-between gap-3">
                 <div className="font-semibold">Label #{idx + 1}</div>
@@ -261,6 +270,20 @@ export default function LabelsPage() {
             </div>
           );
         })}
+      </div>
+      <aside className="label-preview-card">
+        <h2>Label preview</h2>
+        <div className="printed-label-preview">
+          <strong>{devices.find((device) => device.device_id === labels[0]?.device_id)?.device || "Device bin"}</strong>
+          <span>{labels[0]?.box || "Box number"}</span>
+          <small>{extractImeis(labels[0]?.imeisText || "").length} IMEIs · {new Date().toLocaleDateString("en-GB")}</small>
+          <div className="printed-label-footer">
+            <code>{extractImeis(labels[0]?.imeisText || "").slice(0, 2).join("\n") || "No IMEIs yet"}</code>
+            <i aria-hidden="true" />
+          </div>
+        </div>
+        <p>{wMm} × {hMm} mm · ZD220</p>
+      </aside>
       </div>
     </div>
   );

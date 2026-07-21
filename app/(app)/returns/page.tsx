@@ -184,7 +184,7 @@ export default function ReturnsPage() {
   }
 
   return (
-    <div className="space-y-8 w-full">
+    <div className="prototype-page prototype-module-page returns-prototype-page">
       {busy && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl shadow-xl">
@@ -193,17 +193,20 @@ export default function ReturnsPage() {
         </div>
       )}
 
-      <div>
-        <div className="text-xs text-slate-500">Returns</div>
-        <h2 className="text-xl font-semibold">Customer Returns</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          Return previously outbound devices to warehouse stock.
+      <div className="prototype-page-header">
+        <div>
+        <h1>Customer Returns</h1>
+        <p>
+          Return previously outbound devices to stock. Devices become IN at the target location.
         </p>
-        <p className="mt-1 text-xs text-slate-500">User: <b>{actor}</b></p>
+        </div>
+        <button type="button" className="prototype-button secondary" onClick={() => document.getElementById("returns-history")?.scrollIntoView({ behavior: "smooth" })}>History &amp; exports</button>
       </div>
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Return Information</div>
+      <div className="prototype-process-grid returns-process-grid">
+      <div className="prototype-process-input-column">
+      <div className="prototype-input-card space-y-4">
+        <div className="prototype-input-section-title">Return information</div>
 
         <input
           aria-label="Return reference"
@@ -281,7 +284,7 @@ export default function ReturnsPage() {
         <button
           onClick={previewReturn}
           disabled={busy}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
+          className="prototype-button primary grow"
         >
           Preview Return
         </button>
@@ -292,9 +295,10 @@ export default function ReturnsPage() {
           {msg}
         </div>
       )}
+      </div>
 
       {preview?.ok && (
-        <div className="card-glow p-6 space-y-5">
+        <div className="prototype-preview-card p-6 space-y-5">
           <div className="flex justify-between items-center">
             <div className="font-semibold">Return Preview</div>
             <div className="text-sm text-slate-400">
@@ -393,7 +397,16 @@ export default function ReturnsPage() {
         </div>
       )}
 
-      <div className="card-glow p-6 space-y-4">
+      {!preview?.ok && (
+        <div className="prototype-empty-preview">
+          <div className="prototype-empty-icon"><span /></div>
+          <strong>No preview yet</strong>
+          <p>Choose the return reason and target location, paste the returned IMEIs, then preview their classification before confirmation.</p>
+        </div>
+      )}
+      </div>
+
+      <div id="returns-history" className="prototype-card prototype-history-card space-y-4">
         <div className="flex items-center justify-between">
           <div>
             <div className="font-semibold">Returns History</div>

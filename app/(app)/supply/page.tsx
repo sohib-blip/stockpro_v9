@@ -414,33 +414,32 @@ async function openDetails(row: any) {
 }
 
   return (
-    <div className="space-y-8 w-full">
-      <div className="flex items-center justify-between">
+    <div className="prototype-page supply-prototype-page">
+      <div className="prototype-page-header">
         <div>
-          <div className="text-xs text-slate-500">Receiving</div>
-          <h1 className="text-2xl font-semibold">Supply Orders</h1>
-          <p className="mt-1 text-sm text-slate-400">
+          <h1>Supply Orders</h1>
+          <p>
             Plan and track stock moving between European offices before warehouse import.
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="prototype-page-actions">
   <button
     onClick={() =>
       downloadApiFile(`/api/supply/export?t=${Date.now()}`, "supply.xlsx").catch(
         (error) => setMsg(error.message)
       )
     }
-    className="rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-semibold"
+    className="prototype-button secondary"
   >
-    Export Spreadsheet
+    Export Excel
   </button>
 
   <button
     onClick={openCreate}
-    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
+    className="prototype-button primary"
   >
-    New Supply Order
+    + New Order
   </button>
 </div>
       </div>
@@ -451,60 +450,61 @@ async function openDetails(row: any) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Total</div>
-    <div className="text-2xl font-bold text-cyan-400">{kpis.total}</div>
+      <div className="prototype-compact-kpi-grid">
+  <div className="prototype-compact-kpi-card">
+    <div className="prototype-eyebrow">Total</div>
+    <div className="prototype-compact-kpi-value">{kpis.total}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Created</div>
-    <div className="text-2xl font-bold text-indigo-300">{kpis.created}</div>
+  <div className="prototype-compact-kpi-card">
+    <div className="prototype-eyebrow">Created</div>
+    <div className="prototype-compact-kpi-value">{kpis.created}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Shipped</div>
-    <div className="text-2xl font-bold text-amber-300">{kpis.shipped}</div>
+  <div className="prototype-compact-kpi-card warning">
+    <div className="prototype-eyebrow">Shipped</div>
+    <div className="prototype-compact-kpi-value">{kpis.shipped}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Received</div>
-    <div className="text-2xl font-bold text-cyan-400">{kpis.received}</div>
+  <div className="prototype-compact-kpi-card info">
+    <div className="prototype-eyebrow">Received</div>
+    <div className="prototype-compact-kpi-value">{kpis.received}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Imported</div>
-    <div className="text-2xl font-bold text-emerald-400">{kpis.imported}</div>
+  <div className="prototype-compact-kpi-card success">
+    <div className="prototype-eyebrow">Imported</div>
+    <div className="prototype-compact-kpi-value">{kpis.imported}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-  <div className="text-xs text-slate-400">Failed</div>
-  <div className="text-2xl font-bold text-red-400">{kpis.failed}</div>
+  <div className="prototype-compact-kpi-card danger">
+  <div className="prototype-eyebrow">Failed</div>
+  <div className="prototype-compact-kpi-value">{kpis.failed}</div>
 </div>
 </div>
 
-      <div className="card-glow p-4 rounded-xl flex gap-3">
+      <div className="prototype-card prototype-data-card">
+      <div className="prototype-data-toolbar">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search orders, tracking numbers, offices, or items"
-          className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          placeholder="Search order or tracking…"
+          className="prototype-search-input"
         />
 
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          className="prototype-filter-select"
         >
-          <option value="ALL">All statuses</option>
+          <option value="ALL">Status: All</option>
           {STATUS.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
       </div>
 
-      <div className="card-glow p-6 rounded-xl overflow-hidden">
-  <table className="w-full text-sm">
+      <div className="prototype-table-scroll">
+  <table className="prototype-table supply-orders-table">
     <thead>
   <tr className="text-left text-slate-400 border-b border-slate-800">
     <th onClick={() => sortBy("order_number")} className="py-3 cursor-pointer">
@@ -528,8 +528,6 @@ async function openDetails(row: any) {
       Status {sortKey === "status" ? (sortDir === "asc" ? "↑" : "↓") : ""}
     </th>
 
-    <th>Imported</th>
-    <th>Imported at</th>
     <th className="text-right">Actions</th>
   </tr>
 </thead>
@@ -537,7 +535,7 @@ async function openDetails(row: any) {
     <tbody>
       {paginatedRows.map((row) => (
         <tr key={row.id} className="border-b border-slate-800/70">
-          <td className="py-4">
+          <td>
             <button
   onClick={() => openDetails(row)}
   className="font-semibold text-cyan-400 hover:text-cyan-300 hover:underline"
@@ -545,7 +543,7 @@ async function openDetails(row: any) {
   {row.order_number}
 </button>
             <div className="text-xs text-slate-500">
-              Created {formatDate(row.created_at)}
+              {formatDate(row.created_at)}
             </div>
           </td>
 
@@ -556,7 +554,7 @@ async function openDetails(row: any) {
 </td>
 
           <td>
-            <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold">
+            <span>
               {row.from_office} → {row.to_office}
             </span>
           </td>
@@ -583,7 +581,7 @@ async function openDetails(row: any) {
           </td>
 
           <td className="text-center">
-            <span className="inline-flex min-w-12 justify-center rounded-xl bg-slate-800 px-3 py-1 font-bold text-slate-100">
+            <span>
               {totalQty(row)}
             </span>
           </td>
@@ -601,24 +599,6 @@ async function openDetails(row: any) {
               {row.status}
             </span>
           </td>
-
-          <td>
-            {row.imported ? (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400">
-                Imported
-              </span>
-            ) : (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 text-slate-400">
-                Not imported
-              </span>
-            )}
-          </td>
-
-          <td className="text-xs text-slate-400">
-  {row.imported_date
-    ? formatDate(row.imported_date)
-    : "-"}
-</td>
 
           <td className="text-right">
   {!["IMPORTED", "FAILED"].includes(row.status) ? (
@@ -646,7 +626,7 @@ async function openDetails(row: any) {
 
       {paginatedRows.length === 0 && (
         <tr>
-          <td colSpan={10} className="py-8 text-center text-slate-500">
+          <td colSpan={8} className="py-8 text-center text-slate-500">
             No supply orders found.
           </td>
         </tr>
@@ -655,7 +635,7 @@ async function openDetails(row: any) {
   </table>
 </div>
 
-<div className="flex items-center justify-between text-sm text-slate-400">
+<div className="prototype-pagination">
   <div>
     Showing {(page - 1) * pageSize + 1}-
     {Math.min(page * pageSize, sortedRows.length)} of {sortedRows.length}
@@ -665,7 +645,7 @@ async function openDetails(row: any) {
     <button
       onClick={() => setPage((p) => Math.max(1, p - 1))}
       disabled={page === 1}
-      className="rounded-xl border border-slate-800 px-3 py-2 disabled:opacity-40"
+      className="prototype-page-button"
     >
       Previous
     </button>
@@ -677,12 +657,13 @@ async function openDetails(row: any) {
     <button
       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
       disabled={page === totalPages}
-      className="rounded-xl border border-slate-800 px-3 py-2 disabled:opacity-40"
+      className="prototype-page-button"
     >
       Next
     </button>
   </div>
 </div>
+      </div>
             {openModal && (
         <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
           <div className="w-full max-w-3xl rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">

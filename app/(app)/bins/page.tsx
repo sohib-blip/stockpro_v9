@@ -56,6 +56,7 @@ export default function BinsPage() {
   useState<AccessoryCategory>("Consumables");
 
   const [loading, setLoading] = useState(false);
+  const [activeSetupTab, setActiveSetupTab] = useState<"bins" | "rules" | "accessories">("bins");
 
   async function loadBins() {
     const { data } = await supabase
@@ -184,6 +185,7 @@ export default function BinsPage() {
 
   async function openTemplate(bin: Bin) {
     setSelectedDevice(bin);
+    setActiveSetupTab("rules");
 
     const res = await apiFetch(
       `/api/bins/templates/list?device_id=${bin.id}&t=${Date.now()}`,
@@ -308,16 +310,24 @@ export default function BinsPage() {
   });
 
   return (
-    <div className="space-y-10 w-full">
-      <div>
-        <div className="text-xs text-slate-500">Inventory</div>
-        <h1 className="text-xl font-semibold">Inventory Setup</h1>
-        <p className="mt-1 text-sm text-slate-400">
-          Configure device bins, accessory stock and automatic allocation rules.
+    <div className="prototype-page prototype-module-page bins-prototype-page">
+      <div className="prototype-page-header">
+        <div>
+        <h1>Inventory Setup</h1>
+        <p>
+          Configure device bins, automatic accessory rules and the accessory catalogue.
         </p>
+        </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4">
+      <div className="prototype-section-tabs" role="tablist" aria-label="Inventory setup sections">
+        <button type="button" role="tab" aria-selected={activeSetupTab === "bins"} className={activeSetupTab === "bins" ? "is-active" : ""} onClick={() => setActiveSetupTab("bins")}>Device Bins <span>{bins.length}</span></button>
+        <button type="button" role="tab" aria-selected={activeSetupTab === "rules"} className={activeSetupTab === "rules" ? "is-active" : ""} onClick={() => { setActiveSetupTab("rules"); if (!selectedDevice && bins[0]) openTemplate(bins[0]); }}>Automatic Accessory Rules <span>{templates.length}</span></button>
+        <button type="button" role="tab" aria-selected={activeSetupTab === "accessories"} className={activeSetupTab === "accessories" ? "is-active" : ""} onClick={() => setActiveSetupTab("accessories")}>Accessory Inventory <span>{accessoryBins.length}</span></button>
+      </div>
+
+      {activeSetupTab === "bins" && (
+      <div className="prototype-card prototype-history-card space-y-4">
         <div className="font-semibold">Device Bins</div>
 
         <div className="flex gap-2 items-center">
@@ -379,9 +389,17 @@ export default function BinsPage() {
           </table>
         </div>
       </div>
+      )}
 
-      {selectedDevice && (
-        <div className="card-glow p-6 space-y-4">
+      {activeSetupTab === "rules" && selectedDevice && (
+        <div className="prototype-rules-layout">
+        <aside className="prototype-rule-sidebar">
+          <div>Rules by device bin</div>
+          {bins.map((bin) => (
+            <button type="button" key={bin.id} className={selectedDevice.id === bin.id ? "is-active" : ""} onClick={() => openTemplate(bin)}><span>{bin.name}</span><small>{selectedDevice.id === bin.id ? templates.length : ""} rules</small></button>
+          ))}
+        </aside>
+        <div className="prototype-card prototype-history-card space-y-4">
           <div className="flex items-center justify-between">
             <div className="font-semibold">Automatic Accessory Rules for {selectedDevice.name}</div>
 
@@ -573,9 +591,11 @@ export default function BinsPage() {
             </table>
           </div>
         </div>
+        </div>
       )}
 
-      <div className="card-glow p-6 space-y-4">
+      {activeSetupTab === "accessories" && (
+      <div className="prototype-card prototype-history-card space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="font-semibold text-lg">Accessory Inventory</div>
@@ -799,6 +819,7 @@ export default function BinsPage() {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }

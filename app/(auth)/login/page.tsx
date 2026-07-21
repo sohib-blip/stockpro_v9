@@ -210,16 +210,14 @@ if (isSessionReallyActive) {
         onCancel={cancelTakeOver}
       />
 
-      <div className="auth-card w-full max-w-sm rounded-xl border border-slate-800 bg-slate-900/70 p-8">
+      <div className="auth-panel w-full max-w-sm">
+      <div className="auth-card-environment">Test environment</div>
+      <div className="auth-card w-full rounded-xl border border-slate-800 bg-slate-900/70 p-8">
         <div className="mb-6">
           <div className="text-xl font-bold tracking-tight">StockPro</div>
           <div className="mt-0.5 text-xs text-slate-400">Warehouse operations</div>
-          <h1 className="mt-6 text-2xl font-bold tracking-tight">Sign in</h1>
+          <h1 className="sr-only">Sign in</h1>
         </div>
-
-        <p className="text-sm text-slate-400 mb-5">
-          Access your inventory management workspace.
-        </p>
 
         <label className="text-sm text-slate-300">Email</label>
         <input
@@ -261,6 +259,7 @@ if (isSessionReallyActive) {
         </div>
 
         {msg && <p className="mt-4 text-sm text-slate-200">{msg}</p>}
+      </div>
       </div>
     </main>
   );

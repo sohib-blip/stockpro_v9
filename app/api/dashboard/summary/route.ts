@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  isDashboardStockAlert,
+  mergeDashboardBinRows,
+} from "@/lib/dashboard-bin-rows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,30 +16,31 @@ const supabase = createClient(
 
 export async function GET() {
   const [
-    { count: totalImei },
-    { data: binsRows },
-    { count: totalBins },
-    { data: alertsRows },
+    { count: totalImei, error: itemsError },
+    { data: activeBins, error: binsError },
+    { data: stockRows, error: stockError },
   ] = await Promise.all([
     supabase.from("items").select("*", { count: "exact", head: true }).eq("status", "IN"),
-
-    supabase.from("dashboard_bins_view").select("boxes_count"),
-
-    supabase.from("bins").select("*", { count: "exact", head: true }).eq("active", true),
-
-    supabase.from("dashboard_bins_view").select("device_id").eq("stock_status", "low"),
+    supabase.from("bins").select("id,name,min_stock").eq("active", true),
+    supabase.from("dashboard_bins_view").select("*"),
   ]);
 
+  const error = itemsError || binsError || stockError;
+  if (error) {
+    return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+  }
+
+  const binsRows = mergeDashboardBinRows(activeBins ?? [], stockRows ?? []);
   const totalBoxes =
-    binsRows?.reduce((sum, row: any) => sum + Number(row.boxes_count ?? 0), 0) ?? 0;
+    binsRows.reduce((sum, row) => sum + row.boxes_count, 0);
 
   return NextResponse.json({
     ok: true,
     kpis: {
-      total_bins: totalBins ?? 0,
+      total_bins: binsRows.length,
       total_boxes: totalBoxes,
       total_imei: totalImei ?? 0,
-      alerts: alertsRows?.length ?? 0,
+      alerts: binsRows.filter(isDashboardStockAlert).length,
     },
   });
 }

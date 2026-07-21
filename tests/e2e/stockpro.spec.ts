@@ -199,6 +199,27 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await signOut(page);
   });
 
+  test("shows every device bin on the dashboard without pagination", async ({
+    page,
+    request,
+  }) => {
+    const viewerToken = await accessTokenFor(run.users.viewer);
+    const response = await request.get("/api/dashboard/bins", {
+      headers: { Authorization: `Bearer ${viewerToken}` },
+    });
+    expect(response.status()).toBe(200);
+    const payload = await response.json();
+
+    await login(page, "viewer");
+
+    await expect(page.locator(".device-table tbody tr")).toHaveCount(
+      payload.rows.length
+    );
+    await expect(page.getByText(/device bins · all devices shown/)).toBeVisible();
+
+    await signOut(page);
+  });
+
   test("runs an IMEI through inbound, transfer, outbound and customer return", async ({ page }) => {
     await login(page, "operator");
 

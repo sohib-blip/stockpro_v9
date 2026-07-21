@@ -28,6 +28,9 @@ const ACCESSORY_CATEGORIES = [
 
 type AccessoryCategoryFilter = (typeof ACCESSORY_CATEGORIES)[number];
 
+const CHART_PAGE_SIZE = 10;
+const ACCESSORY_PREVIEW_SIZE = 7;
+
 function stockLevel(row: any) {
   const stock = Number(row.imei_count || 0);
   const minimum = Number(row.min_stock || 0);
@@ -97,6 +100,8 @@ export default function DashboardPage() {
   const [accessorySearch, setAccessorySearch] = useState("");
   const [accessoryCategory, setAccessoryCategory] =
     useState<AccessoryCategoryFilter>("All");
+  const [chartPage, setChartPage] = useState(0);
+  const [showAllAccessories, setShowAllAccessories] = useState(false);
 
   const filteredBins = useMemo(
     () =>
@@ -120,7 +125,7 @@ export default function DashboardPage() {
     [accessories, accessoryCategory, accessorySearch]
   );
 
-  const chartData = useMemo(
+  const allChartData = useMemo(
     () =>
       bins
         .map((row: any) => {
@@ -134,9 +139,19 @@ export default function DashboardPage() {
         .sort(
           (a, b) =>
             b.inbound + b.outbound - (a.inbound + a.outbound)
-        )
-        .slice(0, 6),
+        ),
     [bins, flow]
+  );
+
+  const chartPageCount = Math.max(
+    1,
+    Math.ceil(allChartData.length / CHART_PAGE_SIZE)
+  );
+  const activeChartPage = Math.min(chartPage, chartPageCount - 1);
+  const chartStart = activeChartPage * CHART_PAGE_SIZE;
+  const chartData = allChartData.slice(
+    chartStart,
+    chartStart + CHART_PAGE_SIZE
   );
 
   const totalShipped = topDevices.reduce(
@@ -146,8 +161,10 @@ export default function DashboardPage() {
   const lowAlerts = bins.filter((row) => stockLevel(row) === "low").length;
   const emptyAlerts = bins.filter((row) => stockLevel(row) === "critical").length;
   const alertCount = lowAlerts + emptyAlerts;
-  const visibleBins = filteredBins.slice(0, 4);
-  const visibleAccessories = filteredAccessories.slice(0, 4);
+  const visibleBins = filteredBins;
+  const visibleAccessories = showAllAccessories
+    ? filteredAccessories
+    : filteredAccessories.slice(0, ACCESSORY_PREVIEW_SIZE);
   const deviceName =
     bins.find((row: any) => row.device_id === openDevice)?.device || openDevice;
 
@@ -284,6 +301,7 @@ export default function DashboardPage() {
               <span><i className="outbound" />Outbound</span>
             </div>
           </div>
+          <div className="dashboard-chart-viewport">
           <div className="dashboard-chart">
             {chartData.length > 0 ? (
               <ResponsiveContainer
@@ -298,6 +316,12 @@ export default function DashboardPage() {
                     axisLine={false}
                     tickLine={false}
                     interval={0}
+                    height={34}
+                    tickFormatter={(value: string) =>
+                      value.length > 11
+                        ? `${value.slice(0, 6)}…${value.slice(-4)}`
+                        : value
+                    }
                     tick={{ fill: "var(--muted)", fontSize: 11 }}
                   />
                   <Tooltip
@@ -330,8 +354,37 @@ export default function DashboardPage() {
               <div className="prototype-empty">No device movement yet</div>
             )}
           </div>
+          </div>
+          {allChartData.length > CHART_PAGE_SIZE && (
+            <div className="dashboard-chart-pagination">
+              <span>
+                {chartStart + 1}–{Math.min(chartStart + CHART_PAGE_SIZE, allChartData.length)} of {allChartData.length} devices
+              </span>
+              <div>
+                <button
+                  type="button"
+                  aria-label="Previous devices in chart"
+                  disabled={activeChartPage === 0}
+                  onClick={() => setChartPage((current) => Math.max(0, current - 1))}
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next devices in chart"
+                  disabled={activeChartPage >= chartPageCount - 1}
+                  onClick={() =>
+                    setChartPage((current) => Math.min(chartPageCount - 1, current + 1))
+                  }
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          )}
         </article>
 
+        <div className="dashboard-side-stack">
         <article className="prototype-card top-devices-card">
           <div className="prototype-card-heading">
             <h2>Most shipped devices</h2>
@@ -358,9 +411,6 @@ export default function DashboardPage() {
             )}
           </div>
         </article>
-      </section>
-
-      <section className="dashboard-detail-grid">
         <article className="prototype-card recent-activity-card">
           <div className="prototype-card-heading">
             <h2>Recent activity</h2>
@@ -392,8 +442,10 @@ export default function DashboardPage() {
             )}
           </div>
         </article>
+        </div>
+      </section>
 
-        <article className="prototype-card prototype-table-card device-inventory-card">
+      <article className="prototype-card prototype-table-card device-inventory-card">
           <div className="prototype-table-toolbar">
             <h2>Device inventory</h2>
             <input
@@ -474,12 +526,9 @@ export default function DashboardPage() {
             </table>
           </div>
           <div className="prototype-table-footer">
-            {Math.max(0, filteredBins.length - visibleBins.length) > 0
-              ? `+ ${filteredBins.length - visibleBins.length} more device bins · click a row for box and floor detail`
-              : `${filteredBins.length} device bins · click a row for box and floor detail`}
+            {filteredBins.length} device bins · all devices shown · click a row for box and floor detail
           </div>
-        </article>
-      </section>
+      </article>
 
       {openDevice && (
         <section className="prototype-card prototype-table-card drilldown-card">
@@ -546,7 +595,10 @@ export default function DashboardPage() {
                   type="button"
                   key={category}
                   className={accessoryCategory === category ? "is-active" : ""}
-                  onClick={() => setAccessoryCategory(category)}
+                  onClick={() => {
+                    setAccessoryCategory(category);
+                    setShowAllAccessories(false);
+                  }}
                 >
                   {category}
                 </button>
@@ -556,7 +608,10 @@ export default function DashboardPage() {
               type="search"
               placeholder="Search accessory…"
               value={accessorySearch}
-              onChange={(event) => setAccessorySearch(event.target.value)}
+              onChange={(event) => {
+                setAccessorySearch(event.target.value);
+                setShowAllAccessories(false);
+              }}
             />
           </div>
         </div>
@@ -598,10 +653,19 @@ export default function DashboardPage() {
             </tbody>
           </table>
         </div>
-        <div className="prototype-table-footer">
-          {Math.max(0, filteredAccessories.length - visibleAccessories.length) > 0
-            ? `+ ${filteredAccessories.length - visibleAccessories.length} more accessories`
-            : `${filteredAccessories.length} accessories`}
+        <div className="prototype-table-footer dashboard-accessory-footer">
+          <span>
+            Showing {visibleAccessories.length} of {filteredAccessories.length} accessories
+          </span>
+          {filteredAccessories.length > ACCESSORY_PREVIEW_SIZE && (
+            <button
+              type="button"
+              className="dashboard-view-all-button"
+              onClick={() => setShowAllAccessories((current) => !current)}
+            >
+              {showAllAccessories ? "Show less" : `View all (${filteredAccessories.length})`}
+            </button>
+          )}
         </div>
       </section>
     </div>

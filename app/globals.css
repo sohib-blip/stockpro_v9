@@ -621,6 +621,7 @@ body {
 
 .dashboard-chart {
   height: 170px;
+  min-width: 0;
 }
 
 .top-device-list {
@@ -1139,6 +1140,84 @@ body {
   font-size: 13.5px;
 }
 
+.prototype-input-card input[type="file"] {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 5px 6px;
+  color: var(--muted-strong);
+  white-space: nowrap;
+}
+
+.prototype-input-card input[type="file"]::file-selector-button {
+  min-height: 30px;
+  margin-right: 10px;
+  border: 0;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: var(--surface-muted);
+  color: var(--foreground-soft);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.spreadsheet-import-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.spreadsheet-import-grid .spreadsheet-file-input,
+.spreadsheet-import-grid .prototype-button {
+  grid-column: 1 / -1;
+}
+
+.inbound-history-toolbar,
+.inbound-history-filters,
+.inventory-bin-create {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.inbound-history-toolbar {
+  justify-content: space-between;
+}
+
+.inbound-history-filters {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.inbound-history-table,
+.inventory-bins-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.inbound-history-table {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.inventory-bins-table-scroll {
+  max-height: 560px;
+  overflow-y: auto;
+}
+
+.inventory-bins-table-scroll thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.inbound-history-table table,
+.inventory-bins-table-scroll table {
+  min-width: 760px;
+}
+
 .prototype-input-section-title {
   margin-bottom: 12px;
   color: var(--foreground);
@@ -1441,6 +1520,10 @@ body {
 }
 
 .prototype-rule-sidebar {
+  position: sticky;
+  top: 104px;
+  max-height: min(68vh, 680px);
+  overflow-y: auto;
   padding: 16px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -2174,7 +2257,7 @@ main.min-h-screen {
   background: var(--muted);
 }
 
-@media (max-width: 1220px) {
+@media (max-width: 1320px) {
   .topbar-inner {
     gap: 12px;
     padding-inline: 24px;
@@ -2257,6 +2340,11 @@ main.min-h-screen {
     grid-template-columns: 1fr;
   }
 
+  .prototype-rule-sidebar {
+    position: static;
+    max-height: 360px;
+  }
+
   .labels-editor-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -2321,6 +2409,57 @@ main.min-h-screen {
   .prototype-page-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .spreadsheet-import-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .spreadsheet-import-grid .spreadsheet-file-input,
+  .spreadsheet-import-grid .prototype-button {
+    grid-column: auto;
+  }
+
+  .inbound-history-toolbar,
+  .inbound-history-filters,
+  .inventory-bin-create {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .inbound-history-filters > *,
+  .inventory-bin-create > * {
+    width: 100% !important;
+  }
+
+  .inventory-bins-table-scroll table {
+    min-width: 100%;
+    table-layout: fixed;
+  }
+
+  .inventory-bins-table-scroll th:first-child,
+  .inventory-bins-table-scroll td:first-child {
+    width: 50%;
+  }
+
+  .inventory-bins-table-scroll th:last-child,
+  .inventory-bins-table-scroll td:last-child {
+    width: 50%;
+    white-space: nowrap;
+  }
+
+  .inventory-bins-table-scroll th,
+  .inventory-bins-table-scroll td {
+    padding-inline: 10px !important;
+  }
+
+  .inventory-bins-table-scroll td:last-child {
+    font-size: 11px;
+  }
+
+  .inventory-bins-table-scroll td:last-child button + button {
+    margin-left: 6px;
   }
 
   .prototype-page-actions,

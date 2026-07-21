@@ -631,7 +631,7 @@ setManualMsg("");
       <div className="prototype-input-card">
         <div className="prototype-input-section-title">Spreadsheet Import</div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="spreadsheet-import-grid">
           <select
             aria-label="Inbound spreadsheet vendor"
             value={vendor}
@@ -644,14 +644,6 @@ setManualMsg("");
             <option value="truster">Truster</option>
           </select>
 
-          <input
-            type="file"
-            aria-label="Inbound spreadsheet file"
-            accept=".xlsx,.xls"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
-
           <select
             aria-label="Inbound spreadsheet floor"
             value={floor}
@@ -663,6 +655,14 @@ setManualMsg("");
             <option value="6">Floor 6</option>
             <option value="Cabinet">Cabinet</option>
           </select>
+
+          <input
+            type="file"
+            aria-label="Inbound spreadsheet file"
+            accept=".xlsx,.xls"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="spreadsheet-file-input"
+          />
 
           <button
             onClick={parseExcel}
@@ -804,14 +804,14 @@ setManualMsg("");
 
       {/* HISTORY */}
       <div id="inbound-history" className="prototype-card prototype-history-card">
-        <div className="flex items-center justify-between gap-3">
+        <div className="inbound-history-toolbar">
           <div>
             <div className="font-semibold">Inbound History</div>
             <div className="text-xs text-slate-500">
             </div>
           </div>
 
-          <div className="flex gap-2 items-center">
+          <div className="inbound-history-filters">
 
             <input
   placeholder="Search user / vendor / reference"
@@ -839,7 +839,7 @@ setManualMsg("");
           </div>
         </div>
 
-        <div className="max-h-[400px] overflow-y-auto border border-slate-800 rounded-xl">
+        <div className="inbound-history-table border border-slate-800 rounded-xl">
           <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
             <thead className="bg-slate-950/50">
               <tr>

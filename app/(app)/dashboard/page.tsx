@@ -286,7 +286,12 @@ export default function DashboardPage() {
           </div>
           <div className="dashboard-chart">
             {chartData.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
+              <ResponsiveContainer
+                width="100%"
+                height="100%"
+                minWidth={0}
+                initialDimension={{ width: 1, height: 170 }}
+              >
                 <BarChart data={chartData} barCategoryGap="20%">
                   <XAxis
                     dataKey="device"

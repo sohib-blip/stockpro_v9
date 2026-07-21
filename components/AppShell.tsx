@@ -233,7 +233,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
             <span className="account-avatar" aria-hidden="true">
               {initialsFor(email)}
             </span>
-            <button type="button" className="signout-button" onClick={handleLogout}>
+            <button type="button" className="signout-button" aria-label={t("Sign out")} onClick={handleLogout}>
               <span>{t("Sign out")}</span>
             </button>
           </div>
@@ -270,7 +270,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
 
             <div className="mobile-account-row">
               <PreferenceControls />
-              <button type="button" className="signout-button" onClick={handleLogout}>
+              <button type="button" className="signout-button" aria-label={t("Sign out")} onClick={handleLogout}>
                 {t("Sign out")}
               </button>
             </div>

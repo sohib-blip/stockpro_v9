@@ -330,7 +330,7 @@ export default function BinsPage() {
       <div className="prototype-card prototype-history-card space-y-4">
         <div className="font-semibold">Device Bins</div>
 
-        <div className="flex gap-2 items-center">
+        <div className="inventory-bin-create">
           <input
             value={newBin}
             onChange={(e) => setNewBin(e.target.value)}
@@ -347,7 +347,7 @@ export default function BinsPage() {
           </button>
         </div>
 
-        <div className="border border-slate-800 rounded-xl overflow-hidden">
+        <div className="inventory-bins-table-scroll border border-slate-800 rounded-xl">
           <table className="w-full text-sm">
             <thead className="bg-slate-900">
               <tr>

@@ -48,9 +48,7 @@ export default function TransferPage() {
 
     if (!error && data) {
       setBins(data as BinRow[]);
-      if (!sourceBinId && data.length > 0) {
-        setSourceBinId(data[0].id);
-      }
+      setSourceBinId((current) => current || data[0]?.id || "");
     }
   }
 
@@ -113,21 +111,30 @@ export default function TransferPage() {
     setLoadingPreview(false);
 
     if (json.ok) {
-      setPreview(json);
+      setPreview({
+        ...json,
+        request: {
+          box_codes,
+          source_bin_id: sourceBinId,
+          target_floor: targetFloor,
+        },
+      });
     } else {
       setErrorMsg(json.error);
     }
   }
 
   async function confirmTransfer() {
-    const box_codes = boxInput
+    const box_codes = preview?.request?.box_codes || boxInput
       .split("\n")
       .map((b) => b.trim())
       .filter(Boolean);
+    const confirmedSourceBinId = preview?.request?.source_bin_id || sourceBinId;
+    const confirmedTargetFloor = preview?.request?.target_floor || targetFloor;
 
     if (box_codes.length === 0) return;
 
-    if (!sourceBinId) {
+    if (!confirmedSourceBinId) {
       setErrorMsg("Select a device.");
       return;
     }
@@ -151,8 +158,8 @@ export default function TransferPage() {
       },
       body: JSON.stringify({
         box_codes,
-        source_bin_id: sourceBinId,
-        target_floor: targetFloor,
+        source_bin_id: confirmedSourceBinId,
+        target_floor: confirmedTargetFloor,
       }),
     });
 

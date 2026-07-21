@@ -1,9 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import * as XLSX from "xlsx";
 import {
   accessTokenFor,
+  assertStagingRunClean,
   cleanupStagingRun,
   createStagingRun,
   readAccessoryStock,
@@ -60,6 +61,34 @@ function createAccessorySpreadsheet(path: string) {
   XLSX.writeFile(workbook, path);
 }
 
+function createAutomaticAccessorySpreadsheet(path: string) {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ["IMEI"],
+    [run.manualImei],
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Automatic Accessories");
+  XLSX.writeFile(workbook, path);
+}
+
+async function expectDownload(
+  page: Page,
+  trigger: Locator,
+  filename: RegExp
+) {
+  const downloadPromise = page.waitForEvent("download");
+  await trigger.click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(filename);
+  expect(await download.failure()).toBeNull();
+
+  const stream = await download.createReadStream();
+  expect(stream).not.toBeNull();
+  let bytes = 0;
+  for await (const chunk of stream!) bytes += chunk.length;
+  expect(bytes).toBeGreaterThan(100);
+}
+
 test("persists the selected language and dark mode", async ({ page }) => {
   await page.goto("/login");
 
@@ -84,7 +113,10 @@ test.describe.serial("StockPro staging end-to-end", () => {
   });
 
   test.afterAll(async () => {
-    if (run) await cleanupStagingRun(run);
+    if (run) {
+      await cleanupStagingRun(run);
+      await assertStagingRunClean(run);
+    }
   });
 
   test("protects private pages and completes the login/logout flow", async ({ page }) => {
@@ -101,6 +133,34 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByRole("heading", { name: "User Access" })).toBeVisible();
     await expect(page.getByText(run.users.operator.email)).toBeVisible();
     await expect(page.getByText(run.users.viewer.email)).toBeVisible();
+
+    const inviteCard = page.locator(".admin-invite-card");
+    await inviteCard.getByPlaceholder("colleague@company.com").fill(run.inviteEmail);
+    await inviteCard.locator("select").selectOption("viewer");
+    await inviteCard.getByRole("button", { name: "Send Invitation" }).click();
+    const invitationSent = page.getByText("Invitation sent and access configured");
+    const invitationRateLimit = page.getByText(/email rate limit exceeded/i);
+    await expect(invitationSent.or(invitationRateLimit)).toBeVisible();
+
+    if (await invitationSent.isVisible()) {
+      const invitedUser = page.locator("article").filter({ hasText: run.inviteEmail });
+      await expect(invitedUser).toBeVisible();
+      await invitedUser.locator("select").selectOption("operator");
+      await invitedUser.getByRole("button", { name: "Save Changes" }).click();
+      await expect(page.getByText(`Permissions saved for ${run.inviteEmail}`)).toBeVisible();
+    } else {
+      const viewerUser = page.locator("article").filter({ hasText: run.users.viewer.email });
+      await viewerUser.locator("select").selectOption("operator");
+      await viewerUser.getByRole("button", { name: "Save Changes" }).click();
+      await expect(
+        page.getByText(`Permissions saved for ${run.users.viewer.email}`)
+      ).toBeVisible();
+      await viewerUser.locator("select").selectOption("viewer");
+      await viewerUser.getByRole("button", { name: "Save Changes" }).click();
+      await expect(
+        page.getByText(`Permissions saved for ${run.users.viewer.email}`)
+      ).toBeVisible();
+    }
     await signOut(page);
   });
 
@@ -155,6 +215,29 @@ test.describe.serial("StockPro staging end-to-end", () => {
       headers: { Authorization: `Bearer ${viewerToken}` },
     });
     expect(viewerAdmin.status()).toBe(403);
+
+    const viewerRuleUpdate = await request.post("/api/bins/templates/save", {
+      headers: { Authorization: `Bearer ${viewerToken}` },
+      data: {
+        device_id: run.bin.id,
+        accessory_bin_id: run.accessory.id,
+        quantity: 1,
+        per_devices: 1,
+      },
+    });
+    expect(viewerRuleUpdate.status()).toBe(403);
+
+    const operatorRuleUpdate = await request.post("/api/bins/templates/save", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+      data: {
+        device_id: run.bin.id,
+        accessory_bin_id: run.accessory.id,
+        quantity: 1,
+        per_devices: 1,
+      },
+    });
+    expect(operatorRuleUpdate.status()).toBe(200);
+    expect((await operatorRuleUpdate.json()).ok).toBe(true);
 
     const minStockUpdate = await request.post("/api/dashboard/min-stock", {
       headers: { Authorization: `Bearer ${operatorToken}` },
@@ -221,6 +304,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
   });
 
   test("runs an IMEI through inbound, transfer, outbound and customer return", async ({ page }) => {
+    const outboundReference = `E2E-OUT-${run.stamp}`;
     await login(page, "operator");
 
     await page.goto("/inbound");
@@ -234,6 +318,16 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByText("1 valid")).toBeVisible();
     await page.getByRole("button", { name: "Confirm Inbound" }).click();
     await expect(page.getByText(/Manual inbound completed: 1 IMEIs imported/)).toBeVisible();
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "Download batch Excel" }),
+      /\.xlsx$/
+    );
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "Download ZD220 label PDF" }),
+      /\.pdf$/
+    );
 
     let item = await readItem(run.manualImei);
     expect(item?.status).toBe("IN");
@@ -252,13 +346,22 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(item?.boxes?.floor).toBe("1");
 
     await page.goto("/outbound");
-    await page.getByLabel("Outbound shipment reference").fill(`E2E-OUT-${run.stamp}`);
+    await page.getByLabel("Outbound shipment reference").fill(outboundReference);
     await page.getByLabel("Outbound IMEIs").fill(run.manualImei);
     await page.getByRole("button", { name: "Preview Outbound" }).click();
     await expect(page.getByText("Preview (manual)")).toBeVisible();
     await page.getByRole("button", { name: "Confirm Outbound" }).click();
     await expect(page.getByText("Device outbound completed")).toBeVisible();
     expect((await readItem(run.manualImei))?.status).toBe("OUT");
+    const outboundRow = page.locator("#outbound-history tbody tr").filter({
+      hasText: outboundReference,
+    });
+    await expect(outboundRow).toBeVisible();
+    await expectDownload(
+      page,
+      outboundRow.getByRole("button", { name: "Download" }),
+      /\.xlsx$/
+    );
 
     await page.goto("/returns");
     await page.getByLabel("Return reference").fill(`E2E-RETURN-${run.stamp}`);
@@ -272,6 +375,14 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByText("Valid returns").locator("..").getByText("1")).toBeVisible();
     await page.getByRole("button", { name: "Confirm Return" }).click();
     await expect(page.getByText("Return completed: 1 IMEIs returned to stock.")).toBeVisible();
+    await expect(
+      page.locator("#returns-history tbody tr").filter({ hasText: `E2E-RETURN-${run.stamp}` })
+    ).toBeVisible();
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "Export all returns" }),
+      /\.xlsx$/
+    );
 
     item = await readItem(run.manualImei);
     expect(item?.status).toBe("IN");
@@ -281,6 +392,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
   test("imports inbound and outbound spreadsheets", async ({ page }) => {
     const file = spreadsheetPath(`quicklink-${run.stamp}.xlsx`);
+    const outboundReference = `E2E-XLSX-OUT-${run.stamp}`;
     createQuicklinkSpreadsheet(file);
     await login(page, "operator");
 
@@ -299,23 +411,44 @@ test.describe.serial("StockPro staging end-to-end", () => {
     });
     await page.getByRole("button", { name: "Confirm Inbound" }).click();
     await expect(page.getByRole("button", { name: "Download ZD220 label PDF" })).toBeVisible();
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "Download batch Excel" }),
+      /\.xlsx$/
+    );
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "Download ZD220 label PDF" }),
+      /\.pdf$/
+    );
     expect((await readItem(run.spreadsheetImei))?.status).toBe("IN");
 
     await page.goto("/outbound");
     await page.getByRole("button", { name: "End-of-Day Report" }).click();
-    await page.getByLabel("Outbound shipment reference").fill(`E2E-XLSX-OUT-${run.stamp}`);
+    await page.getByLabel("Outbound shipment reference").fill(outboundReference);
     await page.getByLabel("Outbound spreadsheet file").setInputFiles(file);
     await page.getByRole("button", { name: "Preview Spreadsheet" }).click();
     await expect(page.getByText("Preview (excel)")).toBeVisible();
     await page.getByRole("button", { name: "Confirm Outbound" }).click();
     await expect(page.getByText("Device outbound completed")).toBeVisible();
     expect((await readItem(run.spreadsheetImei))?.status).toBe("OUT");
+    const outboundRow = page.locator("#outbound-history tbody tr").filter({
+      hasText: outboundReference,
+    });
+    await expect(outboundRow).toBeVisible();
+    await expectDownload(
+      page,
+      outboundRow.getByRole("button", { name: "Download" }),
+      /\.xlsx$/
+    );
     await signOut(page);
   });
 
-  test("processes manual and spreadsheet accessory outbound", async ({ page }) => {
-    const file = spreadsheetPath(`accessories-${run.stamp}.xlsx`);
-    createAccessorySpreadsheet(file);
+  test("processes manual, explicit spreadsheet and automatic IMEI accessory outbound", async ({ page }) => {
+    const explicitFile = spreadsheetPath(`accessories-explicit-${run.stamp}.xlsx`);
+    const automaticFile = spreadsheetPath(`accessories-automatic-${run.stamp}.xlsx`);
+    createAccessorySpreadsheet(explicitFile);
+    createAutomaticAccessorySpreadsheet(automaticFile);
     await login(page, "operator");
     await page.goto("/accessories");
 
@@ -330,19 +463,74 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
     await page.getByRole("button", { name: "Spreadsheet" }).click();
     await page.getByLabel("Accessory shipment reference").fill(`E2E-ACC-XLSX-${run.stamp}`);
-    await page.getByLabel("Accessory spreadsheet file").setInputFiles(file);
+    await page.getByLabel("Accessory spreadsheet file").setInputFiles(explicitFile);
     await page.getByRole("button", { name: "Preview Spreadsheet" }).click();
     await expect(page.getByText("Confirm Accessory Outbound")).toBeVisible();
     await page.getByRole("button", { name: "Confirm Outbound" }).click();
     await expect(page.getByText("Spreadsheet outbound completed")).toBeVisible();
     expect(await readAccessoryStock(run.accessory.id)).toBe(7);
+
+    await page.getByLabel("Accessory shipment reference").fill(`E2E-ACC-AUTO-${run.stamp}`);
+    await page.getByLabel("Accessory spreadsheet file").setInputFiles(automaticFile);
+    await page.getByRole("button", { name: "Preview Spreadsheet" }).click();
+    await expect(page.getByText("Confirm Accessory Outbound")).toBeVisible();
+    await expect(
+      page.locator(".prototype-preview-content").getByRole("cell", {
+        name: run.accessory.name,
+      })
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Confirm Outbound" }).click();
+    await expect(page.getByText("Spreadsheet outbound completed")).toBeVisible();
+    expect(await readAccessoryStock(run.accessory.id)).toBe(6);
     await signOut(page);
   });
 
-  test("creates inventory, supply and label outputs", async ({ page }) => {
+  test("exports dashboards and reports low device and accessory stock", async ({ page }) => {
+    await login(page, "viewer");
+
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "Export Stock" }),
+      /\.xlsx$/
+    );
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "Export Count Sheet" }),
+      /\.xlsx$/
+    );
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "Export Accessories" }),
+      /\.xlsx$/
+    );
+
+    await page.getByPlaceholder("Search device…").fill(run.bin.name);
+    const deviceRow = page.locator(".device-table tbody tr").filter({ hasText: run.bin.name });
+    await expect(deviceRow).toContainText("▼ LOW");
+
+    await page.getByPlaceholder("Search accessory…").fill(run.accessory.name);
+    const accessoryRow = page.locator(".accessory-table tbody tr").filter({
+      hasText: run.accessory.name,
+    });
+    await expect(accessoryRow).toContainText("▼ LOW");
+    await signOut(page);
+  });
+
+  test("manages inventory rules, supply lifecycles and label outputs", async ({ page }) => {
     await login(page, "operator");
 
     await page.goto("/bins");
+    const existingBinRow = page.getByRole("row").filter({ hasText: run.bin.name });
+    await expect(existingBinRow).toBeVisible();
+    await existingBinRow.getByRole("button", { name: "Accessory Rules" }).click();
+    await expect(
+      page.getByText(`Automatic Accessory Rules for ${run.bin.name}`)
+    ).toBeVisible();
+    await expect(
+      page.locator(".prototype-rules-layout tbody tr").filter({ hasText: run.accessory.name })
+    ).toContainText("1");
+
+    await page.getByRole("tab", { name: /Device Bins/ }).click();
     await page.getByPlaceholder("New device bin").fill(run.uiBinName);
     await page.getByRole("button", { name: "Add Bin" }).click();
     const binRow = page.getByRole("row", { name: new RegExp(run.uiBinName) });
@@ -351,30 +539,80 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(binRow).toHaveCount(0);
 
     await page.goto("/supply");
-    await page.getByRole("button", { name: "+ New Order" }).click();
-    await page.getByLabel("Supply origin office").selectOption("UK");
-    await page.getByLabel("Supply destination office").selectOption("BE");
-    await page.getByLabel("Supply item 1 type").selectOption("DEVICE");
-    await page.getByLabel("Supply item 1 product").fill(run.bin.name);
-    await page.getByLabel("Supply item 1 quantity").fill("3");
-    await page.getByPlaceholder("Optional comment").fill(`E2E supply ${run.stamp}`);
-    await page.getByRole("button", { name: "Create Supply Order" }).click();
-    await page.getByPlaceholder("Search order or tracking…").fill(run.bin.name);
-    await expect(page.getByRole("row", { name: new RegExp(run.bin.name) })).toBeVisible();
+    const supplySearch = page.getByPlaceholder("Search order or tracking…");
+
+    async function createSupply(product: string, comment: string) {
+      await supplySearch.fill("");
+      await page.getByRole("button", { name: "+ New Order" }).click();
+      await page.getByLabel("Supply origin office").selectOption("UK");
+      await page.getByLabel("Supply destination office").selectOption("BE");
+      await page.getByLabel("Supply item 1 type").selectOption("DEVICE");
+      await page.getByLabel("Supply item 1 product").fill(product);
+      await page.getByLabel("Supply item 1 quantity").fill("3");
+      await page.getByPlaceholder("Optional comment").fill(comment);
+      await page.getByRole("button", { name: "Create Supply Order" }).click();
+      await supplySearch.fill(product);
+      const row = page.getByRole("row").filter({ hasText: product });
+      await expect(row).toBeVisible();
+      return row;
+    }
+
+    async function updateSupplyStatus(
+      product: string,
+      status: "SHIPPED" | "RECEIVED" | "IMPORTED" | "FAILED",
+      tracking?: string
+    ) {
+      await supplySearch.fill(product);
+      const row = page.getByRole("row").filter({ hasText: product });
+      await row.getByRole("button", { name: "Edit" }).click();
+      const modal = page.locator(".fixed.inset-0.z-\\[80\\]");
+      await modal.locator("select").nth(2).selectOption(status);
+      if (tracking) {
+        await modal.getByPlaceholder("Tracking number").fill(tracking);
+      }
+      if (status === "FAILED") {
+        await modal.getByPlaceholder("Reason for failure").fill("E2E validation failure");
+      }
+      await modal.getByRole("button", { name: "Save Changes" }).click();
+      if (status === "IMPORTED") {
+        await page.getByRole("button", { name: "Mark as Imported" }).click();
+      }
+      await expect(row).toContainText(status);
+    }
+
+    await createSupply(run.bin.name, `E2E supply ${run.stamp}`);
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "Export Excel" }),
+      /\.xlsx$/
+    );
+    await updateSupplyStatus(run.bin.name, "SHIPPED", `TRACK-${run.stamp}`);
+    await updateSupplyStatus(run.bin.name, "RECEIVED");
+    await updateSupplyStatus(run.bin.name, "IMPORTED");
+
+    const deleteProduct = `${run.bin.name}-DELETE`;
+    const deleteRow = await createSupply(deleteProduct, `E2E delete ${run.stamp}`);
+    await deleteRow.getByRole("button", { name: "Delete" }).click();
+    await page.locator(".fixed.inset-0.z-\\[90\\]").getByRole("button", { name: "Delete" }).click();
+    await expect(deleteRow).toHaveCount(0);
+
+    const failedProduct = `${run.bin.name}-FAILED`;
+    await createSupply(failedProduct, `E2E failure ${run.stamp}`);
+    await updateSupplyStatus(failedProduct, "FAILED");
 
     await page.goto("/labels");
     await page.getByLabel("Label 1 inventory bin").selectOption(run.bin.id);
     await page.getByLabel("Label 1 box number").fill(run.returnBox);
     await page.getByLabel("Label 1 IMEIs").fill(run.manualImei);
-    const downloadPromise = page.waitForEvent("download");
-    await page.getByRole("button", { name: /Download all labels — PDF/ }).click();
-    const download = await downloadPromise;
-    expect(download.suggestedFilename()).toMatch(/\.pdf$/);
-    expect(await download.createReadStream()).not.toBeNull();
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: /Download all labels — PDF/ }),
+      /\.pdf$/
+    );
     await signOut(page);
   });
 
-  test("starts and stops an NRD task", async ({ page }) => {
+  test("runs normal and corrected NRD sessions with personal and admin exports", async ({ page }) => {
     await login(page, "operator");
     await page.goto("/nrd");
     await page.getByLabel("NRD task", { exact: true }).selectOption("Training");
@@ -383,6 +621,29 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.locator(".nrd-overview-card.active").getByText("Training", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Stop now" }).click();
     await expect(page.getByText("Task stopped")).toBeVisible();
+
+    await page.getByLabel("NRD task", { exact: true }).selectOption("Team Meeting");
+    await page.getByRole("button", { name: "Start Task" }).click();
+    await expect(page.getByText("Task started")).toBeVisible();
+    await page.getByRole("button", { name: "Stop with corrected end time…" }).click();
+    await expect(page.getByRole("heading", { name: "Confirm NRD End Time" })).toBeVisible();
+    await page.getByRole("button", { name: "Save Corrected End Time" }).click();
+    await expect(page.getByText("NRD corrected and stopped")).toBeVisible();
+
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "My Excel export" }),
+      /\.xlsx$/
+    );
+    await signOut(page);
+
+    await login(page, "admin");
+    await page.goto("/nrd");
+    await expectDownload(
+      page,
+      page.getByRole("button", { name: "All users (admin)" }),
+      /\.xlsx$/
+    );
     await signOut(page);
   });
 });

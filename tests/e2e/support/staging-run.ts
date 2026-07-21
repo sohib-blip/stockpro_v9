@@ -13,6 +13,7 @@ type TestUser = {
 export type StagingRun = {
   stamp: string;
   users: Record<AppRole, TestUser>;
+  inviteEmail: string;
   bin: { id: string; name: string };
   accessory: { id: string; name: string };
   manualImei: string;
@@ -48,6 +49,7 @@ export async function createStagingRun(): Promise<StagingRun> {
   const run = {
     stamp,
     users,
+    inviteEmail: `stockpro.e2e.invited.${stamp}@gmail.com`,
     bin: { id: "", name: `TESTDEVICE${shortNumber}` },
     accessory: { id: "", name: `E2E Accessory ${stamp}` },
     manualImei: makeImei(numericStamp),
@@ -103,7 +105,7 @@ export async function createStagingRun(): Promise<StagingRun> {
       .insert({
         name: run.accessory.name,
         current_stock: 10,
-        minimum_stock: 2,
+        minimum_stock: 7,
         category: "Items",
         active: true,
       })
@@ -112,6 +114,16 @@ export async function createStagingRun(): Promise<StagingRun> {
     throwOnError(accessoryError, "Create E2E accessory");
     if (!accessory) throw new Error("Create E2E accessory: no row returned");
     run.accessory = { id: String(accessory.id), name: String(accessory.name) };
+
+    const { error: templateError } = await supabase
+      .from("device_accessory_templates")
+      .insert({
+        device_id: run.bin.id,
+        accessory_bin_id: run.accessory.id,
+        quantity: 1,
+        per_devices: 1,
+      });
+    throwOnError(templateError, "Create E2E automatic accessory rule");
 
     return run;
   } catch (error) {
@@ -142,9 +154,22 @@ export async function cleanupStagingRun(
   const userIds = Object.values(run.users)
     .map((user) => user?.id)
     .filter(Boolean);
-  const userEmails = Object.values(run.users)
+  const userEmails = [
+    ...Object.values(run.users)
     .map((user) => user?.email)
-    .filter(Boolean);
+    .filter(Boolean),
+    run.inviteEmail,
+  ];
+
+  const { data: authUsers } = await supabase.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+  for (const user of authUsers?.users || []) {
+    if (user.email && userEmails.includes(user.email) && !userIds.includes(user.id)) {
+      userIds.push(user.id);
+    }
+  }
   const imeis = [run.manualImei, run.spreadsheetImei];
 
   const { data: items } = await supabase
@@ -212,6 +237,95 @@ export async function cleanupStagingRun(
   }
   for (const userId of userIds) {
     await supabase.auth.admin.deleteUser(userId);
+  }
+}
+
+export async function assertStagingRunClean(run: StagingRun) {
+  const supabase = serviceClient();
+  const userIds = Object.values(run.users).map((user) => user.id);
+  const userEmails = [
+    ...Object.values(run.users).map((user) => user.email),
+    run.inviteEmail,
+  ];
+
+  async function rowCount(
+    operation: PromiseLike<{ count: number | null; error: { message: string } | null }>,
+    label: string
+  ) {
+    const { count, error } = await operation;
+    throwOnError(error, `Verify cleanup for ${label}`);
+    return Number(count || 0);
+  }
+
+  const checks = await Promise.all([
+    rowCount(
+      supabase.from("items").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei]),
+      "items"
+    ),
+    rowCount(
+      supabase.from("boxes").select("*", { count: "exact", head: true }).eq("bin_id", run.bin.id).in("box_code", [run.manualBox, run.returnBox, run.spreadsheetBox]),
+      "boxes"
+    ),
+    rowCount(
+      supabase.from("movements").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei]),
+      "device movements"
+    ),
+    rowCount(
+      supabase.from("inbound_batches").select("*", { count: "exact", head: true }).in("actor", userEmails),
+      "inbound batches"
+    ),
+    rowCount(
+      supabase.from("accessory_bins").select("*", { count: "exact", head: true }).eq("id", run.accessory.id),
+      "accessory"
+    ),
+    rowCount(
+      supabase.from("accessory_movements").select("*", { count: "exact", head: true }).eq("accessory_bin_id", run.accessory.id),
+      "accessory movements"
+    ),
+    rowCount(
+      supabase.from("device_accessory_templates").select("*", { count: "exact", head: true }).eq("device_id", run.bin.id),
+      "automatic accessory rules"
+    ),
+    rowCount(
+      supabase.from("bins").select("*", { count: "exact", head: true }).in("name", [run.bin.name, run.uiBinName]),
+      "bins"
+    ),
+    rowCount(
+      supabase.from("supplies").select("*", { count: "exact", head: true }).in("created_by_id", userIds),
+      "supply orders"
+    ),
+    rowCount(
+      supabase.from("nrd_time_logs").select("*", { count: "exact", head: true }).in("user_email", userEmails),
+      "NRD logs"
+    ),
+    rowCount(
+      supabase.from("profiles").select("*", { count: "exact", head: true }).in("user_id", userIds),
+      "profiles"
+    ),
+    rowCount(
+      supabase.from("user_permissions").select("*", { count: "exact", head: true }).in("user_id", userIds),
+      "user permissions"
+    ),
+    rowCount(
+      supabase.from("user_roles").select("*", { count: "exact", head: true }).in("user_id", userIds),
+      "user roles"
+    ),
+  ]);
+
+  const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers({
+    page: 1,
+    perPage: 1000,
+  });
+  throwOnError(authError, "Verify cleanup for auth users");
+  const remainingAuthUsers = (authUsers?.users || []).filter(
+    (user) => user.email && userEmails.includes(user.email)
+  );
+
+  const remainingRows = checks.reduce((sum, count) => sum + count, 0);
+  if (remainingRows > 0 || remainingAuthUsers.length > 0) {
+    throw new Error(
+      `E2E cleanup incomplete: ${remainingRows} database rows and ${remainingAuthUsers.length} auth users remain`
+    );
   }
 }
 

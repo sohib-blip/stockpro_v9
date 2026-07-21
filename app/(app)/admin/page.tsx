@@ -121,8 +121,8 @@ export default function AdminPage() {
       return;
     }
 
-    setMessage(`Permissions saved for ${user.email}`);
     await loadUsers();
+    setMessage(`Permissions saved for ${user.email}`);
   }
 
   async function inviteUser() {
@@ -149,8 +149,8 @@ export default function AdminPage() {
     setInviteEmail("");
     setInviteRole("viewer");
     setInvitePermissions(permissionsForRole("viewer"));
-    setMessage("Invitation sent and access configured");
     await loadUsers();
+    setMessage("Invitation sent and access configured");
   }
 
   return (

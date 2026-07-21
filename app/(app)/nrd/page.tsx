@@ -37,6 +37,12 @@ function formatTimer(seconds: number) {
   ).padStart(2, "0")}`;
 }
 
+function toLocalDateTimeValue(date: Date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 23);
+}
+
 function formatTime(date: string) {
   return new Date(date).toLocaleTimeString("en-GB", {
     hour: "2-digit",
@@ -177,14 +183,7 @@ export default function NRDPage() {
   !showForgottenModal &&
   !forgottenModalDismissed
 ) {
-  const nowDate = new Date();
-const localDateTime = new Date(
-  nowDate.getTime() - nowDate.getTimezoneOffset() * 60_000
-)
-  .toISOString()
-  .slice(0, 16);
-
-setCorrectEndTime(localDateTime);
+  setCorrectEndTime(toLocalDateTimeValue(new Date()));
 
   setShowForgottenModal(true);
 }
@@ -227,7 +226,6 @@ setCorrectEndTime("");
 
 setSuccessMsg("Task started");
 notifyNrdChanged(json.row);
-setTimeout(() => setSuccessMsg(""), 2000);
   }
 
   async function stopTask() {
@@ -257,7 +255,6 @@ setForgottenModalDismissed(false);
 setCorrectEndTime("");
   setSuccessMsg("Task stopped");
   notifyNrdChanged(null);
-  setTimeout(() => setSuccessMsg(""), 2000);
 
   await loadHistory(userEmail, periodMonth);
   await loadStats(userEmail, periodMonth);
@@ -297,7 +294,6 @@ async function stopTaskWithCorrection() {
     setActive(null);
     setSuccessMsg("NRD corrected and stopped");
     notifyNrdChanged(null);
-    setTimeout(() => setSuccessMsg(""), 2000);
 
     await loadCurrent(userEmail);
     await loadHistory(userEmail, periodMonth);
@@ -356,25 +352,10 @@ async function stopTaskWithCorrection() {
 
           <input
             type="datetime-local"
+            step={0.001}
             value={correctEndTime}
-            min={(() => {
-              const started = new Date(active.started_at);
-
-              return new Date(
-                started.getTime() - started.getTimezoneOffset() * 60_000
-              )
-                .toISOString()
-                .slice(0, 16);
-            })()}
-            max={(() => {
-              const now = new Date();
-
-              return new Date(
-                now.getTime() - now.getTimezoneOffset() * 60_000
-              )
-                .toISOString()
-                .slice(0, 16);
-            })()}
+            min={toLocalDateTimeValue(new Date(active.started_at))}
+            max={toLocalDateTimeValue(new Date())}
             onChange={(e) => setCorrectEndTime(e.target.value)}
             className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-500"
           />
@@ -429,7 +410,7 @@ async function stopTaskWithCorrection() {
         </div>
         <div className="prototype-page-actions">
           <button type="button" className="prototype-button secondary" disabled={!userEmail} onClick={() => downloadApiFile(`/api/nrd/export?user_email=${encodeURIComponent(userEmail)}&period_month=${encodeURIComponent(periodMonth)}`, `nrd-${periodMonth}.xlsx`).catch((error) => setErrorMsg(error.message))}>My Excel export</button>
-          {hasPermission("can_admin") && <button type="button" className="prototype-button secondary" onClick={() => downloadApiFile(`/api/nrd/export-global?user_email=${encodeURIComponent(userEmail)}&period_month=${encodeURIComponent(periodMonth)}`, `nrd-global-${periodMonth}.xlsx`).catch((error) => setErrorMsg(error.message))}>All users (admin)</button>}
+          {hasPermission("can_admin") && <button type="button" className="prototype-button secondary" onClick={() => downloadApiFile(`/api/nrd/export-global?period_month=${encodeURIComponent(periodMonth)}`, `nrd-global-${periodMonth}.xlsx`).catch((error) => setErrorMsg(error.message))}>All users (admin)</button>}
         </div>
       </div>
 
@@ -451,7 +432,7 @@ async function stopTaskWithCorrection() {
           <strong>{active?.task || "No active task"}</strong>
           <div className="nrd-timer">{formatTimer(seconds)}</div>
           <p>{active ? `Started ${new Date(active.started_at).toLocaleString("en-GB")}` : "Start a duty from the next card"}</p>
-          {active && <div className="prototype-page-actions"><button type="button" className="prototype-button danger" onClick={stopTask} disabled={busy}>Stop now</button><button type="button" className="prototype-button secondary" onClick={() => { const nowDate = new Date(); setCorrectEndTime(new Date(nowDate.getTime() - nowDate.getTimezoneOffset() * 60_000).toISOString().slice(0, 16)); setShowForgottenModal(true); }} disabled={busy}>Stop with corrected end time…</button></div>}
+          {active && <div className="prototype-page-actions"><button type="button" className="prototype-button danger" onClick={stopTask} disabled={busy}>Stop now</button><button type="button" className="prototype-button secondary" onClick={() => { setCorrectEndTime(toLocalDateTimeValue(new Date())); setShowForgottenModal(true); }} disabled={busy}>Stop with corrected end time…</button></div>}
         </section>
 
         <section className="nrd-overview-card start">
@@ -518,18 +499,10 @@ async function stopTaskWithCorrection() {
             </button>
           ) : (
             <button
-  onClick={() => {
-    const nowDate = new Date();
-
-    const localDateTime = new Date(
-      nowDate.getTime() - nowDate.getTimezoneOffset() * 60_000
-    )
-      .toISOString()
-      .slice(0, 16);
-
-    setCorrectEndTime(localDateTime);
-    setShowForgottenModal(true);
-  }}
+	  onClick={() => {
+	    setCorrectEndTime(toLocalDateTimeValue(new Date()));
+	    setShowForgottenModal(true);
+	  }}
   disabled={busy}
   className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
 >
@@ -567,7 +540,7 @@ async function stopTaskWithCorrection() {
   <button
     onClick={() =>
       downloadApiFile(
-        `/api/nrd/export-global?user_email=${encodeURIComponent(userEmail)}&period_month=${encodeURIComponent(periodMonth)}`,
+        `/api/nrd/export-global?period_month=${encodeURIComponent(periodMonth)}`,
         `nrd-global-${periodMonth}.xlsx`
       ).catch((error) => setErrorMsg(error.message))
     }

@@ -1,15 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import { getApiIdentity } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
-
-const ALLOWED_GLOBAL_EXPORTERS = [
-  "martine.gevaert@radius.com",
-  "emily.vancauwenberge@radius.com",
-];
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -70,23 +66,9 @@ function safeSheetName(name: string) {
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
-
-    const userEmail = url.searchParams.get("user_email");
+    const identity = getApiIdentity(req);
+    const userEmail = identity.email;
     const periodMonth = url.searchParams.get("period_month");
-
-    if (!userEmail) {
-      return NextResponse.json(
-        { ok: false, error: "Missing user_email" },
-        { status: 400 }
-      );
-    }
-
-    if (!ALLOWED_GLOBAL_EXPORTERS.includes(userEmail.toLowerCase())) {
-      return NextResponse.json(
-        { ok: false, error: "Not allowed to export global NRD." },
-        { status: 403 }
-      );
-    }
 
     const range = getMonthRange(periodMonth);
 

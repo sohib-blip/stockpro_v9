@@ -419,6 +419,9 @@ async function openDetails(row: any) {
         <div>
           <div className="text-xs text-slate-500">Receiving</div>
           <h1 className="text-2xl font-semibold">Supply Orders</h1>
+          <p className="mt-1 text-sm text-slate-400">
+            Plan and track stock moving between European offices before warehouse import.
+          </p>
         </div>
 
         <div className="flex gap-3">

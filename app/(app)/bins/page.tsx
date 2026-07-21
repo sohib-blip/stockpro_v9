@@ -309,7 +309,13 @@ export default function BinsPage() {
 
   return (
     <div className="space-y-10 w-full">
-      <h1 className="text-xl font-semibold">Inventory Setup</h1>
+      <div>
+        <div className="text-xs text-slate-500">Inventory</div>
+        <h1 className="text-xl font-semibold">Inventory Setup</h1>
+        <p className="mt-1 text-sm text-slate-400">
+          Configure device bins, accessory stock and automatic allocation rules.
+        </p>
+      </div>
 
       <div className="card-glow p-6 space-y-4">
         <div className="font-semibold">Device Bins</div>

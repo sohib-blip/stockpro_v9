@@ -85,7 +85,7 @@ export default function SetPasswordPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-transparent p-6 text-slate-100">
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
+      <div className="auth-card w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/60 p-6">
         <div className="text-xs uppercase tracking-[0.18em] text-indigo-300">
           StockPro
         </div>

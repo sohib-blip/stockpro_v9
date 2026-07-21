@@ -138,6 +138,7 @@ export default function LabelsPage() {
         <div className="text-xs text-slate-500">Inventory</div>
         <h2 className="text-xl font-semibold">Warehouse Label Printing</h2>
         <p className="text-sm text-slate-400 mt-1">
+          Create print-ready labels for warehouse boxes and IMEIs.
         </p>
       </div>
 

@@ -518,8 +518,9 @@ setManualMsg("");
           <div className="text-xs text-slate-500">Inbound</div>
           <h2 className="text-xl font-semibold">Inbound Processing</h2>
           <p className="text-sm text-slate-400 mt-1">
-            User: <b>{actor}</b>
+            Register received devices and assign each IMEI to a box and location.
           </p>
+          <p className="mt-1 text-xs text-slate-500">User: <b>{actor}</b></p>
         </div>
 
         {lastBatchId && (

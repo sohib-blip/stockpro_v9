@@ -230,8 +230,9 @@ if (!actorId) {
         <div className="text-xs text-slate-500">Outbound</div>
         <h2 className="text-xl font-semibold">Device Outbound</h2>
         <p className="text-sm text-slate-400 mt-1">
-          User: <b>{actor}</b>
+          Remove IMEI-tracked devices from stock. Devices become OUT on confirmation.
         </p>
+        <p className="mt-1 text-xs text-slate-500">User: <b>{actor}</b></p>
       </div>
 
       {/* SHIPMENT */}

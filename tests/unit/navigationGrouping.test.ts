@@ -28,20 +28,22 @@ describe("grouped application navigation", () => {
     }
   });
 
-  it("uses accessible accordion groups and filters every child by permission", () => {
+  it("uses the selected horizontal navigation with contextual secondary tabs", () => {
     for (const group of [
+      "Dashboard",
       "Receiving",
       "Outbound",
       "Inventory",
       "Operations",
-      "Productivity",
-      "Administration",
+      "NRD",
+      "Admin",
     ]) {
       expect(shell).toContain(`label: "${group}"`);
     }
 
-    expect(shell).toContain("aria-expanded={isOpen}");
+    expect(shell).toContain('className="primary-nav"');
+    expect(shell).toContain('className="secondary-nav"');
     expect(shell).toContain("hasPermission(item.permission)");
-    expect(shell).toContain("setOpenGroupId(activeGroupId)");
+    expect(shell).toContain("secondaryItems.map");
   });
 });

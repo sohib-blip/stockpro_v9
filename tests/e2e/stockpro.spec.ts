@@ -60,6 +60,24 @@ function createAccessorySpreadsheet(path: string) {
   XLSX.writeFile(workbook, path);
 }
 
+test("persists the selected language and dark mode", async ({ page }) => {
+  await page.goto("/login");
+
+  await page.getByLabel("Choose language").selectOption("fr");
+  await expect(page.getByRole("heading", { name: "Se connecter" })).toBeVisible();
+
+  await page.getByLabel("Choisir la langue").selectOption("nl");
+  await expect(page.getByRole("heading", { name: "Aanmelden" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Donkere modus inschakelen" }).click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+
+  await page.reload();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(page.locator("html")).toHaveAttribute("lang", "nl");
+  await expect(page.getByRole("heading", { name: "Aanmelden" })).toBeVisible();
+});
+
 test.describe.serial("StockPro staging end-to-end", () => {
   test.beforeAll(async () => {
     run = await createStagingRun();
@@ -78,9 +96,8 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByText("Please enter an email and a password")).toBeVisible();
 
     await login(page, "admin");
-    await expect(page.getByRole("heading", { name: "Inventory Dashboard" })).toBeVisible();
-    await page.getByRole("button", { name: "Administration" }).click();
-    await page.getByRole("link", { name: "User Access" }).click();
+    await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
+    await page.getByRole("link", { name: "Admin", exact: true }).click();
     await expect(page.getByRole("heading", { name: "User Access Management" })).toBeVisible();
     await expect(page.getByText(run.users.operator.email)).toBeVisible();
     await expect(page.getByText(run.users.viewer.email)).toBeVisible();
@@ -148,8 +165,8 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
     await login(page, "viewer");
     await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Receiving" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Administration" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Receiving" })).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
     await page.goto("/admin");
     await expect(page).toHaveURL(/\/denied$/);
     await expect(page.getByText("Access denied")).toBeVisible();
@@ -160,7 +177,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await login(page, "operator");
 
     const modules = [
-      ["/dashboard", "Inventory Dashboard"],
+      ["/dashboard", "Dashboard"],
       ["/supply", "Supply Orders"],
       ["/inbound", "Inbound Processing"],
       ["/outbound", "Device Outbound"],

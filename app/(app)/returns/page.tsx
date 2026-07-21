@@ -197,8 +197,9 @@ export default function ReturnsPage() {
         <div className="text-xs text-slate-500">Returns</div>
         <h2 className="text-xl font-semibold">Customer Returns</h2>
         <p className="text-sm text-slate-400 mt-1">
-          User: <b>{actor}</b>
+          Return previously outbound devices to warehouse stock.
         </p>
+        <p className="mt-1 text-xs text-slate-500">User: <b>{actor}</b></p>
       </div>
 
       <div className="card-glow p-6 space-y-4">

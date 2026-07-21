@@ -153,17 +153,24 @@ if (salesJson.ok){
 
  return (
 
-<div className="pt-4 px-2 pb-10 space-y-10 w-full">
+<div className="space-y-6 w-full">
 
-<div className="grid grid-cols-3 items-center">
-  <div className="flex items-center gap-3">
+<div className="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
+    <p className="mt-1 text-sm text-slate-400">
+      Stock position, alerts and recent activity across the warehouse.
+    </p>
+  </div>
+
+  <div className="flex flex-wrap items-center gap-2">
     <button
       onClick={() =>
         downloadApiFile("/api/dashboard/export", "stock.xlsx").catch((error) =>
           window.alert(error.message)
         )
       }
-      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+      className="rounded-lg border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold"
     >
       Export Stock
     </button>
@@ -174,7 +181,7 @@ if (salesJson.ok){
           (error) => window.alert(error.message)
         )
       }
-      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+      className="rounded-lg border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold"
     >
       Export Count Sheet
     </button>
@@ -185,30 +192,11 @@ if (salesJson.ok){
           (error) => window.alert(error.message)
         )
       }
-      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
+      className="rounded-lg border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold"
     >
       Export Accessories
     </button>
   </div>
-
-  <h1 className="text-3xl font-semibold tracking-tight text-center">
-    Inventory Dashboard
-  </h1>
-
-  <div></div>
-</div>
-
-{/* SEARCH */}
-
-<div className="card-glow p-4 rounded-xl">
-
-<input
-type="text"
-placeholder="Search devices"
-value={search}
-onChange={(e)=>setSearch(e.target.value)}
-className="w-full text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-2 outline-none"
-/>
 
 </div>
 
@@ -217,40 +205,40 @@ className="w-full text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-
 
 {kpi && (
 
-<div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+<div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+<div className="card-glow rounded-xl p-5">
+<div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
 Total bins
 </div>
-<div className="text-4xl font-bold text-cyan-400">
+<div className="text-3xl font-bold">
 {kpi.total_bins}
 </div>
 </div>
 
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+<div className="card-glow rounded-xl p-5">
+<div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
 Total boxes
 </div>
-<div className="text-4xl font-bold text-cyan-400">
+<div className="text-3xl font-bold">
 {kpi.total_boxes}
 </div>
 </div>
 
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+<div className="card-glow rounded-xl p-5">
+<div className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-1">
 Total IMEIs
 </div>
-<div className="text-4xl font-bold text-cyan-400">
+<div className="text-3xl font-bold">
 {kpi.total_imei}
 </div>
 </div>
 
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
+<div className="card-glow rounded-xl p-5 border-amber-500/40">
+<div className="text-xs font-semibold text-amber-300 uppercase tracking-wider mb-1">
 Stock Alerts
 </div>
-<div className="text-4xl font-bold text-amber-300">
+<div className="text-3xl font-bold text-amber-300">
 {kpi.alerts}
 </div>
 </div>
@@ -271,7 +259,7 @@ Stock Alerts
 Device Flow Overview
 </h2>
 
-<div className="h-[520px]">
+<div className="h-[300px]">
 
 <ResponsiveContainer width="100%" height="100%">
 
@@ -521,9 +509,16 @@ style={{width:`${percent}%`}}
 
 <div className="card-glow p-6 rounded-xl">
 
-<h2 className="text-lg font-semibold mb-5">
-Device Inventory
-</h2>
+<div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+  <h2 className="text-lg font-semibold">Device Inventory</h2>
+  <input
+    type="text"
+    placeholder="Search devices"
+    value={search}
+    onChange={(e)=>setSearch(e.target.value)}
+    className="w-full rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-sm outline-none sm:w-64"
+  />
+</div>
 
 <table className="w-full text-sm border-collapse">
 

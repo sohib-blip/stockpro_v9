@@ -195,6 +195,9 @@ export default function TransferPage() {
       <div>
         <div className="text-xs text-slate-500">Operations</div>
         <h2 className="text-xl font-semibold">Stock Transfer</h2>
+        <p className="mt-1 text-sm text-slate-400">
+          Move complete boxes between warehouse floors.
+        </p>
       </div>
 
       <div className="card-glow p-6 space-y-4">

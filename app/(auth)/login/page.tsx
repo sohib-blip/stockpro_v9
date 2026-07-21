@@ -7,7 +7,6 @@ import {
   STOCKPRO_SESSION_KEY,
   STOCKPRO_SESSION_NOTICE_KEY,
 } from "@/lib/session-control";
-import { Package } from "lucide-react";
 
 export default function LoginPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -197,7 +196,7 @@ if (isSessionReallyActive) {
   }
 
   return (
-    <main className="min-h-screen p-6 flex items-center justify-center bg-transparent text-slate-100">
+    <main className="auth-shell min-h-screen p-6 flex items-center justify-center">
       <ConfirmDialog
         open={showSessionDialog}
         title="Active session detected"
@@ -211,17 +210,11 @@ if (isSessionReallyActive) {
         onCancel={cancelTakeOver}
       />
 
-      <div className="w-full max-w-md rounded-2xl border border-slate-800 bg-slate-900/70 p-7 shadow-xl shadow-black/10">
-        <div className="mb-5 flex items-center gap-3">
-          <div className="grid h-11 w-11 place-items-center rounded-xl bg-indigo-600 text-white shadow-sm shadow-indigo-950/40">
-            <Package size={21} />
-          </div>
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-300">
-              StockPro
-            </div>
-            <h1 className="text-2xl font-bold tracking-tight">Sign in</h1>
-          </div>
+      <div className="auth-card w-full max-w-sm rounded-xl border border-slate-800 bg-slate-900/70 p-8">
+        <div className="mb-6">
+          <div className="text-xl font-bold tracking-tight">StockPro</div>
+          <div className="mt-0.5 text-xs text-slate-400">Warehouse operations</div>
+          <h1 className="mt-6 text-2xl font-bold tracking-tight">Sign in</h1>
         </div>
 
         <p className="text-sm text-slate-400 mb-5">

@@ -424,6 +424,9 @@ async function stopTaskWithCorrection() {
         <div className="text-xs text-slate-500">NRD</div>
         <h2 className="text-xl font-semibold">NRD Tracking</h2>
         <p className="text-sm text-slate-400 mt-1">
+          Track time spent on non-routine warehouse duties.
+        </p>
+        <p className="mt-1 text-xs text-slate-500">
           User: <b>{userEmail || "Loading…"}</b>
         </p>
       </div>

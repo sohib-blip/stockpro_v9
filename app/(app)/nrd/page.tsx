@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import { useAccess } from "@/components/AccessProvider";
+import { usePreferences } from "@/components/PreferencesProvider";
 
 const NRD_TASKS = [
   "Prepare FMC234",
@@ -66,6 +67,23 @@ function getCurrentPeriodMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function getReportingMonths(locale: "en" | "fr" | "nl") {
+  const localeName = locale === "fr" ? "fr-BE" : locale === "nl" ? "nl-BE" : "en-GB";
+  const formatter = new Intl.DateTimeFormat(localeName, {
+    month: "long",
+    year: "numeric",
+  });
+  const now = new Date();
+
+  return Array.from({ length: 60 }, (_, offset) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    return {
+      value: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+      label: formatter.format(date),
+    };
+  });
+}
+
 function notifyNrdChanged(active: unknown) {
   window.dispatchEvent(
     new CustomEvent("stockpro:nrd-changed", { detail: { active } })
@@ -74,7 +92,9 @@ function notifyNrdChanged(active: unknown) {
 
 export default function NRDPage() {
   const { hasPermission } = useAccess();
+  const { locale } = usePreferences();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const reportingMonths = useMemo(() => getReportingMonths(locale), [locale]);
 
   const [userEmail, setUserEmail] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -443,7 +463,22 @@ async function stopTaskWithCorrection() {
         </section>
 
         <section className="nrd-overview-card summary">
-          <div className="nrd-month-row"><input type="month" value={periodMonth} onChange={(e) => setPeriodMonth(e.target.value)} /><span>Month summary</span></div>
+          <div className="nrd-month-row">
+            <label htmlFor="nrd-reporting-month">Reporting month</label>
+            <select
+              id="nrd-reporting-month"
+              aria-label="NRD reporting month"
+              value={periodMonth}
+              onChange={(event) => setPeriodMonth(event.target.value)}
+            >
+              {reportingMonths.map((month) => (
+                <option key={month.value} value={month.value}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
+            <span>Month summary</span>
+          </div>
           <div className="nrd-summary-values"><div><strong>{formatHours(Number(stats?.total_minutes || 0))}</strong><span>total time</span></div><div><strong>{stats?.tasks_count || 0}</strong><span>completed tasks</span></div></div>
           <div className="nrd-mini-breakdown">{stats?.by_task?.slice(0, 3).map((row: any) => { const width = stats.total_minutes ? Math.round((Number(row.minutes || 0) / Number(stats.total_minutes || 1)) * 100) : 0; return <div key={row.task}><div><span>{row.task}</span><small>{formatHours(Number(row.minutes || 0))}</small></div><i><span style={{ width: `${width}%` }} /></i></div>; })}</div>
         </section>

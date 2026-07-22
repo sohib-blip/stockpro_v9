@@ -42,6 +42,12 @@ function spreadsheetPath(name: string) {
   return resolve(directory, name);
 }
 
+function reportingMonth(offset: number) {
+  const now = new Date();
+  const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function createQuicklinkSpreadsheet(path: string) {
   const sheet = XLSX.utils.aoa_to_sheet([
     ["IMEI", "Carton"],
@@ -650,6 +656,18 @@ test.describe.serial("StockPro staging end-to-end", () => {
   test("runs normal and corrected NRD sessions with personal and admin exports", async ({ page }) => {
     await login(page, "operator");
     await page.goto("/nrd");
+    const monthSelect = page.getByLabel("NRD reporting month");
+    await expect(monthSelect).toBeVisible();
+    await expect(monthSelect.locator("option")).toHaveCount(60);
+    const previousMonthHistory = page.waitForResponse((response) =>
+      response.url().includes("/api/nrd/history") &&
+      response.url().includes(`period_month=${reportingMonth(1)}`)
+    );
+    await monthSelect.selectOption(reportingMonth(1));
+    await previousMonthHistory;
+    await expect(monthSelect).toHaveValue(reportingMonth(1));
+    await monthSelect.selectOption(reportingMonth(0));
+    await expect(monthSelect).toHaveValue(reportingMonth(0));
     await page.getByLabel("NRD task", { exact: true }).selectOption("Training");
     await page.getByRole("button", { name: "Start Task" }).click();
     await expect(page.getByText("Task started")).toBeVisible();

@@ -8,6 +8,7 @@ import {
   STOCKPRO_SESSION_NOTICE_KEY,
 } from "@/lib/session-control";
 import { apiFetch } from "@/lib/apiFetch";
+import BrandLogo from "@/components/BrandLogo";
 
 export default function LoginPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -248,9 +249,8 @@ if (isSessionReallyActive) {
       <div className="auth-panel w-full max-w-sm">
       <div className="auth-card-environment">Test environment</div>
       <div className="auth-card w-full rounded-xl border border-slate-800 bg-slate-900/70 p-8">
-        <div className="mb-6">
-          <div className="text-xl font-bold tracking-tight">StockPro</div>
-          <div className="mt-0.5 text-xs text-slate-400">Warehouse operations</div>
+        <div className="auth-brand">
+          <BrandLogo variant="auth" tagline="Warehouse operations" />
           <h1 className="sr-only">Sign in</h1>
         </div>
 

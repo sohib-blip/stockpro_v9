@@ -137,24 +137,77 @@ body {
 
 .brand-lockup {
   display: inline-flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
   flex: none;
-  margin-right: 24px;
+  margin-right: 20px;
   color: var(--foreground);
   text-decoration: none;
 }
 
-.brand-name {
-  font-size: 16px;
-  font-weight: 700;
-  letter-spacing: -0.02em;
+.stockpro-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
 }
 
-.brand-description {
+.stockpro-brand-mark {
+  width: 32px;
+  height: 32px;
+  display: block;
+  flex: none;
+}
+
+.stockpro-brand-copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  justify-content: center;
+  line-height: 1;
+}
+
+.stockpro-brand-name {
+  display: inline-flex;
+  align-items: baseline;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  white-space: nowrap;
+}
+
+.stockpro-brand-name-stock {
+  color: var(--foreground);
+}
+
+.stockpro-brand-name-pro {
+  color: var(--brand);
+}
+
+.stockpro-brand-tagline {
+  margin-top: 4px;
   color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.stockpro-brand--auth {
+  gap: 13px;
+}
+
+.stockpro-brand--auth .stockpro-brand-mark {
+  width: 54px;
+  height: 54px;
+}
+
+.stockpro-brand--auth .stockpro-brand-name {
+  font-size: 26px;
+}
+
+.stockpro-brand--auth .stockpro-brand-tagline {
+  margin-top: 6px;
   font-size: 11.5px;
-  font-weight: 400;
 }
 
 .primary-nav {
@@ -2606,6 +2659,12 @@ main.min-h-screen {
   box-shadow: var(--shadow-card);
 }
 
+.auth-brand {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 26px;
+}
+
 .auth-panel .auth-card label {
   display: block;
   margin-bottom: 6px;
@@ -2657,7 +2716,7 @@ main.min-h-screen {
   }
 
   .account-email,
-  .brand-description,
+  .stockpro-brand--navigation .stockpro-brand-tagline,
   .topbar-account .signout-button span {
     display: none;
   }
@@ -2762,7 +2821,7 @@ main.min-h-screen {
     padding-inline: 16px;
   }
 
-  .brand-description {
+  .stockpro-brand--navigation .stockpro-brand-tagline {
     display: none;
   }
 

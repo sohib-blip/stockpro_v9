@@ -11,6 +11,7 @@ import PreferenceControls from "@/components/PreferenceControls";
 import { usePreferences } from "@/components/PreferencesProvider";
 import { apiFetch } from "@/lib/apiFetch";
 import { signOutCurrentDevice } from "@/lib/session-control";
+import BrandLogo from "@/components/BrandLogo";
 
 type NavItem = {
   href: string;
@@ -210,8 +211,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
       <header className="topbar">
         <div className="topbar-inner">
           <Link href="/dashboard" className="brand-lockup" aria-label="StockPro">
-            <span className="brand-name">StockPro</span>
-            <span className="brand-description">{t("Warehouse operations")}</span>
+            <BrandLogo tagline={t("Warehouse operations")} />
           </Link>
 
           <nav className="primary-nav" aria-label="Primary navigation">

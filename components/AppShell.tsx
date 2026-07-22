@@ -100,7 +100,14 @@ const NAVIGATION: PrimaryNav[] = [
   {
     id: "admin",
     label: "Admin",
-    items: [{ href: "/admin", label: "User Access", permission: "can_admin" }],
+    items: [
+      { href: "/admin", label: "User Access", permission: "can_admin" },
+      {
+        href: "/admin/connections",
+        label: "Connections",
+        permission: "can_admin",
+      },
+    ],
   },
 ];
 

@@ -219,6 +219,7 @@ export async function cleanupStagingRun(
   }
   if (userEmails.length) {
     await supabase.from("nrd_time_logs").delete().in("user_email", userEmails);
+    await supabase.from("connection_events").delete().in("email", userEmails);
   }
 
   await supabase.from("bins").delete().eq("name", run.uiBinName);
@@ -297,6 +298,10 @@ export async function assertStagingRunClean(run: StagingRun) {
     rowCount(
       supabase.from("nrd_time_logs").select("*", { count: "exact", head: true }).in("user_email", userEmails),
       "NRD logs"
+    ),
+    rowCount(
+      supabase.from("connection_events").select("*", { count: "exact", head: true }).in("email", userEmails),
+      "connection events"
     ),
     rowCount(
       supabase.from("profiles").select("*", { count: "exact", head: true }).in("user_id", userIds),

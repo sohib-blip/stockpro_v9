@@ -21,6 +21,7 @@ describe("grouped application navigation", () => {
       "/transfer",
       "/nrd",
       "/admin",
+      "/admin/connections",
     ];
 
     for (const destination of destinations) {

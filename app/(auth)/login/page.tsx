@@ -7,6 +7,7 @@ import {
   STOCKPRO_SESSION_KEY,
   STOCKPRO_SESSION_NOTICE_KEY,
 } from "@/lib/session-control";
+import { apiFetch } from "@/lib/apiFetch";
 
 export default function LoginPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -20,6 +21,7 @@ export default function LoginPage() {
   const [showSessionDialog, setShowSessionDialog] = useState(false);
   const [pendingUserId, setPendingUserId] = useState("");
   const [pendingSessionId, setPendingSessionId] = useState("");
+  const [pendingConnectionEventId, setPendingConnectionEventId] = useState("");
 
   useEffect(() => {
     const reason =
@@ -52,7 +54,12 @@ export default function LoginPage() {
 
     check();
   }, [supabase]);
-  async function completeLogin(userId: string, sessionId: string) {
+  async function completeLogin(
+    userId: string,
+    sessionId: string,
+    connectionEventId = "",
+    takeover = false
+  ) {
     const { error: profileError } = await supabase
       .from("profiles")
       .update({
@@ -69,6 +76,14 @@ export default function LoginPage() {
 
     window.sessionStorage.setItem(STOCKPRO_SESSION_KEY, sessionId);
 
+    if (takeover && connectionEventId) {
+      await apiFetch("/api/auth/connection-event", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event_id: connectionEventId }),
+      }).catch(() => null);
+    }
+
     setLoading(false);
     window.location.href = "/dashboard";
   }
@@ -82,14 +97,27 @@ export default function LoginPage() {
     setLoading(true);
     setMsg(null);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
+    const response = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim(), password }),
+    });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.session) {
+      setLoading(false);
+      setMsg(result?.error || "Login failed");
+      return;
+    }
+
+    const { data, error } = await supabase.auth.setSession({
+      access_token: result.session.access_token,
+      refresh_token: result.session.refresh_token,
     });
 
     if (error) {
       setLoading(false);
-      setMsg(error.message);
+      setMsg("Login failed");
       return;
     }
 
@@ -147,25 +175,32 @@ const isSessionReallyActive =
 if (isSessionReallyActive) {
   setPendingUserId(user.id);
   setPendingSessionId(sessionId);
+  setPendingConnectionEventId(result.event_id || "");
   setShowSessionDialog(true);
   setLoading(false);
   return;
 }
 
-    await completeLogin(user.id, sessionId);
+    await completeLogin(user.id, sessionId, result.event_id || "");
   }
 
   async function takeOverSession() {
     setShowSessionDialog(false);
     setLoading(true);
 
-    await completeLogin(pendingUserId, pendingSessionId);
+    await completeLogin(
+      pendingUserId,
+      pendingSessionId,
+      pendingConnectionEventId,
+      true
+    );
   }
 
   async function cancelTakeOver() {
     setShowSessionDialog(false);
     setPendingUserId("");
     setPendingSessionId("");
+    setPendingConnectionEventId("");
 
     await supabase.auth.signOut({ scope: "local" });
 

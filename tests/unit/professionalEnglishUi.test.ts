@@ -20,6 +20,7 @@ describe("professional English interface", () => {
       "Stock Transfers",
       "NRD Tracking",
       "User Access",
+      "Connections",
       "Sign out",
     ]) {
       expect(shell).toContain(label);

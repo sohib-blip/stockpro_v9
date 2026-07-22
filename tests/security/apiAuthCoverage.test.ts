@@ -39,7 +39,7 @@ describe("API authentication coverage", () => {
     expect(missingPolicies).toEqual([]);
   });
 
-  it("keeps the only middleware exception protected by CRON_SECRET", () => {
+  it("keeps middleware exceptions protected by their own authentication", () => {
     const cron = readFileSync(
       join(API_ROOT, "cron", "low-stock", "route.ts"),
       "utf8"
@@ -48,5 +48,14 @@ describe("API authentication coverage", () => {
     expect(permissionsForApi("/api/cron/low-stock", "GET")).toBeNull();
     expect(cron).toContain("isCronRequestAuthorized");
     expect(cron).toContain("CRON_SECRET");
+
+    const login = readFileSync(
+      join(API_ROOT, "auth", "login", "route.ts"),
+      "utf8"
+    );
+    expect(permissionsForApi("/api/auth/login", "POST")).toBeNull();
+    expect(login).toContain("signInWithPassword");
+    expect(login).toContain("recordConnectionEvent");
+    expect(login).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
   });
 });

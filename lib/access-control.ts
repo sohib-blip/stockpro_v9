@@ -107,6 +107,12 @@ export function permissionsForApi(
   pathname: string,
   method: string
 ): readonly PermissionKey[] | null {
+  // Password verification is the only public application API. Supabase Auth
+  // performs the credential check and rate limiting inside the route.
+  if (pathname === "/api/auth/login" && method === "POST") return null;
+  if (pathname === "/api/auth/connection-event" && method === "PATCH") {
+    return PERMISSION_KEYS;
+  }
   if (pathname.startsWith("/api/admin")) return ["can_admin"];
   if (pathname === "/api/cron/low-stock") return null;
 

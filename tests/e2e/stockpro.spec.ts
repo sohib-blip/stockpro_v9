@@ -134,12 +134,24 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByRole("button", { name: "Sign in", exact: true }).click();
     await expect(page.getByText("Please enter an email and a password")).toBeVisible();
 
+    await page.getByLabel("Email").fill(run.users.admin.email);
+    await page.getByLabel("Password").fill("definitely-not-the-password");
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    await expect(page.getByText("Incorrect email or password")).toBeVisible();
+
     await login(page, "admin");
     await expect(page.getByRole("heading", { name: "Dashboard", exact: true })).toBeVisible();
     await page.getByRole("link", { name: "Admin", exact: true }).click();
     await expect(page.getByRole("heading", { name: "User Access" })).toBeVisible();
     await expect(page.getByText(run.users.operator.email)).toBeVisible();
     await expect(page.getByText(run.users.viewer.email)).toBeVisible();
+
+    await page.getByRole("link", { name: "Connections", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Connections" })).toBeVisible();
+    await expect(page.locator(".connections-table")).toContainText(run.users.admin.email);
+    await expect(page.locator(".connections-table")).toContainText("Successful");
+    await expect(page.locator(".connections-table")).toContainText("Failed");
+    await page.getByRole("link", { name: "User Access", exact: true }).click();
 
     const inviteCard = page.locator(".admin-invite-card");
     await inviteCard.getByPlaceholder("colleague@company.com").fill(run.inviteEmail);
@@ -199,6 +211,10 @@ test.describe.serial("StockPro staging end-to-end", () => {
           "Your previous session was closed because this account signed in on another device."
         )
       ).toBeVisible();
+      await secondPage.goto("/admin/connections");
+      await expect(secondPage.locator(".connections-table")).toContainText(
+        "Session takeover"
+      );
       await signOut(secondPage);
     } finally {
       await firstContext.close();

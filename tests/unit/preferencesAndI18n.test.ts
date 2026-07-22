@@ -26,6 +26,22 @@ describe("theme and language preferences", () => {
     expect(
       translateUiText("nl", "3 low · 2 empty — see tables below")
     ).toBe("3 laag · 2 leeg — zie de tabellen hieronder");
+    expect(
+      translateUiText(
+        "fr",
+        "All 750 IMEIs from this spreadsheet already exist in stock. Nothing will be imported and no history entry will be created."
+      )
+    ).toBe(
+      "Les 750 IMEI de ce fichier sont déjà en stock. Aucun élément ne sera importé et aucune entrée d’historique ne sera créée."
+    );
+    expect(
+      translateUiText(
+        "nl",
+        "12 existing IMEIs will be skipped and 3 new IMEIs will be imported."
+      )
+    ).toBe(
+      "12 bestaande IMEI's worden overgeslagen en 3 nieuwe IMEI's worden geïmporteerd."
+    );
   });
 
   it("persists device-local theme and locale choices", () => {

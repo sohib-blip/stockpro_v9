@@ -32,13 +32,17 @@ export async function GET(req: Request) {
 
     if (error) throw error;
 
-    const rows = (data || []).map((r: any) => ({
-      ...r,
+    const rows = (data || [])
+      .map((r: any) => ({
+        ...r,
 
-      // Keep the response compatible with the inbound history table.
-      qty_boxes: r.qty_boxes ?? r.boxes ?? 0,
-      qty_imeis: r.qty_imeis ?? r.imeis ?? 0,
-    }));
+        // Keep the response compatible with the inbound history table.
+        qty_boxes: r.qty_boxes ?? r.boxes ?? 0,
+        qty_imeis: r.qty_imeis ?? r.imeis ?? 0,
+      }))
+      // Legacy duplicate attempts created zero-item batches. They are not
+      // warehouse events and must not appear as downloadable history.
+      .filter((row: any) => Number(row.qty_imeis) > 0);
 
     return NextResponse.json({
       ok: true,

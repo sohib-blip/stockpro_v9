@@ -249,6 +249,36 @@ useEffect(() => {
             device: v.device,
           }))
           .sort((a, b) => a.box_no.localeCompare(b.box_no, undefined, { numeric: true }));
+
+        const spreadsheetImeis = Array.from(
+          new Set(
+            (parsed.labels || []).flatMap((label: any) =>
+              (label.imeis || [])
+                .map((imei: unknown) => String(imei).replace(/\D/g, ""))
+                .filter((imei: string) => imei.length === 15)
+            )
+          )
+        ) as string[];
+        const existingImeis = new Set<string>();
+
+        for (let index = 0; index < spreadsheetImeis.length; index += 200) {
+          const chunk = spreadsheetImeis.slice(index, index + 200);
+          const { data: existingRows, error: existingError } = await supabase
+            .from("items")
+            .select("imei")
+            .in("imei", chunk);
+
+          if (existingError) throw existingError;
+          for (const row of existingRows || []) {
+            existingImeis.add(String(row.imei));
+          }
+        }
+
+        (parsed as any).stock_check = {
+          total: spreadsheetImeis.length,
+          existing: existingImeis.size,
+          new: spreadsheetImeis.length - existingImeis.size,
+        };
       }
 
       if (!parsed?.ok) {
@@ -266,6 +296,14 @@ useEffect(() => {
 
   async function confirmExcelInbound() {
     if (!result?.ok) return;
+
+    if (result.stock_check?.total > 0 && result.stock_check?.new === 0) {
+      const total = Number(result.stock_check.total);
+      setErr(
+        `Import blocked: all ${total} ${total === 1 ? "IMEI" : "IMEIs"} from this spreadsheet ${total === 1 ? "is" : "are"} already in stock. Nothing was imported and no history was created.`
+      );
+      return;
+    }
 
     if (Array.isArray(result.unknown_devices) && result.unknown_devices.length > 0) {
       setErr(`Import blocked: unknown devices -> ${result.unknown_devices.join(", ")}`);
@@ -313,6 +351,18 @@ useEffect(() => {
       const json = await res.json();
 
       if (!json.ok) {
+        if (json.code === "ALL_IMEIS_ALREADY_IN_STOCK") {
+          setResult((current: any) => ({
+            ...current,
+            stock_check: {
+              total: json.totals?.skipped_existing_imeis || 0,
+              existing: json.totals?.skipped_existing_imeis || 0,
+              new: 0,
+            },
+          }));
+          setErr(json.error);
+          return;
+        }
         if (json.unknown_devices?.length) {
           setErr(`Import blocked: unknown devices -> ${json.unknown_devices.join(", ")}`);
           return;
@@ -346,6 +396,8 @@ useEffect(() => {
 
   const hasUnknownExcelDevices =
     result?.ok && Array.isArray(result.unknown_devices) && result.unknown_devices.length > 0;
+  const allExcelImeisAlreadyInStock =
+    result?.ok && result.stock_check?.total > 0 && result.stock_check?.new === 0;
 
   // ========== MANUAL FLOW ==========
   function extractManualImeis(text: string): string[] {
@@ -691,7 +743,7 @@ setManualMsg("");
                   Preview: {excelTotals.boxes} boxes • {excelTotals.imeis} IMEIs
                 </div>
 
-                {(result?.unknown_bins_preview?.length ?? 0) > 0 ? (
+                {(result?.unknown_bins_preview?.length ?? 0) > 0 || allExcelImeisAlreadyInStock ? (
                   <span className="px-2 py-1 text-xs rounded-lg bg-rose-900/60 text-rose-200 border border-rose-800">
                     ERROR
                   </span>
@@ -712,6 +764,24 @@ setManualMsg("");
                 <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-xs text-rose-200">
                   <div className="font-semibold">Unknown bins detected</div>
                   <div className="mt-1">{result.unknown_bins_preview.join(", ")}</div>
+                </div>
+              )}
+
+              {allExcelImeisAlreadyInStock && (
+                <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
+                  <div className="font-semibold">Import blocked — already in stock</div>
+                  <div className="mt-1">
+                    {`All ${result.stock_check.total} ${result.stock_check.total === 1 ? "IMEI" : "IMEIs"} from this spreadsheet already ${result.stock_check.total === 1 ? "exists" : "exist"} in stock. Nothing will be imported and no history entry will be created.`}
+                  </div>
+                </div>
+              )}
+
+              {!allExcelImeisAlreadyInStock && result?.stock_check?.existing > 0 && (
+                <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
+                  <div className="font-semibold">Existing stock detected</div>
+                  <div className="mt-1">
+                    {`${result.stock_check.existing} existing IMEIs will be skipped and ${result.stock_check.new} new IMEIs will be imported.`}
+                  </div>
                 </div>
               )}
 
@@ -747,10 +817,14 @@ setManualMsg("");
             <button
               type="button"
               onClick={confirmExcelInbound}
-              disabled={busy || (result?.unknown_bins_preview?.length ?? 0) > 0}
+              disabled={
+                busy ||
+                (result?.unknown_bins_preview?.length ?? 0) > 0 ||
+                allExcelImeisAlreadyInStock
+              }
               className="prototype-button confirm"
             >
-              Confirm Inbound
+              {allExcelImeisAlreadyInStock ? "Already in stock" : "Confirm Inbound"}
             </button>
           </div>
         </div>

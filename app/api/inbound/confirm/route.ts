@@ -21,6 +21,46 @@ type LabelPayload = {
   imeis: string[];
 };
 
+type NormalizedLabel = {
+  binId: string;
+  boxCode: string;
+  floor: string;
+  imeis: string[];
+};
+
+const STOCK_QUERY_CHUNK_SIZE = 200;
+
+function cleanImeis(values: unknown) {
+  if (!Array.isArray(values)) return [];
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value).replace(/\D/g, ""))
+        .filter((value) => value.length === 15)
+    )
+  );
+}
+
+async function findExistingImeis(
+  supabase: ReturnType<typeof sb>,
+  imeis: string[]
+) {
+  const existing = new Set<string>();
+
+  for (let index = 0; index < imeis.length; index += STOCK_QUERY_CHUNK_SIZE) {
+    const chunk = imeis.slice(index, index + STOCK_QUERY_CHUNK_SIZE);
+    const { data, error } = await supabase
+      .from("items")
+      .select("imei")
+      .in("imei", chunk);
+
+    if (error) throw error;
+    for (const row of data || []) existing.add(String(row.imei));
+  }
+
+  return existing;
+}
+
 export async function POST(req: Request) {
   try {
     const { labels, vendor, shipment_ref } = await req.json();
@@ -37,66 +77,95 @@ export async function POST(req: Request) {
     const nowIso = new Date().toISOString();
     const operation_id = crypto.randomUUID();
 
-    // Create the inbound batch.
+    const normalizedLabels: NormalizedLabel[] = (labels as LabelPayload[])
+      .map((raw) => ({
+        binId: String(raw.device_id || "").trim(),
+        boxCode: String(raw.box_no || "").trim(),
+        floor: String(raw.floor || "").trim(),
+        imeis: cleanImeis(raw.imeis),
+      }))
+      .filter((label) => label.binId && label.boxCode && label.imeis.length > 0);
+
+    if (normalizedLabels.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No valid boxes or 15-digit IMEIs were found" },
+        { status: 400 }
+      );
+    }
+
+    const binIds = Array.from(
+      new Set(normalizedLabels.map((label) => label.binId))
+    );
+    const { data: bins, error: binsError } = await supabase
+      .from("bins")
+      .select("id")
+      .in("id", binIds);
+
+    if (binsError) throw binsError;
+    const existingBinIds = new Set((bins || []).map((bin) => String(bin.id)));
+    const missingBinIds = binIds.filter((binId) => !existingBinIds.has(binId));
+    if (missingBinIds.length > 0) {
+      return NextResponse.json(
+        { ok: false, error: `Bins not found: ${missingBinIds.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
+    const allImeis = Array.from(
+      new Set(normalizedLabels.flatMap((label) => label.imeis))
+    );
+    const existingSet = await findExistingImeis(supabase, allImeis);
+    const newImeis = allImeis.filter((imei) => !existingSet.has(imei));
+
+    if (newImeis.length === 0) {
+      const imeiLabel = `${allImeis.length} ${allImeis.length === 1 ? "IMEI" : "IMEIs"}`;
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "ALL_IMEIS_ALREADY_IN_STOCK",
+          error: `Import blocked: all ${imeiLabel} from this spreadsheet ${allImeis.length === 1 ? "is" : "are"} already in stock. Nothing was imported and no history was created.`,
+          totals: {
+            inserted_imeis: 0,
+            skipped_existing_imeis: allImeis.length,
+            created_boxes: 0,
+            reused_boxes: 0,
+          },
+        },
+        { status: 409 }
+      );
+    }
+
+    // Create history only after the preflight proves there is stock to import.
     const { data: batch, error: batchErr } = await supabase
       .from("inbound_batches")
-.insert({
-  actor: identity.email,
-  vendor: vendor || "unknown",
-  source: "excel",
-  shipment_ref: shipment_ref || null
-})
+      .insert({
+        actor: identity.email,
+        vendor: vendor || "unknown",
+        source: "excel",
+        shipment_ref: shipment_ref || null,
+      })
       .select("batch_id, created_at")
       .single();
 
     if (batchErr) throw batchErr;
 
     let insertedImeis = 0;
-    let skippedExistingImeis = 0;
+    const skippedExistingImeis = existingSet.size;
     let createdBoxes = 0;
     let reusedBoxes = 0;
+    const claimedNewImeis = new Set<string>();
 
-    // charger IMEI existants
-    const { data: existingItems, error: exErr } = await supabase
-      .from("items")
-      .select("imei");
+    for (const label of normalizedLabels) {
+      const bin_id = label.binId;
+      const box_code = label.boxCode;
+      const floor = label.floor;
+      const imeis = label.imeis.filter((imei) => {
+        if (existingSet.has(imei) || claimedNewImeis.has(imei)) return false;
+        claimedNewImeis.add(imei);
+        return true;
+      });
 
-    if (exErr) throw exErr;
-
-    const existingSet = new Set(
-      (existingItems || []).map((x: any) => String(x.imei))
-    );
-
-    for (const raw of labels as LabelPayload[]) {
-
-      const bin_id = String(raw.device_id || "").trim();
-      const box_code = String(raw.box_no || "").trim();
-      const floor = String(raw.floor || "").trim();
-
-      if (!bin_id || !box_code) continue;
-
-      // Verify that the inventory bin exists.
-      const { data: binRow, error: binErr } = await supabase
-        .from("bins")
-        .select("id,name")
-        .eq("id", bin_id)
-        .maybeSingle();
-
-      if (binErr) throw binErr;
-
-      if (!binRow) {
-        throw new Error(`Bin not found: ${bin_id}`);
-      }
-
-      // nettoyer les IMEI
-      const imeis = Array.from(
-        new Set(
-          (raw.imeis || [])
-            .map((i) => String(i).replace(/\D/g, ""))
-            .filter((i) => i.length === 15)
-        )
-      );
-
+      // Do not create, reuse or move a box when this label contains no new stock.
       if (imeis.length === 0) continue;
 
       // trouver box existante
@@ -112,12 +181,10 @@ export async function POST(req: Request) {
       let box_id: string;
 
       if (existingBox?.id) {
-
         box_id = String(existingBox.id);
         reusedBoxes++;
 
         if (floor && existingBox.floor !== floor) {
-
           const { error: floorErr } = await supabase
             .from("boxes")
             .update({ floor })
@@ -125,9 +192,7 @@ export async function POST(req: Request) {
 
           if (floorErr) throw floorErr;
         }
-
       } else {
-
         const { data: newBox, error: newBoxErr } = await supabase
           .from("boxes")
           .insert({
@@ -147,14 +212,6 @@ export async function POST(req: Request) {
       const itemsToInsert: any[] = [];
 
       for (const imei of imeis) {
-
-        if (existingSet.has(imei)) {
-          skippedExistingImeis++;
-          continue;
-        }
-
-        existingSet.add(imei);
-
         itemsToInsert.push({
           imei,
           box_id,
@@ -164,18 +221,16 @@ export async function POST(req: Request) {
           imported_by: identity.userId,
           import_id: batch.batch_id,
         });
-
-        insertedImeis++;
       }
 
       if (itemsToInsert.length > 0) {
-
         const { data: insertedItems, error: itemsErr } = await supabase
           .from("items")
           .insert(itemsToInsert)
           .select("item_id, imei");
 
         if (itemsErr) throw itemsErr;
+        insertedImeis += insertedItems?.length || 0;
 
         const movements = buildInboundMovementRows(insertedItems || [], {
           operationId: operation_id,
@@ -209,7 +264,6 @@ export async function POST(req: Request) {
     });
 
   } catch (e: any) {
-
     console.error("INBOUND CONFIRM ERROR", e);
 
     return NextResponse.json(

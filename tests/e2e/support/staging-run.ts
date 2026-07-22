@@ -366,3 +366,13 @@ export async function readAccessoryStock(id: string) {
   throwOnError(error, `Read E2E accessory ${id}`);
   return Number(data?.current_stock || 0);
 }
+
+export async function countInboundBatchesByReference(shipmentRef: string) {
+  const supabase = serviceClient();
+  const { count, error } = await supabase
+    .from("inbound_batches")
+    .select("*", { count: "exact", head: true })
+    .eq("shipment_ref", shipmentRef);
+  throwOnError(error, `Count inbound batches for ${shipmentRef}`);
+  return Number(count || 0);
+}

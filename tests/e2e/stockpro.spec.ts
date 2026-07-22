@@ -6,6 +6,7 @@ import {
   accessTokenFor,
   assertStagingRunClean,
   cleanupStagingRun,
+  countInboundBatchesByReference,
   createStagingRun,
   readAccessoryStock,
   readItem,
@@ -390,9 +391,10 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await signOut(page);
   });
 
-  test("imports inbound and outbound spreadsheets", async ({ page }) => {
+  test("imports spreadsheets and blocks an all-duplicate inbound without history", async ({ page, request }) => {
     const file = spreadsheetPath(`quicklink-${run.stamp}.xlsx`);
     const outboundReference = `E2E-XLSX-OUT-${run.stamp}`;
+    const duplicateReference = `E2E-XLSX-DUPLICATE-${run.stamp}`;
     createQuicklinkSpreadsheet(file);
     await login(page, "operator");
 
@@ -422,6 +424,39 @@ test.describe.serial("StockPro staging end-to-end", () => {
       /\.pdf$/
     );
     expect((await readItem(run.spreadsheetImei))?.status).toBe("IN");
+
+    await page.goto("/inbound");
+    await page.getByRole("button", { name: "Spreadsheet Import" }).click();
+    await page.getByLabel("Inbound reference").fill(duplicateReference);
+    await page.getByLabel("Inbound spreadsheet vendor").selectOption("quicklink");
+    await page.getByLabel("Inbound spreadsheet file").setInputFiles(file);
+    await page.getByLabel("Inbound spreadsheet floor").selectOption("00");
+    await page.getByRole("button", { name: "Preview Import" }).click();
+    await expect(page.getByText("Import blocked — already in stock")).toBeVisible();
+    await expect(page.getByText(/All 1 IMEI from this spreadsheet already exists in stock/)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Already in stock" })).toBeDisabled();
+
+    const operatorToken = await accessTokenFor(run.users.operator);
+    const duplicateResponse = await request.post("/api/inbound/confirm", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+      data: {
+        labels: [
+          {
+            device_id: run.bin.id,
+            box_no: run.spreadsheetBox,
+            floor: "00",
+            imeis: [run.spreadsheetImei],
+          },
+        ],
+        vendor: "quicklink",
+        shipment_ref: duplicateReference,
+      },
+    });
+    expect(duplicateResponse.status()).toBe(409);
+    const duplicateBody = await duplicateResponse.json();
+    expect(duplicateBody.code).toBe("ALL_IMEIS_ALREADY_IN_STOCK");
+    expect(duplicateBody.totals.inserted_imeis).toBe(0);
+    expect(await countInboundBatchesByReference(duplicateReference)).toBe(0);
 
     await page.goto("/outbound");
     await page.getByRole("button", { name: "End-of-Day Report" }).click();

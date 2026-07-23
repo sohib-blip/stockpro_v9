@@ -1,9 +1,15 @@
+import {
+  capabilityForApiRequest,
+  permissionsForCapability,
+} from "./security/capabilities";
+
 export const ROLE_VALUES = ["admin", "operator", "viewer"] as const;
 
 export type AppRole = (typeof ROLE_VALUES)[number];
 
 export const PERMISSION_KEYS = [
   "can_dashboard",
+  "can_inventory_export",
   "can_inbound",
   "can_outbound",
   "can_returns",
@@ -26,6 +32,7 @@ export type AccessProfile = {
 
 export const EMPTY_PERMISSIONS: Permissions = {
   can_dashboard: false,
+  can_inventory_export: false,
   can_inbound: false,
   can_outbound: false,
   can_returns: false,
@@ -48,6 +55,7 @@ export function permissionsForRole(role: AppRole): Permissions {
   if (role === "operator") {
     return {
       can_dashboard: true,
+      can_inventory_export: true,
       can_inbound: true,
       can_outbound: true,
       can_returns: true,
@@ -115,6 +123,9 @@ export function permissionsForApi(
   }
   if (pathname.startsWith("/api/admin")) return ["can_admin"];
   if (pathname === "/api/cron/low-stock") return null;
+
+  const capability = capabilityForApiRequest(pathname, method);
+  if (capability) return permissionsForCapability(capability);
 
   if (pathname.startsWith("/api/dashboard/min-stock")) {
     return ["can_bins"];

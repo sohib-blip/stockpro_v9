@@ -5,7 +5,11 @@ import {
   EMPTY_PERMISSIONS,
   normalizePermissions,
   PermissionKey,
-} from "@/lib/access-control";
+} from "./access-control";
+import {
+  AuthorizationCapability,
+  permissionsForCapability,
+} from "./security/capabilities";
 
 export function supabaseAnon() {
   return createClient(
@@ -109,4 +113,11 @@ export async function authorizeApiRequest(
     user: session.user,
     access,
   };
+}
+
+export function authorizeCapabilityRequest(
+  req: Request,
+  capability: AuthorizationCapability
+) {
+  return authorizeApiRequest(req, permissionsForCapability(capability));
 }

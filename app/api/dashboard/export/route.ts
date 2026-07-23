@@ -1,18 +1,28 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import {
+  authorizeCapabilityRequest,
+  supabaseService,
+} from "@/lib/auth";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+export async function GET(req: Request) {
+  const authorization = await authorizeCapabilityRequest(
+    req,
+    "inventory.export.raw"
+  );
+  if (!authorization.ok) {
+    return NextResponse.json(
+      { ok: false, error: authorization.error },
+      { status: authorization.status }
+    );
+  }
 
-export async function GET() {
   try {
+    const supabase = supabaseService();
     let allRows: any[] = [];
     let page = 0;
     const pageSize = 1000;
@@ -23,7 +33,7 @@ export async function GET() {
 
       const { data, error } = await supabase
         .from("stock_export_view")
-        .select("*")
+        .select("item_id,floor,device,box_code,imei")
         .order("item_id", { ascending: true })
         .range(from, to);
 

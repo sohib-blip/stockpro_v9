@@ -26,6 +26,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
 
 const PERMISSION_LABELS: Array<[PermissionKey, string]> = [
   ["can_dashboard", "Dashboard"],
+  ["can_inventory_export", "Sensitive Inventory Exports"],
   ["can_inbound", "Inbound Processing"],
   ["can_outbound", "Device Outbound"],
   ["can_returns", "Customer Returns"],

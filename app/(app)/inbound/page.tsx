@@ -264,9 +264,7 @@ useEffect(() => {
         for (let index = 0; index < spreadsheetImeis.length; index += 200) {
           const chunk = spreadsheetImeis.slice(index, index + 200);
           const { data: existingRows, error: existingError } = await supabase
-            .from("items")
-            .select("imei")
-            .in("imei", chunk);
+            .rpc("check_existing_imeis", { requested_imeis: chunk });
 
           if (existingError) throw existingError;
           for (const row of existingRows || []) {

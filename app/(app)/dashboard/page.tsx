@@ -12,6 +12,7 @@ import {
   YAxis,
 } from "recharts";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
+import { useAccess } from "@/components/AccessProvider";
 
 type KPI = {
   total_bins: number;
@@ -89,6 +90,7 @@ function activityPresentation(row: any) {
 }
 
 export default function DashboardPage() {
+  const { hasPermission } = useAccess();
   const [kpi, setKpi] = useState<KPI | null>(null);
   const [bins, setBins] = useState<any[]>([]);
   const [accessories, setAccessories] = useState<any[]>([]);
@@ -238,29 +240,33 @@ export default function DashboardPage() {
           <p>Stock position, alerts and recent activity across the warehouse.</p>
         </div>
         <div className="prototype-page-actions">
-          <button
-            type="button"
-            className="prototype-button secondary"
-            onClick={() =>
-              downloadApiFile("/api/dashboard/export", "stock.xlsx").catch(
-                (error) => window.alert(error.message)
-              )
-            }
-          >
-            Export Stock
-          </button>
-          <button
-            type="button"
-            className="prototype-button secondary"
-            onClick={() =>
-              downloadApiFile(
-                "/api/dashboard/export-count-sheet",
-                "count-sheet.xlsx"
-              ).catch((error) => window.alert(error.message))
-            }
-          >
-            Export Count Sheet
-          </button>
+          {hasPermission("can_inventory_export") && (
+            <>
+              <button
+                type="button"
+                className="prototype-button secondary"
+                onClick={() =>
+                  downloadApiFile("/api/dashboard/export", "stock.xlsx").catch(
+                    (error) => window.alert(error.message)
+                  )
+                }
+              >
+                Export Stock
+              </button>
+              <button
+                type="button"
+                className="prototype-button secondary"
+                onClick={() =>
+                  downloadApiFile(
+                    "/api/dashboard/export-count-sheet",
+                    "count-sheet.xlsx"
+                  ).catch((error) => window.alert(error.message))
+                }
+              >
+                Export Count Sheet
+              </button>
+            </>
+          )}
           <button
             type="button"
             className="prototype-button secondary"

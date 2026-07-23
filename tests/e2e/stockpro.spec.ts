@@ -239,6 +239,28 @@ test.describe.serial("StockPro staging end-to-end", () => {
     });
     expect(viewerAdmin.status()).toBe(403);
 
+    const viewerStockExport = await request.get("/api/dashboard/export", {
+      headers: { Authorization: `Bearer ${viewerToken}` },
+    });
+    expect(viewerStockExport.status()).toBe(403);
+
+    const viewerCountSheet = await request.get(
+      "/api/dashboard/export-count-sheet",
+      { headers: { Authorization: `Bearer ${viewerToken}` } }
+    );
+    expect(viewerCountSheet.status()).toBe(403);
+
+    const operatorStockExport = await request.get("/api/dashboard/export", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+    });
+    expect(operatorStockExport.status()).toBe(200);
+
+    const operatorCountSheet = await request.get(
+      "/api/dashboard/export-count-sheet",
+      { headers: { Authorization: `Bearer ${operatorToken}` } }
+    );
+    expect(operatorCountSheet.status()).toBe(200);
+
     const viewerRuleUpdate = await request.post("/api/bins/templates/save", {
       headers: { Authorization: `Bearer ${viewerToken}` },
       data: {
@@ -271,6 +293,10 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
     await login(page, "viewer");
     await expect(page.getByRole("link", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Export Stock" })).toHaveCount(0);
+    await expect(
+      page.getByRole("button", { name: "Export Count Sheet" })
+    ).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Receiving" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Admin", exact: true })).toHaveCount(0);
     await page.goto("/admin");
@@ -281,6 +307,10 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
   test("opens every operator module with the professional navigation", async ({ page }) => {
     await login(page, "operator");
+    await expect(page.getByRole("button", { name: "Export Stock" })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Export Count Sheet" })
+    ).toBeVisible();
 
     const modules = [
       ["/dashboard", "Dashboard"],
@@ -543,7 +573,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
   });
 
   test("exports dashboards and reports low device and accessory stock", async ({ page }) => {
-    await login(page, "viewer");
+    await login(page, "operator");
 
     await expectDownload(
       page,

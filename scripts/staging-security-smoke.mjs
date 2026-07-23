@@ -43,12 +43,15 @@ const users = Object.fromEntries(
       password: `${randomBytes(20).toString("base64url")}Aa1!`,
       id: null,
       token: null,
+      client: null,
     },
   ])
 );
+let directBinId = null;
 
 const allPermissions = {
   can_dashboard: true,
+  can_inventory_export: true,
   can_inbound: true,
   can_outbound: true,
   can_returns: true,
@@ -71,6 +74,16 @@ const checks = [
     name: "Dashboard summary",
     path: "/api/dashboard/summary",
     allowed: { admin: [200], operator: [200], viewer: [200] },
+  },
+  {
+    name: "Raw inventory export",
+    path: "/api/dashboard/export",
+    allowed: { admin: [200], operator: [200] },
+  },
+  {
+    name: "Inventory count sheet",
+    path: "/api/dashboard/export-count-sheet",
+    allowed: { admin: [200], operator: [200] },
   },
   {
     name: "Inbound history",
@@ -146,6 +159,7 @@ async function createUsers() {
       accessRoles.map((role) => ({
         user_id: users[role].id,
         ...allPermissions,
+        can_inventory_export: role !== "viewer",
         can_inbound: role !== "viewer",
         can_outbound: role !== "viewer",
         can_returns: role !== "viewer",
@@ -173,6 +187,7 @@ async function signInUsers() {
     });
     if (error || !data.session) throw error || new Error(`Unable to sign in ${role}`);
     users[role].token = data.session.access_token;
+    users[role].client = client;
   }
 }
 
@@ -203,7 +218,150 @@ async function runChecks() {
   }
 }
 
+function directResult(check, role, ok, detail = "") {
+  results.push({
+    check,
+    role,
+    status: detail || (ok ? "allowed" : "unexpected"),
+    ok,
+  });
+}
+
+async function runDirectDatabaseChecks() {
+  const viewer = users.viewer.client;
+  const operator = users.operator.client;
+
+  const viewerItems = await viewer.from("items").select("imei").limit(1);
+  directResult(
+    "Direct items SELECT denied",
+    "viewer",
+    Boolean(viewerItems.error),
+    viewerItems.error?.code || "no error"
+  );
+
+  const viewerMovements = await viewer.from("movements").select("id").limit(1);
+  directResult(
+    "Direct movements SELECT denied",
+    "viewer",
+    Boolean(viewerMovements.error),
+    viewerMovements.error?.code || "no error"
+  );
+
+  const deniedInsert = await viewer
+    .from("bins")
+    .insert({ name: `SMOKE-VIEWER-${stamp}`, active: true })
+    .select("id");
+  directResult(
+    "Viewer bin INSERT denied",
+    "viewer",
+    Boolean(deniedInsert.error) || deniedInsert.data?.length === 0,
+    deniedInsert.error?.code || `${deniedInsert.data?.length || 0} rows`
+  );
+
+  const { data: operatorBin, error: operatorInsertError } = await operator
+    .from("bins")
+    .insert({ name: `SMOKE-OPERATOR-${stamp}`, active: true })
+    .select("id,name")
+    .single();
+  directBinId = operatorBin?.id || null;
+  directResult(
+    "Operator bin INSERT allowed",
+    "operator",
+    !operatorInsertError && Boolean(directBinId),
+    operatorInsertError?.code || (directBinId ? "created" : "missing row")
+  );
+
+  if (directBinId) {
+    const deniedUpdate = await viewer
+      .from("bins")
+      .update({ name: `SMOKE-VIEWER-UPDATE-${stamp}` })
+      .eq("id", directBinId)
+      .select("id");
+    const { data: unchangedBin } = await adminClient
+      .from("bins")
+      .select("name")
+      .eq("id", directBinId)
+      .single();
+    directResult(
+      "Viewer bin UPDATE denied",
+      "viewer",
+      (Boolean(deniedUpdate.error) || deniedUpdate.data?.length === 0) &&
+        unchangedBin?.name === `SMOKE-OPERATOR-${stamp}`,
+      deniedUpdate.error?.code || `${deniedUpdate.data?.length || 0} rows`
+    );
+
+    const deniedDelete = await viewer
+      .from("bins")
+      .delete()
+      .eq("id", directBinId)
+      .select("id");
+    const { count: remainingBinCount } = await adminClient
+      .from("bins")
+      .select("id", { count: "exact", head: true })
+      .eq("id", directBinId);
+    directResult(
+      "Viewer bin DELETE denied",
+      "viewer",
+      (Boolean(deniedDelete.error) || deniedDelete.data?.length === 0) &&
+        remainingBinCount === 1,
+      deniedDelete.error?.code || `${deniedDelete.data?.length || 0} rows`
+    );
+
+    const operatorDelete = await operator
+      .from("bins")
+      .delete()
+      .eq("id", directBinId)
+      .select("id");
+    directResult(
+      "Operator bin DELETE allowed",
+      "operator",
+      !operatorDelete.error && operatorDelete.data?.length === 1,
+      operatorDelete.error?.code || `${operatorDelete.data?.length || 0} rows`
+    );
+    if (!operatorDelete.error && operatorDelete.data?.length === 1) {
+      directBinId = null;
+    }
+  }
+
+  const requestedImei = "999999999999999";
+  const operatorMatch = await operator.rpc("check_existing_imeis", {
+    requested_imeis: [requestedImei],
+  });
+  directResult(
+    "Bounded IMEI match allowed",
+    "operator",
+    !operatorMatch.error && Array.isArray(operatorMatch.data),
+    operatorMatch.error?.code || `${operatorMatch.data?.length || 0} matches`
+  );
+
+  const viewerMatch = await viewer.rpc("check_existing_imeis", {
+    requested_imeis: [requestedImei],
+  });
+  directResult(
+    "Bounded IMEI match denied",
+    "viewer",
+    Boolean(viewerMatch.error),
+    viewerMatch.error?.code || "no error"
+  );
+
+  const oversizedMatch = await operator.rpc("check_existing_imeis", {
+    requested_imeis: Array.from({ length: 201 }, (_, index) =>
+      String(index).padStart(15, "9")
+    ),
+  });
+  directResult(
+    "Oversized IMEI match denied",
+    "operator",
+    Boolean(oversizedMatch.error),
+    oversizedMatch.error?.code || "no error"
+  );
+}
+
 async function cleanup() {
+  if (directBinId) {
+    await adminClient.from("bins").delete().eq("id", directBinId);
+    directBinId = null;
+  }
   const ids = roleNames.map((role) => users[role].id).filter(Boolean);
   if (ids.length) {
     await adminClient.from("user_permissions").delete().in("user_id", ids);
@@ -216,6 +374,7 @@ try {
   await createUsers();
   await signInUsers();
   await runChecks();
+  await runDirectDatabaseChecks();
 
   console.table(results);
   const failures = results.filter((result) => !result.ok);

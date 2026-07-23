@@ -4,9 +4,14 @@ import { createClient } from "@supabase/supabase-js";
 
 const STAGING_PROJECT_REF = "enjusebvcfjudrrnvjgl";
 const previewUrl = String(process.argv[2] || "").replace(/\/$/, "");
+const keepFixtures = process.argv.includes("--keep-fixtures");
+const fixturesOnly = process.argv.includes("--fixtures-only");
 
 if (!/^https:\/\/stockpro-v9-[a-z0-9-]+\.vercel\.app$/i.test(previewUrl)) {
   throw new Error("Usage: npm run test:staging -- https://stockpro-v9-...vercel.app");
+}
+if (fixturesOnly && !keepFixtures) {
+  throw new Error("--fixtures-only must be used with --keep-fixtures");
 }
 
 async function readEnvFile(path) {
@@ -31,11 +36,16 @@ try {
   env = await readEnvFile("../.env.local");
   envSource = ".env.local";
 }
+if (keepFixtures) {
+  env = { ...env, ...(await readEnvFile("../.env.test.local")) };
+  envSource = `${envSource} + .env.test.local`;
+}
 
 const supabaseUrl = env.E2E_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
 const anonKey = env.E2E_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey =
   env.E2E_SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
+const vercelBypassSecret = env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
 if (!supabaseUrl?.includes(STAGING_PROJECT_REF)) {
   throw new Error(`Refusing to run: ${envSource} is not StockPro-Staging`);
@@ -50,16 +60,19 @@ const adminClient = createClient(supabaseUrl, serviceRoleKey, {
 const stamp = `${Date.now()}-${randomBytes(3).toString("hex")}`;
 const roleNames = ["admin", "operator", "viewer", "norole"];
 const users = Object.fromEntries(
-  roleNames.map((role) => [
-    role,
-    {
-      email: `stockpro.smoke.${role}.${stamp}@example.com`,
-      password: `${randomBytes(20).toString("base64url")}Aa1!`,
-      id: null,
-      token: null,
-      client: null,
-    },
-  ])
+  roleNames.map((role) => {
+    const fixturePrefix = `STAGING_TEST_${role.toUpperCase()}`;
+    const email = keepFixtures
+      ? env[`${fixturePrefix}_EMAIL`]
+      : `stockpro.smoke.${role}.${stamp}@example.com`;
+    const password = keepFixtures
+      ? env[`${fixturePrefix}_PASSWORD`]
+      : `${randomBytes(20).toString("base64url")}Aa1!`;
+    if (!email || !password) {
+      throw new Error(`Missing ${fixturePrefix}_EMAIL or ${fixturePrefix}_PASSWORD`);
+    }
+    return [role, { email, password, id: null, token: null, client: null }];
+  })
 );
 let directBinId = null;
 
@@ -149,15 +162,41 @@ const checks = [
 const results = [];
 
 async function createUsers() {
+  let existingUsers = [];
+  if (keepFixtures) {
+    const { data, error } = await adminClient.auth.admin.listUsers({
+      page: 1,
+      perPage: 1000,
+    });
+    if (error) throw error;
+    existingUsers = data.users;
+  }
+
   for (const role of roleNames) {
     const user = users[role];
-    const { data, error } = await adminClient.auth.admin.createUser({
-      email: user.email,
-      password: user.password,
-      email_confirm: true,
-    });
-    if (error || !data.user) throw error || new Error(`Unable to create ${role}`);
-    user.id = data.user.id;
+    const existingUser = existingUsers.find(
+      (candidate) => candidate.email?.toLowerCase() === user.email.toLowerCase()
+    );
+    if (existingUser) {
+      const { data, error } = await adminClient.auth.admin.updateUserById(
+        existingUser.id,
+        { password: user.password, email_confirm: true }
+      );
+      if (error || !data.user) {
+        throw error || new Error(`Unable to update ${role}`);
+      }
+      user.id = data.user.id;
+    } else {
+      const { data, error } = await adminClient.auth.admin.createUser({
+        email: user.email,
+        password: user.password,
+        email_confirm: true,
+      });
+      if (error || !data.user) {
+        throw error || new Error(`Unable to create ${role}`);
+      }
+      user.id = data.user.id;
+    }
   }
 
   const accessRoles = ["admin", "operator", "viewer"];
@@ -206,11 +245,28 @@ async function signInUsers() {
 }
 
 async function request(path, token) {
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  if (vercelBypassSecret) {
+    headers["x-vercel-protection-bypass"] = vercelBypassSecret;
+    headers["x-vercel-set-bypass-cookie"] = "true";
+  }
   const response = await fetch(`${previewUrl}${path}`, {
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    headers,
+    redirect: "manual",
     signal: AbortSignal.timeout(30_000),
   });
-  await response.arrayBuffer();
+  const contentType = response.headers.get("content-type") || "";
+  const body = await response.arrayBuffer();
+  if (
+    contentType.includes("text/html") ||
+    (response.status >= 300 && response.status < 400)
+  ) {
+    throw new Error(
+      "Vercel Deployment Protection intercepted the API request. " +
+        "Run from an authenticated browser session or configure " +
+        "VERCEL_AUTOMATION_BYPASS_SECRET."
+    );
+  }
   return response.status;
 }
 
@@ -376,6 +432,8 @@ async function cleanup() {
     await adminClient.from("bins").delete().eq("id", directBinId);
     directBinId = null;
   }
+  if (keepFixtures) return;
+
   const ids = roleNames.map((role) => users[role].id).filter(Boolean);
   if (ids.length) {
     await adminClient.from("user_permissions").delete().in("user_id", ids);
@@ -387,15 +445,22 @@ async function cleanup() {
 try {
   await createUsers();
   await signInUsers();
-  await runChecks();
-  await runDirectDatabaseChecks();
+  if (fixturesOnly) {
+    console.log("Reusable staging accounts are ready and were kept.");
+  } else {
+    await runChecks();
+    await runDirectDatabaseChecks();
 
-  console.table(results);
-  const failures = results.filter((result) => !result.ok);
-  if (failures.length) {
-    throw new Error(`${failures.length} staging authorization check(s) failed`);
+    console.table(results);
+    const failures = results.filter((result) => !result.ok);
+    if (failures.length) {
+      throw new Error(`${failures.length} staging authorization check(s) failed`);
+    }
+    console.log(`All ${results.length} staging authorization checks passed.`);
+    if (keepFixtures) {
+      console.log("Reusable staging accounts were kept for future tests.");
+    }
   }
-  console.log(`All ${results.length} staging authorization checks passed.`);
 } finally {
   await cleanup();
 }

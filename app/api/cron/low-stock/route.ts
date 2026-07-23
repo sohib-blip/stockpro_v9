@@ -15,6 +15,21 @@ export async function GET(req: Request) {
     );
   }
 
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { error: maintenanceError } = await supabase.rpc(
+    "run_workload_maintenance"
+  );
+
+  if (maintenanceError) {
+    return NextResponse.json(
+      { ok: false, error: "Security maintenance failed" },
+      { status: 500 }
+    );
+  }
+
   const emailEnabled = areLowStockEmailsEnabled(
     process.env.ENABLE_LOW_STOCK_EMAILS,
     process.env.VERCEL_ENV
@@ -27,11 +42,6 @@ export async function GET(req: Request) {
       reason: "low-stock emails disabled for this environment",
     });
   }
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
 
   // emails
   const { data: subs } = await supabase

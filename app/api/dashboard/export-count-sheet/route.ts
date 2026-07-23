@@ -4,10 +4,26 @@ import {
   authorizeCapabilityRequest,
   supabaseService,
 } from "@/lib/auth";
+import {
+  acquireWorkloadLease,
+  releaseWorkloadLease,
+  workloadRejectionResponse,
+} from "@/lib/security/workload-budget";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+
+const MAX_COUNT_SHEET_ROWS = 25_000;
+const MAX_COUNT_SHEET_DEVICES = 80;
+const MAX_FORMULA_CELLS = 500_000;
+const MAX_COUNT_SHEET_BYTES = 32 * 1024 * 1024;
+const MIN_SCAN_ROWS = 1_000;
+const EXTRA_SCAN_ROWS = 500;
+
+function scanRowsForDevice(expectedImeis: number) {
+  return Math.max(expectedImeis + EXTRA_SCAN_ROWS, MIN_SCAN_ROWS);
+}
 
 function safeSheetName(name: string) {
   return String(name || "Unknown")
@@ -47,19 +63,26 @@ export async function GET(req: Request) {
     );
   }
 
+  const admission = await acquireWorkloadLease(req, "countSheetExport", {
+    principal: authorization.user.id,
+  });
+  if (!admission.ok) return workloadRejectionResponse(admission);
+
   try {
     const supabase = supabaseService();
     let allRows: any[] = [];
-    let page = 0;
     const pageSize = 1000;
+    const requestedRows = MAX_COUNT_SHEET_ROWS + 1;
 
-    while (true) {
-      const from = page * pageSize;
-      const to = from + pageSize - 1;
+    while (allRows.length < requestedRows) {
+      const from = allRows.length;
+      const to =
+        from + Math.min(pageSize, requestedRows - allRows.length) - 1;
 
       const { data, error } = await supabase
         .from("stock_export_view")
-        .select("device, imei")
+        .select("item_id, device, imei")
+        .order("item_id", { ascending: true })
         .range(from, to);
 
       if (error) {
@@ -73,8 +96,17 @@ export async function GET(req: Request) {
 
       allRows.push(...data);
 
-      if (data.length < pageSize) break;
-      page++;
+      if (data.length < to - from + 1) break;
+    }
+
+    if (allRows.length > MAX_COUNT_SHEET_ROWS) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Count sheet exceeds the ${MAX_COUNT_SHEET_ROWS}-row synchronous limit.`,
+        },
+        { status: 413 }
+      );
     }
 
     const deviceMap: Record<string, string[]> = {};
@@ -90,6 +122,23 @@ export async function GET(req: Request) {
     }
 
     const devices = Object.keys(deviceMap).sort();
+    const estimatedFormulaCells = devices.reduce((total, device) => {
+      const expected = deviceMap[device].length;
+      return total + (scanRowsForDevice(expected) - 1) * 5 + expected * 3;
+    }, 0);
+
+    if (
+      devices.length > MAX_COUNT_SHEET_DEVICES ||
+      estimatedFormulaCells > MAX_FORMULA_CELLS
+    ) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Count-sheet workbook exceeds the synchronous formula budget.",
+        },
+        { status: 413 }
+      );
+    }
 
     const wb = new ExcelJS.Workbook();
     wb.creator = "StockPro";
@@ -205,7 +254,7 @@ export async function GET(req: Request) {
       const sheetName = sheetNameMap[device];
       const ws = wb.addWorksheet(sheetName);
       const expectedImeis = deviceMap[device].sort();
-      const scanRows = Math.max(expectedImeis.length + 500, 5000);
+      const scanRows = scanRowsForDevice(expectedImeis.length);
 
       ws.columns = [
         { header: "Expected IMEI", key: "expected", width: 24 },
@@ -393,7 +442,7 @@ let unexpectedRow = 2;
 for (const device of devices) {
   const sheetName = sheetNameMap[device];
   const sheetRef = excelSheetName(sheetName);
-  const scanRows = Math.max(deviceMap[device].length + 500, 5000);
+  const scanRows = scanRowsForDevice(deviceMap[device].length);
 
   for (let i = 2; i <= scanRows; i++) {
     unexpected.getCell(`A${unexpectedRow}`).value = {
@@ -448,6 +497,13 @@ unexpected.autoFilter = {
 
 const buffer = await wb.xlsx.writeBuffer();
 
+if (buffer.byteLength > MAX_COUNT_SHEET_BYTES) {
+  return NextResponse.json(
+    { ok: false, error: "Generated count sheet is too large." },
+    { status: 413 }
+  );
+}
+
 return new NextResponse(buffer, {
   headers: {
     "Content-Type":
@@ -463,5 +519,7 @@ return new NextResponse(buffer, {
       { ok: false, error: e?.message || "Export count sheet failed" },
       { status: 500 }
     );
+  } finally {
+    await releaseWorkloadLease(admission.leaseId);
   }
 }

@@ -62,15 +62,6 @@ export function connectionMetadata(req: Request): ConnectionMetadata {
 
 export async function recordConnectionEvent(input: RecordConnectionEventInput) {
   const supabase = supabaseService();
-  const retentionCutoff = new Date(
-    Date.now() - 90 * 24 * 60 * 60 * 1000
-  ).toISOString();
-
-  // Keep this security log deliberately small and privacy-conscious.
-  await supabase
-    .from("connection_events")
-    .delete()
-    .lt("created_at", retentionCutoff);
 
   const { data, error } = await supabase
     .from("connection_events")

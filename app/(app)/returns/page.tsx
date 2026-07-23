@@ -50,7 +50,13 @@ export default function ReturnsPage() {
 
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [page, setPage] = useState(1);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [historyCursorStack, setHistoryCursorStack] = useState<
+    Array<string | null>
+  >([]);
+  const [nextHistoryCursor, setNextHistoryCursor] = useState<string | null>(
+    null
+  );
   const returnOperationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -62,15 +68,18 @@ export default function ReturnsPage() {
   }, [supabase]);
 
   useEffect(() => {
-    loadHistory();
+    loadHistory(historyCursor);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [historyCursor]);
 
-  async function loadHistory() {
+  async function loadHistory(cursor: string | null = historyCursor) {
     setLoadingHistory(true);
 
     try {
-      const res = await apiFetch(`/api/returns/history?page=${page}&t=${Date.now()}`, {
+      const query = new URLSearchParams({ t: String(Date.now()) });
+      if (cursor) query.set("cursor", cursor);
+
+      const res = await apiFetch(`/api/returns/history?${query.toString()}`, {
         method: "GET",
         cache: "no-store",
         headers: {
@@ -80,8 +89,13 @@ export default function ReturnsPage() {
 
       const json = await res.json();
 
-      if (json.ok) setHistory(json.rows || []);
-      else setHistory([]);
+      if (json.ok) {
+        setHistory(json.rows || []);
+        setNextHistoryCursor(json.next_cursor || null);
+      } else {
+        setHistory([]);
+        setNextHistoryCursor(null);
+      }
     } finally {
       setLoadingHistory(false);
     }
@@ -182,7 +196,9 @@ export default function ReturnsPage() {
       setReturnReason("");
       returnOperationIdRef.current = null;
 
-      await loadHistory();
+      setHistoryCursorStack([]);
+      setHistoryCursor(null);
+      await loadHistory(null);
     } catch (e: any) {
       setMsg(e?.message || "Return confirmation failed");
     } finally {
@@ -441,7 +457,7 @@ export default function ReturnsPage() {
             </button>
 
             <button
-              onClick={loadHistory}
+              onClick={() => loadHistory()}
               className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
             >
               {loadingHistory ? "Refreshing…" : "Refresh"}
@@ -487,16 +503,32 @@ export default function ReturnsPage() {
 
         <div className="flex justify-between items-center pt-2">
           <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={historyCursorStack.length === 0}
+            onClick={() => {
+              const previous =
+                historyCursorStack[historyCursorStack.length - 1] ?? null;
+              setHistoryCursorStack((current) => current.slice(0, -1));
+              setHistoryCursor(previous);
+            }}
             className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
           >
             Previous
           </button>
 
-          <div className="text-sm text-slate-400">Page {page}</div>
+          <div className="text-sm text-slate-400">
+            Page {historyCursorStack.length + 1}
+          </div>
 
           <button
-            onClick={() => setPage((p) => p + 1)}
+            disabled={!nextHistoryCursor}
+            onClick={() => {
+              if (!nextHistoryCursor) return;
+              setHistoryCursorStack((current) => [
+                ...current,
+                historyCursor,
+              ]);
+              setHistoryCursor(nextHistoryCursor);
+            }}
             className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
           >
             Next

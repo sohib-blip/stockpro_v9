@@ -161,6 +161,13 @@ const checks = [
 
 const results = [];
 
+function responseError(body, fallback) {
+  if (typeof body?.error === "string") return body.error;
+  if (typeof body?.error?.message === "string") return body.error.message;
+  if (typeof body?.error?.code === "string") return body.error.code;
+  return String(fallback);
+}
+
 async function createUsers() {
   let existingUsers = [];
   if (keepFixtures) {
@@ -231,32 +238,70 @@ async function createUsers() {
 
 async function signInUsers() {
   for (const role of roleNames) {
+    const loginResponse = await previewFetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: users[role].email,
+        password: users[role].password,
+      }),
+    });
+    const loginBody = await loginResponse.json().catch(() => null);
+    if (!loginResponse.ok || !loginBody?.session?.access_token) {
+      throw new Error(
+        `Unable to sign in ${role}: ${responseError(
+          loginBody,
+          loginResponse.status
+        )}`
+      );
+    }
+
+    const accessToken = String(loginBody.session.access_token);
+    if (loginBody.requires_takeover) {
+      const takeoverResponse = await previewFetch(
+        "/api/auth/connection-event",
+        {
+          method: "PATCH",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ event_id: loginBody.event_id }),
+        }
+      );
+      if (!takeoverResponse.ok) {
+        throw new Error(
+          `Unable to take over ${role} session: ${takeoverResponse.status}`
+        );
+      }
+    }
+
     const client = createClient(supabaseUrl, anonKey, {
       auth: { autoRefreshToken: false, persistSession: false },
     });
-    const { data, error } = await client.auth.signInWithPassword({
-      email: users[role].email,
-      password: users[role].password,
+    const { error } = await client.auth.setSession({
+      access_token: accessToken,
+      refresh_token: String(loginBody.session.refresh_token),
     });
-    if (error || !data.session) throw error || new Error(`Unable to sign in ${role}`);
-    users[role].token = data.session.access_token;
+    if (error) throw error;
+    users[role].token = accessToken;
     users[role].client = client;
   }
 }
 
-async function request(path, token) {
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+async function previewFetch(path, init = {}) {
+  const headers = new Headers(init.headers);
   if (vercelBypassSecret) {
-    headers["x-vercel-protection-bypass"] = vercelBypassSecret;
-    headers["x-vercel-set-bypass-cookie"] = "true";
+    headers.set("x-vercel-protection-bypass", vercelBypassSecret);
+    headers.set("x-vercel-set-bypass-cookie", "true");
   }
   const response = await fetch(`${previewUrl}${path}`, {
+    ...init,
     headers,
     redirect: "manual",
     signal: AbortSignal.timeout(30_000),
   });
   const contentType = response.headers.get("content-type") || "";
-  const body = await response.arrayBuffer();
   if (
     contentType.includes("text/html") ||
     (response.status >= 300 && response.status < 400)
@@ -267,6 +312,14 @@ async function request(path, token) {
         "VERCEL_AUTOMATION_BYPASS_SECRET."
     );
   }
+  return response;
+}
+
+async function request(path, token) {
+  const response = await previewFetch(path, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  await response.arrayBuffer();
   return response.status;
 }
 

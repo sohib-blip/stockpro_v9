@@ -31,6 +31,7 @@ describe("remaining security boundaries", () => {
     const auth = read("lib/auth.ts");
     const login = read("app/api/auth/login/route.ts");
     const takeover = read("app/api/auth/connection-event/route.ts");
+    const stagingSmoke = read("scripts/staging-security-smoke.mjs");
 
     expect(migration).toContain("function public.activate_app_session(");
     expect(migration).toContain("function public.touch_app_session(");
@@ -44,6 +45,8 @@ describe("remaining security boundaries", () => {
     expect(login).toContain("sessionIdFromAccessToken");
     expect(login).toContain("activateAppSession");
     expect(takeover).toContain("takeOverAppSession");
+    expect(stagingSmoke).toContain('previewFetch("/api/auth/login"');
+    expect(stagingSmoke).not.toContain("signInWithPassword");
   });
 
   it("keeps all new session mutation RPCs private to the service role", () => {

@@ -1,121 +1,98 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
+import { getApiIdentity } from "@/lib/api-identity";
+import { supabaseService } from "@/lib/auth";
+import {
+  acquireWorkloadLease,
+  releaseWorkloadLease,
+  workloadRejectionResponse,
+} from "@/lib/security/workload-budget";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!,
-  {
-    auth: { persistSession: false },
-  }
-);
+const HISTORY_PAGE_SIZE = 50;
+const cursorSchema = z.object({
+  created_at: z.string().datetime({ offset: true }),
+  history_key: z.string().min(1).max(500),
+});
+
+function decodeCursor(value: string | null) {
+  if (!value) return null;
+  if (value.length > 1_000) throw new Error("Invalid history cursor");
+
+  const decoded = JSON.parse(
+    Buffer.from(value, "base64url").toString("utf8")
+  );
+  const parsed = cursorSchema.safeParse(decoded);
+  if (!parsed.success) throw new Error("Invalid history cursor");
+  return parsed.data;
+}
+
+function encodeCursor(row: { created_at: string; history_key: string }) {
+  return Buffer.from(
+    JSON.stringify({
+      created_at: row.created_at,
+      history_key: row.history_key,
+    }),
+    "utf8"
+  ).toString("base64url");
+}
 
 export async function GET(req: Request) {
+  let cursor: z.infer<typeof cursorSchema> | null;
   try {
-    const url = new URL(req.url);
-    const page = Number(url.searchParams.get("page") || 1);
+    cursor = decodeCursor(new URL(req.url).searchParams.get("cursor"));
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "Invalid history cursor" },
+      { status: 400 }
+    );
+  }
 
-    const limit = 50;
-    const offset = (page - 1) * limit;
+  const identity = getApiIdentity(req);
+  const admission = await acquireWorkloadLease(req, "returnsHistory", {
+    principal: identity.userId,
+  });
+  if (!admission.ok) return workloadRejectionResponse(admission);
 
-    let allMovements: any[] = [];
-    let from = 0;
-    const pageSize = 1000;
-
-    while (true) {
-      const { data, error } = await supabase
-        .from("movements")
-        .select(`
-          movement_id,
-          operation_id,
-          created_at,
-          actor,
-          shipment_ref,
-          return_type,
-          return_reason,
-          qty,
-          imei
-        `)
-        .eq("type", "RETURN")
-        .order("created_at", { ascending: false })
-        .range(from, from + pageSize - 1);
-
-      if (error) throw error;
-      if (!data || data.length === 0) break;
-
-      allMovements.push(...data);
-
-      if (data.length < pageSize) break;
-      from += pageSize;
-    }
-
-    const grouped = new Map<string, any>();
-
-    for (const row of allMovements) {
-      const key = String(
-        row.operation_id ||
-          row.shipment_ref ||
-          row.movement_id
-      );
-
-      if (!grouped.has(key)) {
-        grouped.set(key, {
-          history_key: key,
-          operation_id: row.operation_id || row.movement_id,
-          created_at: row.created_at,
-          actor: row.actor || "unknown",
-          return_ref: row.shipment_ref || "",
-          return_type: row.return_type || "",
-          return_reason: row.return_reason || "",
-          imeisSet: new Set<string>(),
-          qty: 0,
-        });
+  try {
+    const { data, error } = await supabaseService().rpc(
+      "get_return_history_page",
+      {
+        p_cursor_created_at: cursor?.created_at || null,
+        p_cursor_history_key: cursor?.history_key || null,
+        p_limit: HISTORY_PAGE_SIZE + 1,
       }
+    );
 
-      const current = grouped.get(key);
+    if (error) throw error;
 
-      if (row.imei) {
-        current.imeisSet.add(String(row.imei));
-      }
-
-      current.qty += Number(row.qty || 1);
-
-      if (new Date(row.created_at) > new Date(current.created_at)) {
-        current.created_at = row.created_at;
-      }
-    }
-
-    const allRows = Array.from(grouped.values())
-      .map((x) => ({
-        history_key: x.history_key,
-        operation_id: x.operation_id,
-        created_at: x.created_at,
-        actor: x.actor,
-        return_ref: x.return_ref,
-        return_type: x.return_type,
-        return_reason: x.return_reason,
-        qty: x.imeisSet.size || x.qty,
-      }))
-      .sort(
-        (a, b) =>
-          new Date(b.created_at).getTime() -
-          new Date(a.created_at).getTime()
-      );
-
-    const rows = allRows.slice(offset, offset + limit);
+    const fetched = data || [];
+    const hasMore = fetched.length > HISTORY_PAGE_SIZE;
+    const rows = fetched.slice(0, HISTORY_PAGE_SIZE);
+    const last = rows.at(-1);
 
     return NextResponse.json({
       ok: true,
       rows,
-      page,
+      has_more: hasMore,
+      next_cursor:
+        hasMore && last
+          ? encodeCursor({
+              created_at: last.created_at,
+              history_key: last.history_key,
+            })
+          : null,
     });
-  } catch (e: any) {
+  } catch (error) {
+    console.error("RETURNS HISTORY ERROR", error);
     return NextResponse.json(
-      { ok: false, error: e?.message || "Returns history failed" },
+      { ok: false, error: "Returns history failed" },
       { status: 500 }
     );
+  } finally {
+    await releaseWorkloadLease(admission.leaseId);
   }
 }

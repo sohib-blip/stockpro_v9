@@ -1,817 +1,747 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useEffect, useMemo, useState } from "react";
 import {
- BarChart,
- Bar,
- XAxis,
- YAxis,
- Tooltip,
- ResponsiveContainer,
- Legend,
- CartesianGrid
+  Bar,
+  BarChart,
+  CartesianGrid,
+  LabelList,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
 } from "recharts";
-import AccessoryCategory from "@/components/dashboard/AccessoryCategory";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
+import { useAccess } from "@/components/AccessProvider";
 
 type KPI = {
- total_bins: number;
- total_boxes: number;
- total_imei: number;
- alerts: number;
+  total_bins: number;
+  total_boxes: number;
+  total_imei: number;
+  alerts: number;
 };
+
+const ACCESSORY_CATEGORIES = [
+  "All",
+  "Packages",
+  "Vision",
+  "Harness",
+  "Consumables",
+  "Items",
+] as const;
+
+type AccessoryCategoryFilter = (typeof ACCESSORY_CATEGORIES)[number];
+
+const CHART_PAGE_SIZE = 10;
+const ACCESSORY_PREVIEW_SIZE = 7;
+
+function stockLevel(row: any) {
+  const stock = Number(row.imei_count || 0);
+  const minimum = Number(row.min_stock || 0);
+  if (stock <= 0) return "critical";
+  if (minimum > 0 && stock <= minimum) return "low";
+  return "ok";
+}
+
+function remainingPercent(row: any) {
+  const stock = Number(row.imei_count || 0);
+  const minimum = Number(row.min_stock || 0);
+  if (stock <= 0) return 0;
+  if (minimum <= 0) return 100;
+  return Math.min(100, Math.round((stock / (minimum * 5)) * 100));
+}
+
+function activityPresentation(row: any) {
+  if (row.type === "IN") {
+    return {
+      label: "Inbound",
+      detail: `${row.qty || 0} IMEIs${row.box_code ? ` · ${row.box_code}` : ""}${
+        row.device ? ` · ${row.device}` : ""
+      }`,
+      tone: "success",
+    };
+  }
+
+  if (row.type === "OUT") {
+    return {
+      label: "Outbound",
+      detail: `${row.qty || 0} IMEIs${row.device ? ` · ${row.device}` : ""}`,
+      tone: "danger",
+    };
+  }
+
+  if (row.type === "TRANSFER") {
+    return {
+      label: "Transfer",
+      detail: `${row.box_code || "Box"}${
+        row.from_floor || row.to_floor
+          ? ` · ${row.from_floor || "—"} → ${row.to_floor || "—"}`
+          : ""
+      }`,
+      tone: "brand",
+    };
+  }
+
+  return {
+    label: "Return",
+    detail: `${row.qty || 0} IMEIs${row.device ? ` · ${row.device}` : ""}`,
+    tone: "warning",
+  };
+}
 
 export default function DashboardPage() {
-
- const [kpi, setKpi] = useState<KPI | null>(null);
- const [bins, setBins] = useState<any[]>([]);
- const [accessories, setAccessories] = useState<any[]>([]);
- const [accessoryKpis, setAccessoryKpis] = useState<any>(null);
- const [accessorySearch, setAccessorySearch] = useState("");
- const [activity, setActivity] = useState<any[]>([]);
- const [drilldown, setDrilldown] = useState<any[]>([]);
- const [flow,setFlow] = useState<any[]>([]);
- const [openDevice, setOpenDevice] = useState<string | null>(null);
- const [topDevices,setTopDevices] = useState<any[]>([]);
- const [salesTable,setSalesTable] = useState<any[]>([]);
- const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
-
- const [search,setSearch] = useState("");
- const [boxSearch,setBoxSearch] = useState("");
-
- const [openGroups, setOpenGroups] = useState({
-  Packages: false,
-  Vision: false,
-  Harness: false,
-  Consumables: false,
-  Items: false,
-});
-
-function toggleGroup(category: keyof typeof openGroups) {
-  setOpenGroups((prev) => ({
-    ...prev,
-    [category]: !prev[category],
-  }));
-}
-
- const filteredBins = bins
- .filter((b:any) => Number(b.imei_count) > 0)
- .filter((b:any) =>
-  b.device?.toLowerCase().includes(search.toLowerCase())
- );
-
- const filteredAccessories = accessories.filter((a:any) =>
-  a.name?.toLowerCase().includes(accessorySearch.toLowerCase()) ||
-  a.bin?.toLowerCase().includes(accessorySearch.toLowerCase())
-);
-
- const chartData = bins.map((b:any) => {
-
- const movement = flow.find((f:any)=>f.device === b.device);
-
- return {
-  device: b.device,
-  in: Number(movement?.total_in || 0),
-  out: Number(movement?.total_out || 0)
- };
-
-});
-
- const deviceName =
- bins.find((b:any)=>b.device_id === openDevice)?.device || openDevice;
-
- const groupedAccessories = {
-  Packages: filteredAccessories.filter(
-    (a: any) => a.category === "Packages"
-  ),
-
-  Vision: filteredAccessories.filter(
-    (a: any) => a.category === "Vision"
-  ),
-
-  Harness: filteredAccessories.filter(
-    (a: any) => a.category === "Harness"
-  ),
-
-  Consumables: filteredAccessories.filter(
-    (a: any) => a.category === "Consumables"
-  ),
-
-  Items: filteredAccessories.filter(
-  (a: any) => a.category === "Items"
-),
-};
-
- async function loadAll() {
-
-const [kpiRes, binsRes, activityRes, flowRes, salesRes, accessoriesRes] = await Promise.all([
-  fetch("/api/dashboard/summary", { cache: "no-store" }),
-  fetch("/api/dashboard/bins", { cache: "no-store" }),
-  fetch("/api/dashboard/activity", { cache: "no-store" }),
-  fetch("/api/dashboard/device-flow", { cache: "no-store" }),
-  fetch("/api/dashboard/sales", { cache: "no-store" }),
-  fetch("/api/dashboard/accessories", { cache: "no-store" }),
-]);
-
- const kpiJson = await kpiRes.json();
- const binsJson = await binsRes.json();
- const accessoriesJson = await accessoriesRes.json();
- const activityJson = await activityRes.json();
- const flowJson = await flowRes.json();
- const salesJson = await salesRes.json();
-
- if (kpiJson.ok) setKpi(kpiJson.kpis);
- if (binsJson.ok) setBins(binsJson.rows);
- if (accessoriesJson.ok) {
-  setAccessories(accessoriesJson.rows || []);
-  setAccessoryKpis(accessoriesJson.kpis || null);
-}
- if (activityJson.ok) setActivity(activityJson.rows);
- if (flowJson.ok) setFlow(flowJson.rows);
-if (salesJson.ok){
- setSalesTable(salesJson.rows)
- setTopDevices(salesJson.rows)
-}
-
-}
- 
- async function openDrilldown(device_id: string) {
-
- setOpenDevice(device_id);
-
- const res = await fetch(`/api/dashboard/drilldown?device_id=${device_id}`);
- const json = await res.json();
-
- if (json.ok) setDrilldown(json.rows);
-
- }
-
- useEffect(() => {
-  loadAll();
-}, []);
-
- return (
-
-<div className="pt-4 px-2 pb-10 space-y-10 w-full">
-
-<div className="grid grid-cols-3 items-center">
-  <div className="flex items-center gap-3">
-    <a
-      href="/api/dashboard/export"
-      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
-    >
-      Export Stock
-    </a>
-
-    <a
-      href="/api/dashboard/export-count-sheet"
-      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
-    >
-      Export Count Sheet
-    </a>
-
-    <button
-      onClick={() => window.open("/api/accessory-bins/export", "_blank")}
-      className="card-glow px-5 py-2 rounded-lg text-sm flex items-center gap-2 hover:opacity-90"
-    >
-      Export Accessories
-    </button>
-  </div>
-
-  <h1 className="text-3xl font-semibold tracking-tight text-center">
-    Inventory Dashboard
-  </h1>
-
-  <div></div>
-</div>
-
-{/* SEARCH */}
-
-<div className="card-glow p-4 rounded-xl">
-
-<input
-type="text"
-placeholder="Search device..."
-value={search}
-onChange={(e)=>setSearch(e.target.value)}
-className="w-full text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-2 outline-none"
-/>
-
-</div>
-
-
-{/* KPI */}
-
-{kpi && (
-
-<div className="grid grid-cols-2 md:grid-cols-4 gap-6">
-
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
-Total bins
-</div>
-<div className="text-4xl font-bold text-cyan-400">
-{kpi.total_bins}
-</div>
-</div>
-
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
-Total boxes
-</div>
-<div className="text-4xl font-bold text-cyan-400">
-{kpi.total_boxes}
-</div>
-</div>
-
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
-Total IMEI
-</div>
-<div className="text-4xl font-bold text-cyan-400">
-{kpi.total_imei}
-</div>
-</div>
-
-<div className="card-glow rounded-xl p-6 text-center">
-<div className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-2">
-Alerts
-</div>
-<div className="text-4xl font-bold text-purple-400">
-{kpi.alerts}
-</div>
-</div>
-
-</div>
-
-)}
-
-{/* GRAPH */}
-
-<div className="card-glow p-6 rounded-xl">
-
-{/* GRAPH */}
-
-<div className="card-glow p-2 rounded-xl md:col-span-3">
-
-<h2 className="text-lg font-semibold mb-6">
-Device Flow Overview
-</h2>
-
-<div className="h-[520px]">
-
-<ResponsiveContainer width="100%" height="100%">
-
-<BarChart
- data={chartData}
- barCategoryGap="20%"
- margin={{ top: 30, right: 20, left: 0, bottom: 30 }}
->
-
-<CartesianGrid
- strokeDasharray="3 3"
- stroke="rgba(255,255,255,0.05)"
-/>
-
-<XAxis
- dataKey="device"
- angle={-90}
- textAnchor="end"
- interval={0}
- height={110}
- tick={{ fill:"#94a3b8", fontSize:12 }}
-/>
-
-<YAxis
- allowDecimals={false}
- domain={[0,'auto']}
- tick={{ fill:"#94a3b8", fontSize:12 }}
-/>
-
-<Tooltip
- contentStyle={{
-  background:"#020617",
-  border:"1px solid rgba(255,255,255,0.08)",
-  borderRadius:"10px"
- }}
-/>
-
-<Legend/>
-
-<Bar
- dataKey="in"
- fill="#38bdf8"
- name="Inbound"
- radius={[6,6,0,0]}
- barSize={36}
-/>
-
-<Bar
- dataKey="out"
- fill="#a855f7"
- name="Outbound"
- radius={[6,6,0,0]}
- barSize={36}
-/>
-
-</BarChart>
-
-</ResponsiveContainer>
-</div>
-</div>
-</div>
-
-{/* ANALYTICS */}
-
-<div className="grid md:grid-cols-4 gap-6">
-
-<div className="card-glow p-5 rounded-xl">
-
-<div className="text-xs text-slate-400 mb-1">
-Devices sold this month
-</div>
-
-<div className="text-3xl font-bold text-purple-400">
-{salesTable.reduce((a,b)=>a+b.total_out,0)}
-</div>
-
-</div>
-
-
-<div className="card-glow p-5 rounded-xl">
-
-<div className="text-xs text-slate-400 mb-1">
-Top device
-</div>
-
-<div className="text-xl font-semibold text-cyan-400">
-{topDevices[0]?.device || "-"}
-</div>
-
-</div>
-
-
-<div className="card-glow p-5 rounded-xl">
-
-<div className="text-xs text-slate-400 mb-1">
-IMEI in stock
-</div>
-
-<div className="text-3xl font-bold text-cyan-400">
-{kpi?.total_imei ?? 0}
-</div>
-
-</div>
-
-
-<div className="card-glow p-5 rounded-xl">
-
-<div className="text-xs text-slate-400 mb-1">
-Low stock alerts
-</div>
-
-<div className="text-3xl font-bold text-orange-400">
-{bins.filter(b => b.min_stock && b.imei_count <= b.min_stock).length}
-</div>
-
-</div>
-
-</div>
-
-{/* ACTIVITY + SALES */}
-
-<div className="grid md:grid-cols-2 gap-6">
-
-{/* RECENT ACTIVITY */}
-
-<div className="card-glow p-5 rounded-xl">
-
-<h2 className="text-md font-semibold mb-4">
-Recent Activity
-</h2>
-
-<div className="max-h-[320px] overflow-y-auto space-y-3 text-sm pr-2">
-
-{activity.slice(0,20).map((a,i)=>(
-
-<div key={i} className="flex justify-between items-center">
-
-<div className={
-a.type === "IN"
-? "text-green-400 font-semibold"
-: a.type === "OUT"
-? "text-red-400 font-semibold"
-: a.type === "RETURN"
-? "text-emerald-400 font-semibold"
-: "text-cyan-400 font-semibold"
-}>
-
-{a.type === "IN" && (
-<>
-+{a.qty} {a.device}
-</>
-)}
-
-{a.type === "OUT" && (
-<>
--{a.qty} {a.device}
-</>
-)}
-
-{a.type === "RETURN" && (
-<>
-↩️ Return {a.qty} {a.device}
-</>
-)}
-
-{a.type === "TRANSFER" && (
-<>
-🔁 Box {a.box_code} ({a.device}) {a.from_floor} → {a.to_floor}
-</>
-)}
-
-</div>
-<div className="text-slate-400 text-xs">
-{new Date(a.created_at).toLocaleString("fr-BE",{
-day:"2-digit",
-month:"2-digit",
-hour:"2-digit",
-minute:"2-digit"
-})}
-</div>
-
-</div>
-
-))}
-
-</div>
-
-</div>
-
-
-{/* TOP SELLING DEVICES */}
-
-<div
-className="card-glow p-6 rounded-xl cursor-pointer hover:bg-white/5 transition"
->
-
-<h2 className="text-lg font-semibold mb-4">
-Top Selling Devices (This Month)
-</h2>
-
-<div className="space-y-4 max-h-[320px] overflow-y-auto pr-2">
-
-{topDevices.map((d)=>{
-
-const total = salesTable.reduce((a,b)=>a+b.total_out,0)
-const percent = total ? Math.round((d.total_out/total)*100) : 0
-
-return(
-
-<div key={d.device}>
-
-<div className="flex justify-between text-sm mb-1">
-
-<span className="text-cyan-400 font-semibold">
-{d.device}
-</span>
-
-<span className="text-slate-400">
-{d.total_out} sold • {percent}%
-</span>
-
-</div>
-
-<div className="w-full bg-white/10 h-2 rounded">
-
-<div
-className="bg-purple-500 h-2 rounded"
-style={{width:`${percent}%`}}
-/>
-
-</div>
-
-</div>
-
-)
-
-})}
-
-</div>
-
-</div>
-
-</div>
-
-
-{/* BINS */}
-
-<div className="card-glow p-6 rounded-xl">
-
-<h2 className="text-lg font-semibold mb-5">
-Bins
-</h2>
-
-<table className="w-full text-sm border-collapse">
-
-<thead>
-
-<tr className="text-left text-slate-400 border-b border-white/5">
-<th className="py-2">Device</th>
-<th>Boxes</th>
-<th>IMEI</th>
-<th>Min stock</th>
-<th>Status</th>
-</tr>
-
-</thead>
-
-<tbody>
-
-{filteredBins.map((b)=>{
-
-let level = "ok"
-
-if (b.imei_count === 0) {
- level = "critical"
-} 
-else if (b.min_stock && b.imei_count <= b.min_stock) {
- level = "low"
-}
-
-return (
-
-<tr
-key={b.device_id}
-className={`cursor-pointer transition
- ${level === "low" ? "bg-orange-500/10" : ""}
- ${level === "critical" ? "bg-red-500/10" : ""}
- hover:bg-white/5`}
-onClick={()=>openDrilldown(b.device_id)}
->
-
-<td className="py-2">{b.device}</td>
-
-<td>{b.boxes_count}</td>
-
-<td>{b.imei_count}</td>
-
-<td>
-
-{editingMinStock === b.device_id ? (
-
-<input
-type="number"
-value={b.min_stock ?? 0}
-autoFocus
-className="w-16 bg-black/40 border border-white/10 rounded px-2 py-1 text-sm"
-
-onChange={(e)=>{
-
- const value = Number(e.target.value)
-
- setBins(prev =>
-  prev.map(item =>
-   item.device_id === b.device_id
-    ? { ...item, min_stock:value }
-    : item
-  )
- )
-
-}}
-
-onBlur={async(e)=>{
-
- const value = Number(e.target.value)
-
- await fetch("/api/bins/update-min-stock",{
-  method:"POST",
-  headers:{ "Content-Type":"application/json" },
-  body:JSON.stringify({
-   device_id:b.device_id,
-   min_stock:value
-  })
- })
-
- setEditingMinStock(null)
-
-}}
-/>
-
-) : (
-
-<div
-className="cursor-pointer flex items-center gap-2 text-slate-300 hover:text-white transition"
-onClick={(e)=>{
- e.stopPropagation()
- setEditingMinStock(b.device_id)
-}}
->
-
-<span>{b.min_stock ?? 0}</span>
-
-<span className="text-xs text-slate-500">🔒</span>
-
-</div>
-
-)}
-
-</td>
-
-<td>
-
-<span
-className={`px-2 py-1 rounded text-xs font-semibold
- ${level === "ok" ? "bg-green-500/20 text-green-400" : ""}
- ${level === "low" ? "bg-yellow-500/20 text-yellow-400" : ""}
- ${level === "critical" ? "bg-red-500/20 text-red-400" : ""}
-`}
->
-
-{level === "ok" && "OK"}
-{level === "low" && "LOW"}
-{level === "critical" && "EMPTY"}
-
-</span>
-
-</td>
-
-</tr>
-
-)
-
-})}
-
-</tbody>
-
-</table>
-
-</div>
-
-
-{/* DRILLDOWN */}
-
-{openDevice && (
-
-<div className="card-glow p-6 rounded-xl">
-
-<div className="flex justify-between items-center mb-5">
-
-<h2 className="text-lg font-semibold">
-Device {deviceName}
-</h2>
-
-<button
-onClick={()=>setOpenDevice(null)}
-className="text-sm border px-3 py-1 rounded hover:bg-white/10"
->
-Close
-</button>
-
-</div>
-
-<input
-type="text"
-placeholder="Filter box..."
-value={boxSearch}
-onChange={(e)=>setBoxSearch(e.target.value)}
-className="mb-4 w-full bg-black/40 border border-white/10 rounded-lg px-4 py-2 text-sm outline-none"
-/>
-
-<table className="w-full text-sm">
-
-<thead>
-
-<tr className="text-left text-slate-400 border-b border-white/5">
-<th className="py-2">Box</th>
-<th>Floor</th>
-<th>Remaining</th>
-<th>Total ever</th>
-<th>%</th>
-</tr>
-
-</thead>
-
-<tbody>
-
-{drilldown
-.filter((d:any) => Number(d.remaining) > 0)
-.filter((d:any) =>
- d.box_code?.toLowerCase().includes(boxSearch.toLowerCase())
-)
-.map((d)=>(
-<tr key={d.box_id}>
-
-<td className="py-2">{d.box_code}</td>
-<td>{d.floor}</td>
-<td>{d.remaining}</td>
-<td>{d.total_ever}</td>
-<td>{d.percent}%</td>
-
-</tr>
-))}
-
-</tbody>
-
-</table>
-
-</div>
-
-)}
-
-
-{/* ACCESSORIES STOCK */}
-
-<div className="card-glow p-6 rounded-xl">
-
-<div className="flex items-center justify-between mb-5">
-  <h2 className="text-lg font-semibold">
-    Accessories Stock
-  </h2>
-
-  <input
-    type="text"
-    placeholder="Search accessory or bin..."
-    value={accessorySearch}
-    onChange={(e)=>setAccessorySearch(e.target.value)}
-    className="w-[300px] text-sm bg-black/40 border border-white/10 rounded-lg px-4 py-2 outline-none"
-  />
-</div>
-
-{accessoryKpis && (
-  <div className="grid md:grid-cols-4 gap-4 mb-6">
-
-    <div className="bg-white/5 rounded-xl p-4">
-      <div className="text-xs text-slate-400 mb-1">Accessories</div>
-      <div className="text-2xl font-bold text-cyan-400">
-        {accessoryKpis.total_accessories}
-      </div>
+  const { hasPermission } = useAccess();
+  const [kpi, setKpi] = useState<KPI | null>(null);
+  const [bins, setBins] = useState<any[]>([]);
+  const [accessories, setAccessories] = useState<any[]>([]);
+  const [activity, setActivity] = useState<any[]>([]);
+  const [drilldown, setDrilldown] = useState<any[]>([]);
+  const [flow, setFlow] = useState<any[]>([]);
+  const [openDevice, setOpenDevice] = useState<string | null>(null);
+  const [topDevices, setTopDevices] = useState<any[]>([]);
+  const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [boxSearch, setBoxSearch] = useState("");
+  const [accessorySearch, setAccessorySearch] = useState("");
+  const [accessoryCategory, setAccessoryCategory] =
+    useState<AccessoryCategoryFilter>("All");
+  const [chartPage, setChartPage] = useState(0);
+  const [showAllAccessories, setShowAllAccessories] = useState(false);
+
+  const filteredBins = useMemo(
+    () =>
+      bins.filter((row: any) =>
+        row.device?.toLowerCase().includes(search.toLowerCase())
+      ),
+    [bins, search]
+  );
+
+  const filteredAccessories = useMemo(
+    () =>
+      accessories.filter((row: any) => {
+        const matchesCategory =
+          accessoryCategory === "All" || row.category === accessoryCategory;
+        const query = accessorySearch.toLowerCase();
+        const matchesSearch =
+          row.name?.toLowerCase().includes(query) ||
+          row.bin?.toLowerCase().includes(query);
+        return matchesCategory && matchesSearch;
+      }),
+    [accessories, accessoryCategory, accessorySearch]
+  );
+
+  const allChartData = useMemo(
+    () =>
+      bins
+        .map((row: any) => {
+          const movement = flow.find((item: any) => item.device === row.device);
+          return {
+            device: row.device,
+            inbound: Number(movement?.total_in || 0),
+            outbound: Number(movement?.total_out || 0),
+          };
+        })
+        .sort(
+          (a, b) =>
+            b.inbound + b.outbound - (a.inbound + a.outbound)
+        ),
+    [bins, flow]
+  );
+
+  const chartPageCount = Math.max(
+    1,
+    Math.ceil(allChartData.length / CHART_PAGE_SIZE)
+  );
+  const activeChartPage = Math.min(chartPage, chartPageCount - 1);
+  const chartStart = activeChartPage * CHART_PAGE_SIZE;
+  const chartData = allChartData.slice(
+    chartStart,
+    chartStart + CHART_PAGE_SIZE
+  );
+  const visibleInbound = chartData.reduce(
+    (total, row) => total + row.inbound,
+    0
+  );
+  const visibleOutbound = chartData.reduce(
+    (total, row) => total + row.outbound,
+    0
+  );
+
+  const totalShipped = topDevices.reduce(
+    (total, row) => total + Number(row.total_out || 0),
+    0
+  );
+  const lowAlerts = bins.filter((row) => stockLevel(row) === "low").length;
+  const emptyAlerts = bins.filter((row) => stockLevel(row) === "critical").length;
+  const alertCount = lowAlerts + emptyAlerts;
+  const visibleBins = filteredBins;
+  const visibleAccessories = showAllAccessories
+    ? filteredAccessories
+    : filteredAccessories.slice(0, ACCESSORY_PREVIEW_SIZE);
+  const deviceName =
+    bins.find((row: any) => row.device_id === openDevice)?.device || openDevice;
+
+  async function loadAll() {
+    const [kpiRes, binsRes, activityRes, flowRes, salesRes, accessoriesRes] =
+      await Promise.all([
+        apiFetch("/api/dashboard/summary", { cache: "no-store" }),
+        apiFetch("/api/dashboard/bins", { cache: "no-store" }),
+        apiFetch("/api/dashboard/activity", { cache: "no-store" }),
+        apiFetch("/api/dashboard/device-flow", { cache: "no-store" }),
+        apiFetch("/api/dashboard/sales", { cache: "no-store" }),
+        apiFetch("/api/dashboard/accessories", { cache: "no-store" }),
+      ]);
+
+    const [kpiJson, binsJson, activityJson, flowJson, salesJson, accessoriesJson] =
+      await Promise.all([
+        kpiRes.json(),
+        binsRes.json(),
+        activityRes.json(),
+        flowRes.json(),
+        salesRes.json(),
+        accessoriesRes.json(),
+      ]);
+
+    if (kpiJson.ok) setKpi(kpiJson.kpis);
+    if (binsJson.ok) setBins(binsJson.rows || []);
+    if (activityJson.ok) setActivity(activityJson.rows || []);
+    if (flowJson.ok) setFlow(flowJson.rows || []);
+    if (salesJson.ok) setTopDevices(salesJson.rows || []);
+    if (accessoriesJson.ok) setAccessories(accessoriesJson.rows || []);
+  }
+
+  async function openDrilldown(deviceId: string) {
+    setOpenDevice(deviceId);
+    const response = await apiFetch(
+      `/api/dashboard/drilldown?device_id=${deviceId}`
+    );
+    const json = await response.json();
+    if (json.ok) setDrilldown(json.rows || []);
+  }
+
+  async function saveMinimumStock(deviceId: string, value: number) {
+    await apiFetch("/api/bins/update-min-stock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ device_id: deviceId, min_stock: value }),
+    });
+    setEditingMinStock(null);
+  }
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  return (
+    <div className="prototype-page prototype-dashboard">
+      <header className="prototype-page-header">
+        <div>
+          <h1>Dashboard</h1>
+          <p>Stock position, alerts and recent activity across the warehouse.</p>
+        </div>
+        <div className="prototype-page-actions">
+          {hasPermission("can_inventory_export") && (
+            <>
+              <button
+                type="button"
+                className="prototype-button secondary"
+                onClick={() =>
+                  downloadApiFile("/api/dashboard/export", "stock.xlsx").catch(
+                    (error) => window.alert(error.message)
+                  )
+                }
+              >
+                Export Stock
+              </button>
+              <button
+                type="button"
+                className="prototype-button secondary"
+                onClick={() =>
+                  downloadApiFile(
+                    "/api/dashboard/export-count-sheet",
+                    "count-sheet.xlsx"
+                  ).catch((error) => window.alert(error.message))
+                }
+              >
+                Export Count Sheet
+              </button>
+            </>
+          )}
+          <button
+            type="button"
+            className="prototype-button secondary"
+            onClick={() =>
+              downloadApiFile(
+                "/api/accessory-bins/export",
+                "accessories.xlsx"
+              ).catch((error) => window.alert(error.message))
+            }
+          >
+            Export Accessories
+          </button>
+        </div>
+      </header>
+
+      <section className="prototype-kpi-grid" aria-label="Inventory summary">
+        <article className="prototype-kpi-card">
+          <div className="prototype-eyebrow">Total bins</div>
+          <div className="prototype-kpi-value">{kpi?.total_bins ?? "—"}</div>
+          <div className="prototype-kpi-caption">device models configured</div>
+        </article>
+        <article className="prototype-kpi-card">
+          <div className="prototype-eyebrow">Total boxes</div>
+          <div className="prototype-kpi-value">{kpi?.total_boxes ?? "—"}</div>
+          <div className="prototype-kpi-caption">active warehouse boxes</div>
+        </article>
+        <article className="prototype-kpi-card">
+          <div className="prototype-eyebrow">Total IMEIs</div>
+          <div className="prototype-kpi-value">
+            {kpi?.total_imei?.toLocaleString("en-GB") ?? "—"}
+          </div>
+          <div className="prototype-kpi-caption">devices in stock</div>
+        </article>
+        <article className="prototype-kpi-card is-alert">
+          <div className="prototype-eyebrow">⚠ Stock alerts</div>
+          <div className="prototype-kpi-value">{kpi?.alerts ?? alertCount}</div>
+          <div className="prototype-kpi-caption">
+            {`${lowAlerts} low · ${emptyAlerts} empty — see tables below`}
+          </div>
+        </article>
+      </section>
+
+      <section className="dashboard-insights-grid">
+        <article className="prototype-card dashboard-chart-card">
+          <div className="prototype-card-heading">
+            <h2>Device inbound vs outbound</h2>
+            <div className="chart-legend" aria-label="Chart legend">
+              <span>
+                <i className="inbound" />
+                Inbound <strong>{visibleInbound.toLocaleString("en-GB")}</strong>
+              </span>
+              <span>
+                <i className="outbound" />
+                Outbound <strong>{visibleOutbound.toLocaleString("en-GB")}</strong>
+              </span>
+            </div>
+          </div>
+          <div className="dashboard-chart-viewport">
+            <div className="dashboard-chart">
+              {chartData.length > 0 ? (
+                <ResponsiveContainer
+                  width="100%"
+                  height="100%"
+                  minWidth={0}
+                  initialDimension={{ width: 1, height: 170 }}
+                >
+                  <BarChart
+                    data={chartData}
+                    barCategoryGap="18%"
+                    margin={{ top: 24, right: 10, left: 0, bottom: 0 }}
+                  >
+                    <CartesianGrid
+                      vertical={false}
+                      stroke="var(--border)"
+                      strokeDasharray="3 3"
+                    />
+                    <YAxis
+                      axisLine={false}
+                      tickLine={false}
+                      width={42}
+                      allowDecimals={false}
+                      tick={{ fill: "var(--muted)", fontSize: 10.5 }}
+                      tickFormatter={(value: number) =>
+                        value >= 1000
+                          ? `${Math.round(value / 100) / 10}k`
+                          : String(value)
+                      }
+                    />
+                    <XAxis
+                      dataKey="device"
+                      axisLine={false}
+                      tickLine={false}
+                      interval={0}
+                      height={34}
+                      tickFormatter={(value: string) =>
+                        value.length > 11
+                          ? `${value.slice(0, 6)}…${value.slice(-4)}`
+                          : value
+                      }
+                      tick={{ fill: "var(--muted)", fontSize: 11 }}
+                    />
+                    <Tooltip
+                      cursor={{ fill: "var(--surface-subtle)" }}
+                      contentStyle={{
+                        background: "var(--surface-elevated)",
+                        border: "1px solid var(--border)",
+                        borderRadius: 8,
+                        color: "var(--foreground)",
+                        fontSize: 12,
+                      }}
+                      formatter={(value, name) => [
+                        Number(value ?? 0).toLocaleString("en-GB"),
+                        String(name),
+                      ]}
+                    />
+                    <Bar
+                      dataKey="inbound"
+                      name="Inbound"
+                      fill="var(--brand)"
+                      radius={[3, 3, 0, 0]}
+                      maxBarSize={48}
+                    >
+                      <LabelList
+                        dataKey="inbound"
+                        position="top"
+                        fill="var(--muted-strong)"
+                        fontSize={10}
+                        formatter={(value) => {
+                          const numericValue = Number(value ?? 0);
+                          return numericValue > 0
+                            ? numericValue.toLocaleString("en-GB")
+                            : "";
+                        }}
+                      />
+                    </Bar>
+                    <Bar
+                      dataKey="outbound"
+                      name="Outbound"
+                      fill="var(--chart-secondary)"
+                      radius={[3, 3, 0, 0]}
+                      maxBarSize={48}
+                    >
+                      <LabelList
+                        dataKey="outbound"
+                        position="top"
+                        fill="var(--muted-strong)"
+                        fontSize={10}
+                        formatter={(value) => {
+                          const numericValue = Number(value ?? 0);
+                          return numericValue > 0
+                            ? numericValue.toLocaleString("en-GB")
+                            : "";
+                        }}
+                      />
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="prototype-empty">No device movement yet</div>
+              )}
+            </div>
+          </div>
+          {allChartData.length > CHART_PAGE_SIZE && (
+            <div className="dashboard-chart-pagination">
+              <span>
+                {chartStart + 1}–{Math.min(chartStart + CHART_PAGE_SIZE, allChartData.length)} of {allChartData.length} devices
+              </span>
+              <div>
+                <button
+                  type="button"
+                  aria-label="Previous devices in chart"
+                  disabled={activeChartPage === 0}
+                  onClick={() => setChartPage((current) => Math.max(0, current - 1))}
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  aria-label="Next devices in chart"
+                  disabled={activeChartPage >= chartPageCount - 1}
+                  onClick={() =>
+                    setChartPage((current) => Math.min(chartPageCount - 1, current + 1))
+                  }
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          )}
+        </article>
+
+        <div className="dashboard-side-stack">
+        <article className="prototype-card top-devices-card">
+          <div className="prototype-card-heading">
+            <h2>Most shipped devices</h2>
+          </div>
+          <div className="top-device-list">
+            {topDevices.slice(0, 5).map((row) => {
+              const percent = totalShipped
+                ? Math.round((Number(row.total_out || 0) / totalShipped) * 100)
+                : 0;
+              return (
+                <div key={row.device} className="top-device-row">
+                  <div>
+                    <strong>{row.device}</strong>
+                    <span>{percent}%</span>
+                  </div>
+                  <div className="progress-track">
+                    <span style={{ width: `${percent}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+            {topDevices.length === 0 && (
+              <div className="prototype-empty compact">No outbound data yet</div>
+            )}
+          </div>
+        </article>
+        <article className="prototype-card recent-activity-card">
+          <div className="prototype-card-heading">
+            <h2>Recent activity</h2>
+          </div>
+          <div className="recent-activity-list">
+            {activity.slice(0, 5).map((row, index) => {
+              const presentation = activityPresentation(row);
+              return (
+                <div key={`${row.created_at}-${index}`} className="activity-row">
+                  <span className={`activity-dot ${presentation.tone}`} />
+                  <div>
+                    <div>
+                      <strong>{presentation.label}</strong> — {presentation.detail}
+                    </div>
+                    <time dateTime={row.created_at}>
+                      {new Date(row.created_at).toLocaleString("en-GB", {
+                        day: "2-digit",
+                        month: "2-digit",
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      })}
+                    </time>
+                  </div>
+                </div>
+              );
+            })}
+            {activity.length === 0 && (
+              <div className="prototype-empty compact">No recent activity</div>
+            )}
+          </div>
+        </article>
+        </div>
+      </section>
+
+      <article className="prototype-card prototype-table-card device-inventory-card">
+          <div className="prototype-table-toolbar">
+            <h2>Device inventory</h2>
+            <input
+              type="search"
+              placeholder="Search device…"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+          </div>
+          <div className="prototype-table-scroll">
+            <table className="prototype-table device-table">
+              <thead>
+                <tr>
+                  <th>Device bin</th>
+                  <th>Boxes</th>
+                  <th>IMEIs</th>
+                  <th>Min stock</th>
+                  <th>Remaining</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleBins.map((row) => {
+                  const level = stockLevel(row);
+                  const percent = remainingPercent(row);
+                  return (
+                    <tr
+                      key={row.device_id}
+                      className={`stock-row ${level}`}
+                      onClick={() => openDrilldown(row.device_id)}
+                    >
+                      <td><strong>{row.device}</strong></td>
+                      <td>{Number(row.boxes_count || 0).toLocaleString("en-GB")}</td>
+                      <td>{Number(row.imei_count || 0).toLocaleString("en-GB")}</td>
+                      <td onClick={(event) => event.stopPropagation()}>
+                        {editingMinStock === row.device_id ? (
+                          <input
+                            className="minimum-stock-input"
+                            type="number"
+                            value={row.min_stock ?? 0}
+                            autoFocus
+                            onChange={(event) => {
+                              const value = Number(event.target.value);
+                              setBins((current) =>
+                                current.map((item) =>
+                                  item.device_id === row.device_id
+                                    ? { ...item, min_stock: value }
+                                    : item
+                                )
+                              );
+                            }}
+                            onBlur={(event) =>
+                              saveMinimumStock(row.device_id, Number(event.target.value))
+                            }
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="minimum-stock-button"
+                            onClick={() => setEditingMinStock(row.device_id)}
+                          >
+                            {row.min_stock ?? 0} <span aria-hidden="true">✎</span>
+                          </button>
+                        )}
+                      </td>
+                      <td className={`remaining-value ${level}`}>{percent}%</td>
+                      <td>
+                        <span className={`status-badge ${level}`}>
+                          {level === "ok" && "OK"}
+                          {level === "low" && "▼ LOW"}
+                          {level === "critical" && "✕ EMPTY"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="prototype-table-footer">
+            {filteredBins.length} device bins · all devices shown · click a row for box and floor detail
+          </div>
+      </article>
+
+      {openDevice && (
+        <section className="prototype-card prototype-table-card drilldown-card">
+          <div className="prototype-table-toolbar">
+            <div>
+              <h2>Device {deviceName}</h2>
+              <p>Box and floor detail</p>
+            </div>
+            <div className="prototype-page-actions">
+              <input
+                type="search"
+                placeholder="Filter by box code"
+                value={boxSearch}
+                onChange={(event) => setBoxSearch(event.target.value)}
+              />
+              <button
+                type="button"
+                className="prototype-button secondary"
+                onClick={() => setOpenDevice(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+          <div className="prototype-table-scroll">
+            <table className="prototype-table">
+              <thead>
+                <tr>
+                  <th>Box</th>
+                  <th>Floor</th>
+                  <th>Remaining</th>
+                  <th>Total received</th>
+                  <th>Percentage</th>
+                </tr>
+              </thead>
+              <tbody>
+                {drilldown
+                  .filter((row: any) => Number(row.remaining) > 0)
+                  .filter((row: any) =>
+                    row.box_code?.toLowerCase().includes(boxSearch.toLowerCase())
+                  )
+                  .map((row) => (
+                    <tr key={row.box_id}>
+                      <td><strong>{row.box_code}</strong></td>
+                      <td>{row.floor}</td>
+                      <td>{row.remaining}</td>
+                      <td>{row.total_ever}</td>
+                      <td>{row.percent}%</td>
+                    </tr>
+                  ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
+
+      <section className="prototype-card prototype-table-card accessory-inventory-card">
+        <div className="prototype-table-toolbar accessory-toolbar">
+          <h2>Accessory inventory</h2>
+          <div className="accessory-toolbar-controls">
+            <div className="category-filter" aria-label="Accessory category">
+              {ACCESSORY_CATEGORIES.map((category) => (
+                <button
+                  type="button"
+                  key={category}
+                  className={accessoryCategory === category ? "is-active" : ""}
+                  onClick={() => {
+                    setAccessoryCategory(category);
+                    setShowAllAccessories(false);
+                  }}
+                >
+                  {category}
+                </button>
+              ))}
+            </div>
+            <input
+              type="search"
+              placeholder="Search accessory…"
+              value={accessorySearch}
+              onChange={(event) => {
+                setAccessorySearch(event.target.value);
+                setShowAllAccessories(false);
+              }}
+            />
+          </div>
+        </div>
+        <div className="prototype-table-scroll">
+          <table className="prototype-table accessory-table">
+            <thead>
+              <tr>
+                <th>Accessory</th>
+                <th>Category</th>
+                <th>Stock</th>
+                <th>Minimum</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visibleAccessories.map((row) => {
+                const level =
+                  row.status === "EMPTY"
+                    ? "critical"
+                    : row.status === "LOW"
+                      ? "low"
+                      : "ok";
+                return (
+                  <tr key={row.id} className={`stock-row ${level}`}>
+                    <td><strong>{row.name}</strong></td>
+                    <td>{row.category}</td>
+                    <td>{Number(row.current_stock || 0).toLocaleString("en-GB")}</td>
+                    <td>{Number(row.minimum_stock || 0).toLocaleString("en-GB")}</td>
+                    <td>
+                      <span className={`status-badge ${level}`}>
+                        {level === "ok" && "OK"}
+                        {level === "low" && "▼ LOW"}
+                        {level === "critical" && "✕ EMPTY"}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div className="prototype-table-footer dashboard-accessory-footer">
+          <span>
+            Showing {visibleAccessories.length} of {filteredAccessories.length} accessories
+          </span>
+          {filteredAccessories.length > ACCESSORY_PREVIEW_SIZE && (
+            <button
+              type="button"
+              className="dashboard-view-all-button"
+              onClick={() => setShowAllAccessories((current) => !current)}
+            >
+              {showAllAccessories ? "Show less" : `View all (${filteredAccessories.length})`}
+            </button>
+          )}
+        </div>
+      </section>
     </div>
-
-    <div className="bg-white/5 rounded-xl p-4">
-      <div className="text-xs text-slate-400 mb-1">Total Qty</div>
-      <div className="text-2xl font-bold text-purple-400">
-        {accessoryKpis.total_qty}
-      </div>
-    </div>
-
-    <div className="bg-white/5 rounded-xl p-4">
-      <div className="text-xs text-slate-400 mb-1">Low Stock</div>
-      <div className="text-2xl font-bold text-orange-400">
-        {accessoryKpis.low_stock}
-      </div>
-    </div>
-
-    <div className="bg-white/5 rounded-xl p-4">
-      <div className="text-xs text-slate-400 mb-1">Empty</div>
-      <div className="text-2xl font-bold text-red-400">
-        {accessoryKpis.empty_stock}
-      </div>
-    </div>
-
-  </div>
-)}
-
-<div className="space-y-3">
-  <AccessoryCategory
-    title="Packages"
-    items={groupedAccessories.Packages}
-    open={openGroups.Packages}
-    onToggle={() => toggleGroup("Packages")}
-  />
-
-  <AccessoryCategory
-    title="Vision"
-    items={groupedAccessories.Vision}
-    open={openGroups.Vision}
-    onToggle={() => toggleGroup("Vision")}
-  />
-
-  <AccessoryCategory
-    title="Harness"
-    items={groupedAccessories.Harness}
-    open={openGroups.Harness}
-    onToggle={() => toggleGroup("Harness")}
-  />
-
-  <AccessoryCategory
-    title="Consumables"
-    items={groupedAccessories.Consumables}
-    open={openGroups.Consumables}
-    onToggle={() => toggleGroup("Consumables")}
-  />
-
-  <AccessoryCategory
-  title="Items"
-  items={groupedAccessories.Items}
-  open={openGroups.Items}
-  onToggle={() => toggleGroup("Items")}
-/>
-</div>
-
-</div>
-
-</div>
-
-);
+  );
 }

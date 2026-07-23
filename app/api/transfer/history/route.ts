@@ -18,7 +18,7 @@ export async function GET() {
   try {
     const supabase = sb();
 
-    // 🔥 on ajoute to_floor
+    // Include the destination floor in transfer history.
     const { data, error } = await supabase
       .from("movements")
       .select("created_at, actor, box_id, to_floor")
@@ -55,7 +55,7 @@ export async function GET() {
       actor: row.actor,
       boxes: {
         box_code: boxMap.get(row.box_id)?.box_code || "-",
-        floor: row.to_floor || "-", // 🔥 historique réel
+        floor: row.to_floor || "-",
       },
     }));
 

@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
 const OFFICES = [
   { code: "BE", label: "🇧🇪 Belgium" },
@@ -69,6 +70,8 @@ const pageSize = 20;
   const [confirmDone, setConfirmDone] = useState(false);
   const [detailTarget, setDetailTarget] = useState<any | null>(null);
   const [statusHistory, setStatusHistory] = useState<any[]>([]);
+  const supplyOperationIdRef = useRef<string | null>(null);
+  const deleteOperationIdRef = useRef<string | null>(null);
 
   async function loadUser() {
     const { data } = await supabase.auth.getUser();
@@ -77,7 +80,7 @@ const pageSize = 20;
   }
 
   async function loadSupply() {
-  const res = await fetch(`/api/supply/list?t=${Date.now()}`, {
+  const res = await apiFetch(`/api/supply/list?t=${Date.now()}`, {
     cache: "no-store",
     headers: {
       "Cache-Control": "no-cache",
@@ -96,8 +99,8 @@ const pageSize = 20;
 
 async function loadProducts() {
   const [deviceRes, accessoryRes] = await Promise.all([
-    fetch(`/api/dashboard/bins?t=${Date.now()}`, { cache: "no-store" }),
-    fetch(`/api/accessory-bins/list?t=${Date.now()}`, { cache: "no-store" }),
+    apiFetch(`/api/dashboard/bins?t=${Date.now()}`, { cache: "no-store" }),
+    apiFetch(`/api/accessory-bins/list?t=${Date.now()}`, { cache: "no-store" }),
   ]);
 
   const deviceJson = await deviceRes.json();
@@ -142,6 +145,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
 
   function openCreate() {
     resetForm();
+    supplyOperationIdRef.current = crypto.randomUUID();
     setOpenModal(true);
   }
 
@@ -169,6 +173,7 @@ function availableStatuses(
   }
 }
   function openEdit(row: any) {
+    supplyOperationIdRef.current = crypto.randomUUID();
     setEditing(row);
     setFromOffice(row.from_office || "UK");
     setToOffice(row.to_office || "BE");
@@ -222,6 +227,9 @@ function availableStatuses(
 
   const payload = editing
   ? {
+      operation_id:
+        supplyOperationIdRef.current ||
+        (supplyOperationIdRef.current = crypto.randomUUID()),
       id: editing.id,
       status,
       tracking_number: tracking || editing.tracking_number || null,
@@ -230,6 +238,9 @@ function availableStatuses(
       changed_by_id: userId,
     }
   : {
+      operation_id:
+        supplyOperationIdRef.current ||
+        (supplyOperationIdRef.current = crypto.randomUUID()),
       from_office: fromOffice,
       to_office: toOffice,
       status: "CREATED",
@@ -241,7 +252,7 @@ function availableStatuses(
       ),
     };
 
-  const res = await fetch(
+  const res = await apiFetch(
     editing ? "/api/supply/update" : "/api/supply/create",
     {
       method: editing ? "PUT" : "POST",
@@ -260,6 +271,7 @@ function availableStatuses(
 
   setOpenModal(false);
 setConfirmDone(false);
+supplyOperationIdRef.current = null;
 
 await loadSupply();
 
@@ -328,20 +340,20 @@ received: rows.filter((r) => r.status === "RECEIVED").length,
     return "bg-red-500/20 text-red-400";
 
   if (status === "IMPORTED")
-    return "bg-green-500/20 text-green-400";
+    return "bg-emerald-500/20 text-emerald-400";
 
   if (status === "RECEIVED")
-    return "bg-purple-500/20 text-purple-400";
+    return "bg-cyan-500/20 text-cyan-400";
 
   if (status === "SHIPPED")
-    return "bg-yellow-500/20 text-yellow-400";
+    return "bg-amber-500/20 text-amber-300";
 
-  return "bg-blue-500/20 text-blue-400";
+  return "bg-indigo-500/20 text-indigo-300";
 }
 
   function formatDate(value?: string | null) {
     if (!value) return "-";
-    return new Date(value).toLocaleString("fr-BE", {
+    return new Date(value).toLocaleString("en-GB", {
       day: "2-digit",
       month: "2-digit",
       hour: "2-digit",
@@ -362,7 +374,7 @@ async function openDetails(row: any) {
   setMsg("");
 
   try {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/supply/history?id=${encodeURIComponent(row.id)}&t=${Date.now()}`,
       {
         method: "GET",
@@ -394,10 +406,15 @@ async function openDetails(row: any) {
   setBusy(true);
   setMsg("");
 
-  const res = await fetch("/api/supply/delete", {
+  const res = await apiFetch("/api/supply/delete", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: deleteTarget.id }),
+    body: JSON.stringify({
+      operation_id:
+        deleteOperationIdRef.current ||
+        (deleteOperationIdRef.current = crypto.randomUUID()),
+      id: deleteTarget.id,
+    }),
   });
 
   const json = await res.json();
@@ -409,30 +426,37 @@ async function openDetails(row: any) {
   }
 
   setDeleteTarget(null);
+  deleteOperationIdRef.current = null;
   await loadSupply();
 }
 
   return (
-    <div className="space-y-8 w-full">
-      <div className="flex items-center justify-between">
+    <div className="prototype-page supply-prototype-page">
+      <div className="prototype-page-header">
         <div>
-          <div className="text-xs text-slate-500">Supply</div>
-          <h1 className="text-2xl font-semibold">🚚 Supply Tracker</h1>
+          <h1>Supply Orders</h1>
+          <p>
+            Plan and track stock moving between European offices before warehouse import.
+          </p>
         </div>
 
-        <div className="flex gap-3">
-  <a
-    href={`/api/supply/export?t=${Date.now()}`}
-    className="rounded-xl border border-slate-800 bg-slate-900 hover:bg-slate-800 px-4 py-2 text-sm font-semibold"
+        <div className="prototype-page-actions">
+  <button
+    onClick={() =>
+      downloadApiFile(`/api/supply/export?t=${Date.now()}`, "supply.xlsx").catch(
+        (error) => setMsg(error.message)
+      )
+    }
+    className="prototype-button secondary"
   >
-    📄 Export Excel
-  </a>
+    Export Excel
+  </button>
 
   <button
     onClick={openCreate}
-    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
+    className="prototype-button primary"
   >
-    + New Supply
+    + New Order
   </button>
 </div>
       </div>
@@ -443,60 +467,61 @@ async function openDetails(row: any) {
         </div>
       )}
 
-      <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Total</div>
-    <div className="text-2xl font-bold text-cyan-400">{kpis.total}</div>
+      <div className="prototype-compact-kpi-grid">
+  <div className="prototype-compact-kpi-card">
+    <div className="prototype-eyebrow">Total</div>
+    <div className="prototype-compact-kpi-value">{kpis.total}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Created</div>
-    <div className="text-2xl font-bold text-blue-400">{kpis.created}</div>
+  <div className="prototype-compact-kpi-card">
+    <div className="prototype-eyebrow">Created</div>
+    <div className="prototype-compact-kpi-value">{kpis.created}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Shipped</div>
-    <div className="text-2xl font-bold text-yellow-400">{kpis.shipped}</div>
+  <div className="prototype-compact-kpi-card warning">
+    <div className="prototype-eyebrow">Shipped</div>
+    <div className="prototype-compact-kpi-value">{kpis.shipped}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Received</div>
-    <div className="text-2xl font-bold text-purple-400">{kpis.received}</div>
+  <div className="prototype-compact-kpi-card info">
+    <div className="prototype-eyebrow">Received</div>
+    <div className="prototype-compact-kpi-value">{kpis.received}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-    <div className="text-xs text-slate-400">Imported</div>
-    <div className="text-2xl font-bold text-green-400">{kpis.imported}</div>
+  <div className="prototype-compact-kpi-card success">
+    <div className="prototype-eyebrow">Imported</div>
+    <div className="prototype-compact-kpi-value">{kpis.imported}</div>
   </div>
 
-  <div className="card-glow p-4 rounded-xl">
-  <div className="text-xs text-slate-400">Failed</div>
-  <div className="text-2xl font-bold text-red-400">{kpis.failed}</div>
+  <div className="prototype-compact-kpi-card danger">
+  <div className="prototype-eyebrow">Failed</div>
+  <div className="prototype-compact-kpi-value">{kpis.failed}</div>
 </div>
 </div>
 
-      <div className="card-glow p-4 rounded-xl flex gap-3">
+      <div className="prototype-card prototype-data-card">
+      <div className="prototype-data-toolbar">
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search order, tracking, office, item..."
-          className="flex-1 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          placeholder="Search order or tracking…"
+          className="prototype-search-input"
         />
 
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
+          className="prototype-filter-select"
         >
-          <option value="ALL">All status</option>
+          <option value="ALL">Status: All</option>
           {STATUS.map((s) => (
             <option key={s} value={s}>{s}</option>
           ))}
         </select>
       </div>
 
-      <div className="card-glow p-6 rounded-xl overflow-hidden">
-  <table className="w-full text-sm">
+      <div className="prototype-table-scroll">
+  <table className="prototype-table supply-orders-table">
     <thead>
   <tr className="text-left text-slate-400 border-b border-slate-800">
     <th onClick={() => sortBy("order_number")} className="py-3 cursor-pointer">
@@ -510,7 +535,7 @@ async function openDetails(row: any) {
     </th>
 
     <th>Items</th>
-    <th className="text-center">Qty</th>
+    <th className="text-center">Quantity</th>
 
     <th onClick={() => sortBy("tracking_number")} className="cursor-pointer">
       Tracking {sortKey === "tracking_number" ? (sortDir === "asc" ? "↑" : "↓") : ""}
@@ -520,8 +545,6 @@ async function openDetails(row: any) {
       Status {sortKey === "status" ? (sortDir === "asc" ? "↑" : "↓") : ""}
     </th>
 
-    <th>Imported</th>
-    <th>Imported at</th>
     <th className="text-right">Actions</th>
   </tr>
 </thead>
@@ -529,7 +552,7 @@ async function openDetails(row: any) {
     <tbody>
       {paginatedRows.map((row) => (
         <tr key={row.id} className="border-b border-slate-800/70">
-          <td className="py-4">
+          <td>
             <button
   onClick={() => openDetails(row)}
   className="font-semibold text-cyan-400 hover:text-cyan-300 hover:underline"
@@ -537,7 +560,7 @@ async function openDetails(row: any) {
   {row.order_number}
 </button>
             <div className="text-xs text-slate-500">
-              Created {formatDate(row.created_at)}
+              {formatDate(row.created_at)}
             </div>
           </td>
 
@@ -548,7 +571,7 @@ async function openDetails(row: any) {
 </td>
 
           <td>
-            <span className="rounded-full bg-slate-800 px-3 py-1 text-xs font-semibold">
+            <span>
               {row.from_office} → {row.to_office}
             </span>
           </td>
@@ -575,7 +598,7 @@ async function openDetails(row: any) {
           </td>
 
           <td className="text-center">
-            <span className="inline-flex min-w-12 justify-center rounded-xl bg-slate-800 px-3 py-1 font-bold text-slate-100">
+            <span>
               {totalQty(row)}
             </span>
           </td>
@@ -594,24 +617,6 @@ async function openDetails(row: any) {
             </span>
           </td>
 
-          <td>
-            {row.imported ? (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-green-500/20 text-green-400">
-                Imported
-              </span>
-            ) : (
-              <span className="px-3 py-1 rounded-full text-xs font-semibold bg-slate-500/20 text-slate-400">
-                Not imported
-              </span>
-            )}
-          </td>
-
-          <td className="text-xs text-slate-400">
-  {row.imported_date
-    ? formatDate(row.imported_date)
-    : "-"}
-</td>
-
           <td className="text-right">
   {!["IMPORTED", "FAILED"].includes(row.status) ? (
     <div className="flex justify-end gap-3">
@@ -623,7 +628,10 @@ async function openDetails(row: any) {
       </button>
 
       <button
-        onClick={() => setDeleteTarget(row)}
+        onClick={() => {
+          deleteOperationIdRef.current = crypto.randomUUID();
+          setDeleteTarget(row);
+        }}
         className="text-red-400 hover:text-red-300 font-semibold"
       >
         Delete
@@ -638,8 +646,8 @@ async function openDetails(row: any) {
 
       {paginatedRows.length === 0 && (
         <tr>
-          <td colSpan={10} className="py-8 text-center text-slate-500">
-            No supplies found.
+          <td colSpan={8} className="py-8 text-center text-slate-500">
+            No supply orders found.
           </td>
         </tr>
       )}
@@ -647,7 +655,7 @@ async function openDetails(row: any) {
   </table>
 </div>
 
-<div className="flex items-center justify-between text-sm text-slate-400">
+<div className="prototype-pagination">
   <div>
     Showing {(page - 1) * pageSize + 1}-
     {Math.min(page * pageSize, sortedRows.length)} of {sortedRows.length}
@@ -657,7 +665,7 @@ async function openDetails(row: any) {
     <button
       onClick={() => setPage((p) => Math.max(1, p - 1))}
       disabled={page === 1}
-      className="rounded-xl border border-slate-800 px-3 py-2 disabled:opacity-40"
+      className="prototype-page-button"
     >
       Previous
     </button>
@@ -669,22 +677,23 @@ async function openDetails(row: any) {
     <button
       onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
       disabled={page === totalPages}
-      className="rounded-xl border border-slate-800 px-3 py-2 disabled:opacity-40"
+      className="prototype-page-button"
     >
       Next
     </button>
   </div>
 </div>
+      </div>
             {openModal && (
         <div className="fixed inset-0 z-[80] bg-black/60 flex items-center justify-center p-4">
           <div className="w-full max-w-3xl rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">
             <div className="p-5 border-b border-slate-800 flex justify-between">
               <div>
                 <div className="text-xs text-slate-500">
-                  {editing ? "Edit Supply" : "New Supply"}
+                  {editing ? "Edit Supply Order" : "New Supply Order"}
                 </div>
                 <div className="text-lg font-semibold">
-                  {editing?.order_number || "Create new supply"}
+                  {editing?.order_number || "Create a Supply Order"}
                 </div>
               </div>
 
@@ -702,6 +711,7 @@ async function openDetails(row: any) {
             <div className="p-5 space-y-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <select
+                  aria-label="Supply origin office"
                 disabled={!!editing}
                   value={fromOffice}
                   onChange={(e) => setFromOffice(e.target.value)}
@@ -715,6 +725,7 @@ async function openDetails(row: any) {
                 </select>
 
                 <select
+                  aria-label="Supply destination office"
                   disabled={!!editing}
                   value={toOffice}
                   onChange={(e) => setToOffice(e.target.value)}
@@ -731,7 +742,7 @@ async function openDetails(row: any) {
   <input
     value={tracking}
     onChange={(e) => setTracking(e.target.value)}
-    placeholder="Tracking number..."
+    placeholder="Tracking number"
     className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
   />
 )}
@@ -756,7 +767,7 @@ async function openDetails(row: any) {
   <textarea
     value={failedReason}
     onChange={(e) => setFailedReason(e.target.value)}
-    placeholder="Reason for failure..."
+    placeholder="Reason for failure"
     className="md:col-span-2 rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm min-h-[80px]"
   />
 )}
@@ -766,7 +777,7 @@ async function openDetails(row: any) {
               disabled={!!editing}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
-                placeholder="Comment..."
+                placeholder="Optional comment"
                 className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm min-h-[80px]"
               />
 
@@ -779,7 +790,7 @@ async function openDetails(row: any) {
     onClick={addItem}
     className="rounded-xl border border-slate-800 px-3 py-2 text-sm font-semibold hover:bg-slate-800"
   >
-    + Add item
+    Add Item
   </button>
 )}
                 </div>
@@ -790,6 +801,7 @@ async function openDetails(row: any) {
                     className="grid grid-cols-1 md:grid-cols-[140px_1fr_100px_90px] gap-3"
                   >
                     <select
+                      aria-label={`Supply item ${index + 1} type`}
                     disabled={!!editing}
                       value={item.product_type}
                       onChange={(e) =>
@@ -805,13 +817,14 @@ async function openDetails(row: any) {
 
                     <>
   <input
+    aria-label={`Supply item ${index + 1} product`}
   disabled={!!editing}
     list={`products-${index}`}
     value={item.product_name}
     onChange={(e) =>
       updateItem(index, { product_name: e.target.value })
     }
-    placeholder="Search product..."
+    placeholder="Search products"
     className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
   />
 
@@ -823,8 +836,9 @@ async function openDetails(row: any) {
 </>
 
                     <input
-                    disabled={!!editing}
+                      disabled={!!editing}
                       type="number"
+                      aria-label={`Supply item ${index + 1} quantity`}
                       min={1}
                       value={item.qty}
                       onChange={(e) =>
@@ -860,7 +874,7 @@ async function openDetails(row: any) {
                   disabled={busy}
                   className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 text-sm font-semibold disabled:opacity-40"
                 >
-                  {busy ? "Saving..." : editing ? "Save changes" : "Create Supply"}
+                  {busy ? "Saving…" : editing ? "Save Changes" : "Create Supply Order"}
                 </button>
               </div>
             </div>
@@ -873,7 +887,7 @@ async function openDetails(row: any) {
     <div className="w-full max-w-2xl rounded-2xl border border-slate-800 bg-slate-950 shadow-xl">
       <div className="p-5 border-b border-slate-800 flex justify-between">
         <div>
-          <div className="text-xs text-slate-500">Supply details</div>
+          <div className="text-xs text-slate-500">Supply Order Details</div>
           <div className="text-lg font-semibold text-cyan-400">
             {detailTarget.order_number}
           </div>
@@ -962,12 +976,12 @@ async function openDetails(row: any) {
         )}
 
 <div>
-  <div className="text-xs text-slate-500 mb-2">Status history</div>
+  <div className="text-xs text-slate-500 mb-2">Status History</div>
 
  <div className="rounded-xl border border-slate-800 overflow-y-auto max-h-[300px]">
     {statusHistory.length === 0 ? (
       <div className="p-4 text-center text-slate-500">
-        No history yet
+        No status history yet.
       </div>
     ) : (
       statusHistory.map((h: any) => (
@@ -1018,26 +1032,28 @@ async function openDetails(row: any) {
 
       <ConfirmDialog
   open={confirmDone}
-  title="Mark supply as imported?"
-  message="Are you sure? Once this supply is marked as imported, it will be imported and locked. You will no longer be able to edit or delete it."
-  confirmText={busy ? "Saving..." : "Yes, mark as imported"}
+  title="Mark Supply Order as Imported?"
+  message="Once marked as imported, this supply order will be locked and can no longer be edited or deleted."
+  confirmText={busy ? "Saving…" : "Mark as Imported"}
   cancelText="Cancel"
-  danger
   onConfirm={() => saveSupply(true)}
   onCancel={() => setConfirmDone(false)}
 />
 
 <ConfirmDialog
   open={!!deleteTarget}
-  title="Delete supply?"
+  title="Delete Supply Order?"
   message={`Are you sure you want to delete ${
     deleteTarget?.order_number || "this supply"
   }? This action cannot be undone.`}
-  confirmText={busy ? "Deleting..." : "Delete"}
+  confirmText={busy ? "Deleting…" : "Delete"}
   cancelText="Cancel"
   danger
   onConfirm={deleteSupply}
-  onCancel={() => setDeleteTarget(null)}
+  onCancel={() => {
+    deleteOperationIdRef.current = null;
+    setDeleteTarget(null);
+  }}
 />
     </div>
   );

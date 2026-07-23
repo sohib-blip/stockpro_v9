@@ -7,14 +7,19 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
+    "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:staging": "node scripts/staging-security-smoke.mjs",
+    "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
-    "check": "npm run typecheck && npm run build"
+    "check": "npm run typecheck && npm run test && npm run build",
+    "check:staging": "npm run check && npm run test:e2e"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.45.4",
     "exceljs": "^4.4.0",
-    "jspdf": "^2.5.2",
     "lucide-react": "^0.562.0",
     "motion": "^12.42.2",
     "next": "14.2.10",
@@ -24,10 +29,11 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^3.8.0",
-    "xlsx": "^0.18.5",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@tailwindcss/postcss": "^4.0.0",
     "@types/node": "^20.19.33",
     "@types/pdfkit": "^0.17.5",
@@ -37,6 +43,10 @@
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.10",
     "tailwindcss": "^4.0.0",
-    "typescript": "^5.4.2"
+    "typescript": "^5.4.2",
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "uuid": "^11.1.1"
   }
 }

@@ -2,27 +2,30 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
+import { useAccess } from "@/components/AccessProvider";
+import { usePreferences } from "@/components/PreferencesProvider";
 
 const NRD_TASKS = [
   "Prepare FMC234",
   "Clean Shelves",
   "Stock Take",
-  "Re-stock",
-  "Receive Incoming Orders",
+  "Restock Inventory",
+  "Receive Incoming Shipments",
   "Returns",
-  "Consumables - Stock Take & Orders",
-  "Preparing DVRs & Adding SIMs",
+  "Consumables: Stock Count and Orders",
+  "Prepare DVRs and Install SIMs",
   "Order Checks",
-  "Mail & Case Handling",
-  "Tidying Up the Workspace",
+  "Mail and Case Handling",
+  "Organize the Workspace",
 
   // New tasks
   "Overtime",
   "Container",
   "Team Meeting",
-  "Stock Revision",
+  "Inventory Review",
   "Training",
-  "Working on StockPro",
+  "StockPro Administration",
 ];
 
 function formatTimer(seconds: number) {
@@ -35,15 +38,21 @@ function formatTimer(seconds: number) {
   ).padStart(2, "0")}`;
 }
 
+function toLocalDateTimeValue(date: Date) {
+  return new Date(date.getTime() - date.getTimezoneOffset() * 60_000)
+    .toISOString()
+    .slice(0, 23);
+}
+
 function formatTime(date: string) {
-  return new Date(date).toLocaleTimeString("fr-BE", {
+  return new Date(date).toLocaleTimeString("en-GB", {
     hour: "2-digit",
     minute: "2-digit",
   });
 }
 
 function formatDate(date: string) {
-  return new Date(date).toLocaleDateString("fr-BE");
+  return new Date(date).toLocaleDateString("en-GB");
 }
 
 function formatHours(minutes: number) {
@@ -58,8 +67,34 @@ function getCurrentPeriodMonth() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 }
 
+function getReportingMonths(locale: "en" | "fr" | "nl") {
+  const localeName = locale === "fr" ? "fr-BE" : locale === "nl" ? "nl-BE" : "en-GB";
+  const formatter = new Intl.DateTimeFormat(localeName, {
+    month: "long",
+    year: "numeric",
+  });
+  const now = new Date();
+
+  return Array.from({ length: 60 }, (_, offset) => {
+    const date = new Date(now.getFullYear(), now.getMonth() - offset, 1);
+    return {
+      value: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`,
+      label: formatter.format(date),
+    };
+  });
+}
+
+function notifyNrdChanged(active: unknown) {
+  window.dispatchEvent(
+    new CustomEvent("stockpro:nrd-changed", { detail: { active } })
+  );
+}
+
 export default function NRDPage() {
+  const { hasPermission } = useAccess();
+  const { locale } = usePreferences();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const reportingMonths = useMemo(() => getReportingMonths(locale), [locale]);
 
   const [userEmail, setUserEmail] = useState("");
   const [userId, setUserId] = useState<string | null>(null);
@@ -93,7 +128,7 @@ export default function NRDPage() {
   async function loadCurrent(email = userEmail) {
   if (!email) return;
 
-  const res = await fetch(
+  const res = await apiFetch(
     `/api/nrd/current?user_email=${encodeURIComponent(
       email
     )}&t=${Date.now()}`,
@@ -113,7 +148,7 @@ export default function NRDPage() {
   async function loadHistory(email = userEmail, month = periodMonth) {
   if (!email) return;
 
-  const res = await fetch(
+  const res = await apiFetch(
     `/api/nrd/history?user_email=${encodeURIComponent(
       email
     )}&period_month=${encodeURIComponent(month)}&t=${Date.now()}`,
@@ -130,7 +165,7 @@ export default function NRDPage() {
   async function loadStats(email = userEmail, month = periodMonth) {
     if (!email) return;
 
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/nrd/stats?user_email=${encodeURIComponent(
         email
       )}&period_month=${encodeURIComponent(month)}&t=${Date.now()}`,
@@ -168,14 +203,7 @@ export default function NRDPage() {
   !showForgottenModal &&
   !forgottenModalDismissed
 ) {
-  const nowDate = new Date();
-const localDateTime = new Date(
-  nowDate.getTime() - nowDate.getTimezoneOffset() * 60_000
-)
-  .toISOString()
-  .slice(0, 16);
-
-setCorrectEndTime(localDateTime);
+  setCorrectEndTime(toLocalDateTimeValue(new Date()));
 
   setShowForgottenModal(true);
 }
@@ -192,7 +220,7 @@ setCorrectEndTime(localDateTime);
     setErrorMsg("");
     setSuccessMsg("");
 
-    const res = await fetch("/api/nrd/start", {
+    const res = await apiFetch("/api/nrd/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -217,7 +245,7 @@ setForgottenModalDismissed(false);
 setCorrectEndTime("");
 
 setSuccessMsg("Task started");
-setTimeout(() => setSuccessMsg(""), 2000);
+notifyNrdChanged(json.row);
   }
 
   async function stopTask() {
@@ -225,7 +253,7 @@ setTimeout(() => setSuccessMsg(""), 2000);
   setErrorMsg("");
   setSuccessMsg("");
 
-  const res = await fetch("/api/nrd/stop", {
+  const res = await apiFetch("/api/nrd/stop", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -246,7 +274,7 @@ setTimeout(() => setSuccessMsg(""), 2000);
 setForgottenModalDismissed(false);
 setCorrectEndTime("");
   setSuccessMsg("Task stopped");
-  setTimeout(() => setSuccessMsg(""), 2000);
+  notifyNrdChanged(null);
 
   await loadHistory(userEmail, periodMonth);
   await loadStats(userEmail, periodMonth);
@@ -264,7 +292,7 @@ async function stopTaskWithCorrection() {
   setSuccessMsg("");
 
   try {
-    const res = await fetch("/api/nrd/stop", {
+    const res = await apiFetch("/api/nrd/stop", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -285,7 +313,7 @@ async function stopTaskWithCorrection() {
     setCorrectEndTime("");
     setActive(null);
     setSuccessMsg("NRD corrected and stopped");
-    setTimeout(() => setSuccessMsg(""), 2000);
+    notifyNrdChanged(null);
 
     await loadCurrent(userEmail);
     await loadHistory(userEmail, periodMonth);
@@ -298,23 +326,23 @@ async function stopTaskWithCorrection() {
 }
 
   return (
-    <div className="space-y-10 w-full">
+    <div className="prototype-page prototype-module-page nrd-prototype-page">
       {showForgottenModal && active && (
   <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4">
-    <div className="w-full max-w-lg rounded-2xl border border-orange-500/40 bg-slate-950 shadow-2xl">
+    <div className="w-full max-w-lg rounded-2xl border border-amber-500/40 bg-slate-950 shadow-2xl">
       <div className="border-b border-slate-800 p-5">
-        <div className="text-xs font-semibold uppercase tracking-wider text-orange-400">
-          NRD review
+        <div className="text-xs font-semibold uppercase tracking-wider text-amber-300">
+          NRD Review
         </div>
 
         <h2 className="mt-1 text-xl font-semibold">
-           Confirm NRD end
+           Confirm NRD End Time
         </h2>
       </div>
 
       <div className="space-y-5 p-5">
-        <div className="rounded-xl border border-orange-500/30 bg-orange-500/10 p-4 text-sm">
-          <div className="font-semibold text-orange-300">
+        <div className="rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm">
+          <div className="font-semibold text-amber-300">
             This NRD has been active for {formatTimer(seconds)}.
           </div>
 
@@ -332,39 +360,24 @@ async function stopTaskWithCorrection() {
           <div>
             <div className="text-xs text-slate-500">Started</div>
             <div className="mt-1">
-              {new Date(active.started_at).toLocaleString("fr-BE")}
+              {new Date(active.started_at).toLocaleString("en-GB")}
             </div>
           </div>
         </div>
 
         <div>
           <label className="text-sm font-semibold text-slate-300">
-            Real end date and time
+            Actual End Date and Time
           </label>
 
           <input
             type="datetime-local"
+            step={0.001}
             value={correctEndTime}
-            min={(() => {
-              const started = new Date(active.started_at);
-
-              return new Date(
-                started.getTime() - started.getTimezoneOffset() * 60_000
-              )
-                .toISOString()
-                .slice(0, 16);
-            })()}
-            max={(() => {
-              const now = new Date();
-
-              return new Date(
-                now.getTime() - now.getTimezoneOffset() * 60_000
-              )
-                .toISOString()
-                .slice(0, 16);
-            })()}
+            min={toLocalDateTimeValue(new Date(active.started_at))}
+            max={toLocalDateTimeValue(new Date())}
             onChange={(e) => setCorrectEndTime(e.target.value)}
-            className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-orange-500"
+            className="mt-2 w-full rounded-xl border border-slate-800 bg-slate-900 px-3 py-2 text-sm outline-none focus:border-amber-500"
           />
 
           <div className="mt-2 text-xs text-slate-500">
@@ -383,7 +396,7 @@ async function stopTaskWithCorrection() {
             disabled={busy}
             className="rounded-xl border border-slate-800 px-4 py-2 text-sm font-semibold hover:bg-slate-900 disabled:opacity-40"
           >
-            Keep running
+            Keep Running
           </button>
 
           <button
@@ -392,28 +405,33 @@ async function stopTaskWithCorrection() {
             disabled={busy}
             className="rounded-xl border border-emerald-500/40 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-500/20 disabled:opacity-40"
           >
-            {busy ? "Stopping..." : "It ended now"}
+            {busy ? "Stopping…" : "End Now"}
           </button>
 
           <button
             type="button"
             onClick={stopTaskWithCorrection}
             disabled={busy || !correctEndTime}
-            className="rounded-xl bg-orange-600 px-4 py-2 text-sm font-semibold hover:bg-orange-700 disabled:opacity-40"
+            className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold hover:bg-amber-700 disabled:opacity-40"
           >
-            {busy ? "Saving..." : "Correct & stop"}
+            {busy ? "Saving…" : "Save Corrected End Time"}
           </button>
         </div>
       </div>
     </div>
   </div>
 )}
-      <div>
-        <div className="text-xs text-slate-500">NRD</div>
-        <h2 className="text-xl font-semibold">NRD Tracker</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          User: <b>{userEmail || "loading..."}</b>
+      <div className="prototype-page-header">
+        <div>
+        <h1>NRD Tracking</h1>
+        <p>
+          Track time spent on non-routine duties. One task can run at a time.
         </p>
+        </div>
+        <div className="prototype-page-actions">
+          <button type="button" className="prototype-button secondary" disabled={!userEmail} onClick={() => downloadApiFile(`/api/nrd/export?user_email=${encodeURIComponent(userEmail)}&period_month=${encodeURIComponent(periodMonth)}`, `nrd-${periodMonth}.xlsx`).catch((error) => setErrorMsg(error.message))}>My Excel export</button>
+          {hasPermission("can_admin") && <button type="button" className="prototype-button secondary" onClick={() => downloadApiFile(`/api/nrd/export-global?period_month=${encodeURIComponent(periodMonth)}`, `nrd-global-${periodMonth}.xlsx`).catch((error) => setErrorMsg(error.message))}>All users (admin)</button>}
+        </div>
       </div>
 
       {errorMsg && (
@@ -428,13 +446,52 @@ async function stopTaskWithCorrection() {
         </div>
       )}
 
-      <div className="card-glow p-6 space-y-5 relative overflow-hidden">
+      <div className="nrd-overview-grid">
+        <section className={`nrd-overview-card active ${active ? "is-running" : ""}`}>
+          <div className="prototype-eyebrow">Active task</div>
+          <strong>{active?.task || "No active task"}</strong>
+          <div className="nrd-timer">{formatTimer(seconds)}</div>
+          <p>{active ? `Started ${new Date(active.started_at).toLocaleString("en-GB")}` : "Start a duty from the next card"}</p>
+          {active && <div className="prototype-page-actions"><button type="button" className="prototype-button danger" onClick={stopTask} disabled={busy}>Stop now</button><button type="button" className="prototype-button secondary" onClick={() => { setCorrectEndTime(toLocalDateTimeValue(new Date())); setShowForgottenModal(true); }} disabled={busy}>Stop with corrected end time…</button></div>}
+        </section>
+
+        <section className="nrd-overview-card start">
+          <div className="prototype-eyebrow">Start a task</div>
+          <select aria-label="NRD task" value={task} onChange={(e) => setTask(e.target.value)} disabled={!!active}>{NRD_TASKS.map((item) => <option key={item} value={item}>{item}</option>)}</select>
+          <p>Stock take · Cleaning shelves · Training · Meetings · Container work · Order checks…</p>
+          <button type="button" className="prototype-button primary" onClick={startTask} disabled={busy || !userEmail || !!active}>{active ? "Start (stop the active task first)" : busy ? "Starting…" : "Start Task"}</button>
+        </section>
+
+        <section className="nrd-overview-card summary">
+          <div className="nrd-month-row">
+            <label htmlFor="nrd-reporting-month">Reporting month</label>
+            <select
+              id="nrd-reporting-month"
+              aria-label="NRD reporting month"
+              value={periodMonth}
+              onChange={(event) => setPeriodMonth(event.target.value)}
+            >
+              {reportingMonths.map((month) => (
+                <option key={month.value} value={month.value}>
+                  {month.label}
+                </option>
+              ))}
+            </select>
+            <span>Month summary</span>
+          </div>
+          <div className="nrd-summary-values"><div><strong>{formatHours(Number(stats?.total_minutes || 0))}</strong><span>total time</span></div><div><strong>{stats?.tasks_count || 0}</strong><span>completed tasks</span></div></div>
+          <div className="nrd-mini-breakdown">{stats?.by_task?.slice(0, 3).map((row: any) => { const width = stats.total_minutes ? Math.round((Number(row.minutes || 0) / Number(stats.total_minutes || 1)) * 100) : 0; return <div key={row.task}><div><span>{row.task}</span><small>{formatHours(Number(row.minutes || 0))}</small></div><i><span style={{ width: `${width}%` }} /></i></div>; })}</div>
+        </section>
+      </div>
+
+      <div className="hidden">
         <div className="font-semibold">Current NRD Task</div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <div className="text-xs text-slate-400 mb-2">Task</div>
             <select
+              aria-label="Legacy NRD task"
               value={task}
               onChange={(e) => setTask(e.target.value)}
               disabled={!!active}
@@ -461,7 +518,7 @@ async function stopTaskWithCorrection() {
             <div className="text-slate-400">Active task</div>
             <div className="font-semibold mt-1">{active.task}</div>
             <div className="text-xs text-slate-500 mt-1">
-              Started at: {new Date(active.started_at).toLocaleString()}
+              Started at: {new Date(active.started_at).toLocaleString("en-GB")}
             </div>
           </div>
         )}
@@ -473,26 +530,18 @@ async function stopTaskWithCorrection() {
               disabled={busy || !userEmail}
               className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              {busy ? "Starting..." : "Start Task"}
+              {busy ? "Starting…" : "Start Task"}
             </button>
           ) : (
             <button
-  onClick={() => {
-    const nowDate = new Date();
-
-    const localDateTime = new Date(
-      nowDate.getTime() - nowDate.getTimezoneOffset() * 60_000
-    )
-      .toISOString()
-      .slice(0, 16);
-
-    setCorrectEndTime(localDateTime);
-    setShowForgottenModal(true);
-  }}
+	  onClick={() => {
+	    setCorrectEndTime(toLocalDateTimeValue(new Date()));
+	    setShowForgottenModal(true);
+	  }}
   disabled={busy}
   className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
 >
-  {busy ? "Stopping..." : "Stop Task"}
+  {busy ? "Stopping…" : "Stop Task"}
 </button>
           )}
 
@@ -507,42 +556,39 @@ async function stopTaskWithCorrection() {
             Refresh
           </button>
 
-<a
-  href={
-    userEmail
-      ? `/api/nrd/export?user_email=${encodeURIComponent(
-          userEmail
-        )}&period_month=${encodeURIComponent(periodMonth)}`
-      : "#"
+<button
+  onClick={() =>
+    downloadApiFile(
+      `/api/nrd/export?user_email=${encodeURIComponent(userEmail)}&period_month=${encodeURIComponent(periodMonth)}`,
+      `nrd-${periodMonth}.xlsx`
+    ).catch((error) => setErrorMsg(error.message))
   }
+  disabled={!userEmail}
   className={`rounded-xl border border-slate-800 bg-slate-950 hover:bg-slate-800 px-4 py-2 font-semibold ${
-    !userEmail ? "opacity-40 pointer-events-none" : ""
+    !userEmail ? "opacity-40" : ""
   }`}
 >
-  Export Excel
-</a>
+  Export Spreadsheet
+</button>
 
-{["martine.gevaert@radius.com", "emily.vancauwenberge@radius.com"].includes(
-  userEmail.toLowerCase()
-) && (
-  <a
-    href={
-      userEmail
-        ? `/api/nrd/export-global?user_email=${encodeURIComponent(
-            userEmail
-          )}&period_month=${encodeURIComponent(periodMonth)}`
-        : "#"
+{hasPermission("can_admin") && (
+  <button
+    onClick={() =>
+      downloadApiFile(
+        `/api/nrd/export-global?period_month=${encodeURIComponent(periodMonth)}`,
+        `nrd-global-${periodMonth}.xlsx`
+      ).catch((error) => setErrorMsg(error.message))
     }
-    className="rounded-xl border border-purple-500/50 bg-purple-600/20 hover:bg-purple-600/30 text-purple-200 px-4 py-2 font-semibold"
+    className="rounded-xl border border-indigo-500/50 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-200 px-4 py-2 font-semibold"
   >
-    Export Global Excel
-  </a>
+    Export All Users
+  </button>
 )}
 
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="hidden">
         <div className="card-glow p-5 rounded-xl">
           <div className="text-xs text-slate-400 mb-1">Selected month</div>
           <input
@@ -562,13 +608,13 @@ async function stopTaskWithCorrection() {
 
         <div className="card-glow p-5 rounded-xl">
           <div className="text-xs text-slate-400 mb-1">Completed tasks</div>
-          <div className="text-3xl font-bold text-purple-400">
+          <div className="text-3xl font-bold text-indigo-300">
             {stats?.tasks_count || 0}
           </div>
         </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
+      <div className="hidden">
         <div className="font-semibold">Task Breakdown</div>
 
         <div className="space-y-3">
@@ -586,7 +632,7 @@ async function stopTaskWithCorrection() {
 
                 <div className="w-full bg-white/10 h-2 rounded">
                   <div
-                    className="bg-purple-500 h-2 rounded"
+                    className="bg-indigo-500 h-2 rounded"
                     style={{
                       width: `${
                         stats.total_minutes
@@ -610,7 +656,7 @@ async function stopTaskWithCorrection() {
         </div>
       </div>
 
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
+      <div className="prototype-card prototype-history-card space-y-4 relative overflow-hidden">
         <div className="flex justify-between items-center">
           <div className="font-semibold">My NRD History</div>
           <div className="text-xs text-slate-400">

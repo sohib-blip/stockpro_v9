@@ -21,8 +21,7 @@ export function parseTeltonikaExcel(args: {
     );
   }
 
-  // ⚠️ Placeholder volontaire
-  // La vraie logique Teltonika sera branchée après
+  // Placeholder until the dedicated Teltonika parser is implemented.
   return makeOk(
     [],
     {

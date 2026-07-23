@@ -1,200 +1,313 @@
 "use client";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ReactNode, useState, useEffect } from "react";
-import {
-  LayoutDashboard,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  Tag,
-  Menu,
-  Package,
-  Boxes,
-  Repeat,
-  RotateCcw,
-  LogOut,
-  Timer,
-  Truck,
-} from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { ReactNode, useEffect, useMemo, useState } from "react";
+import { Menu, X } from "lucide-react";
+import { PermissionKey } from "@/lib/access-control";
+import { useAccess } from "@/components/AccessProvider";
+import PreferenceControls from "@/components/PreferenceControls";
+import { usePreferences } from "@/components/PreferencesProvider";
+import { apiFetch } from "@/lib/apiFetch";
+import { signOutCurrentDevice } from "@/lib/session-control";
+import BrandLogo from "@/components/BrandLogo";
 
-const NAV = [
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+type NavItem = {
+  href: string;
+  label: string;
+  permission: PermissionKey;
+};
 
-  { href: "/inbound", label: "Inbound Import", icon: ArrowDownToLine },
-  { href: "/labels", label: "Labels", icon: Tag },
+type PrimaryNav = {
+  id: string;
+  label: string;
+  items: NavItem[];
+};
 
-  { href: "/outbound", label: "Outbound", icon: ArrowUpFromLine },
-  { href: "/accessories", label: "Accessories", icon: Boxes },
-  { href: "/supply", label: "Supply", icon: Truck },
-
-  { href: "/returns", label: "Returns", icon: RotateCcw },
-  { href: "/transfer", label: "Transfer", icon: Repeat },
-
-  { href: "/nrd", label: "NRD Tracker", icon: Timer },
-  { href: "/bins", label: "Bins", icon: Package },
+const NAVIGATION: PrimaryNav[] = [
+  {
+    id: "dashboard",
+    label: "Dashboard",
+    items: [
+      { href: "/dashboard", label: "Dashboard", permission: "can_dashboard" },
+    ],
+  },
+  {
+    id: "receiving",
+    label: "Receiving",
+    items: [
+      { href: "/supply", label: "Supply Orders", permission: "can_supply" },
+      {
+        href: "/inbound",
+        label: "Inbound Processing",
+        permission: "can_inbound",
+      },
+    ],
+  },
+  {
+    id: "outbound",
+    label: "Outbound",
+    items: [
+      {
+        href: "/outbound",
+        label: "Device Outbound",
+        permission: "can_outbound",
+      },
+      {
+        href: "/accessories",
+        label: "Accessory Outbound",
+        permission: "can_accessories",
+      },
+    ],
+  },
+  {
+    id: "inventory",
+    label: "Inventory",
+    items: [
+      {
+        href: "/bins",
+        label: "Inventory Setup",
+        permission: "can_bins",
+      },
+      {
+        href: "/labels",
+        label: "Label Printing",
+        permission: "can_labels",
+      },
+    ],
+  },
+  {
+    id: "operations",
+    label: "Operations",
+    items: [
+      {
+        href: "/returns",
+        label: "Customer Returns",
+        permission: "can_returns",
+      },
+      {
+        href: "/transfer",
+        label: "Stock Transfers",
+        permission: "can_transfer",
+      },
+    ],
+  },
+  {
+    id: "nrd",
+    label: "NRD",
+    items: [{ href: "/nrd", label: "NRD", permission: "can_nrd" }],
+  },
+  {
+    id: "admin",
+    label: "Admin",
+    items: [
+      { href: "/admin", label: "User Access", permission: "can_admin" },
+      {
+        href: "/admin/connections",
+        label: "Connections",
+        permission: "can_admin",
+      },
+    ],
+  },
 ];
+
+function isActivePath(pathname: string, href: string) {
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function initialsFor(email: string | null) {
+  if (!email) return "SP";
+  const parts = email.split("@")[0].split(/[._-]+/).filter(Boolean);
+  if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  return email.slice(0, 2).toUpperCase();
+}
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "";
-  const appEnvironment = process.env.NEXT_PUBLIC_APP_ENV || "production";
-  const isNonProduction = appEnvironment !== "production";
-  const [collapsed, setCollapsed] = useState(false);
   const [email, setEmail] = useState<string | null>(null);
   const [activeNrd, setActiveNrd] = useState<any>(null);
-
-  const supabase = createSupabaseBrowserClient();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const { hasPermission } = useAccess();
+  const { t } = usePreferences();
+  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
 
+  const permittedNavigation = NAVIGATION.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => hasPermission(item.permission)),
+  })).filter((group) => group.items.length > 0);
+
+  const activeGroup = permittedNavigation.find((group) =>
+    group.items.some((item) => isActivePath(pathname, item.href))
+  );
+  const secondaryItems =
+    activeGroup && activeGroup.items.length > 1 ? activeGroup.items : [];
+
   async function handleLogout() {
-    await supabase.auth.signOut();
-    router.push("/login");
+    await signOutCurrentDevice(supabase, window.sessionStorage);
+    router.replace("/login");
+    router.refresh();
   }
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     async function loadUserAndNrd() {
       const { data } = await supabase.auth.getUser();
       const user = data?.user;
-
       setEmail(user?.email || null);
 
-      if (user?.email) {
-        const res = await fetch(
-          `/api/nrd/current?user_email=${encodeURIComponent(
-            user.email
-          )}&t=${Date.now()}`,
+      if (user?.email && hasPermission("can_nrd")) {
+        const res = await apiFetch(
+          `/api/nrd/current?user_email=${encodeURIComponent(user.email)}&t=${Date.now()}`,
           { cache: "no-store" }
         );
-
         const json = await res.json();
-
-        if (json.ok) {
-          setActiveNrd(json.active || null);
-        }
+        if (json.ok) setActiveNrd(json.active || null);
       } else {
         setActiveNrd(null);
       }
     }
 
     loadUserAndNrd();
-
     const interval = setInterval(loadUserAndNrd, 5000);
+    const handleNrdChanged = (event: Event) => {
+      const detail = (event as CustomEvent<{ active: unknown }>).detail;
+      if (detail && "active" in detail) {
+        setActiveNrd(detail.active || null);
+        return;
+      }
+      loadUserAndNrd();
+    };
+    window.addEventListener("stockpro:nrd-changed", handleNrdChanged);
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("stockpro:nrd-changed", handleNrdChanged);
+    };
+  }, [hasPermission, supabase]);
 
   return (
-    <div className="min-h-screen flex bg-slate-950 text-slate-100">
-      <aside
-        className={[
-          "h-screen sticky top-0 shrink-0 relative",
-          "bg-slate-950 border-r border-slate-800/80",
-          "transition-all duration-300",
-          collapsed ? "w-[72px]" : "w-[260px]",
-        ].join(" ")}
-      >
-        <div className="h-14 flex items-center justify-between px-3 border-b border-slate-800/80">
-          <div className="flex items-center gap-2">
-            <div className="h-9 w-9 rounded-xl bg-indigo-600 grid place-items-center">
-              <Package size={18} className="text-white" />
-            </div>
-            {!collapsed && (
-              <div>
-                <div className="font-semibold">StockPro</div>
-                <div className="text-[11px] text-slate-400">
-                  Inventory console
-                </div>
-              </div>
-            )}
+    <div className="app-shell">
+      {activeNrd && (
+        <Link href="/nrd" className="nrd-running-banner">
+          <span aria-hidden="true">⏱</span>
+          <span>
+            {t("NRD task in progress:")} <strong>{activeNrd.task}</strong>
+          </span>
+          <span className="nrd-start-time">
+            {new Date(activeNrd.started_at).toLocaleTimeString("en-GB", {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </span>
+          <span className="nrd-open-link">{t("Open NRD Tracking")}</span>
+        </Link>
+      )}
+
+      <header className="topbar">
+        <div className="topbar-inner">
+          <Link href="/dashboard" className="brand-lockup" aria-label="StockPro">
+            <BrandLogo tagline={t("Warehouse operations")} />
+          </Link>
+
+          <nav className="primary-nav" aria-label="Primary navigation">
+            {permittedNavigation.map((group) => {
+              const target = group.items[0]?.href ?? "/dashboard";
+              const active = activeGroup?.id === group.id;
+              return (
+                <Link
+                  key={group.id}
+                  href={target}
+                  className={`primary-nav-link ${active ? "is-active" : ""}`}
+                  aria-current={active ? "page" : undefined}
+                >
+                  <span>{t(group.label)}</span>
+                  {group.items.length > 1 && (
+                    <span className="primary-nav-chevron" aria-hidden="true">▾</span>
+                  )}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="topbar-account">
+            <PreferenceControls compact />
+            {email && <span className="account-email">{email}</span>}
+            <span className="account-avatar" aria-hidden="true">
+              {initialsFor(email)}
+            </span>
+            <button type="button" className="signout-button" aria-label={t("Sign out")} onClick={handleLogout}>
+              <span>{t("Sign out")}</span>
+            </button>
           </div>
-
-          <button onClick={() => setCollapsed(!collapsed)}>
-            <Menu size={18} />
-          </button>
-        </div>
-
-        <nav className="px-2 py-4 space-y-1 text-sm">
-          {NAV.map((item) => {
-            const Icon = item.icon;
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`
-                  flex items-center gap-3 px-3 py-2 rounded-xl
-                  transition-all duration-200
-                  ${collapsed ? "justify-center" : ""}
-                  hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(99,102,241,0.15)]
-                  ${
-                    pathname.startsWith(item.href)
-                      ? "bg-slate-800 shadow-[0_0_12px_rgba(99,102,241,0.25)]"
-                      : ""
-                  }
-                `}
-              >
-                <Icon size={18} className="shrink-0" />
-                {!collapsed && <span>{item.label}</span>}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="absolute bottom-4 left-0 w-full px-2 border-t border-slate-800 pt-3">
-          {!collapsed && email && (
-            <div className="px-3 py-2 text-xs text-slate-400 truncate">
-              {email}
-            </div>
-          )}
 
           <button
-            onClick={handleLogout}
-            className={`
-              flex items-center gap-3 px-3 py-2 rounded-xl w-full
-              transition-all duration-200
-              ${collapsed ? "justify-center" : ""}
-              hover:bg-slate-800 hover:shadow-[0_0_12px_rgba(239,68,68,0.2)]
-            `}
+            type="button"
+            className="mobile-menu-button"
+            onClick={() => setMobileOpen((current) => !current)}
+            aria-expanded={mobileOpen}
+            aria-label={t(mobileOpen ? "Close navigation" : "Open navigation")}
           >
-            <LogOut size={18} />
-            {!collapsed && <span>Logout</span>}
+            {mobileOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
-      </aside>
 
-      <section className="flex-1 p-8">
-        {isNonProduction && (
-          <div className="mb-4 rounded-xl border border-cyan-400/50 bg-cyan-400/10 px-4 py-3 text-center text-sm font-semibold uppercase tracking-[0.18em] text-cyan-200">
-            Environnement de test — aucune operation ne doit concerner du stock reel
-          </div>
-        )}
+        {mobileOpen && (
+          <div className="mobile-navigation">
+            {permittedNavigation.map((group) => (
+              <div key={group.id} className="mobile-nav-group">
+                <div className="mobile-nav-label">{t(group.label)}</div>
+                <div className="mobile-nav-items">
+                  {group.items.map((item) => (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={isActivePath(pathname, item.href) ? "is-active" : ""}
+                    >
+                      {t(item.label)}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            ))}
 
-        {activeNrd && (
-          <div className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 px-4 py-3 text-sm flex items-center justify-between">
-            <div>
-              ⏱ NRD task running: <b>{activeNrd.task}</b>
-              <span className="text-amber-300/70 ml-2">
-                Started at{" "}
-                {new Date(activeNrd.started_at).toLocaleTimeString()}
-              </span>
+            <div className="mobile-account-row">
+              <PreferenceControls />
+              <button type="button" className="signout-button" aria-label={t("Sign out")} onClick={handleLogout}>
+                {t("Sign out")}
+              </button>
             </div>
-
-            <Link href="/nrd" className="text-xs underline font-semibold">
-              Open NRD
-            </Link>
           </div>
         )}
+      </header>
 
-        <div
-          className={`mx-auto w-full transition-all duration-300 ${
-            collapsed ? "max-w-[1400px]" : "max-w-screen-xl"
-          }`}
-        >
-          {children}
-        </div>
-      </section>
+      {secondaryItems.length > 0 && (
+        <nav className="secondary-nav" aria-label={`${t(activeGroup?.label || "")} navigation`}>
+          <div className="secondary-nav-inner">
+            {secondaryItems.map((item) => {
+              const active = isActivePath(pathname, item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`secondary-nav-link ${active ? "is-active" : ""}`}
+                  aria-current={active ? "page" : undefined}
+                >
+                  {t(item.label)}
+                </Link>
+              );
+            })}
+          </div>
+        </nav>
+      )}
+
+      <main className="app-main">
+        <div className="app-content">{children}</div>
+      </main>
     </div>
   );
 }

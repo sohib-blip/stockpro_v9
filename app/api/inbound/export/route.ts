@@ -55,7 +55,7 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "Missing batch_id" }, { status: 400 });
     }
 
-    // 🔥 now unlimited
+    // Export all matching rows.
     const movs = await fetchAllMovements(supabase, batch_id);
 
     if (!movs || movs.length === 0) {

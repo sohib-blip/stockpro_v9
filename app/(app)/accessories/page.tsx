@@ -23,6 +23,14 @@ type PreviewRow = {
   after_stock: number;
 };
 
+type PreviewCommand = {
+  operationId: string;
+  shipmentRef: string;
+  comment: string;
+  manualLines?: ManualLine[];
+  file?: File;
+};
+
 export default function AccessoriesPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
 
@@ -50,6 +58,8 @@ export default function AccessoriesPage() {
     null
   );
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
+  const [previewCommand, setPreviewCommand] =
+    useState<PreviewCommand | null>(null);
   const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
 
   async function loadUser() {
@@ -117,6 +127,7 @@ export default function AccessoriesPage() {
     setPreviewOpen(false);
     setPreviewType(null);
     setPreviewRows([]);
+    setPreviewCommand(null);
   }
 
   async function previewManualOutbound() {
@@ -157,6 +168,12 @@ export default function AccessoriesPage() {
 
     setPreviewRows(json.rows || []);
     setPreviewType("manual");
+    setPreviewCommand({
+      operationId: crypto.randomUUID(),
+      shipmentRef,
+      comment,
+      manualLines: cleanLines,
+    });
     setPreviewOpen(true);
   }
 
@@ -164,19 +181,21 @@ export default function AccessoriesPage() {
     setErrorMsg("");
     setSuccessMsg("");
 
-    const cleanLines = lines.filter(
-      (l) => l.accessory_id && Number(l.qty) > 0
-    );
+    if (!previewCommand?.manualLines) {
+      setErrorMsg("Preview the accessory outbound again before confirming.");
+      return;
+    }
 
     const res = await apiFetch("/api/accessories/outbound/manual", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        shipment_ref: shipmentRef || null,
-        comment: comment || null,
+        operation_id: previewCommand.operationId,
+        shipment_ref: previewCommand.shipmentRef || null,
+        comment: previewCommand.comment || null,
         actor,
         actor_id: actorId,
-        lines: cleanLines,
+        lines: previewCommand.manualLines,
         preview: "0",
       }),
     });
@@ -228,19 +247,29 @@ export default function AccessoriesPage() {
 
     setPreviewRows(json.rows || []);
     setPreviewType("excel");
+    setPreviewCommand({
+      operationId: crypto.randomUUID(),
+      shipmentRef,
+      comment,
+      file,
+    });
     setPreviewOpen(true);
   }
 
   async function confirmExcelOutbound() {
-    if (!file) return;
+    if (!previewCommand?.file) {
+      setErrorMsg("Preview the spreadsheet again before confirming.");
+      return;
+    }
 
     setErrorMsg("");
     setSuccessMsg("");
 
     const form = new FormData();
-    form.append("file", file);
-    form.append("shipment_ref", shipmentRef || "");
-    form.append("comment", comment || "");
+    form.append("file", previewCommand.file);
+    form.append("operation_id", previewCommand.operationId);
+    form.append("shipment_ref", previewCommand.shipmentRef || "");
+    form.append("comment", previewCommand.comment || "");
     form.append("actor", actor);
     form.append("actor_id", actorId || "");
     form.append("preview", "0");

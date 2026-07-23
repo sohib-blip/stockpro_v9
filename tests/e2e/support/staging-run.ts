@@ -19,6 +19,7 @@ export type StagingRun = {
   manualImei: string;
   spreadsheetImei: string;
   manualBox: string;
+  emptyBox: string;
   returnBox: string;
   securityReturnBox: string;
   spreadsheetBox: string;
@@ -56,6 +57,7 @@ export async function createStagingRun(): Promise<StagingRun> {
     manualImei: makeImei(numericStamp),
     spreadsheetImei: makeImei(numericStamp + 1),
     manualBox: `E2E-MANUAL-${stamp}`,
+    emptyBox: `E2E-EMPTY-${stamp}`,
     returnBox: `E2E-RETURN-${stamp}`,
     securityReturnBox: `E2E-SECURITY-RETURN-${stamp}`,
     spreadsheetBox: "00001",
@@ -101,6 +103,13 @@ export async function createStagingRun(): Promise<StagingRun> {
     throwOnError(binError, "Create E2E device bin");
     if (!bin) throw new Error("Create E2E device bin: no row returned");
     run.bin = { id: String(bin.id), name: String(bin.name) };
+
+    const { error: emptyBoxError } = await supabase.from("boxes").insert({
+      bin_id: run.bin.id,
+      box_code: run.emptyBox,
+      floor: "00",
+    });
+    throwOnError(emptyBoxError, "Create E2E empty transfer box");
 
     const { data: accessory, error: accessoryError } = await supabase
       .from("accessory_bins")
@@ -196,6 +205,7 @@ export async function cleanupStagingRun(
       .eq("bin_id", run.bin.id)
       .in("box_code", [
         run.manualBox,
+        run.emptyBox,
         run.returnBox,
         run.securityReturnBox,
         run.spreadsheetBox,
@@ -281,6 +291,7 @@ export async function assertStagingRunClean(run: StagingRun) {
         .eq("bin_id", run.bin.id)
         .in("box_code", [
           run.manualBox,
+          run.emptyBox,
           run.returnBox,
           run.securityReturnBox,
           run.spreadsheetBox,
@@ -431,6 +442,32 @@ export async function readAccessoryStock(id: string) {
     .single();
   throwOnError(error, `Read E2E accessory ${id}`);
   return Number(data?.current_stock || 0);
+}
+
+export async function countAccessoryMovements(operationIds: string[]) {
+  const supabase = serviceClient();
+  const { count, error } = await supabase
+    .from("accessory_movements")
+    .select("*", { count: "exact", head: true })
+    .in("operation_id", operationIds);
+  throwOnError(error, "Count E2E accessory movements");
+  return Number(count || 0);
+}
+
+export async function readSupplyForProduct(productName: string) {
+  const supabase = serviceClient();
+  const { data, error } = await supabase
+    .from("supply_items")
+    .select("supply_id,supplies(id,status)")
+    .eq("product_name", productName)
+    .single();
+  throwOnError(error, `Read E2E supply for ${productName}`);
+  const supply = Array.isArray(data?.supplies)
+    ? data.supplies[0]
+    : data?.supplies;
+  return supply
+    ? { id: String(supply.id), status: String(supply.status) }
+    : null;
 }
 
 export async function countInboundBatchesByReference(shipmentRef: string) {

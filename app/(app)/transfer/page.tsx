@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/apiFetch";
 
@@ -38,6 +38,7 @@ export default function TransferPage() {
 
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const operationIdRef = useRef<string | null>(null);
 
   async function loadBins() {
     const { data, error } = await supabase
@@ -111,6 +112,7 @@ export default function TransferPage() {
     setLoadingPreview(false);
 
     if (json.ok) {
+      operationIdRef.current = crypto.randomUUID();
       setPreview({
         ...json,
         request: {
@@ -157,6 +159,9 @@ export default function TransferPage() {
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
+        operation_id:
+          operationIdRef.current ||
+          (operationIdRef.current = crypto.randomUUID()),
         box_codes,
         source_bin_id: confirmedSourceBinId,
         target_floor: confirmedTargetFloor,
@@ -170,6 +175,7 @@ export default function TransferPage() {
       setSuccess(true);
       setPreview(null);
       setBoxInput("");
+      operationIdRef.current = null;
       await loadHistory();
       setTimeout(() => setSuccess(false), 2500);
     } else {

@@ -7,12 +7,14 @@ import {
   accessTokenFor,
   assertStagingRunClean,
   cleanupStagingRun,
+  countAccessoryMovements,
   countInboundBatchesByReference,
   createStagingRun,
   readAccessoryStock,
   readItem,
   readOtherBinId,
   readReturnMovement,
+  readSupplyForProduct,
   type StagingRun,
 } from "./support/staging-run";
 
@@ -359,7 +361,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await signOut(page);
   });
 
-  test("runs an IMEI through inbound, transfer, outbound and customer return", async ({ page }) => {
+  test("runs an IMEI through inbound, transfer, outbound and customer return", async ({ page, request }) => {
     const outboundReference = `E2E-OUT-${run.stamp}`;
     await login(page, "operator");
 
@@ -396,6 +398,19 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(item?.device_id).toBe(run.bin.id);
     expect(item?.boxes?.bin_id).toBe(run.bin.id);
     expect(item?.boxes?.box_code).toBe(run.manualBox);
+
+    const operatorToken = await accessTokenFor(run.users.operator);
+    const rejectedTransfer = await request.post("/api/transfer/confirm", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+      data: {
+        operation_id: randomUUID(),
+        box_codes: [run.manualBox, run.emptyBox],
+        source_bin_id: run.bin.id,
+        target_floor: "9",
+      },
+    });
+    expect(rejectedTransfer.status()).toBe(400);
+    expect((await readItem(run.manualImei))?.boxes?.floor).toBe("00");
 
     await page.goto("/transfer");
     await page.getByLabel("Transfer box codes").fill(run.manualBox);
@@ -585,6 +600,22 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(movement.device_id).not.toBe(alternateBinId);
   });
 
+  test("retires the unaudited legacy outbound mutation", async ({ request }) => {
+    const operatorToken = await accessTokenFor(run.users.operator);
+    const itemBefore = await readItem(run.manualImei);
+    expect(itemBefore?.status).toBe("IN");
+
+    const response = await request.post("/api/outbound", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+      data: {
+        imei: run.manualImei,
+        shipment_ref: `E2E-LEGACY-${run.stamp}`,
+      },
+    });
+    expect(response.status()).toBe(410);
+    expect((await readItem(run.manualImei))?.status).toBe("IN");
+  });
+
   test("processes manual, explicit spreadsheet and automatic IMEI accessory outbound", async ({ page }) => {
     const explicitFile = spreadsheetPath(`accessories-explicit-${run.stamp}.xlsx`);
     const automaticFile = spreadsheetPath(`accessories-automatic-${run.stamp}.xlsx`);
@@ -626,6 +657,49 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await signOut(page);
   });
 
+  test("serializes concurrent accessory outbound and replays one operation safely", async ({
+    request,
+  }) => {
+    const operatorToken = await accessTokenFor(run.users.operator);
+    const operationIds = [randomUUID(), randomUUID()];
+    const initialStock = await readAccessoryStock(run.accessory.id);
+    const requestedQuantity = Math.floor(initialStock / 2) + 1;
+    const command = (operationId: string) =>
+      request.post("/api/accessories/outbound/manual", {
+        headers: { Authorization: `Bearer ${operatorToken}` },
+        data: {
+          operation_id: operationId,
+          shipment_ref: `E2E-CONCURRENT-${run.stamp}`,
+          lines: [
+            {
+              accessory_id: run.accessory.id,
+              qty: requestedQuantity,
+            },
+          ],
+          preview: "0",
+        },
+      });
+
+    const responses = await Promise.all(operationIds.map(command));
+    expect(responses.map((response) => response.status()).sort()).toEqual([
+      200,
+      400,
+    ]);
+    expect(await readAccessoryStock(run.accessory.id)).toBe(
+      initialStock - requestedQuantity
+    );
+    expect(await countAccessoryMovements(operationIds)).toBe(1);
+
+    const successfulOperation =
+      operationIds[responses.findIndex((response) => response.status() === 200)];
+    const replay = await command(successfulOperation);
+    expect(replay.status()).toBe(200);
+    expect(await readAccessoryStock(run.accessory.id)).toBe(
+      initialStock - requestedQuantity
+    );
+    expect(await countAccessoryMovements(operationIds)).toBe(1);
+  });
+
   test("exports dashboards and reports low device and accessory stock", async ({ page }) => {
     await login(page, "operator");
 
@@ -657,7 +731,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await signOut(page);
   });
 
-  test("manages inventory rules, supply lifecycles and label outputs", async ({ page }) => {
+  test("manages inventory rules, supply lifecycles and label outputs", async ({ page, request }) => {
     await login(page, "operator");
 
     await page.goto("/bins");
@@ -730,6 +804,19 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await updateSupplyStatus(run.bin.name, "SHIPPED", `TRACK-${run.stamp}`);
     await updateSupplyStatus(run.bin.name, "RECEIVED");
     await updateSupplyStatus(run.bin.name, "IMPORTED");
+
+    const importedSupply = await readSupplyForProduct(run.bin.name);
+    expect(importedSupply?.status).toBe("IMPORTED");
+    const operatorToken = await accessTokenFor(run.users.operator);
+    const terminalDelete = await request.delete("/api/supply/delete", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+      data: {
+        operation_id: randomUUID(),
+        id: importedSupply?.id,
+      },
+    });
+    expect(terminalDelete.status()).toBe(400);
+    expect((await readSupplyForProduct(run.bin.name))?.status).toBe("IMPORTED");
 
     const deleteProduct = `${run.bin.name}-DELETE`;
     const deleteRow = await createSupply(deleteProduct, `E2E delete ${run.stamp}`);

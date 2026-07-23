@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { getApiIdentity } from "@/lib/api-identity";
+import {
+  inventoryCommandErrorMessage,
+  inventoryCommandErrorStatus,
+} from "@/lib/inventory-command-error";
 import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import * as XLSX from "xlsx";
 
 export const runtime = "nodejs";
@@ -18,6 +23,8 @@ function cleanImei(value: any) {
   return String(value || "").replace(/\D/g, "").trim();
 }
 
+const operationIdSchema = z.string().uuid();
+
 export async function POST(req: Request) {
   try {
     const form = await req.formData();
@@ -25,6 +32,7 @@ export async function POST(req: Request) {
     const file = form.get("file") as File;
     const shipment_ref = String(form.get("shipment_ref") || "");
     const comment = String(form.get("comment") || "");
+    const requestedOperationId = String(form.get("operation_id") || "");
     const identity = getApiIdentity(req);
 
     if (!file) {
@@ -181,21 +189,21 @@ export async function POST(req: Request) {
   }
 );
 
-    for (const row of finalRows) {
-      if (Number(row.accessory.current_stock || 0) < row.qty) {
-        return NextResponse.json(
-          {
-            ok: false,
-            error: `Not enough stock for ${row.accessory.name}. Stock: ${row.accessory.current_stock}, needed: ${row.qty}`,
-          },
-          { status: 400 }
-        );
-      }
-    }
-
 const preview = String(form.get("preview") || "") === "1";
 
 if (preview) {
+  for (const row of finalRows) {
+    if (Number(row.accessory.current_stock || 0) < row.qty) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Not enough stock for ${row.accessory.name}. Stock: ${row.accessory.current_stock}, needed: ${row.qty}`,
+        },
+        { status: 400 }
+      );
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     preview: true,
@@ -209,46 +217,54 @@ if (preview) {
   });
 }
 
-    const operation_id = crypto.randomUUID();
-
-    for (const row of finalRows) {
-      const newStock = Number(row.accessory.current_stock || 0) - row.qty;
-
-      const { error: updateError } = await supabase
-        .from("accessory_bins")
-        .update({ current_stock: newStock })
-        .eq("id", row.accessory_bin_id);
-
-      if (updateError) throw updateError;
-
-      const { error: moveError } = await supabase
-        .from("accessory_movements")
-        .insert({
-          accessory_bin_id: row.accessory_bin_id,
-          qty: row.qty,
-          movement_type: "OUT",
-          shipment_ref: shipment_ref || null,
-          note: comment || null,
-          actor: identity.email,
-          actor_id: identity.userId,
-          source: "excel",
-          operation_id,
-        });
-
-      if (moveError) throw moveError;
+    if (
+      shipment_ref.length > 500 ||
+      comment.length > 1000 ||
+      (requestedOperationId &&
+        !operationIdSchema.safeParse(requestedOperationId).success)
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid accessory outbound request" },
+        { status: 400 }
+      );
     }
 
-    return NextResponse.json({
-      ok: true,
-      operation_id,
-      removed: finalRows.map((r) => ({
-        accessory: r.accessory.name,
-        qty: r.qty,
-      })),
-    });
-  } catch (e: any) {
+    const operationId = requestedOperationId || crypto.randomUUID();
+    const { data, error: commandError } = await supabase.rpc(
+      "confirm_accessory_outbound",
+      {
+        p_operation_id: operationId,
+        p_actor_id: identity.userId,
+        p_actor: identity.email,
+        p_source: "excel",
+        p_shipment_ref: shipment_ref || null,
+        p_note: comment || null,
+        p_lines: finalRows.map((row) => ({
+          accessory_bin_id: row.accessory_bin_id,
+          qty: row.qty,
+        })),
+      }
+    );
+
+    if (commandError) {
+      console.error("EXCEL ACCESSORY COMMAND ERROR", commandError);
+      return NextResponse.json(
+        {
+          ok: false,
+          error: inventoryCommandErrorMessage(
+            commandError,
+            "Spreadsheet outbound failed"
+          ),
+        },
+        { status: inventoryCommandErrorStatus(commandError) }
+      );
+    }
+
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("EXCEL ACCESSORY OUTBOUND ERROR", error);
     return NextResponse.json(
-      { ok: false, error: e?.message || "Excel outbound failed" },
+      { ok: false, error: "Excel outbound failed" },
       { status: 500 }
     );
   }

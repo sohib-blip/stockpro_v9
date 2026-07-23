@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
@@ -70,6 +70,8 @@ const pageSize = 20;
   const [confirmDone, setConfirmDone] = useState(false);
   const [detailTarget, setDetailTarget] = useState<any | null>(null);
   const [statusHistory, setStatusHistory] = useState<any[]>([]);
+  const supplyOperationIdRef = useRef<string | null>(null);
+  const deleteOperationIdRef = useRef<string | null>(null);
 
   async function loadUser() {
     const { data } = await supabase.auth.getUser();
@@ -143,6 +145,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
 
   function openCreate() {
     resetForm();
+    supplyOperationIdRef.current = crypto.randomUUID();
     setOpenModal(true);
   }
 
@@ -170,6 +173,7 @@ function availableStatuses(
   }
 }
   function openEdit(row: any) {
+    supplyOperationIdRef.current = crypto.randomUUID();
     setEditing(row);
     setFromOffice(row.from_office || "UK");
     setToOffice(row.to_office || "BE");
@@ -223,6 +227,9 @@ function availableStatuses(
 
   const payload = editing
   ? {
+      operation_id:
+        supplyOperationIdRef.current ||
+        (supplyOperationIdRef.current = crypto.randomUUID()),
       id: editing.id,
       status,
       tracking_number: tracking || editing.tracking_number || null,
@@ -231,6 +238,9 @@ function availableStatuses(
       changed_by_id: userId,
     }
   : {
+      operation_id:
+        supplyOperationIdRef.current ||
+        (supplyOperationIdRef.current = crypto.randomUUID()),
       from_office: fromOffice,
       to_office: toOffice,
       status: "CREATED",
@@ -261,6 +271,7 @@ function availableStatuses(
 
   setOpenModal(false);
 setConfirmDone(false);
+supplyOperationIdRef.current = null;
 
 await loadSupply();
 
@@ -398,7 +409,12 @@ async function openDetails(row: any) {
   const res = await apiFetch("/api/supply/delete", {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id: deleteTarget.id }),
+    body: JSON.stringify({
+      operation_id:
+        deleteOperationIdRef.current ||
+        (deleteOperationIdRef.current = crypto.randomUUID()),
+      id: deleteTarget.id,
+    }),
   });
 
   const json = await res.json();
@@ -410,6 +426,7 @@ async function openDetails(row: any) {
   }
 
   setDeleteTarget(null);
+  deleteOperationIdRef.current = null;
   await loadSupply();
 }
 
@@ -611,7 +628,10 @@ async function openDetails(row: any) {
       </button>
 
       <button
-        onClick={() => setDeleteTarget(row)}
+        onClick={() => {
+          deleteOperationIdRef.current = crypto.randomUUID();
+          setDeleteTarget(row);
+        }}
         className="text-red-400 hover:text-red-300 font-semibold"
       >
         Delete
@@ -1030,7 +1050,10 @@ async function openDetails(row: any) {
   cancelText="Cancel"
   danger
   onConfirm={deleteSupply}
-  onCancel={() => setDeleteTarget(null)}
+  onCancel={() => {
+    deleteOperationIdRef.current = null;
+    setDeleteTarget(null);
+  }}
 />
     </div>
   );

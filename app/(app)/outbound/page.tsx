@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
@@ -40,6 +40,7 @@ const [page, setPage] = useState(1);
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
+  const operationIdRef = useRef<string | null>(null);
 
   const filteredHistory =
     filter === "all"
@@ -113,6 +114,7 @@ if (!json.ok) {
 
 setPreview(json);
 setPreviewSource("manual");
+operationIdRef.current = crypto.randomUUID();
 setBusy(false);
   }
 
@@ -148,6 +150,7 @@ if (!json.ok) {
 
 setPreview(json);
 setPreviewSource("excel");
+operationIdRef.current = crypto.randomUUID();
 setBusy(false);
   }
 
@@ -169,6 +172,9 @@ if (!actorId) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        operation_id:
+          operationIdRef.current ||
+          (operationIdRef.current = crypto.randomUUID()),
         imeis: preview.imeis,
         shipment_ref: shipmentRef || null,
         actor,
@@ -186,6 +192,7 @@ if (!actorId) {
       setShipmentRef("");
       setImeiInput("");
       setFile(null);
+      operationIdRef.current = null;
       await loadHistory();
       setTimeout(() => setSuccess(false), 2500);
     } else {

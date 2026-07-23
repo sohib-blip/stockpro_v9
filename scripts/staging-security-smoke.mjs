@@ -9,25 +9,39 @@ if (!/^https:\/\/stockpro-v9-[a-z0-9-]+\.vercel\.app$/i.test(previewUrl)) {
   throw new Error("Usage: npm run test:staging -- https://stockpro-v9-...vercel.app");
 }
 
-const env = Object.fromEntries(
-  (await readFile(new URL("../.env.local", import.meta.url), "utf8"))
-    .split(/\r?\n/)
-    .filter((line) => line && !line.startsWith("#"))
-    .map((line) => {
-      const separator = line.indexOf("=");
-      return [line.slice(0, separator), line.slice(separator + 1)];
-    })
-);
+async function readEnvFile(path) {
+  return Object.fromEntries(
+    (await readFile(new URL(path, import.meta.url), "utf8"))
+      .split(/\r?\n/)
+      .filter((line) => line && !line.startsWith("#"))
+      .map((line) => {
+        const separator = line.indexOf("=");
+        return [line.slice(0, separator), line.slice(separator + 1)];
+      })
+  );
+}
 
-const supabaseUrl = env.NEXT_PUBLIC_SUPABASE_URL;
-const anonKey = env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const serviceRoleKey = env.SUPABASE_SERVICE_ROLE_KEY;
+let env;
+let envSource;
+try {
+  env = await readEnvFile("../.env.e2e.local");
+  envSource = ".env.e2e.local";
+} catch (error) {
+  if (error?.code !== "ENOENT") throw error;
+  env = await readEnvFile("../.env.local");
+  envSource = ".env.local";
+}
+
+const supabaseUrl = env.E2E_SUPABASE_URL || env.NEXT_PUBLIC_SUPABASE_URL;
+const anonKey = env.E2E_SUPABASE_ANON_KEY || env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const serviceRoleKey =
+  env.E2E_SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_ROLE_KEY;
 
 if (!supabaseUrl?.includes(STAGING_PROJECT_REF)) {
-  throw new Error("Refusing to run: .env.local is not StockPro-Staging");
+  throw new Error(`Refusing to run: ${envSource} is not StockPro-Staging`);
 }
 if (!anonKey || !serviceRoleKey) {
-  throw new Error("Missing Supabase staging credentials in .env.local");
+  throw new Error(`Missing Supabase staging credentials in ${envSource}`);
 }
 
 const adminClient = createClient(supabaseUrl, serviceRoleKey, {

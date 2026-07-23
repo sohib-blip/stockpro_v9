@@ -1,4 +1,5 @@
 import { mkdirSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import * as XLSX from "xlsx";
@@ -10,6 +11,8 @@ import {
   createStagingRun,
   readAccessoryStock,
   readItem,
+  readOtherBinId,
+  readReturnMovement,
   type StagingRun,
 } from "./support/staging-run";
 
@@ -363,12 +366,18 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.goto("/inbound");
     await page.getByLabel("Inbound reference").fill(`E2E inbound ${run.stamp}`);
     await page.getByLabel("Manual inbound device").selectOption(run.bin.id);
+    await expect(page.getByLabel("Manual inbound device")).toHaveValue(run.bin.id);
     await page.getByLabel("Manual inbound box").fill(run.manualBox);
     await page.getByLabel("Manual inbound floor").selectOption("00");
     await page.getByLabel("Manual inbound IMEIs").fill(run.manualImei);
     await page.getByRole("button", { name: "Preview Inbound" }).click();
     await expect(page.getByText("Preview ready — no blocking problems")).toBeVisible();
     await expect(page.getByText("1 valid")).toBeVisible();
+    const manualPreview = page.locator(".prototype-preview-card").filter({
+      hasText: "Preview ready — no blocking problems",
+    });
+    await expect(manualPreview).toContainText(run.bin.name);
+    await expect(manualPreview).toContainText(run.manualBox);
     await page.getByRole("button", { name: "Confirm Inbound" }).click();
     await expect(page.getByText(/Manual inbound completed: 1 IMEIs imported/)).toBeVisible();
     await expectDownload(
@@ -384,6 +393,8 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
     let item = await readItem(run.manualImei);
     expect(item?.status).toBe("IN");
+    expect(item?.device_id).toBe(run.bin.id);
+    expect(item?.boxes?.bin_id).toBe(run.bin.id);
     expect(item?.boxes?.box_code).toBe(run.manualBox);
 
     await page.goto("/transfer");
@@ -529,6 +540,49 @@ test.describe.serial("StockPro staging end-to-end", () => {
       /\.xlsx$/
     );
     await signOut(page);
+  });
+
+  test("binds return state and audit to canonical item metadata", async ({ request }) => {
+    const itemBefore = await readItem(run.spreadsheetImei);
+    expect(itemBefore?.status).toBe("OUT");
+
+    const alternateBinId = await readOtherBinId(run.bin.id);
+    const fakeImei = "111111111111111";
+    const operationId = randomUUID();
+    const operatorToken = await accessTokenFor(run.users.operator);
+    const response = await request.post("/api/returns/confirm", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+      data: {
+        operation_id: operationId,
+        items: [
+          {
+            item_id: itemBefore?.item_id,
+            imei: fakeImei,
+            device_id: alternateBinId,
+          },
+        ],
+        target_box: run.securityReturnBox,
+        target_floor: "00",
+        return_ref: `E2E-SECURITY-RETURN-${run.stamp}`,
+        return_type: "technical_stop",
+        return_reason: "Faulty unit",
+      },
+    });
+
+    expect(response.status()).toBe(200);
+    expect((await response.json()).returned).toBe(1);
+
+    const itemAfter = await readItem(run.spreadsheetImei);
+    expect(itemAfter?.status).toBe("IN");
+    expect(itemAfter?.device_id).toBe(run.bin.id);
+    expect(itemAfter?.boxes?.box_code).toBe(run.securityReturnBox);
+
+    const movement = await readReturnMovement(operationId);
+    expect(movement.item_id).toBe(itemBefore?.item_id);
+    expect(movement.imei).toBe(run.spreadsheetImei);
+    expect(movement.imei).not.toBe(fakeImei);
+    expect(movement.device_id).toBe(run.bin.id);
+    expect(movement.device_id).not.toBe(alternateBinId);
   });
 
   test("processes manual, explicit spreadsheet and automatic IMEI accessory outbound", async ({ page }) => {

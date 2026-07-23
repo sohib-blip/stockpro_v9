@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
@@ -51,6 +51,7 @@ export default function ReturnsPage() {
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [page, setPage] = useState(1);
+  const returnOperationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -98,6 +99,7 @@ export default function ReturnsPage() {
     setBusy(true);
     setMsg("");
     setPreview(null);
+    returnOperationIdRef.current = null;
 
     try {
       const res = await apiFetch("/api/returns/preview", {
@@ -146,10 +148,14 @@ export default function ReturnsPage() {
     setMsg("");
 
     try {
+      const operationId =
+        returnOperationIdRef.current || crypto.randomUUID();
+      returnOperationIdRef.current = operationId;
       const res = await apiFetch("/api/returns/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          operation_id: operationId,
           items: preview.valid_returns,
           target_box: targetBox.trim(),
           target_floor: targetFloor,
@@ -174,6 +180,7 @@ export default function ReturnsPage() {
       setReturnRef("");
       setReturnType("");
       setReturnReason("");
+      returnOperationIdRef.current = null;
 
       await loadHistory();
     } catch (e: any) {

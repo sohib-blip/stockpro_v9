@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { parseVendorExcel } from "@/lib/inbound/parsers";
 import { toDeviceMatchList } from "@/lib/inbound/vendorParser";
@@ -71,6 +71,12 @@ const [page, setPage] = useState(1);
   const [manualReadyToImport, setManualReadyToImport] = useState(false);
   const [manualMsg, setManualMsg] = useState<string>("");
   const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
+  const excelOperationIdRef = useRef<string | null>(null);
+  const manualOperationIdRef = useRef<string | null>(null);
+  const manualDeviceInputRef = useRef<HTMLSelectElement>(null);
+  const manualBoxInputRef = useRef<HTMLInputElement>(null);
+  const manualFloorInputRef = useRef<HTMLSelectElement>(null);
+  const manualImeisInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Zebra label size (default 105x155mm)
   const LABEL_W = 105;
@@ -84,6 +90,12 @@ const [page, setPage] = useState(1);
   function stopBusy() {
     setBusy(false);
     setBusyText("");
+  }
+
+  function invalidateManualPreview() {
+    setManualPreview(null);
+    setManualReadyToImport(false);
+    manualOperationIdRef.current = null;
   }
 
   useEffect(() => {
@@ -117,8 +129,8 @@ const [page, setPage] = useState(1);
       }
       setBinNameToId(map);
 
-      if (!manualDevice && mapped.length > 0) {
-        setManualDevice(mapped[0].device_id);
+      if (mapped.length > 0) {
+        setManualDevice((current) => current || mapped[0].device_id);
       }
     }
   }
@@ -165,6 +177,7 @@ useEffect(() => {
     setLastBatchId("");
     setManualPreview(null);
     setManualMsg("");
+    excelOperationIdRef.current = null;
 
     if (!file) return setErr("Choose a file.");
 
@@ -332,13 +345,17 @@ useEffect(() => {
     setManualMsg("");
 
     try {
+      const operationId =
+        excelOperationIdRef.current || crypto.randomUUID();
+      excelOperationIdRef.current = operationId;
       const payload = {
-  labels: labelsConverted,
-  actor,
-  actor_id: actorId,
-  vendor,
-  shipment_ref: shipmentRef || null,
-};
+        operation_id: operationId,
+        labels: labelsConverted,
+        actor,
+        actor_id: actorId,
+        vendor,
+        shipment_ref: shipmentRef || null,
+      };
 
       const res = await apiFetch("/api/inbound/confirm", {
         method: "POST",
@@ -371,6 +388,7 @@ useEffect(() => {
       setLastBatchId(json.batch_id);
       setResult(null);
       setFile(null);
+      excelOperationIdRef.current = null;
 
       alert(
         `Inbound completed\nImported: ${json.totals.inserted_imeis}\nSkipped (already in stock): ${json.totals.skipped_existing_imeis}\nBoxes created: ${json.totals.created_boxes}\nBoxes reused: ${json.totals.reused_boxes}`
@@ -415,11 +433,18 @@ useEffect(() => {
     setErr("");
     setResult(null);
     setManualReadyToImport(false);
+    manualOperationIdRef.current = null;
 
-    const imeis = extractManualImeis(manualImeis);
+    const selectedDevice = manualDeviceInputRef.current?.value ?? manualDevice;
+    const selectedBox =
+      manualBoxInputRef.current?.value.trim() ?? manualBox.trim();
+    const selectedFloor = manualFloorInputRef.current?.value ?? manualFloor;
+    const imeis = extractManualImeis(
+      manualImeisInputRef.current?.value ?? manualImeis
+    );
 
-    if (!manualDevice) return setManualMsg("Select a device.");
-    if (!manualBox.trim()) return setManualMsg("Enter a box number.");
+    if (!selectedDevice) return setManualMsg("Select a device.");
+    if (!selectedBox) return setManualMsg("Enter a box number.");
     if (imeis.length === 0) return setManualMsg("No valid 15-digit IMEIs found.");
 
     startBusy("Preparing manual inbound preview…");
@@ -428,9 +453,9 @@ useEffect(() => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device: manualDevice,
-          box_no: manualBox.trim(),
-          floor: manualFloor,
+          device: selectedDevice,
+          box_no: selectedBox,
+          floor: selectedFloor,
           imeis,
         }),
       });
@@ -464,15 +489,35 @@ setManualMsg("");
     const imeisToInsert: string[] = manualPreview.preview_imeis || [];
     if (imeisToInsert.length === 0) return setManualMsg("Nothing to import. All IMEIs may already be in stock.");
 
+    const previewDevice = String(manualPreview.bin_id || "");
+    const previewBox = String(manualPreview.box_code || "");
+    const previewFloor = String(manualPreview.floor || "");
+    const currentDevice = manualDeviceInputRef.current?.value ?? manualDevice;
+    const currentBox =
+      manualBoxInputRef.current?.value.trim() ?? manualBox.trim();
+    const currentFloor = manualFloorInputRef.current?.value ?? manualFloor;
+    if (
+      currentDevice !== previewDevice ||
+      currentBox !== previewBox ||
+      currentFloor !== previewFloor
+    ) {
+      invalidateManualPreview();
+      return setManualMsg("Inbound details changed. Preview the inbound again before confirming.");
+    }
+
     startBusy("Importing manual inbound…");
     try {
+      const operationId =
+        manualOperationIdRef.current || crypto.randomUUID();
+      manualOperationIdRef.current = operationId;
       const res = await apiFetch("/api/inbound/manual-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device: manualDevice,
-          box_no: manualBox.trim(),
-          floor: manualFloor,
+          operation_id: operationId,
+          device: previewDevice,
+          box_no: previewBox,
+          floor: previewFloor,
           imeis: imeisToInsert,
           shipment_ref: shipmentRef.trim() || null,
           actor,
@@ -498,6 +543,7 @@ setManualMsg("");
       setManualPreview(null);
       setManualImeis("");
       setManualBox("");
+      manualOperationIdRef.current = null;
 
       const skipped = json.skipped_existing || 0;
       setManualMsg(`Manual inbound completed: ${json.inserted} IMEIs imported, ${skipped} existing IMEIs skipped.`);
@@ -603,9 +649,13 @@ setManualMsg("");
 
         <div className="inbound-manual-fields">
           <select
+            ref={manualDeviceInputRef}
             aria-label="Manual inbound device"
             value={manualDevice}
-            onChange={(e) => setManualDevice(e.target.value)}
+            onChange={(e) => {
+              setManualDevice(e.target.value);
+              invalidateManualPreview();
+            }}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           >
             {devices.length === 0 && <option value="">No active devices found</option>}
@@ -617,17 +667,25 @@ setManualMsg("");
           </select>
 
           <input
+            ref={manualBoxInputRef}
             aria-label="Manual inbound box"
             placeholder="Box number"
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
             value={manualBox}
-            onChange={(e) => setManualBox(e.target.value)}
+            onChange={(e) => {
+              setManualBox(e.target.value);
+              invalidateManualPreview();
+            }}
           />
 
           <select
+            ref={manualFloorInputRef}
             aria-label="Manual inbound floor"
             value={manualFloor}
-            onChange={(e) => setManualFloor(e.target.value)}
+            onChange={(e) => {
+              setManualFloor(e.target.value);
+              invalidateManualPreview();
+            }}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           >
             <option value="00">Floor 00</option>
@@ -639,12 +697,16 @@ setManualMsg("");
 
         <div className="prototype-field-heading"><label htmlFor="manual-imeis">IMEIs — scan or paste, one per line</label><span>{extractManualImeis(manualImeis).length} detected</span></div>
         <textarea
+          ref={manualImeisInputRef}
           id="manual-imeis"
           aria-label="Manual inbound IMEIs"
           placeholder="Scan or paste IMEIs (one per line). Only 15-digit kept."
           className="prototype-imei-textarea"
           value={manualImeis}
-          onChange={(e) => setManualImeis(e.target.value)}
+          onChange={(e) => {
+            setManualImeis(e.target.value);
+            invalidateManualPreview();
+          }}
         />
 
         <div className="flex flex-wrap gap-2">
@@ -840,9 +902,9 @@ setManualMsg("");
             <span>1 box</span>
           </div>
           <div className="prototype-preview-summary">
-            <div><span>Device bin</span><strong>{devices.find((device) => device.device_id === manualDevice)?.device || "—"}</strong></div>
-            <div><span>Box</span><strong>{manualBox || "—"}</strong></div>
-            <div><span>Floor</span><strong>Floor {manualFloor}</strong></div>
+            <div><span>Device bin</span><strong>{manualPreview.bin_name || "—"}</strong></div>
+            <div><span>Box</span><strong>{manualPreview.box_code || "—"}</strong></div>
+            <div><span>Floor</span><strong>Floor {manualPreview.floor || "—"}</strong></div>
             <div><span>New IMEIs</span><strong>{manualPreview.valid_new}</strong></div>
           </div>
           <div className="prototype-preview-footer">

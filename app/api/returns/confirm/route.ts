@@ -1,152 +1,99 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { z } from "zod";
 import { getApiIdentity } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const returnCommandSchema = z.object({
+  operation_id: z.string().uuid().optional(),
+  items: z
+    .array(
+      z.object({
+        item_id: z.string().uuid(),
+      })
+    )
+    .min(1)
+    .max(500),
+  target_box: z.string().trim().min(1).max(200),
+  target_floor: z.string().trim().max(50).nullish(),
+  return_ref: z.string().trim().max(500).nullish(),
+  return_type: z.string().trim().min(1).max(200),
+  return_reason: z.string().trim().min(1).max(1000),
+});
+
+function serviceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
+}
+
+function commandErrorStatus(code?: string) {
+  if (code === "22023" || code === "P0002") return 400;
+  if (code === "23505" || code === "40001") return 409;
+  return 500;
+}
 
 export async function POST(req: Request) {
   try {
-    const {
-      items,
-      target_box,
-      target_floor,
-      return_ref,
-      return_type,
-      return_reason,
-    } = await req.json();
+    const parsed = returnCommandSchema.safeParse(
+      await req.json().catch(() => null)
+    );
+
+    if (!parsed.success) {
+      return NextResponse.json(
+        { ok: false, error: "Invalid return confirmation" },
+        { status: 400 }
+      );
+    }
+
     const identity = getApiIdentity(req);
-
-    if (!Array.isArray(items) || items.length === 0) {
-      return NextResponse.json({ ok: false, error: "No items to return" }, { status: 400 });
-    }
-
-    if (!target_box) {
-      return NextResponse.json({ ok: false, error: "Target box required" }, { status: 400 });
-    }
-
-    if (!return_type) {
-      return NextResponse.json({ ok: false, error: "Return type required" }, { status: 400 });
-    }
-
-    if (!return_reason) {
-      return NextResponse.json({ ok: false, error: "Return reason required" }, { status: 400 });
-    }
-
-    const operation_id = crypto.randomUUID();
-    const nowIso = new Date().toISOString();
-
-    let returned = 0;
-    let createdBoxes = 0;
-    let reusedBoxes = 0;
-
-    for (const item of items) {
-      const device_id = item.device_id;
-      const imei = item.imei;
-      const item_id = item.item_id;
-
-      const { data: current, error: currentErr } = await supabase
-        .from("items")
-        .select("item_id, status, device_id")
-        .eq("item_id", item_id)
-        .single();
-
-      if (currentErr) throw currentErr;
-
-      if (!current || String(current.status).toUpperCase() !== "OUT") {
-        continue;
+    const operationId = parsed.data.operation_id || crypto.randomUUID();
+    const itemIds = Array.from(
+      new Set(parsed.data.items.map((item) => item.item_id))
+    );
+    const { data, error } = await serviceClient().rpc(
+      "confirm_return_batch",
+      {
+        p_operation_id: operationId,
+        p_actor_id: identity.userId,
+        p_actor: identity.email,
+        p_item_ids: itemIds,
+        p_target_box: parsed.data.target_box,
+        p_target_floor: parsed.data.target_floor || null,
+        p_return_ref: parsed.data.return_ref || null,
+        p_return_type: parsed.data.return_type,
+        p_return_reason: parsed.data.return_reason,
       }
+    );
 
-      const { data: existingBox, error: boxFindErr } = await supabase
-        .from("boxes")
-        .select("id, floor")
-        .eq("bin_id", device_id)
-        .eq("box_code", target_box)
-        .maybeSingle();
-
-      if (boxFindErr) throw boxFindErr;
-
-      let box_id: string;
-
-      if (existingBox?.id) {
-        box_id = String(existingBox.id);
-        reusedBoxes++;
-
-        if (target_floor && existingBox.floor !== target_floor) {
-          const { error: floorErr } = await supabase
-            .from("boxes")
-            .update({ floor: target_floor })
-            .eq("id", box_id);
-
-          if (floorErr) throw floorErr;
-        }
-      } else {
-        const { data: newBox, error: newBoxErr } = await supabase
-          .from("boxes")
-          .insert({
-            bin_id: device_id,
-            box_code: target_box,
-            floor: target_floor || null,
-          })
-          .select("id")
-          .single();
-
-        if (newBoxErr) throw newBoxErr;
-
-        box_id = String(newBox.id);
-        createdBoxes++;
-      }
-
-      const { error: updateErr } = await supabase
-        .from("items")
-        .update({
-          status: "IN",
-          box_id,
-        })
-        .eq("item_id", item_id)
-        .eq("status", "OUT");
-
-      if (updateErr) throw updateErr;
-
-      const { error: movementErr } = await supabase.from("movements").insert({
-        type: "RETURN",
-        operation_id,
-        item_id,
-        box_id,
-        device_id,
-        imei,
-        qty: 1,
-        actor: identity.email,
-        created_by: identity.userId,
-        created_at: nowIso,
-        shipment_ref: return_ref || null,
-        source: "customer_return",
-        return_type,
-        return_reason,
-        notes: `${return_type} - ${return_reason}`,
-      });
-
-      if (movementErr) throw movementErr;
-
-      returned++;
+    if (error) {
+      console.error("RETURN COMMAND ERROR", error);
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            error.code === "40001"
+              ? "The return state changed. Please preview and try again."
+              : error.code === "P0002"
+                ? "One or more return items no longer exist."
+                : error.code === "22023"
+                  ? "Invalid return confirmation"
+                  : "Return confirmation failed",
+        },
+        { status: commandErrorStatus(error.code) }
+      );
     }
 
-    return NextResponse.json({
-      ok: true,
-      operation_id,
-      returned,
-      created_boxes: createdBoxes,
-      reused_boxes: reusedBoxes,
-    });
-  } catch (e: any) {
+    return NextResponse.json(data);
+  } catch (error) {
+    console.error("RETURN CONFIRM ERROR", error);
     return NextResponse.json(
-      { ok: false, error: e?.message || "Return confirm failed" },
+      { ok: false, error: "Return confirmation failed" },
       { status: 500 }
     );
   }

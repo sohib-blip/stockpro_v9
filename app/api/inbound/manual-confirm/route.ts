@@ -1,118 +1,127 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { buildInboundMovementRows } from "@/lib/inbound/movements";
+import { z } from "zod";
 import { getApiIdentity } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
+const manualInboundSchema = z.object({
+  operation_id: z.string().uuid().optional(),
+  device: z.string().uuid(),
+  box_no: z.string().trim().min(1).max(200),
+  floor: z.string().trim().max(50).optional().nullable(),
+  imeis: z.array(z.unknown()).min(1).max(50000),
+  shipment_ref: z.string().trim().max(500).optional().nullable(),
+});
 
-function sb() {
-  return createClient(SUPABASE_URL, SERVICE_ROLE, {
-    auth: { persistSession: false },
-  });
+function serviceClient() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { persistSession: false } }
+  );
+}
+
+function cleanImeis(values: unknown[]) {
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value).replace(/\D/g, ""))
+        .filter((value) => value.length === 15)
+    )
+  );
 }
 
 export async function POST(req: Request) {
   try {
-    const { device, box_no, floor, imeis, shipment_ref } = await req.json();
-    const identity = getApiIdentity(req);
-
-    if (!device || !box_no || !Array.isArray(imeis) || imeis.length === 0) {
+    const parsed = manualInboundSchema.safeParse(
+      await req.json().catch(() => null)
+    );
+    if (!parsed.success) {
       return NextResponse.json(
         { ok: false, error: "Invalid input" },
         { status: 400 }
       );
     }
 
-    const supabase = sb();
-    const nowIso = new Date().toISOString();
-    const operation_id = crypto.randomUUID();
-
-    // 1️⃣ Create inbound batch
-    const { data: batch } = await supabase
-      .from("inbound_batches")
-.insert({
-  actor: identity.email,
-  vendor: "manual",
-  source: "manual",
-  shipment_ref: shipment_ref || null
-})
-      .select("batch_id")
-      .single();
-
-    if (!batch) throw new Error("Batch creation failed");
-
-    // 2️⃣ Find or create box
-    let { data: existingBox } = await supabase
-      .from("boxes")
-      .select("id")
-      .eq("bin_id", device)
-      .eq("box_code", box_no)
-      .maybeSingle();
-
-    let box_id: string;
-
-    if (existingBox?.id) {
-      box_id = existingBox.id;
-    } else {
-      const { data: newBox } = await supabase
-        .from("boxes")
-        .insert({
-          bin_id: device,
-          box_code: box_no,
-          floor: floor || null,
-        })
-        .select("id")
-        .single();
-
-      if (!newBox) throw new Error("Box creation failed");
-      box_id = newBox.id;
+    const imeis = cleanImeis(parsed.data.imeis);
+    if (imeis.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No valid 15-digit IMEIs found" },
+        { status: 400 }
+      );
     }
 
-    const itemsToInsert = imeis.map((imei: string) => ({
-      imei,
-      device_id: device, // ← on garde le bin_id
-      box_id,
-      status: "IN",
-      imported_at: nowIso,
-      imported_by: identity.userId,
-      import_id: batch.batch_id,
-    }));
+    const identity = getApiIdentity(req);
+    const operationId = parsed.data.operation_id || crypto.randomUUID();
+    const { data, error } = await serviceClient().rpc(
+      "confirm_inbound_batch",
+      {
+        p_operation_id: operationId,
+        p_actor_id: identity.userId,
+        p_actor: identity.email,
+        p_vendor: "manual",
+        p_source: "manual",
+        p_shipment_ref: parsed.data.shipment_ref || null,
+        p_labels: [
+          {
+            device_id: parsed.data.device,
+            box_no: parsed.data.box_no,
+            floor: parsed.data.floor || "",
+            imeis,
+          },
+        ],
+      }
+    );
 
-    const { data: insertedItems } = await supabase
-      .from("items")
-      .insert(itemsToInsert)
-      .select("item_id, imei");
+    if (error) {
+      console.error("MANUAL INBOUND COMMAND ERROR", error);
+      const conflict = error.code === "23505" || error.code === "40001";
+      return NextResponse.json(
+        {
+          ok: false,
+          error: conflict
+            ? "Inbound inventory changed. Please preview and try again."
+            : error.code === "22023" || error.code === "P0002"
+              ? "Invalid input"
+              : "Manual confirmation failed",
+        },
+        {
+          status:
+            error.code === "22023" || error.code === "P0002"
+              ? 400
+              : conflict
+                ? 409
+                : 500,
+        }
+      );
+    }
 
-    if (!insertedItems) throw new Error("Item insert failed");
-
-    // 4️⃣ Insert movements
-    const movements = buildInboundMovementRows(insertedItems, {
-      operationId: operation_id,
-      batchId: batch.batch_id,
-      boxId: box_id,
-      binId: device,
-      actorId: identity.userId,
-      actor: identity.email,
-      createdAt: nowIso,
-    });
-
-    const { error: movementError } = await supabase
-      .from("movements")
-      .insert(movements);
-
-    if (movementError) throw movementError;
+    if (data?.code === "ALL_IMEIS_ALREADY_IN_STOCK") {
+      return NextResponse.json(
+        {
+          ok: true,
+          operation_id: data.operation_id || operationId,
+          inserted: 0,
+          skipped_existing:
+            data.totals?.skipped_existing_imeis || imeis.length,
+          batch_id: null,
+        },
+        { status: 200 }
+      );
+    }
 
     return NextResponse.json({
       ok: true,
-      inserted: insertedItems.length,
-      batch_id: batch.batch_id,
+      operation_id: data.operation_id || operationId,
+      inserted: data.totals?.inserted_imeis || 0,
+      skipped_existing: data.totals?.skipped_existing_imeis || 0,
+      batch_id: data.batch_id,
     });
-  } catch (e: any) {
+  } catch (error) {
+    console.error("MANUAL INBOUND CONFIRM ERROR", error);
     return NextResponse.json(
-      { ok: false, error: e.message || "Manual confirm failed" },
+      { ok: false, error: "Manual confirmation failed" },
       { status: 500 }
     );
   }

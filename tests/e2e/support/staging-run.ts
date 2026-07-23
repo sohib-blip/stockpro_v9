@@ -20,6 +20,7 @@ export type StagingRun = {
   spreadsheetImei: string;
   manualBox: string;
   returnBox: string;
+  securityReturnBox: string;
   spreadsheetBox: string;
   uiBinName: string;
 };
@@ -56,6 +57,7 @@ export async function createStagingRun(): Promise<StagingRun> {
     spreadsheetImei: makeImei(numericStamp + 1),
     manualBox: `E2E-MANUAL-${stamp}`,
     returnBox: `E2E-RETURN-${stamp}`,
+    securityReturnBox: `E2E-SECURITY-RETURN-${stamp}`,
     spreadsheetBox: "00001",
     uiBinName: `UITESTDEVICE${shortNumber}`,
   } satisfies StagingRun;
@@ -192,7 +194,12 @@ export async function cleanupStagingRun(
       .from("boxes")
       .delete()
       .eq("bin_id", run.bin.id)
-      .in("box_code", [run.manualBox, run.returnBox, run.spreadsheetBox]);
+      .in("box_code", [
+        run.manualBox,
+        run.returnBox,
+        run.securityReturnBox,
+        run.spreadsheetBox,
+      ]);
   }
   if (batchIds.length) {
     await supabase.from("inbound_batches").delete().in("batch_id", batchIds);
@@ -232,6 +239,10 @@ export async function cleanupStagingRun(
   }
 
   if (userIds.length) {
+    await supabase
+      .from("inventory_command_receipts")
+      .delete()
+      .in("actor_id", userIds);
     await supabase.from("profiles").delete().in("user_id", userIds);
     await supabase.from("user_permissions").delete().in("user_id", userIds);
     await supabase.from("user_roles").delete().in("user_id", userIds);
@@ -264,7 +275,16 @@ export async function assertStagingRunClean(run: StagingRun) {
       "items"
     ),
     rowCount(
-      supabase.from("boxes").select("*", { count: "exact", head: true }).eq("bin_id", run.bin.id).in("box_code", [run.manualBox, run.returnBox, run.spreadsheetBox]),
+      supabase
+        .from("boxes")
+        .select("*", { count: "exact", head: true })
+        .eq("bin_id", run.bin.id)
+        .in("box_code", [
+          run.manualBox,
+          run.returnBox,
+          run.securityReturnBox,
+          run.spreadsheetBox,
+        ]),
       "boxes"
     ),
     rowCount(
@@ -302,6 +322,10 @@ export async function assertStagingRunClean(run: StagingRun) {
     rowCount(
       supabase.from("connection_events").select("*", { count: "exact", head: true }).in("email", userEmails),
       "connection events"
+    ),
+    rowCount(
+      supabase.from("inventory_command_receipts").select("*", { count: "exact", head: true }).in("actor_id", userIds),
+      "inventory command receipts"
     ),
     rowCount(
       supabase.from("profiles").select("*", { count: "exact", head: true }).in("user_id", userIds),
@@ -352,13 +376,50 @@ export async function readItem(imei: string) {
   const supabase = serviceClient();
   const { data, error } = await supabase
     .from("items")
-    .select("imei,status,box_id,boxes(box_code,floor)")
+    .select("item_id,imei,device_id,status,box_id,boxes(bin_id,box_code,floor)")
     .eq("imei", imei)
     .maybeSingle();
   throwOnError(error, `Read E2E item ${imei}`);
   return data as
-    | { imei: string; status: string; box_id: string; boxes: { box_code: string; floor: string } | null }
+    | {
+        item_id: string;
+        imei: string;
+        device_id: string;
+        status: string;
+        box_id: string;
+        boxes: { bin_id: string; box_code: string; floor: string } | null;
+      }
     | null;
+}
+
+export async function readOtherBinId(excludedId: string) {
+  const supabase = serviceClient();
+  const { data, error } = await supabase
+    .from("bins")
+    .select("id")
+    .neq("id", excludedId)
+    .limit(1)
+    .maybeSingle();
+  throwOnError(error, "Read alternate E2E bin");
+  if (!data?.id) throw new Error("Read alternate E2E bin: no row returned");
+  return String(data.id);
+}
+
+export async function readReturnMovement(operationId: string) {
+  const supabase = serviceClient();
+  const { data, error } = await supabase
+    .from("movements")
+    .select("item_id,imei,device_id,box_id")
+    .eq("operation_id", operationId)
+    .eq("type", "RETURN")
+    .single();
+  throwOnError(error, "Read E2E return movement");
+  return data as {
+    item_id: string;
+    imei: string;
+    device_id: string;
+    box_id: string;
+  };
 }
 
 export async function readAccessoryStock(id: string) {

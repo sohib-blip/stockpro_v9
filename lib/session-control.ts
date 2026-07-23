@@ -11,11 +11,26 @@ export async function touchOwnedSession(
   sessionId: string,
   now = new Date()
 ) {
-  return supabase
-    .from("profiles")
-    .update({ last_seen_at: now.toISOString() })
-    .eq("user_id", userId)
-    .eq("current_session_id", sessionId);
+  void userId;
+  void sessionId;
+  void now;
+
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session?.access_token) {
+    return { error: new Error("Missing authentication session") };
+  }
+
+  const response = await fetch("/api/auth/session", {
+    method: "PATCH",
+    headers: { Authorization: `Bearer ${session.access_token}` },
+  });
+  return {
+    error: response.ok
+      ? null
+      : new Error(`Unable to refresh application session (${response.status})`),
+  };
 }
 
 export async function signOutCurrentDevice(
@@ -25,25 +40,26 @@ export async function signOutCurrentDevice(
 ) {
   const localSessionId = storage.getItem(STOCKPRO_SESSION_KEY);
   let profileError: unknown = null;
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (user && localSessionId) {
-      const { error } = await supabase
-        .from("profiles")
-        .update({
-          current_session_id: null,
-          last_seen_at: now.toISOString(),
-        })
-        .eq("user_id", user.id)
-        .eq("current_session_id", localSessionId);
-
+  void now;
+  if (localSessionId) {
+    try {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      if (session?.access_token) {
+        const response = await fetch("/api/auth/session", {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!response.ok) {
+          profileError = new Error(
+            `Unable to end application session (${response.status})`
+          );
+        }
+      }
+    } catch (error) {
       profileError = error;
     }
-  } catch (error) {
-    profileError = error;
   }
 
   storage.removeItem(STOCKPRO_SESSION_KEY);

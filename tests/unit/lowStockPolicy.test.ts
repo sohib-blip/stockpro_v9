@@ -12,8 +12,10 @@ describe("isCronRequestAuthorized", () => {
     expect(isCronRequestAuthorized(null, "test-secret")).toBe(false);
   });
 
-  it("keeps the endpoint available when no cron secret is configured", () => {
-    expect(isCronRequestAuthorized(null, undefined)).toBe(true);
+  it("fails closed when the cron secret is missing, empty or whitespace-only", () => {
+    expect(isCronRequestAuthorized(null, undefined)).toBe(false);
+    expect(isCronRequestAuthorized("Bearer anything", "")).toBe(false);
+    expect(isCronRequestAuthorized("Bearer anything", "   ")).toBe(false);
   });
 });
 

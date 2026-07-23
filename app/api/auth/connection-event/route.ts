@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireUserFromBearer, supabaseService } from "@/lib/auth";
+import { requireUserFromBearer, takeOverAppSession } from "@/lib/auth";
 
 const takeoverSchema = z.object({
   event_id: z.string().uuid(),
@@ -23,26 +23,24 @@ export async function PATCH(req: Request) {
     );
   }
 
-  const { data, error } = await supabaseService()
-    .from("connection_events")
-    .update({ takeover: true })
-    .eq("id", parsed.data.event_id)
-    .eq("user_id", session.user.id)
-    .eq("successful", true)
-    .select("id")
-    .maybeSingle();
-
-  if (error) {
+  let takenOver = false;
+  try {
+    takenOver = await takeOverAppSession(
+      session.user.id,
+      session.sessionId,
+      parsed.data.event_id
+    );
+  } catch {
     return NextResponse.json(
-      { ok: false, error: "Unable to update the connection event" },
+      { ok: false, error: "Unable to take over the application session" },
       { status: 500 }
     );
   }
 
-  if (!data) {
+  if (!takenOver) {
     return NextResponse.json(
-      { ok: false, error: "Connection event not found" },
-      { status: 404 }
+      { ok: false, error: "Session takeover request is invalid or expired" },
+      { status: 409 }
     );
   }
 

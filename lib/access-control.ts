@@ -87,10 +87,13 @@ export function hasPermission(
   access: AccessProfile,
   required: PermissionKey | readonly PermissionKey[]
 ) {
-  if (access.role === "admin" || access.permissions.can_admin) return true;
+  if (access.role === "admin") return true;
 
   const permissions = typeof required === "string" ? [required] : required;
-  return permissions.some((permission) => access.permissions[permission]);
+  return permissions.some(
+    (permission) =>
+      permission !== "can_admin" && access.permissions[permission]
+  );
 }
 
 export function permissionForPage(pathname: string): PermissionKey | null {
@@ -119,6 +122,12 @@ export function permissionsForApi(
   // performs the credential check and rate limiting inside the route.
   if (pathname === "/api/auth/login" && method === "POST") return null;
   if (pathname === "/api/auth/connection-event" && method === "PATCH") {
+    // A newly authenticated session is intentionally not active yet when the
+    // user confirms takeover. The route verifies its bearer token plus a
+    // short-lived, server-recorded connection event.
+    return null;
+  }
+  if (pathname === "/api/auth/session") {
     return PERMISSION_KEYS;
   }
   if (pathname.startsWith("/api/admin")) return ["can_admin"];

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { supabaseAnon } from "@/lib/auth";
+import { activateAppSession, supabaseAnon } from "@/lib/auth";
 import {
   connectionMetadata,
   recordConnectionEvent,
@@ -14,6 +14,7 @@ import {
   releaseWorkloadLease,
   workloadRejectionResponse,
 } from "@/lib/security/workload-budget";
+import { sessionIdFromAccessToken } from "@/lib/security/app-session";
 
 export const dynamic = "force-dynamic";
 
@@ -99,16 +100,51 @@ export async function POST(req: Request) {
       );
     }
 
+    const sessionId = sessionIdFromAccessToken(data.session.access_token);
+    if (!sessionId) {
+      await supabase.auth.signOut({ scope: "local" });
+      return noStoreJson(
+        { ok: false, error: "Unable to establish a secure session" },
+        503
+      );
+    }
+
+    let activation: "activated" | "conflict";
+    try {
+      activation = await activateAppSession(
+        data.user.id,
+        sessionId,
+        data.user.email || email
+      );
+    } catch {
+      await supabase.auth.signOut({ scope: "local" });
+      return noStoreJson(
+        { ok: false, error: "Unable to establish a secure session" },
+        503
+      );
+    }
+
     const eventId = await recordConnectionEvent({
       ...metadata,
       user_id: data.user.id,
       email: data.user.email || email,
       successful: true,
+      auth_session_id: sessionId,
     });
+
+    if (activation === "conflict" && !eventId) {
+      await supabase.auth.signOut({ scope: "local" });
+      return noStoreJson(
+        { ok: false, error: "Unable to authorize session takeover" },
+        503
+      );
+    }
 
     return noStoreJson({
       ok: true,
       event_id: eventId,
+      stockpro_session_id: sessionId,
+      requires_takeover: activation === "conflict",
       session: {
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,

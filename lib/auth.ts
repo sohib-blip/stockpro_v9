@@ -10,6 +10,7 @@ import {
   AuthorizationCapability,
   permissionsForCapability,
 } from "./security/capabilities";
+import { sessionIdFromAccessToken } from "./security/app-session";
 
 export function supabaseAnon() {
   return createClient(
@@ -43,7 +44,12 @@ export async function requireUserFromBearer(req: Request) {
     return { ok: false as const, error: "Invalid session" };
   }
 
-  return { ok: true as const, user: data.user };
+  const sessionId = sessionIdFromAccessToken(token);
+  if (!sessionId) {
+    return { ok: false as const, error: "Invalid session" };
+  }
+
+  return { ok: true as const, user: data.user, sessionId, token };
 }
 
 export async function getAccessProfile(userId: string): Promise<AccessProfile> {
@@ -59,12 +65,16 @@ export async function getAccessProfile(userId: string): Promise<AccessProfile> {
     throw roleError || permissionError;
   }
 
-  return {
-    role: (roleRow?.role as AppRole | undefined) ?? null,
-    permissions: permissionRow
-      ? normalizePermissions(permissionRow)
-      : { ...EMPTY_PERMISSIONS },
-  };
+  const role = (roleRow?.role as AppRole | undefined) ?? null;
+  const permissions = permissionRow
+    ? normalizePermissions(permissionRow)
+    : { ...EMPTY_PERMISSIONS };
+
+  // Administrator authority has one canonical signal. The stored permission
+  // remains a derived UI field and can never override a non-admin role.
+  permissions.can_admin = role === "admin";
+
+  return { role, permissions };
 }
 
 export async function getPermissions(userId: string) {
@@ -85,6 +95,31 @@ export async function authorizeApiRequest(
     };
   }
 
+  const service = supabaseService();
+  const { data: activeSession, error: sessionError } = await service.rpc(
+    "touch_app_session",
+    {
+      p_user_id: session.user.id,
+      p_session_id: session.sessionId,
+    }
+  );
+
+  if (sessionError) {
+    return {
+      ok: false as const,
+      status: 503,
+      error: "Unable to verify application session",
+    };
+  }
+
+  if (activeSession !== true) {
+    return {
+      ok: false as const,
+      status: 401,
+      error: "Session expired or replaced",
+    };
+  }
+
   let access: AccessProfile;
   try {
     access = await getAccessProfile(session.user.id);
@@ -96,9 +131,13 @@ export async function authorizeApiRequest(
     };
   }
 
-  const isAdmin = access.role === "admin" || access.permissions.can_admin;
+  const isAdmin = access.role === "admin";
   const allowed =
-    isAdmin || required.some((permission) => access.permissions[permission]);
+    isAdmin ||
+    required.some(
+      (permission) =>
+        permission !== "can_admin" && access.permissions[permission]
+    );
 
   if (!allowed) {
     return {
@@ -113,6 +152,49 @@ export async function authorizeApiRequest(
     user: session.user,
     access,
   };
+}
+
+export async function activateAppSession(
+  userId: string,
+  sessionId: string,
+  email: string
+) {
+  const { data, error } = await supabaseService().rpc("activate_app_session", {
+    p_user_id: userId,
+    p_session_id: sessionId,
+    p_email: email,
+  });
+  if (error) throw error;
+  if (data !== "activated" && data !== "conflict") {
+    throw new Error("Unable to activate application session");
+  }
+  return data as "activated" | "conflict";
+}
+
+export async function takeOverAppSession(
+  userId: string,
+  sessionId: string,
+  eventId: string
+) {
+  const { data, error } = await supabaseService().rpc(
+    "take_over_app_session",
+    {
+      p_user_id: userId,
+      p_session_id: sessionId,
+      p_event_id: eventId,
+    }
+  );
+  if (error) throw error;
+  return data === true;
+}
+
+export async function endAppSession(userId: string, sessionId: string) {
+  const { data, error } = await supabaseService().rpc("end_app_session", {
+    p_user_id: userId,
+    p_session_id: sessionId,
+  });
+  if (error) throw error;
+  return data === true;
 }
 
 export function authorizeCapabilityRequest(

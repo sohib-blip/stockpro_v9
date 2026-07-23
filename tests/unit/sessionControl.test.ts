@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   signOutCurrentDevice,
@@ -6,83 +6,68 @@ import {
   touchOwnedSession,
 } from "../../lib/session-control";
 
-function createProfileUpdateMock() {
-  const currentSessionEq = vi.fn().mockResolvedValue({ error: null });
-  const userEq = vi.fn().mockReturnValue({ eq: currentSessionEq });
-  const update = vi.fn().mockReturnValue({ eq: userEq });
-  const from = vi.fn().mockReturnValue({ update });
-
-  return { currentSessionEq, from, update, userEq };
-}
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 describe("session control", () => {
-  it("only clears the profile session owned by the current device", async () => {
-    const profile = createProfileUpdateMock();
+  it("ends the owned application session through the server boundary", async () => {
     const signOut = vi.fn().mockResolvedValue({ error: null });
     const supabase = {
       auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: { user: { id: "user-1" } },
+        getSession: vi.fn().mockResolvedValue({
+          data: { session: { access_token: "signed-token" } },
         }),
         signOut,
       },
-      from: profile.from,
     } as unknown as SupabaseClient;
     const storage = {
-      getItem: vi.fn().mockReturnValue("old-device-session"),
+      getItem: vi.fn().mockReturnValue("owned-session"),
       removeItem: vi.fn(),
     };
+    const request = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", request);
 
-    await signOutCurrentDevice(
-      supabase,
-      storage,
-      new Date("2026-07-17T10:00:00.000Z")
-    );
+    await signOutCurrentDevice(supabase, storage);
 
-    expect(profile.from).toHaveBeenCalledWith("profiles");
-    expect(profile.userEq).toHaveBeenCalledWith("user_id", "user-1");
-    expect(profile.currentSessionEq).toHaveBeenCalledWith(
-      "current_session_id",
-      "old-device-session"
-    );
+    expect(request).toHaveBeenCalledWith("/api/auth/session", {
+      method: "DELETE",
+      headers: { Authorization: "Bearer signed-token" },
+    });
     expect(storage.removeItem).toHaveBeenCalledWith(STOCKPRO_SESSION_KEY);
     expect(signOut).toHaveBeenCalledWith({ scope: "local" });
   });
 
-  it("does not clear a profile when the browser has no StockPro session", async () => {
-    const profile = createProfileUpdateMock();
+  it("does not call the server when the browser has no StockPro session", async () => {
     const signOut = vi.fn().mockResolvedValue({ error: null });
+    const getSession = vi.fn();
     const supabase = {
-      auth: {
-        getUser: vi.fn().mockResolvedValue({
-          data: { user: { id: "user-1" } },
-        }),
-        signOut,
-      },
-      from: profile.from,
+      auth: { getSession, signOut },
     } as unknown as SupabaseClient;
     const storage = {
       getItem: vi.fn().mockReturnValue(null),
       removeItem: vi.fn(),
     };
+    const request = vi.fn();
+    vi.stubGlobal("fetch", request);
 
     await signOutCurrentDevice(supabase, storage);
 
-    expect(profile.from).not.toHaveBeenCalled();
+    expect(getSession).not.toHaveBeenCalled();
+    expect(request).not.toHaveBeenCalled();
     expect(signOut).toHaveBeenCalledWith({ scope: "local" });
   });
 
-  it("still clears the browser when reading the profile session fails", async () => {
+  it("still clears the browser when ending the server session fails", async () => {
     const signOut = vi.fn().mockResolvedValue({ error: null });
     const supabase = {
       auth: {
-        getUser: vi.fn().mockRejectedValue(new Error("network unavailable")),
+        getSession: vi.fn().mockRejectedValue(new Error("network unavailable")),
         signOut,
       },
-      from: vi.fn(),
     } as unknown as SupabaseClient;
     const storage = {
-      getItem: vi.fn().mockReturnValue("device-session"),
+      getItem: vi.fn().mockReturnValue("owned-session"),
       removeItem: vi.fn(),
     };
 
@@ -93,26 +78,28 @@ describe("session control", () => {
     expect(signOut).toHaveBeenCalledWith({ scope: "local" });
   });
 
-  it("only refreshes the heartbeat for the session still owned by the device", async () => {
-    const profile = createProfileUpdateMock();
+  it("refreshes activity through the authenticated server boundary", async () => {
     const supabase = {
-      from: profile.from,
+      auth: {
+        getSession: vi.fn().mockResolvedValue({
+          data: { session: { access_token: "signed-token" } },
+        }),
+      },
     } as unknown as SupabaseClient;
+    const request = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", request);
 
-    await touchOwnedSession(
+    const result = await touchOwnedSession(
       supabase,
       "user-1",
-      "current-device-session",
+      "owned-session",
       new Date("2026-07-17T10:00:00.000Z")
     );
 
-    expect(profile.update).toHaveBeenCalledWith({
-      last_seen_at: "2026-07-17T10:00:00.000Z",
+    expect(result.error).toBeNull();
+    expect(request).toHaveBeenCalledWith("/api/auth/session", {
+      method: "PATCH",
+      headers: { Authorization: "Bearer signed-token" },
     });
-    expect(profile.userEq).toHaveBeenCalledWith("user_id", "user-1");
-    expect(profile.currentSessionEq).toHaveBeenCalledWith(
-      "current_session_id",
-      "current-device-session"
-    );
   });
 });

@@ -4,6 +4,7 @@ import {
   areLowStockEmailsEnabled,
   isCronRequestAuthorized,
 } from "@/lib/cron/lowStockPolicy";
+import { buildLowStockEmail } from "@/lib/cron/lowStockEmail";
 
 export async function GET(req: Request) {
   const cronSecret = process.env.CRON_SECRET;
@@ -72,14 +73,9 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, reason: "no low stock" });
   }
 
-  const html = low
-    .map(
-      (d: any) =>
-        `<li><b>${d.device}</b> — IN ${d.imei_count} ≤ MIN ${d.min_stock}</li>`
-    )
-    .join("");
+  const email = buildLowStockEmail(low);
 
-  await fetch("https://api.resend.com/emails", {
+  const resend = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
@@ -88,10 +84,18 @@ export async function GET(req: Request) {
     body: JSON.stringify({
       from: "StockPro <alerts@stockpro.app>",
       to: subs.map((s) => s.email),
-      subject: `Low Stock Alert — ${low.length} items`,
-      html: `<h2>Low stock alert</h2><ul>${html}</ul>`,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
     }),
   });
+
+  if (!resend.ok) {
+    return NextResponse.json(
+      { ok: false, error: "Unable to send low-stock alerts" },
+      { status: 502 }
+    );
+  }
 
   return NextResponse.json({ ok: true, low: low.length });
 }

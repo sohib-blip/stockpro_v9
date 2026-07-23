@@ -39,17 +39,14 @@ async function saveAccess(
       : normalizePermissions(rawPermissions);
   permissions.can_admin = role === "admin";
 
-  const { error: roleError } = await supabase
-    .from("user_roles")
-    .upsert({ user_id: userId, role }, { onConflict: "user_id" });
-  if (roleError) throw roleError;
+  const { data, error } = await supabase.rpc("save_user_access", {
+    p_user_id: userId,
+    p_role: role,
+    p_permissions: permissions,
+  });
+  if (error) throw error;
 
-  const { error: permissionError } = await supabase
-    .from("user_permissions")
-    .upsert({ user_id: userId, ...permissions }, { onConflict: "user_id" });
-  if (permissionError) throw permissionError;
-
-  return permissions;
+  return normalizePermissions(data);
 }
 
 export async function GET(req: Request) {
@@ -121,27 +118,6 @@ export async function PUT(req: Request) {
     );
   }
 
-  const supabase = supabaseService();
-  const { data: currentRole } = await supabase
-    .from("user_roles")
-    .select("role")
-    .eq("user_id", parsed.data.user_id)
-    .maybeSingle();
-
-  if (currentRole?.role === "admin" && parsed.data.role !== "admin") {
-    const { count } = await supabase
-      .from("user_roles")
-      .select("user_id", { count: "exact", head: true })
-      .eq("role", "admin");
-
-    if ((count ?? 0) <= 1) {
-      return NextResponse.json(
-        { ok: false, error: "The last administrator cannot be removed" },
-        { status: 409 }
-      );
-    }
-  }
-
   try {
     const permissions = await saveAccess(
       parsed.data.user_id,
@@ -154,9 +130,13 @@ export async function PUT(req: Request) {
       permissions,
     });
   } catch (error: any) {
+    const message = error?.message || "Unable to save access";
     return NextResponse.json(
-      { ok: false, error: error?.message || "Unable to save access" },
-      { status: 500 }
+      { ok: false, error: message },
+      {
+        status:
+          message === "The last administrator cannot be removed" ? 409 : 500,
+      }
     );
   }
 }

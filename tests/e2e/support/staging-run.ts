@@ -371,16 +371,39 @@ export async function assertStagingRunClean(run: StagingRun) {
 
 export async function accessTokenFor(user: TestUser) {
   const environment = requireStagingEnvironment();
-  const client = createClient(environment.supabaseUrl, environment.anonKey, {
-    auth: { autoRefreshToken: false, persistSession: false },
+  const response = await fetch(`${environment.baseURL}/api/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email: user.email, password: user.password }),
   });
-  const { data, error } = await client.auth.signInWithPassword({
-    email: user.email,
-    password: user.password,
-  });
-  throwOnError(error, `Sign in ${user.role} test user`);
-  if (!data.session) throw new Error(`Sign in ${user.role}: no session returned`);
-  return data.session.access_token;
+  const body = await response.json().catch(() => null);
+  if (!response.ok || !body?.session?.access_token) {
+    throw new Error(
+      `Sign in ${user.role} test user: ${body?.error || response.status}`
+    );
+  }
+
+  const accessToken = String(body.session.access_token);
+  if (body.requires_takeover) {
+    const takeover = await fetch(
+      `${environment.baseURL}/api/auth/connection-event`,
+      {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ event_id: body.event_id }),
+      }
+    );
+    if (!takeover.ok) {
+      throw new Error(
+        `Take over ${user.role} test session: ${takeover.status}`
+      );
+    }
+  }
+
+  return accessToken;
 }
 
 export async function readItem(imei: string) {

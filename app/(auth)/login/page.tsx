@@ -20,7 +20,6 @@ export default function LoginPage() {
   const [msg, setMsg] = useState<string | null>(null);
 
   const [showSessionDialog, setShowSessionDialog] = useState(false);
-  const [pendingUserId, setPendingUserId] = useState("");
   const [pendingSessionId, setPendingSessionId] = useState("");
   const [pendingConnectionEventId, setPendingConnectionEventId] = useState("");
 
@@ -43,48 +42,25 @@ export default function LoginPage() {
       const localSessionId = window.sessionStorage.getItem(STOCKPRO_SESSION_KEY);
 
       if (session?.user && localSessionId) {
-        window.location.href = "/dashboard";
-        return;
+        const active = await apiFetch("/api/auth/session", {
+          cache: "no-store",
+        }).catch(() => null);
+        if (active?.ok) {
+          window.location.href = "/dashboard";
+          return;
+        }
       }
 
-      if (session?.user && !localSessionId) {
+      if (session?.user) {
+        window.sessionStorage.removeItem(STOCKPRO_SESSION_KEY);
         await supabase.auth.signOut({ scope: "local" });
-        return;
       }
     };
 
     check();
   }, [supabase]);
-  async function completeLogin(
-    userId: string,
-    sessionId: string,
-    connectionEventId = "",
-    takeover = false
-  ) {
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({
-        current_session_id: sessionId,
-        last_seen_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId);
-
-    if (profileError) {
-      setLoading(false);
-      setMsg(profileError.message);
-      return;
-    }
-
+  function completeLogin(sessionId: string) {
     window.sessionStorage.setItem(STOCKPRO_SESSION_KEY, sessionId);
-
-    if (takeover && connectionEventId) {
-      await apiFetch("/api/auth/connection-event", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ event_id: connectionEventId }),
-      }).catch(() => null);
-    }
-
     setLoading(false);
     window.location.href = "/dashboard";
   }
@@ -122,84 +98,49 @@ export default function LoginPage() {
       return;
     }
 
-    const user = data.user;
-
-    if (!user) {
+    if (!data.user || !result.stockpro_session_id) {
       setLoading(false);
       setMsg("Login failed");
       return;
     }
 
-    const sessionId = crypto.randomUUID();
+    const sessionId = String(result.stockpro_session_id);
+    if (result.requires_takeover) {
+      setPendingSessionId(sessionId);
+      setPendingConnectionEventId(result.event_id || "");
+      setShowSessionDialog(true);
+      setLoading(false);
+      return;
+    }
 
-    let { data: profile, error: profileReadError } = await supabase
-  .from("profiles")
-  .select("current_session_id,last_seen_at")
-  .eq("user_id", user.id)
-  .maybeSingle();
-
-if (profileReadError) {
-  setLoading(false);
-  setMsg(profileReadError.message);
-  return;
-}
-
-if (!profile) {
-  const { error: insertProfileError } = await supabase.from("profiles").insert({
-    user_id: user.id,
-    email: user.email,
-    current_session_id: null,
-    last_seen_at: null,
-  });
-
-  if (insertProfileError) {
-    setLoading(false);
-    setMsg(insertProfileError.message);
-    return;
-  }
-
-  profile = {
-    current_session_id: null,
-    last_seen_at: null,
-  };
-}
-
-    const lastSeen = profile?.last_seen_at
-  ? new Date(profile.last_seen_at).getTime()
-  : 0;
-
-const isSessionReallyActive =
-  profile?.current_session_id &&
-  lastSeen &&
-  Date.now() - lastSeen < 2 * 60 * 1000;
-
-if (isSessionReallyActive) {
-  setPendingUserId(user.id);
-  setPendingSessionId(sessionId);
-  setPendingConnectionEventId(result.event_id || "");
-  setShowSessionDialog(true);
-  setLoading(false);
-  return;
-}
-
-    await completeLogin(user.id, sessionId, result.event_id || "");
+    completeLogin(sessionId);
   }
 
   async function takeOverSession() {
     setShowSessionDialog(false);
     setLoading(true);
 
-    await completeLogin(
-      pendingUserId,
-      pendingSessionId,
-      pendingConnectionEventId,
-      true
-    );
+    const response = await apiFetch("/api/auth/connection-event", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ event_id: pendingConnectionEventId }),
+    }).catch(() => null);
+
+    if (!response?.ok) {
+      const body = await response?.json().catch(() => null);
+      await supabase.auth.signOut({ scope: "local" });
+      setPendingSessionId("");
+      setPendingConnectionEventId("");
+      setLoading(false);
+      setMsg(body?.error || "Unable to take over the existing session");
+      return;
+    }
+
+    completeLogin(pendingSessionId);
   }
 
   async function cancelTakeOver() {
     setShowSessionDialog(false);
-    setPendingUserId("");
     setPendingSessionId("");
     setPendingConnectionEventId("");
 

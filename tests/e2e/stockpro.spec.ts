@@ -17,6 +17,7 @@ import {
   readSupplyForProduct,
   type StagingRun,
 } from "./support/staging-run";
+import { requireStagingEnvironment } from "./support/environment";
 
 let run: StagingRun;
 
@@ -25,15 +26,24 @@ async function login(page: Page, role: "admin" | "operator" | "viewer") {
   await page.goto("/login");
   await page.getByLabel("Email").fill(user.email);
   await page.getByLabel("Password").fill(user.password);
+  const loginResponsePromise = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      new URL(response.url()).pathname === "/api/auth/login"
+  );
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  const loginResponse = await loginResponsePromise;
+  const loginBody = await loginResponse.json();
 
   const takeover = page.getByRole("button", { name: "Take over session" });
-  if (await takeover.isVisible({ timeout: 2_000 }).catch(() => false)) {
+  if (loginBody.requires_takeover) {
+    await expect(takeover).toBeVisible();
     await takeover.click();
   }
 
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByText("Test environment — do not process real inventory")).toBeVisible();
+  return String(loginBody.session.access_token);
 }
 
 async function signOut(page: Page) {
@@ -188,25 +198,65 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await signOut(page);
   });
 
-  test("expires an older browser session after a secure takeover", async ({ browser }) => {
+  test("rejects an older token immediately after a secure takeover", async ({
+    browser,
+    request,
+  }) => {
     const firstContext = await browser.newContext();
     const secondContext = await browser.newContext();
     const firstPage = await firstContext.newPage();
     const secondPage = await secondContext.newPage();
 
     try {
-      await login(firstPage, "admin");
+      const displacedToken = await login(firstPage, "admin");
 
       const user = run.users.admin;
       await secondPage.goto("/login");
       await secondPage.getByLabel("Email").fill(user.email);
       await secondPage.getByLabel("Password").fill(user.password);
+      const loginResponsePromise = secondPage.waitForResponse(
+        (response) =>
+          response.request().method() === "POST" &&
+          new URL(response.url()).pathname === "/api/auth/login"
+      );
       await secondPage.getByRole("button", { name: "Sign in", exact: true }).click();
+      const loginResponse = await loginResponsePromise;
+      const loginBody = await loginResponse.json();
       await expect(
         secondPage.getByRole("button", { name: "Take over session" })
       ).toBeVisible();
       await secondPage.getByRole("button", { name: "Take over session" }).click();
       await expect(secondPage).toHaveURL(/\/dashboard$/);
+
+      const displacedRequest = await request.get("/api/dashboard/summary", {
+        headers: { Authorization: `Bearer ${displacedToken}` },
+      });
+      expect(displacedRequest.status()).toBe(401);
+
+      const currentToken = String(loginBody.session.access_token);
+      const currentRequest = await request.get("/api/dashboard/summary", {
+        headers: { Authorization: `Bearer ${currentToken}` },
+      });
+      expect(currentRequest.status()).toBe(200);
+
+      const staging = requireStagingEnvironment();
+      const directRoleRows = async (token: string) => {
+        const response = await fetch(
+          `${staging.supabaseUrl}/rest/v1/user_roles?select=user_id`,
+          {
+            headers: {
+              apikey: staging.anonKey,
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        expect(response.status).toBe(200);
+        return (await response.json()) as Array<{ user_id: string }>;
+      };
+      expect(await directRoleRows(displacedToken)).toEqual([]);
+      expect(await directRoleRows(currentToken)).toEqual([
+        { user_id: run.users.admin.id },
+      ]);
 
       await expect(firstPage).toHaveURL(/\/login(?:\?reason=session-expired)?$/, {
         timeout: 35_000,
@@ -363,7 +413,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
   test("runs an IMEI through inbound, transfer, outbound and customer return", async ({ page, request }) => {
     const outboundReference = `E2E-OUT-${run.stamp}`;
-    await login(page, "operator");
+    const operatorToken = await login(page, "operator");
 
     await page.goto("/inbound");
     await page.getByLabel("Inbound reference").fill(`E2E inbound ${run.stamp}`);
@@ -399,7 +449,6 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(item?.boxes?.bin_id).toBe(run.bin.id);
     expect(item?.boxes?.box_code).toBe(run.manualBox);
 
-    const operatorToken = await accessTokenFor(run.users.operator);
     const rejectedTransfer = await request.post("/api/transfer/confirm", {
       headers: { Authorization: `Bearer ${operatorToken}` },
       data: {
@@ -474,7 +523,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     const outboundReference = `E2E-XLSX-OUT-${run.stamp}`;
     const duplicateReference = `E2E-XLSX-DUPLICATE-${run.stamp}`;
     createQuicklinkSpreadsheet(file);
-    await login(page, "operator");
+    const operatorToken = await login(page, "operator");
 
     await page.goto("/inbound");
     await page.getByRole("button", { name: "Spreadsheet Import" }).click();
@@ -514,7 +563,6 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByText(/All 1 IMEI from this spreadsheet already exists in stock/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Already in stock" })).toBeDisabled();
 
-    const operatorToken = await accessTokenFor(run.users.operator);
     const duplicateResponse = await request.post("/api/inbound/confirm", {
       headers: { Authorization: `Bearer ${operatorToken}` },
       data: {
@@ -732,7 +780,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
   });
 
   test("manages inventory rules, supply lifecycles and label outputs", async ({ page, request }) => {
-    await login(page, "operator");
+    const operatorToken = await login(page, "operator");
 
     await page.goto("/bins");
     const existingBinRow = page.getByRole("row").filter({ hasText: run.bin.name });
@@ -807,7 +855,6 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
     const importedSupply = await readSupplyForProduct(run.bin.name);
     expect(importedSupply?.status).toBe("IMPORTED");
-    const operatorToken = await accessTokenFor(run.users.operator);
     const terminalDelete = await request.delete("/api/supply/delete", {
       headers: { Authorization: `Bearer ${operatorToken}` },
       data: {

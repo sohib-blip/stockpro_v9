@@ -8,8 +8,8 @@ import {
   signOutCurrentDevice,
   STOCKPRO_SESSION_KEY,
   STOCKPRO_SESSION_NOTICE_KEY,
-  touchOwnedSession,
 } from "@/lib/session-control";
+import { apiFetch } from "@/lib/apiFetch";
 
 const INACTIVITY_LIMIT = 60 * 60 * 1000; // 1 hour
 const SESSION_CHECK_INTERVAL = 30 * 1000; // 30 seconds
@@ -68,26 +68,15 @@ export default function AutoLogout() {
       const localSessionId =
         window.sessionStorage.getItem(STOCKPRO_SESSION_KEY);
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
-
       if (!localSessionId) {
         await logout(false);
         return;
       }
 
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("current_session_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (error || !profile) return;
-
-      if (profile.current_session_id !== localSessionId) {
+      const response = await apiFetch("/api/auth/session", {
+        cache: "no-store",
+      }).catch(() => null);
+      if (response?.status === 401) {
         await logout(true);
       }
     }
@@ -98,13 +87,14 @@ export default function AutoLogout() {
       const localSessionId =
         window.sessionStorage.getItem(STOCKPRO_SESSION_KEY);
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      if (!localSessionId) return;
 
-      if (!user || !localSessionId) return;
-
-      await touchOwnedSession(supabase, user.id, localSessionId);
+      const response = await apiFetch("/api/auth/session", {
+        method: "PATCH",
+      }).catch(() => null);
+      if (response?.status === 401) {
+        await logout(true);
+      }
     }
 
     const events = [

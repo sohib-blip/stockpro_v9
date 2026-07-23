@@ -2,7 +2,7 @@ export function isCronRequestAuthorized(
   authorizationHeader: string | null,
   cronSecret: string | undefined
 ): boolean {
-  if (!cronSecret) return true;
+  if (!cronSecret?.trim()) return false;
 
   return authorizationHeader === `Bearer ${cronSecret}`;
 }

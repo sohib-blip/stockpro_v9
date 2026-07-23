@@ -18,6 +18,7 @@ type RecordConnectionEventInput = ConnectionMetadata & {
   email: string;
   successful: boolean;
   failure_reason?: string | null;
+  auth_session_id?: string | null;
 };
 
 function cleanHeader(value: string | null, maxLength: number) {

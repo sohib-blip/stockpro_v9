@@ -57,5 +57,15 @@ describe("API authentication coverage", () => {
     expect(login).toContain("signInWithPassword");
     expect(login).toContain("recordConnectionEvent");
     expect(login).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
+
+    const takeover = readFileSync(
+      join(API_ROOT, "auth", "connection-event", "route.ts"),
+      "utf8"
+    );
+    expect(
+      permissionsForApi("/api/auth/connection-event", "PATCH")
+    ).toBeNull();
+    expect(takeover).toContain("requireUserFromBearer");
+    expect(takeover).toContain("takeOverAppSession");
   });
 });

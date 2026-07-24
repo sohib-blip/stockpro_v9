@@ -493,11 +493,11 @@ export default function DashboardPage() {
           <div className="prototype-card-heading">
             <h2>Most shipped devices</h2>
             <span className="top-devices-card-hint">
-              View full ranking <span aria-hidden="true">↗</span>
+              View all <span aria-hidden="true">↗</span>
             </span>
           </div>
           <div className="top-device-list">
-            {topDevices.slice(0, 5).map((row) => {
+            {topDevices.slice(0, 3).map((row) => {
               const percent = totalShipped
                 ? Math.round((Number(row.total_out || 0) / totalShipped) * 100)
                 : 0;

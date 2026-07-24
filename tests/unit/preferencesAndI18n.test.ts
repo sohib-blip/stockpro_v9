@@ -26,6 +26,8 @@ describe("theme and language preferences", () => {
     expect(translateUiText("fr", "View full ranking")).toBe(
       "Voir le classement complet"
     );
+    expect(translateUiText("fr", "View all")).toBe("Voir tout");
+    expect(translateUiText("nl", "View all")).toBe("Alles bekijken");
     expect(translateUiText("nl", "Complete shipped device ranking")).toBe(
       "Volledige ranglijst van verzonden apparaten"
     );

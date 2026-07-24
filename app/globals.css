@@ -750,15 +750,26 @@ body {
 .top-device-list {
   min-height: 0;
   display: flex;
-  overflow-y: auto;
+  overflow: hidden;
   flex-direction: column;
   flex: 1;
-  gap: 9px;
-  padding-right: 6px;
-  overscroll-behavior: contain;
-  scrollbar-color: var(--border-strong) transparent;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.top-devices-card .prototype-card-heading {
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.top-devices-card .prototype-card-heading h2 {
+  min-width: 0;
+  flex: 1;
+}
+
+.top-device-row {
+  min-height: 0;
+  flex: 1;
 }
 
 .top-devices-card.is-interactive {
@@ -837,12 +848,10 @@ body {
   scrollbar-width: thin;
 }
 
-.top-device-list::-webkit-scrollbar,
 .recent-activity-list::-webkit-scrollbar {
   width: 6px;
 }
 
-.top-device-list::-webkit-scrollbar-thumb,
 .recent-activity-list::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: var(--border-strong);

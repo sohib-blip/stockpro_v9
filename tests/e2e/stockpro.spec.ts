@@ -612,6 +612,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
         const topDeviceList = stack.querySelector<HTMLElement>(
           ".top-device-list"
         );
+        const topDeviceRows = Array.from(
+          stack.querySelectorAll<HTMLElement>(".top-device-row")
+        );
         const recentActivityList = stack.querySelector<HTMLElement>(
           ".recent-activity-list"
         );
@@ -634,6 +637,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
           topDevicesBottom: topDevicesRect.bottom,
           recentActivityTop: recentActivity.getBoundingClientRect().top,
           topDeviceListBottom: topDeviceList.getBoundingClientRect().bottom,
+          topDeviceRows: topDeviceRows.length,
+          lastTopDeviceBottom:
+            topDeviceRows.at(-1)?.getBoundingClientRect().bottom ?? 0,
           recentActivityListBottom:
             recentActivityList.getBoundingClientRect().bottom,
           recentActivityBottom: recentActivityRect.bottom,
@@ -650,8 +656,14 @@ test.describe.serial("StockPro staging end-to-end", () => {
           (sideCardsLayout?.stackHeight ?? 0)
       )
     ).toBeLessThanOrEqual(1);
-    expect(sideCardsLayout?.topDeviceListOverflowY).toBe("auto");
+    expect(sideCardsLayout?.topDeviceRows).toBe(
+      Math.min(3, salesPayload.rows.length)
+    );
+    expect(sideCardsLayout?.topDeviceListOverflowY).toBe("hidden");
     expect(sideCardsLayout?.recentActivityListOverflowY).toBe("auto");
+    expect(sideCardsLayout?.lastTopDeviceBottom).toBeLessThanOrEqual(
+      sideCardsLayout?.topDeviceListBottom ?? 0
+    );
     expect(sideCardsLayout?.topDeviceListBottom).toBeLessThanOrEqual(
       sideCardsLayout?.topDevicesBottom ?? 0
     );

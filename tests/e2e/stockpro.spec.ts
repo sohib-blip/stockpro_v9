@@ -592,30 +592,66 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByText(/device bins · all devices shown/)).toBeVisible();
 
     const sideCardsLayout = await page
-      .locator(".dashboard-side-stack")
-      .evaluate((stack) => {
+      .locator(".dashboard-insights-grid")
+      .evaluate((grid) => {
+        const chartCard = grid.querySelector<HTMLElement>(
+          ".dashboard-chart-card"
+        );
+        const stack = grid.querySelector<HTMLElement>(".dashboard-side-stack");
+        if (!chartCard || !stack) return null;
+
         const topDevices = stack.querySelector<HTMLElement>(".top-devices-card");
         const recentActivity = stack.querySelector<HTMLElement>(
           ".recent-activity-card"
         );
-        const rows = Array.from(
-          stack.querySelectorAll<HTMLElement>(".top-device-row")
+        const topDeviceList = stack.querySelector<HTMLElement>(
+          ".top-device-list"
         );
-        const lastRow = rows.at(-1);
-        if (!topDevices || !recentActivity) return null;
+        const recentActivityList = stack.querySelector<HTMLElement>(
+          ".recent-activity-list"
+        );
+        if (
+          !topDevices ||
+          !recentActivity ||
+          !topDeviceList ||
+          !recentActivityList
+        ) {
+          return null;
+        }
 
+        const chartCardRect = chartCard.getBoundingClientRect();
+        const stackRect = stack.getBoundingClientRect();
         const topDevicesRect = topDevices.getBoundingClientRect();
+        const recentActivityRect = recentActivity.getBoundingClientRect();
         return {
-          overflow: topDevices.scrollHeight - topDevices.clientHeight,
-          lastRowBottom: lastRow?.getBoundingClientRect().bottom ?? 0,
+          chartCardHeight: chartCardRect.height,
+          stackHeight: stackRect.height,
           topDevicesBottom: topDevicesRect.bottom,
           recentActivityTop: recentActivity.getBoundingClientRect().top,
+          topDeviceListBottom: topDeviceList.getBoundingClientRect().bottom,
+          recentActivityListBottom:
+            recentActivityList.getBoundingClientRect().bottom,
+          recentActivityBottom: recentActivityRect.bottom,
+          topDeviceListOverflowY: getComputedStyle(topDeviceList).overflowY,
+          recentActivityListOverflowY:
+            getComputedStyle(recentActivityList).overflowY,
         };
       });
     expect(sideCardsLayout).not.toBeNull();
-    expect(sideCardsLayout?.overflow).toBeLessThanOrEqual(1);
-    expect(sideCardsLayout?.lastRowBottom).toBeLessThanOrEqual(
+    expect(sideCardsLayout?.chartCardHeight).toBeLessThan(500);
+    expect(
+      Math.abs(
+        (sideCardsLayout?.chartCardHeight ?? 0) -
+          (sideCardsLayout?.stackHeight ?? 0)
+      )
+    ).toBeLessThanOrEqual(1);
+    expect(sideCardsLayout?.topDeviceListOverflowY).toBe("auto");
+    expect(sideCardsLayout?.recentActivityListOverflowY).toBe("auto");
+    expect(sideCardsLayout?.topDeviceListBottom).toBeLessThanOrEqual(
       sideCardsLayout?.topDevicesBottom ?? 0
+    );
+    expect(sideCardsLayout?.recentActivityListBottom).toBeLessThanOrEqual(
+      sideCardsLayout?.recentActivityBottom ?? 0
     );
     expect(sideCardsLayout?.topDevicesBottom).toBeLessThan(
       sideCardsLayout?.recentActivityTop ?? 0

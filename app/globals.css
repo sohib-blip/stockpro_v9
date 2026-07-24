@@ -610,6 +610,7 @@ body {
 .dashboard-insights-grid {
   display: grid;
   grid-template-columns: minmax(0, 2.15fr) minmax(290px, 0.85fr);
+  grid-template-rows: 446px;
   gap: 16px;
   align-items: stretch;
 }
@@ -622,13 +623,18 @@ body {
 
 .dashboard-side-stack {
   min-width: 0;
+  min-height: 0;
   display: grid;
-  grid-template-rows: max-content minmax(max-content, 1fr);
+  grid-template-rows: minmax(0, 0.9fr) minmax(0, 1.1fr);
   gap: 16px;
 }
 
 .dashboard-side-stack > .prototype-card {
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
 }
 
 .dashboard-chart-card,
@@ -742,9 +748,17 @@ body {
 }
 
 .top-device-list {
+  min-height: 0;
   display: flex;
+  overflow-y: auto;
   flex-direction: column;
+  flex: 1;
   gap: 9px;
+  padding-right: 6px;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
 
 .top-device-row > div:first-child {
@@ -783,10 +797,29 @@ body {
 }
 
 .recent-activity-list {
+  min-height: 0;
   display: flex;
+  overflow-y: auto;
   flex-direction: column;
+  flex: 1;
   gap: 9px;
+  padding-right: 6px;
   font-size: 12.5px;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.top-device-list::-webkit-scrollbar,
+.recent-activity-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.top-device-list::-webkit-scrollbar-thumb,
+.recent-activity-list::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--border-strong);
 }
 
 .activity-row {
@@ -2780,6 +2813,10 @@ main.min-h-screen {
   .dashboard-insights-grid,
   .dashboard-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .dashboard-insights-grid {
+    grid-template-rows: auto;
   }
 
   .dashboard-side-stack {

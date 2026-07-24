@@ -565,15 +565,43 @@ async function openDetails(row: any) {
           </td>
 
           <td>
-  <div className="text-sm text-slate-200">
+  <div
+    className="supply-created-by text-sm text-slate-200"
+    title={row.created_by || undefined}
+  >
     {row.created_by || "-"}
   </div>
 </td>
 
           <td>
-            <span>
-              {row.from_office} → {row.to_office}
-            </span>
+            <div
+              className="supply-route"
+              aria-label={`${officeLabel(row.from_office)} to ${officeLabel(
+                row.to_office
+              )}`}
+            >
+              <span
+                className="supply-route-office"
+                title={officeLabel(row.from_office)}
+              >
+                <span className="supply-route-flag" aria-hidden="true">
+                  {officeFlag(row.from_office)}
+                </span>
+                {row.from_office}
+              </span>
+              <span className="supply-route-arrow" aria-hidden="true">
+                →
+              </span>
+              <span
+                className="supply-route-office"
+                title={officeLabel(row.to_office)}
+              >
+                <span className="supply-route-flag" aria-hidden="true">
+                  {officeFlag(row.to_office)}
+                </span>
+                {row.to_office}
+              </span>
+            </div>
           </td>
 
           <td>
@@ -915,7 +943,28 @@ async function openDetails(row: any) {
 
           <div>
             <div className="text-xs text-slate-500">Route</div>
-            <div>{detailTarget.from_office} → {detailTarget.to_office}</div>
+            <div
+              className="supply-route"
+              aria-label={`${officeLabel(
+                detailTarget.from_office
+              )} to ${officeLabel(detailTarget.to_office)}`}
+            >
+              <span className="supply-route-office">
+                <span className="supply-route-flag" aria-hidden="true">
+                  {officeFlag(detailTarget.from_office)}
+                </span>
+                {detailTarget.from_office}
+              </span>
+              <span className="supply-route-arrow" aria-hidden="true">
+                →
+              </span>
+              <span className="supply-route-office">
+                <span className="supply-route-flag" aria-hidden="true">
+                  {officeFlag(detailTarget.to_office)}
+                </span>
+                {detailTarget.to_office}
+              </span>
+            </div>
           </div>
 
           <div>

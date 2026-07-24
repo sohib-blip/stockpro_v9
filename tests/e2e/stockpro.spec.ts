@@ -699,6 +699,84 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await signOut(page);
   });
 
+  test("uses the wide desktop canvas and keeps supply routes readable", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1600, height: 900 });
+    await login(page, "operator");
+    await page.goto("/supply");
+
+    const layout = await page.locator(".supply-prototype-page").evaluate((pageRoot) => {
+      const appContent = pageRoot.closest<HTMLElement>(".app-content");
+      const table = pageRoot.querySelector<HTMLTableElement>(
+        ".supply-orders-table"
+      );
+      const createdByHeader = table?.querySelector<HTMLElement>(
+        "thead th:nth-child(2)"
+      );
+      const routeHeader = table?.querySelector<HTMLElement>(
+        "thead th:nth-child(3)"
+      );
+      const firstCreatedBy = table?.querySelector<HTMLElement>(
+        "tbody td:nth-child(2)"
+      );
+      const firstRoute = table?.querySelector<HTMLElement>(
+        "tbody td:nth-child(3)"
+      );
+      const routeDisplay =
+        firstRoute?.querySelector<HTMLElement>(".supply-route");
+
+      if (
+        !appContent ||
+        !table ||
+        !createdByHeader ||
+        !routeHeader
+      ) {
+        return null;
+      }
+
+      const pageRect = pageRoot.getBoundingClientRect();
+      const appContentRect = appContent.getBoundingClientRect();
+      const createdByRect = createdByHeader.getBoundingClientRect();
+      const routeRect = routeHeader.getBoundingClientRect();
+      const createdByCellRect = firstCreatedBy?.getBoundingClientRect();
+      const routeCellRect = firstRoute?.getBoundingClientRect();
+      const routeDisplayRect = routeDisplay?.getBoundingClientRect();
+
+      return {
+        viewportWidth: window.innerWidth,
+        pageLeft: pageRect.left,
+        pageRight: pageRect.right,
+        appContentWidth: appContentRect.width,
+        headersSeparated: createdByRect.right <= routeRect.left,
+        cellsSeparated:
+          !createdByCellRect ||
+          !routeCellRect ||
+          createdByCellRect.right <= routeCellRect.left,
+        routeFits:
+          !routeDisplayRect ||
+          !routeCellRect ||
+          routeDisplayRect.right <= routeCellRect.right,
+        routeCodes: routeDisplay?.textContent?.replace(/\s+/g, " ").trim() || "",
+      };
+    });
+
+    expect(layout).not.toBeNull();
+    expect(layout?.pageLeft).toBeLessThanOrEqual(48);
+    expect(
+      (layout?.viewportWidth ?? 0) - (layout?.pageRight ?? 0)
+    ).toBeLessThanOrEqual(48);
+    expect(layout?.appContentWidth).toBeGreaterThanOrEqual(1500);
+    expect(layout?.headersSeparated).toBe(true);
+    expect(layout?.cellsSeparated).toBe(true);
+    expect(layout?.routeFits).toBe(true);
+    if (layout?.routeCodes) {
+      expect(layout.routeCodes).toMatch(/[A-Z]{2}\s*→\s*[A-Z]{2}/);
+    }
+
+    await signOut(page);
+  });
+
   test("keeps the accessory form aligned with its preview in both input modes", async ({
     page,
   }) => {

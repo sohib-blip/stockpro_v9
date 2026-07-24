@@ -19,7 +19,9 @@ export function describeUserAgent(userAgent: string | null) {
   else if (/Linux/i.test(ua)) operatingSystem = "Linux";
 
   let device = "Computer";
-  if (/iPad|Tablet/i.test(ua)) device = "Tablet";
+  if (/iPad|Tablet/i.test(ua) || (/Android/i.test(ua) && !/Mobile/i.test(ua))) {
+    device = "Tablet";
+  }
   else if (/Mobile|iPhone|iPod|Android/i.test(ua)) device = "Mobile";
 
   return { browser, operatingSystem, device };

@@ -1,6 +1,6 @@
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { resolve } from "node:path";
+import { relative, resolve } from "node:path";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import * as XLSX from "xlsx";
 import {
@@ -20,6 +20,50 @@ import {
 import { requireStagingEnvironment } from "./support/environment";
 
 let run: StagingRun;
+
+type ApiOperation = {
+  method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
+  pathname: string;
+};
+
+function discoverProtectedApiOperations() {
+  const apiRoot = resolve(process.cwd(), "app", "api");
+  const publicOperations = new Set([
+    "POST /api/auth/login",
+    "PATCH /api/auth/connection-event",
+    "GET /api/cron/low-stock",
+  ]);
+  const operations: ApiOperation[] = [];
+
+  function visit(directory: string) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = resolve(directory, entry.name);
+      if (entry.isDirectory()) {
+        visit(path);
+        continue;
+      }
+      if (entry.name !== "route.ts") continue;
+
+      const routeDirectory = relative(apiRoot, directory).split("\\").join("/");
+      const pathname = `/api/${routeDirectory}`;
+      const source = readFileSync(path, "utf8");
+      const methods = source.matchAll(
+        /export async function (GET|POST|PUT|PATCH|DELETE)\b/g
+      );
+      for (const match of methods) {
+        const method = match[1] as ApiOperation["method"];
+        if (!publicOperations.has(`${method} ${pathname}`)) {
+          operations.push({ method, pathname });
+        }
+      }
+    }
+  }
+
+  visit(apiRoot);
+  return operations.sort((a, b) =>
+    `${a.pathname}:${a.method}`.localeCompare(`${b.pathname}:${b.method}`)
+  );
+}
 
 async function login(page: Page, role: "admin" | "operator" | "viewer") {
   const user = run.users[role];
@@ -138,6 +182,27 @@ test.describe.serial("StockPro staging end-to-end", () => {
     if (run) {
       await cleanupStagingRun(run);
       await assertStagingRunClean(run);
+    }
+  });
+
+  test("requires authentication on every private API operation", async ({
+    request,
+  }) => {
+    const operations = discoverProtectedApiOperations();
+    expect(operations.length).toBeGreaterThan(60);
+
+    for (const operation of operations) {
+      const response = await request.fetch(operation.pathname, {
+        method: operation.method,
+      });
+      expect(
+        response.status(),
+        `${operation.method} ${operation.pathname}`
+      ).toBe(401);
+      await expect(response.json()).resolves.toMatchObject({
+        ok: false,
+        error: "Authentication required",
+      });
     }
   });
 
@@ -339,7 +404,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(operatorRuleUpdate.status()).toBe(200);
     expect((await operatorRuleUpdate.json()).ok).toBe(true);
 
-    const minStockUpdate = await request.post("/api/dashboard/min-stock", {
+    const minStockUpdate = await request.post("/api/bins/update-min-stock", {
       headers: { Authorization: `Bearer ${operatorToken}` },
       data: { device_id: run.bin.id, min_stock: 2 },
     });
@@ -358,6 +423,124 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page).toHaveURL(/\/denied$/);
     await expect(page.getByRole("heading", { name: "You don't have access to this page" })).toBeVisible();
     await signOut(page);
+  });
+
+  test("enforces live row-level security for browser database tokens", async () => {
+    const staging = requireStagingEnvironment();
+    const operatorToken = await accessTokenFor(run.users.operator);
+    const viewerToken = await accessTokenFor(run.users.viewer);
+
+    async function directResponse(
+      token: string,
+      table: string,
+      query: string
+    ) {
+      return fetch(
+        `${staging.supabaseUrl}/rest/v1/${table}?${query}`,
+        {
+          headers: {
+            apikey: staging.anonKey,
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+    }
+
+    async function directRows(
+      token: string,
+      table: string,
+      query: string
+    ) {
+      const response = await directResponse(token, table, query);
+      expect(response.status, `${table}?${query}`).toBe(200);
+      return response.json();
+    }
+
+    expect(
+      await directRows(
+        viewerToken,
+        "bins",
+        `select=id,name&id=eq.${run.bin.id}`
+      )
+    ).toEqual([{ id: run.bin.id, name: run.bin.name }]);
+
+    for (const token of [operatorToken, viewerToken]) {
+      for (const [table, query] of [
+        ["items", `select=item_id,imei&imei=eq.${run.manualImei}`],
+        ["movements", `select=item_id,imei&imei=eq.${run.manualImei}`],
+      ]) {
+        const response = await directResponse(
+          token,
+          table,
+          query
+        );
+        expect(response.status, `${table}?${query}`).toBe(403);
+      }
+    }
+
+    expect(
+      await directRows(
+        viewerToken,
+        "user_roles",
+        "select=user_id,role&order=user_id"
+      )
+    ).toEqual([{ user_id: run.users.viewer.id, role: "viewer" }]);
+  });
+
+  test("returns controlled client errors for invalid operational commands", async ({
+    request,
+  }) => {
+    const operatorToken = await accessTokenFor(run.users.operator);
+    const operations: ApiOperation[] = [
+      { method: "POST", pathname: "/api/inbound/manual-preview" },
+      { method: "POST", pathname: "/api/inbound/manual-confirm" },
+      { method: "POST", pathname: "/api/inbound/confirm" },
+      { method: "POST", pathname: "/api/outbound/eod-confirm" },
+      { method: "POST", pathname: "/api/returns/preview" },
+      { method: "POST", pathname: "/api/returns/confirm" },
+      { method: "POST", pathname: "/api/transfer/preview" },
+      { method: "POST", pathname: "/api/transfer/confirm" },
+      { method: "POST", pathname: "/api/transfer/box-preview" },
+      { method: "POST", pathname: "/api/accessories/outbound/manual" },
+      { method: "POST", pathname: "/api/accessory-bins/create" },
+      { method: "POST", pathname: "/api/accessory-bins/update" },
+      { method: "POST", pathname: "/api/accessory-bins/delete" },
+      { method: "POST", pathname: "/api/accessory-bins/toggle-active" },
+      { method: "POST", pathname: "/api/bins/templates/save" },
+      { method: "POST", pathname: "/api/bins/templates/delete" },
+      { method: "POST", pathname: "/api/bins/update-min-stock" },
+      { method: "POST", pathname: "/api/dashboard/min-stock" },
+      { method: "POST", pathname: "/api/labels/generate" },
+      { method: "POST", pathname: "/api/nrd/start" },
+      { method: "POST", pathname: "/api/nrd/stop" },
+      { method: "POST", pathname: "/api/supply/create" },
+      { method: "PUT", pathname: "/api/supply/update" },
+      { method: "DELETE", pathname: "/api/supply/delete" },
+    ];
+
+    for (const operation of operations) {
+      const response = await request.fetch(operation.pathname, {
+        method: operation.method,
+        headers: {
+          Authorization: `Bearer ${operatorToken}`,
+          "Content-Type": "application/json",
+        },
+        data: {},
+      });
+      expect(
+        response.status(),
+        `${operation.method} ${operation.pathname}`
+      ).toBeGreaterThanOrEqual(400);
+      expect(
+        response.status(),
+        `${operation.method} ${operation.pathname}`
+      ).toBeLessThan(500);
+      const body = await response.json();
+      expect(body.ok, `${operation.method} ${operation.pathname}`).not.toBe(true);
+      expect(typeof body.error, `${operation.method} ${operation.pathname}`).toBe(
+        "string"
+      );
+    }
   });
 
   test("opens every operator module with the professional navigation", async ({ page }) => {
@@ -407,6 +590,91 @@ test.describe.serial("StockPro staging end-to-end", () => {
       payload.rows.length
     );
     await expect(page.getByText(/device bins · all devices shown/)).toBeVisible();
+
+    const sideCardsLayout = await page
+      .locator(".dashboard-side-stack")
+      .evaluate((stack) => {
+        const topDevices = stack.querySelector<HTMLElement>(".top-devices-card");
+        const recentActivity = stack.querySelector<HTMLElement>(
+          ".recent-activity-card"
+        );
+        const rows = Array.from(
+          stack.querySelectorAll<HTMLElement>(".top-device-row")
+        );
+        const lastRow = rows.at(-1);
+        if (!topDevices || !recentActivity) return null;
+
+        const topDevicesRect = topDevices.getBoundingClientRect();
+        return {
+          overflow: topDevices.scrollHeight - topDevices.clientHeight,
+          lastRowBottom: lastRow?.getBoundingClientRect().bottom ?? 0,
+          topDevicesBottom: topDevicesRect.bottom,
+          recentActivityTop: recentActivity.getBoundingClientRect().top,
+        };
+      });
+    expect(sideCardsLayout).not.toBeNull();
+    expect(sideCardsLayout?.overflow).toBeLessThanOrEqual(1);
+    expect(sideCardsLayout?.lastRowBottom).toBeLessThanOrEqual(
+      sideCardsLayout?.topDevicesBottom ?? 0
+    );
+    expect(sideCardsLayout?.topDevicesBottom).toBeLessThan(
+      sideCardsLayout?.recentActivityTop ?? 0
+    );
+
+    await signOut(page);
+  });
+
+  test("keeps the accessory form aligned with its preview in both input modes", async ({
+    page,
+  }) => {
+    await login(page, "operator");
+    await page.goto("/accessories");
+
+    const readLayout = () =>
+      page.locator(".accessories-process-grid").evaluate((grid) => {
+        const input = grid.querySelector<HTMLElement>(
+          ":scope > .prototype-process-input-column"
+        );
+        const preview = grid.querySelector<HTMLElement>(
+          ":scope > .prototype-empty-preview"
+        );
+        const fileInput = grid.querySelector<HTMLInputElement>(
+          'input[type="file"]'
+        );
+        if (!input || !preview) return null;
+
+        return {
+          inputHeight: input.getBoundingClientRect().height,
+          previewHeight: preview.getBoundingClientRect().height,
+          inputOverflow: input.scrollHeight - input.clientHeight,
+          fileOverflow: fileInput
+            ? fileInput.scrollWidth - fileInput.clientWidth
+            : 0,
+        };
+      });
+
+    const manualLayout = await readLayout();
+    expect(manualLayout).not.toBeNull();
+    expect(manualLayout?.inputOverflow).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        (manualLayout?.inputHeight ?? 0) - (manualLayout?.previewHeight ?? 0)
+      )
+    ).toBeLessThanOrEqual(1);
+
+    await page.getByRole("button", { name: "Spreadsheet", exact: true }).click();
+    await expect(page.getByLabel("Accessory spreadsheet file")).toBeVisible();
+
+    const spreadsheetLayout = await readLayout();
+    expect(spreadsheetLayout).not.toBeNull();
+    expect(spreadsheetLayout?.inputOverflow).toBeLessThanOrEqual(1);
+    expect(spreadsheetLayout?.fileOverflow).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(
+        (spreadsheetLayout?.inputHeight ?? 0) -
+          (spreadsheetLayout?.previewHeight ?? 0)
+      )
+    ).toBeLessThanOrEqual(1);
 
     await signOut(page);
   });
@@ -648,19 +916,30 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(movement.device_id).not.toBe(alternateBinId);
   });
 
-  test("retires the unaudited legacy outbound mutation", async ({ request }) => {
+  test("retires unaudited legacy inventory mutations", async ({ request }) => {
     const operatorToken = await accessTokenFor(run.users.operator);
     const itemBefore = await readItem(run.manualImei);
     expect(itemBefore?.status).toBe("IN");
 
-    const response = await request.post("/api/outbound", {
+    const outboundResponse = await request.post("/api/outbound", {
       headers: { Authorization: `Bearer ${operatorToken}` },
       data: {
         imei: run.manualImei,
         shipment_ref: `E2E-LEGACY-${run.stamp}`,
       },
     });
-    expect(response.status()).toBe(410);
+    expect(outboundResponse.status()).toBe(410);
+
+    const transferResponse = await request.post("/api/transfer/box", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+      data: {
+        box_code: run.manualBox,
+        source_bin_id: run.bin.id,
+        target_floor: "6",
+      },
+    });
+    expect(transferResponse.status()).toBe(410);
+
     expect((await readItem(run.manualImei))?.status).toBe("IN");
   });
 
@@ -748,8 +1027,11 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(await countAccessoryMovements(operationIds)).toBe(1);
   });
 
-  test("exports dashboards and reports low device and accessory stock", async ({ page }) => {
-    await login(page, "operator");
+  test("exports valid workbooks and reports low device and accessory stock", async ({
+    page,
+    request,
+  }) => {
+    const operatorToken = await login(page, "operator");
 
     await expectDownload(
       page,
@@ -766,6 +1048,50 @@ test.describe.serial("StockPro staging end-to-end", () => {
       page.getByRole("button", { name: "Export Accessories" }),
       /\.xlsx$/
     );
+
+    const authorization = { Authorization: `Bearer ${operatorToken}` };
+    const stockResponse = await request.get("/api/dashboard/export", {
+      headers: authorization,
+    });
+    expect(stockResponse.status()).toBe(200);
+    expect(stockResponse.headers()["content-type"]).toContain(
+      "spreadsheetml.sheet"
+    );
+    const stockWorkbook = XLSX.read(await stockResponse.body(), {
+      type: "buffer",
+    });
+    expect(stockWorkbook.SheetNames).toEqual(["Stock"]);
+    expect(
+      XLSX.utils.sheet_to_json(stockWorkbook.Sheets.Stock, {
+        header: 1,
+      })[0]
+    ).toEqual(["floor", "device", "box_code", "imei"]);
+
+    const countResponse = await request.get(
+      "/api/dashboard/export-count-sheet",
+      { headers: authorization }
+    );
+    expect(countResponse.status()).toBe(200);
+    const countWorkbook = XLSX.read(await countResponse.body(), {
+      type: "buffer",
+    });
+    expect(countWorkbook.SheetNames[0]).toBe("Summary");
+    expect(countWorkbook.SheetNames).toContain(run.bin.name.slice(0, 31));
+
+    const accessoryResponse = await request.get("/api/accessories/export", {
+      headers: authorization,
+    });
+    expect(accessoryResponse.status()).toBe(200);
+    const accessoryWorkbook = XLSX.read(await accessoryResponse.body(), {
+      type: "buffer",
+    });
+    expect(accessoryWorkbook.SheetNames).toEqual(["Accessories Stock"]);
+    expect(
+      XLSX.utils.sheet_to_json(
+        accessoryWorkbook.Sheets["Accessories Stock"],
+        { header: 1 }
+      )[0]
+    ).toEqual(["Accessory", "Stock", "Minimum stock", "Status"]);
 
     await page.getByPlaceholder("Search device…").fill(run.bin.name);
     const deviceRow = page.locator(".device-table tbody tr").filter({ hasText: run.bin.name });

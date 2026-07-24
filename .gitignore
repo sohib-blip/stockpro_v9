@@ -83,6 +83,7 @@ web_modules/
 # Playwright end-to-end test artifacts
 playwright-report/
 test-results/
+.stockpro-local/
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

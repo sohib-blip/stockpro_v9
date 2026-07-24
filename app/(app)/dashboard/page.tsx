@@ -471,7 +471,7 @@ export default function DashboardPage() {
               return (
                 <div key={row.device} className="top-device-row">
                   <div>
-                    <strong>{row.device}</strong>
+                    <strong title={row.device}>{row.device}</strong>
                     <span>{percent}%</span>
                   </div>
                   <div className="progress-track">

@@ -22,8 +22,13 @@ const excelAccessoryRoute = read(
   "app/api/accessories/outbound/excel/route.ts"
 );
 const transferRoute = read("app/api/transfer/confirm/route.ts");
+const legacyTransferPreviewRoute = read(
+  "app/api/transfer/box-preview/route.ts"
+);
+const legacyTransferRoute = read("app/api/transfer/box/route.ts");
 const outboundRoute = read("app/api/outbound/eod-confirm/route.ts");
 const legacyOutboundRoute = read("app/api/outbound/route.ts");
+const legacyMinimumStockRoute = read("app/api/dashboard/min-stock/route.ts");
 const supplyCreateRoute = read("app/api/supply/create/route.ts");
 const supplyUpdateRoute = read("app/api/supply/update/route.ts");
 const supplyDeleteRoute = read("app/api/supply/delete/route.ts");
@@ -108,10 +113,18 @@ describe("remaining transactional inventory commands", () => {
     }
   });
 
-  it("retires the unaudited legacy outbound endpoint", () => {
-    expect(legacyOutboundRoute).toContain("status: 410");
-    expect(legacyOutboundRoute).not.toContain("createClient");
-    expect(legacyOutboundRoute).not.toContain('.from("items")');
+  it("retires unaudited legacy outbound and transfer endpoints", () => {
+    for (const route of [
+      legacyOutboundRoute,
+      legacyMinimumStockRoute,
+      legacyTransferPreviewRoute,
+      legacyTransferRoute,
+    ]) {
+      expect(route).toContain("status: 410");
+      expect(route).not.toContain("createClient");
+      expect(route).not.toContain('.from("items")');
+      expect(route).not.toMatch(/\.(insert|update|delete)\s*\(/);
+    }
   });
 
   it("keeps terminal supply orders immutable at the database boundary", () => {

@@ -475,7 +475,7 @@ export default function AccessoriesPage() {
       </div>
 
       {inputMode === "manual" && (
-      <div className="prototype-input-card accessory-lines-card">
+      <div className="prototype-input-card accessory-lines-card accessory-mode-card">
         <div className="prototype-input-section-title">Accessory lines</div>
 
         <div className="space-y-3">
@@ -522,7 +522,7 @@ export default function AccessoriesPage() {
           ))}
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex gap-3 accessory-outbound-actions">
           <button
             onClick={addLine}
             className="prototype-button secondary"
@@ -541,7 +541,7 @@ export default function AccessoriesPage() {
       )}
 
       {inputMode === "spreadsheet" && (
-      <div className="prototype-input-card">
+      <div className="prototype-input-card accessory-mode-card">
         <div className="prototype-input-section-title">Spreadsheet Outbound</div>
 
         <div className="flex flex-wrap gap-3 items-center">

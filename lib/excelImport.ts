@@ -149,14 +149,39 @@ export function parseSupplierExcel(buffer: Buffer): PreviewResult {
   const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
 
   const headerRowIdx = findHeaderRow(rows);
+  const header = (rows[headerRowIdx] ?? []).map(normHeader);
 
-  // 1) IMEI col by DATA (most reliable)
-  let imeiCol = pickImeiColByData(rows, headerRowIdx);
+  // Prefer explicit operational headers. Data-based detection remains the
+  // fallback for supplier sheets with renamed or missing headers.
+  let imeiCol = header.findIndex(
+    (value) => value.includes("imei") || value.includes("serial")
+  );
+  if (imeiCol === -1) imeiCol = pickImeiColByData(rows, headerRowIdx);
 
-  // 2) Device/Box by DATA
+  // Device/Box headers avoid treating model codes such as FMC130-REV2 as box
+  // numbers merely because their digits look box-like.
   const avoid = imeiCol >= 0 ? [imeiCol] : [];
-  let boxCol = pickBoxColByData(rows, headerRowIdx, avoid);
-  let deviceCol = pickDeviceColByData(rows, headerRowIdx, [...avoid, boxCol].filter(x => x >= 0));
+  let boxCol = header.findIndex(
+    (value, index) =>
+      !avoid.includes(index) &&
+      (value.includes("box") || value.includes("carton"))
+  );
+  if (boxCol === -1) boxCol = pickBoxColByData(rows, headerRowIdx, avoid);
+
+  let deviceCol = header.findIndex(
+    (value, index) =>
+      ![...avoid, boxCol].includes(index) &&
+      (value.includes("device") ||
+        value.includes("model") ||
+        value.includes("product"))
+  );
+  if (deviceCol === -1) {
+    deviceCol = pickDeviceColByData(
+      rows,
+      headerRowIdx,
+      [...avoid, boxCol].filter((value) => value >= 0)
+    );
+  }
 
   // 3) Fallbacks (if still not found)
   if (deviceCol === -1) deviceCol = 0;
@@ -208,8 +233,14 @@ export function parseSupplierExcel(buffer: Buffer): PreviewResult {
   });
 
   const boxMap = new Map<string, number>();
+  const countedImeis = new Set<string>();
   parsed.forEach(p => {
-    if (IMEI15_RE.test(p.imei) && p.box_no) {
+    if (
+      IMEI15_RE.test(p.imei) &&
+      p.box_no &&
+      !countedImeis.has(p.imei)
+    ) {
+      countedImeis.add(p.imei);
       boxMap.set(p.box_no, (boxMap.get(p.box_no) ?? 0) + 1);
     }
   });

@@ -623,7 +623,7 @@ body {
 .dashboard-side-stack {
   min-width: 0;
   display: grid;
-  grid-template-rows: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  grid-template-rows: max-content minmax(max-content, 1fr);
   gap: 16px;
 }
 
@@ -757,7 +757,11 @@ body {
 }
 
 .top-device-row strong {
+  min-width: 0;
+  overflow: hidden;
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .top-device-row span {
@@ -1623,6 +1627,25 @@ body {
 
 .accessories-process-grid {
   grid-template-columns: 480px minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.accessories-process-grid > .prototype-process-input-column {
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.accessories-process-grid .accessory-mode-card {
+  min-height: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+}
+
+.accessories-process-grid .accessory-outbound-actions {
+  margin-top: auto;
+  padding-top: 18px;
 }
 
 .prototype-error-banner {
@@ -2791,6 +2814,10 @@ main.min-h-screen {
   .labels-workspace,
   .nrd-overview-grid {
     grid-template-columns: 1fr;
+  }
+
+  .accessories-process-grid > .prototype-process-input-column {
+    min-height: auto;
   }
 
   .prototype-rule-sidebar {

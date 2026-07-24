@@ -1306,6 +1306,20 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByRole("button", { name: "Save Corrected End Time" }).click();
     await expect(page.getByText("NRD corrected and stopped")).toBeVisible();
 
+    const historyLayout = await page
+      .getByLabel("NRD history")
+      .evaluate((history) => {
+        const header = history.querySelector("thead th");
+        return {
+          overflowY: getComputedStyle(history).overflowY,
+          maxHeight: getComputedStyle(history).maxHeight,
+          headerPosition: header ? getComputedStyle(header).position : null,
+        };
+      });
+    expect(historyLayout.overflowY).toBe("auto");
+    expect(historyLayout.maxHeight).toBe("420px");
+    expect(historyLayout.headerPosition).toBe("sticky");
+
     await expectDownload(
       page,
       page.getByRole("button", { name: "My Excel export" }),

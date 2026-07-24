@@ -656,7 +656,7 @@ async function stopTaskWithCorrection() {
         </div>
       </div>
 
-      <div className="prototype-card prototype-history-card space-y-4 relative overflow-hidden">
+      <div className="prototype-card prototype-history-card nrd-history-card space-y-4 relative overflow-hidden">
         <div className="flex justify-between items-center">
           <div className="font-semibold">My NRD History</div>
           <div className="text-xs text-slate-400">
@@ -664,7 +664,10 @@ async function stopTaskWithCorrection() {
           </div>
         </div>
 
-        <div className="border border-slate-800 rounded-xl overflow-hidden">
+        <div
+          className="nrd-history-table-scroll border border-slate-800 rounded-xl"
+          aria-label="NRD history"
+        >
           <table className="w-full text-sm">
             <thead className="bg-slate-950/50">
               <tr>

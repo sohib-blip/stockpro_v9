@@ -1854,6 +1854,44 @@ body {
   padding: 22px 24px;
 }
 
+.nrd-history-card {
+  min-width: 0;
+}
+
+.nrd-history-table-scroll {
+  max-height: 420px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.nrd-history-table-scroll table {
+  min-width: 660px;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.nrd-history-table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-elevated);
+  box-shadow: 0 1px 0 var(--border);
+}
+
+.nrd-history-table-scroll::-webkit-scrollbar {
+  width: 7px;
+  height: 7px;
+}
+
+.nrd-history-table-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: var(--border-strong);
+}
+
 .prototype-process-input-column > .prototype-input-card + .prototype-input-card {
   margin-top: 18px;
   padding-top: 18px;
@@ -3300,6 +3338,10 @@ main.min-h-screen {
   .label-preview-card,
   .nrd-overview-card {
     padding: 16px;
+  }
+
+  .nrd-history-table-scroll {
+    max-height: 360px;
   }
 
   .prototype-preview-summary {

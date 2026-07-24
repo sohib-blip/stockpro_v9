@@ -583,6 +583,11 @@ test.describe.serial("StockPro staging end-to-end", () => {
     });
     expect(response.status()).toBe(200);
     const payload = await response.json();
+    const salesResponse = await request.get("/api/dashboard/sales", {
+      headers: { Authorization: `Bearer ${viewerToken}` },
+    });
+    expect(salesResponse.status()).toBe(200);
+    const salesPayload = await salesResponse.json();
 
     await login(page, "viewer");
 
@@ -656,6 +661,28 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(sideCardsLayout?.topDevicesBottom).toBeLessThan(
       sideCardsLayout?.recentActivityTop ?? 0
     );
+
+    const rankingTrigger = page.getByRole("button", {
+      name: "View all shipped devices",
+    });
+    await expect(rankingTrigger).toBeVisible();
+    await rankingTrigger.click();
+
+    const rankingDialog = page.getByRole("dialog", {
+      name: "Complete shipped device ranking",
+    });
+    await expect(rankingDialog).toBeVisible();
+    await expect(rankingDialog.locator(".dashboard-ranking-row")).toHaveCount(
+      salesPayload.rows.length
+    );
+    if (salesPayload.rows.length > 0) {
+      await expect(rankingDialog).toContainText(salesPayload.rows[0].device);
+      await expect(rankingDialog).toContainText(
+        Number(salesPayload.rows[0].total_out).toLocaleString("en-GB")
+      );
+    }
+    await rankingDialog.getByRole("button", { name: "Close" }).click();
+    await expect(rankingDialog).toBeHidden();
 
     await signOut(page);
   });

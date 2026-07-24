@@ -761,6 +761,32 @@ body {
   scrollbar-width: thin;
 }
 
+.top-devices-card.is-interactive {
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    box-shadow 150ms ease,
+    transform 150ms ease;
+}
+
+.top-devices-card.is-interactive:hover {
+  border-color: color-mix(in srgb, var(--brand) 48%, var(--border));
+  box-shadow: var(--shadow-elevated);
+  transform: translateY(-1px);
+}
+
+.top-devices-card.is-interactive:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand) 35%, transparent);
+  outline-offset: 2px;
+}
+
+.top-devices-card-hint {
+  color: var(--brand);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .top-device-row > div:first-child {
   display: flex;
   align-items: center;
@@ -820,6 +846,182 @@ body {
 .recent-activity-list::-webkit-scrollbar-thumb {
   border-radius: 999px;
   background: var(--border-strong);
+}
+
+.dashboard-ranking-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(2, 6, 23, 0.68);
+  backdrop-filter: blur(4px);
+}
+
+.dashboard-ranking-modal {
+  width: min(100%, 680px);
+  max-height: min(82vh, 720px);
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--surface-elevated);
+  box-shadow: 0 28px 80px rgba(2, 6, 23, 0.32);
+}
+
+.dashboard-ranking-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboard-ranking-header span,
+.dashboard-ranking-summary span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.dashboard-ranking-header h2 {
+  margin: 3px 0 0;
+  color: var(--foreground);
+  font-size: 20px;
+  line-height: 1.25;
+}
+
+.dashboard-ranking-header p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.dashboard-ranking-close {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--foreground-soft);
+  cursor: pointer;
+  font: inherit;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.dashboard-ranking-close:hover {
+  border-color: var(--border-strong);
+  background: var(--surface-muted);
+  color: var(--foreground);
+}
+
+.dashboard-ranking-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.dashboard-ranking-summary > div {
+  padding: 14px 24px;
+}
+
+.dashboard-ranking-summary > div + div {
+  border-left: 1px solid var(--border);
+}
+
+.dashboard-ranking-summary strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--foreground);
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-ranking-list {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px 12px 14px;
+  overscroll-behavior: contain;
+  scrollbar-color: var(--border-strong) transparent;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.dashboard-ranking-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+.dashboard-ranking-row:last-child {
+  border-bottom: 0;
+}
+
+.dashboard-ranking-position {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--muted-strong);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-ranking-row:nth-child(-n + 3) .dashboard-ranking-position {
+  background: color-mix(in srgb, var(--brand) 12%, var(--surface));
+  color: var(--brand);
+}
+
+.dashboard-ranking-device {
+  min-width: 0;
+}
+
+.dashboard-ranking-device > strong {
+  display: block;
+  overflow: hidden;
+  margin-bottom: 7px;
+  color: var(--foreground);
+  font-size: 13.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dashboard-ranking-value {
+  min-width: 78px;
+  text-align: right;
+}
+
+.dashboard-ranking-value strong,
+.dashboard-ranking-value span {
+  display: block;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-ranking-value strong {
+  color: var(--foreground);
+  font-size: 13.5px;
+}
+
+.dashboard-ranking-value span {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11.5px;
 }
 
 .activity-row {

@@ -107,6 +107,7 @@ export default function DashboardPage() {
     useState<AccessoryCategoryFilter>("All");
   const [chartPage, setChartPage] = useState(0);
   const [showAllAccessories, setShowAllAccessories] = useState(false);
+  const [showShippedRanking, setShowShippedRanking] = useState(false);
 
   const filteredBins = useMemo(
     () =>
@@ -231,6 +232,22 @@ export default function DashboardPage() {
   useEffect(() => {
     loadAll();
   }, []);
+
+  useEffect(() => {
+    if (!showShippedRanking) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setShowShippedRanking(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [showShippedRanking]);
 
   return (
     <div className="prototype-page prototype-dashboard">
@@ -459,9 +476,25 @@ export default function DashboardPage() {
         </article>
 
         <div className="dashboard-side-stack">
-        <article className="prototype-card top-devices-card">
+        <article
+          className="prototype-card top-devices-card is-interactive"
+          role="button"
+          tabIndex={0}
+          aria-haspopup="dialog"
+          aria-label="View all shipped devices"
+          onClick={() => setShowShippedRanking(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setShowShippedRanking(true);
+            }
+          }}
+        >
           <div className="prototype-card-heading">
             <h2>Most shipped devices</h2>
+            <span className="top-devices-card-hint">
+              View full ranking <span aria-hidden="true">↗</span>
+            </span>
           </div>
           <div className="top-device-list">
             {topDevices.slice(0, 5).map((row) => {
@@ -518,6 +551,88 @@ export default function DashboardPage() {
         </article>
         </div>
       </section>
+
+      {showShippedRanking && (
+        <div
+          className="dashboard-ranking-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowShippedRanking(false);
+            }
+          }}
+        >
+          <section
+            className="dashboard-ranking-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="shipped-ranking-title"
+          >
+            <header className="dashboard-ranking-header">
+              <div>
+                <span>Outbound performance</span>
+                <h2 id="shipped-ranking-title">
+                  Complete shipped device ranking
+                </h2>
+                <p>All devices ranked by outbound volume.</p>
+              </div>
+              <button
+                type="button"
+                className="dashboard-ranking-close"
+                aria-label="Close"
+                autoFocus
+                onClick={() => setShowShippedRanking(false)}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="dashboard-ranking-summary">
+              <div>
+                <span>Devices</span>
+                <strong>{topDevices.length.toLocaleString("en-GB")}</strong>
+              </div>
+              <div>
+                <span>Total outbound</span>
+                <strong>{totalShipped.toLocaleString("en-GB")}</strong>
+              </div>
+            </div>
+
+            <div className="dashboard-ranking-list">
+              {topDevices.map((row, index) => {
+                const quantity = Number(row.total_out || 0);
+                const percent = totalShipped
+                  ? Math.round((quantity / totalShipped) * 100)
+                  : 0;
+                return (
+                  <div
+                    key={row.device}
+                    className="dashboard-ranking-row"
+                  >
+                    <span className="dashboard-ranking-position">
+                      {index + 1}
+                    </span>
+                    <div className="dashboard-ranking-device">
+                      <strong>{row.device}</strong>
+                      <div className="progress-track">
+                        <span style={{ width: `${percent}%` }} />
+                      </div>
+                    </div>
+                    <div className="dashboard-ranking-value">
+                      <strong>{quantity.toLocaleString("en-GB")}</strong>
+                      <span>{percent}%</span>
+                    </div>
+                  </div>
+                );
+              })}
+              {topDevices.length === 0 && (
+                <div className="prototype-empty">
+                  No outbound data yet
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       <article className="prototype-card prototype-table-card device-inventory-card">
           <div className="prototype-table-toolbar">

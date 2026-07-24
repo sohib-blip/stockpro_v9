@@ -23,6 +23,12 @@ describe("theme and language preferences", () => {
     expect(translateUiText("fr", "Most shipped devices")).toBe(
       "Appareils les plus expédiés"
     );
+    expect(translateUiText("fr", "View full ranking")).toBe(
+      "Voir le classement complet"
+    );
+    expect(translateUiText("nl", "Complete shipped device ranking")).toBe(
+      "Volledige ranglijst van verzonden apparaten"
+    );
     expect(
       translateUiText("nl", "3 low · 2 empty — see tables below")
     ).toBe("3 laag · 2 leeg — zie de tabellen hieronder");

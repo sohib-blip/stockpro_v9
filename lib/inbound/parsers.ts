@@ -445,7 +445,8 @@ export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[
  * Maps Truster models to StockPro device bins:
  * - T7LTE -> Neon-R
  * - T1 -> Neon-P
- * Groups rows into boxes using the Groupe column (POD-prefixed values).
+ * Groups rows into boxes using the Groupe column. Any text before the first
+ * POD marker is ignored so exported logistics prefixes do not change the box ID.
  * Accepts "Serialnumber" as the IMEI column.
  * Automatically detects the IMEI column when its header changes.
  */
@@ -540,7 +541,8 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
     }
 
     const rawGroup = String(row[idxGroup] ?? "").trim();
-    if (!/^POD/i.test(rawGroup)) {
+    const podIndex = rawGroup.search(/POD/i);
+    if (podIndex < 0) {
       invalidGroups.add(rawGroup || "(empty)");
       continue;
     }
@@ -554,7 +556,7 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
     if (seenImeis.has(imei)) continue;
     seenImeis.add(imei);
 
-    const boxNo = rawGroup.replace(/^pod/i, "POD");
+    const boxNo = rawGroup.slice(podIndex).replace(/^pod/i, "POD").trim();
     const key = `${deviceDisplay}__${boxNo}`;
     const existing = grouped.get(key) || {
       device: deviceDisplay,
@@ -575,7 +577,7 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
 
   if (invalidGroups.size > 0) {
     return makeFail(
-      `Truster: invalid Groupe value(s): ${Array.from(invalidGroups).join(", ")}. Every box ID must start with POD`,
+      `Truster: invalid Groupe value(s): ${Array.from(invalidGroups).join(", ")}. Every Groupe value must contain a box ID starting with POD`,
       [],
       { ...debug, invalidGroups: Array.from(invalidGroups) }
     );

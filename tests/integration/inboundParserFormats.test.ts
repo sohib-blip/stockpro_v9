@@ -185,6 +185,35 @@ describe("inbound spreadsheet parser integration", () => {
     }
   });
 
+  it("ignores Truster Groupe text before the first POD box ID", () => {
+    const result = parseTrustedExcel(
+      workbookBytes([
+        ["Serialnumber", "Model", "Groupe"],
+        ["623456789012345", "T7LTE", "Shipment 42 / pod-010"],
+        ["623456789012346", "T7LTE", "Warehouse note: POD-010"],
+        ["623456789012347", "T1", "Ignored prefix POD-011"],
+      ]),
+      devices
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.labels).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          device: "Neon-R T7",
+          box_no: "POD-010",
+          imeis: ["623456789012345", "623456789012346"],
+        }),
+        expect.objectContaining({
+          device: "Neon-P T1",
+          box_no: "POD-011",
+          imeis: ["623456789012347"],
+        }),
+      ])
+    );
+  });
+
   it("blocks Truster imports for invalid groups, unsupported models and missing bins", () => {
     const invalidGroup = parseTrustedExcel(
       workbookBytes([
@@ -195,7 +224,7 @@ describe("inbound spreadsheet parser integration", () => {
     );
     expect(invalidGroup).toMatchObject({
       ok: false,
-      error: expect.stringContaining("must start with POD"),
+      error: expect.stringContaining("must contain a box ID starting with POD"),
     });
 
     const unsupportedModel = parseTrustedExcel(

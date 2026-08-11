@@ -15,6 +15,7 @@ export type StagingRun = {
   users: Record<AppRole, TestUser>;
   inviteEmail: string;
   bin: { id: string; name: string };
+  alternateBin: { id: string; name: string };
   accessory: { id: string; name: string };
   manualImei: string;
   spreadsheetImei: string;
@@ -53,6 +54,7 @@ export async function createStagingRun(): Promise<StagingRun> {
     users,
     inviteEmail: `stockpro.e2e.invited.${stamp}@gmail.com`,
     bin: { id: "", name: `TESTDEVICE${shortNumber}` },
+    alternateBin: { id: "", name: `TESTALTERNATE${shortNumber}` },
     accessory: { id: "", name: `E2E Accessory ${stamp}` },
     manualImei: makeImei(numericStamp),
     spreadsheetImei: makeImei(numericStamp + 1),
@@ -103,6 +105,20 @@ export async function createStagingRun(): Promise<StagingRun> {
     throwOnError(binError, "Create E2E device bin");
     if (!bin) throw new Error("Create E2E device bin: no row returned");
     run.bin = { id: String(bin.id), name: String(bin.name) };
+
+    const { data: alternateBin, error: alternateBinError } = await supabase
+      .from("bins")
+      .insert({ name: run.alternateBin.name, active: true })
+      .select("id,name")
+      .single();
+    throwOnError(alternateBinError, "Create alternate E2E device bin");
+    if (!alternateBin) {
+      throw new Error("Create alternate E2E device bin: no row returned");
+    }
+    run.alternateBin = {
+      id: String(alternateBin.id),
+      name: String(alternateBin.name),
+    };
 
     const { error: emptyBoxError } = await supabase.from("boxes").insert({
       bin_id: run.bin.id,
@@ -251,6 +267,9 @@ export async function cleanupStagingRun(
       .eq("device_id", run.bin.id);
     await supabase.from("bins").delete().eq("id", run.bin.id);
   }
+  if (run.alternateBin.id) {
+    await supabase.from("bins").delete().eq("id", run.alternateBin.id);
+  }
 
   if (userIds.length) {
     await supabase
@@ -327,7 +346,10 @@ export async function assertStagingRunClean(run: StagingRun) {
       "automatic accessory rules"
     ),
     rowCount(
-      supabase.from("bins").select("*", { count: "exact", head: true }).in("name", [run.bin.name, run.uiBinName]),
+      supabase
+        .from("bins")
+        .select("*", { count: "exact", head: true })
+        .in("name", [run.bin.name, run.alternateBin.name, run.uiBinName]),
       "bins"
     ),
     rowCount(
@@ -432,19 +454,6 @@ export async function readItem(imei: string) {
         boxes: { bin_id: string; box_code: string; floor: string } | null;
       }
     | null;
-}
-
-export async function readOtherBinId(excludedId: string) {
-  const supabase = serviceClient();
-  const { data, error } = await supabase
-    .from("bins")
-    .select("id")
-    .neq("id", excludedId)
-    .limit(1)
-    .maybeSingle();
-  throwOnError(error, "Read alternate E2E bin");
-  if (!data?.id) throw new Error("Read alternate E2E bin: no row returned");
-  return String(data.id);
 }
 
 export async function readReturnMovement(operationId: string) {

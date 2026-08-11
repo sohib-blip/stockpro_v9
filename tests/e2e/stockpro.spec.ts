@@ -12,7 +12,6 @@ import {
   createStagingRun,
   readAccessoryStock,
   readItem,
-  readOtherBinId,
   readReturnMovement,
   readReturnRecord,
   readSupplyForProduct,
@@ -1153,7 +1152,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     const itemBefore = await readItem(run.spreadsheetImei);
     expect(itemBefore?.status).toBe("OUT");
 
-    const alternateBinId = await readOtherBinId(run.bin.id);
+    const alternateBinId = run.alternateBin.id;
     const fakeImei = "111111111111111";
     const operationId = randomUUID();
     const operatorToken = await accessTokenFor(run.users.operator);

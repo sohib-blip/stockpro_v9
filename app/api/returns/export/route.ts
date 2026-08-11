@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import {
+  returnCountryLabel,
+  returnCourierLabel,
+  returnStatusLabel,
+  returnStockActionLabel,
+} from "@/lib/returns";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,88 +17,117 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+function formatReturnDate(value: string) {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/Brussels",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(new Date(value));
+}
+
+function locationLabel(box?: string | null, floor?: string | null) {
+  const values = [box?.trim(), floor?.trim() ? `Floor ${floor.trim()}` : ""]
+    .filter(Boolean);
+  return values.join(" · ");
+}
+
 export async function GET() {
   try {
     const { data, error } = await supabase
-      .from("movements")
+      .from("return_records")
       .select(`
-        operation_id,
+        id,
         created_at,
         actor,
-        shipment_ref,
+        return_ref,
+        customer,
+        sur_id,
+        courier,
+        country_code,
+        return_status,
         return_type,
         return_reason,
         imei,
-        box_id,
         device_id,
-        items (
-          status
-        )
+        previous_box,
+        previous_floor,
+        target_box,
+        target_floor,
+        stock_action
       `)
-      .eq("type", "RETURN")
       .order("created_at", { ascending: false })
-      .limit(50000);
+      .limit(50_000);
 
     if (error) throw error;
 
-    const boxIds = Array.from(new Set((data || []).map((m: any) => m.box_id).filter(Boolean)));
-    const deviceIds = Array.from(new Set((data || []).map((m: any) => m.device_id).filter(Boolean)));
+    const deviceIds = Array.from(
+      new Set((data || []).map((record) => record.device_id).filter(Boolean))
+    );
+    const { data: bins, error: binsError } = await supabase
+      .from("bins")
+      .select("id,name")
+      .in(
+        "id",
+        deviceIds.length
+          ? deviceIds
+          : ["00000000-0000-0000-0000-000000000000"]
+      );
+    if (binsError) throw binsError;
 
-    const [{ data: boxes }, { data: bins }] = await Promise.all([
-      supabase
-        .from("boxes")
-        .select("id, box_code, floor")
-        .in("id", boxIds.length ? boxIds : ["00000000-0000-0000-0000-000000000000"]),
+    const binMap = Object.fromEntries(
+      (bins || []).map((bin) => [String(bin.id), String(bin.name || "")])
+    );
+    const rows = (data || []).map((record) => ({
+      "Return date & time": formatReturnDate(record.created_at),
+      "Return reference": record.return_ref,
+      "SUR ID": record.sur_id,
+      Customer: record.customer,
+      Courier: returnCourierLabel(record.courier),
+      Country: returnCountryLabel(record.country_code),
+      Device: binMap[String(record.device_id)] || "",
+      IMEI: record.imei,
+      Status: returnStatusLabel(record.return_status),
+      "Return type": record.return_type,
+      "Return reason": record.return_reason,
+      "Previous location": locationLabel(
+        record.previous_box,
+        record.previous_floor
+      ),
+      "Target location": locationLabel(record.target_box, record.target_floor),
+      "Stock action": returnStockActionLabel(record.stock_action),
+      "Processed by": record.actor,
+    }));
 
-      supabase
-        .from("bins")
-        .select("id, name")
-        .in("id", deviceIds.length ? deviceIds : ["00000000-0000-0000-0000-000000000000"]),
-    ]);
-
-    const boxMap = Object.fromEntries((boxes || []).map((b: any) => [b.id, b]));
-    const binMap = Object.fromEntries((bins || []).map((b: any) => [b.id, b]));
-
-    const rows = (data || []).map((m: any) => {
-      const currentStatus = String(m.items?.status || "");
-      const available = currentStatus.toUpperCase() === "IN" ? "Available" : "Already out again";
-
-      return {
-        "Date / Time": new Date(m.created_at).toLocaleString(),
-        User: m.actor || "",
-        "Return Type": m.return_type || "",
-        Reason: m.return_reason || "",
-        "Return Ref": m.shipment_ref || "",
-        Device: binMap[m.device_id]?.name || "",
-        IMEI: m.imei || "",
-        "Current Box": boxMap[m.box_id]?.box_code || "",
-        "Current Floor": boxMap[m.box_id]?.floor || "",
-        "Current Status": currentStatus,
-        Availability: available,
-        "Operation ID": m.operation_id || "",
-      };
-    });
-
-    const ws = XLSX.utils.json_to_sheet(rows);
-    ws["!cols"] = [
+    const worksheet = XLSX.utils.json_to_sheet(rows);
+    worksheet["!cols"] = [
       { wch: 22 },
-      { wch: 28 },
-      { wch: 20 },
-      { wch: 34 },
-      { wch: 22 },
-      { wch: 20 },
       { wch: 24 },
-      { wch: 18 },
+      { wch: 24 },
+      { wch: 28 },
       { wch: 14 },
-      { wch: 14 },
+      { wch: 24 },
       { wch: 20 },
-      { wch: 40 },
+      { wch: 18 },
+      { wch: 26 },
+      { wch: 22 },
+      { wch: 34 },
+      { wch: 30 },
+      { wch: 30 },
+      { wch: 22 },
+      { wch: 32 },
     ];
+    if (worksheet["!ref"]) {
+      worksheet["!autofilter"] = { ref: worksheet["!ref"] };
+    }
 
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Returns");
-
-    const buffer = XLSX.write(wb, {
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Returns Export");
+    const buffer = XLSX.write(workbook, {
       type: "buffer",
       bookType: "xlsx",
     });
@@ -101,13 +136,14 @@ export async function GET() {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "Content-Disposition": "attachment; filename=returns_export.xlsx",
+        "Content-Disposition":
+          "attachment; filename=stockpro_returns_export.xlsx",
         "Cache-Control": "no-store",
       },
     });
-  } catch (e: any) {
+  } catch (error: any) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Returns export failed" },
+      { ok: false, error: error?.message || "Returns export failed" },
       { status: 500 }
     );
   }

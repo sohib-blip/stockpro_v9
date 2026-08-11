@@ -191,6 +191,10 @@ export async function cleanupStagingRun(
   const boxIds = (items || []).map((row) => row.box_id).filter(Boolean);
   const batchIds = (items || []).map((row) => row.import_id).filter(Boolean);
 
+  if (itemIds.length) {
+    await supabase.from("return_records").delete().in("item_id", itemIds);
+  }
+  await supabase.from("return_records").delete().in("imei", imeis);
   if (itemIds.length) await supabase.from("movements").delete().in("item_id", itemIds);
   if (boxIds.length) await supabase.from("movements").delete().in("box_id", boxIds);
   await supabase.from("movements").delete().in("imei", imeis);
@@ -301,6 +305,10 @@ export async function assertStagingRunClean(run: StagingRun) {
     rowCount(
       supabase.from("movements").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei]),
       "device movements"
+    ),
+    rowCount(
+      supabase.from("return_records").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei]),
+      "return records"
     ),
     rowCount(
       supabase.from("inbound_batches").select("*", { count: "exact", head: true }).in("actor", userEmails),
@@ -453,6 +461,33 @@ export async function readReturnMovement(operationId: string) {
     imei: string;
     device_id: string;
     box_id: string;
+  };
+}
+
+export async function readReturnRecord(operationId: string) {
+  const supabase = serviceClient();
+  const { data, error } = await supabase
+    .from("return_records")
+    .select(
+      "operation_id,item_id,imei,device_id,return_ref,customer,sur_id,courier,country_code,return_status,target_box,target_floor,stock_action"
+    )
+    .eq("operation_id", operationId)
+    .single();
+  throwOnError(error, "Read E2E return record");
+  return data as {
+    operation_id: string;
+    item_id: string;
+    imei: string;
+    device_id: string;
+    return_ref: string;
+    customer: string;
+    sur_id: string;
+    courier: string;
+    country_code: string;
+    return_status: string;
+    target_box: string | null;
+    target_floor: string | null;
+    stock_action: string;
   };
 }
 

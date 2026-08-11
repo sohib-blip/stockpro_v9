@@ -3,6 +3,11 @@ import { z } from "zod";
 import { getApiIdentity } from "@/lib/api-identity";
 import { supabaseService } from "@/lib/auth";
 import {
+  RETURN_COUNTRY_CODES,
+  RETURN_COURIER_VALUES,
+  RETURN_STATUS_VALUES,
+} from "@/lib/returns";
+import {
   acquireWorkloadLease,
   releaseWorkloadLease,
   workloadRejectionResponse,
@@ -16,6 +21,15 @@ const HISTORY_PAGE_SIZE = 50;
 const cursorSchema = z.object({
   created_at: z.string().datetime({ offset: true }),
   history_key: z.string().min(1).max(500),
+});
+const historyFiltersSchema = z.object({
+  search: z.string().trim().max(200),
+  month: z
+    .string()
+    .regex(/^$|^\d{4}-(0[1-9]|1[0-2])$/),
+  status: z.enum(RETURN_STATUS_VALUES).or(z.literal("")),
+  courier: z.enum(RETURN_COURIER_VALUES).or(z.literal("")),
+  country: z.enum(RETURN_COUNTRY_CODES).or(z.literal("")),
 });
 
 function decodeCursor(value: string | null) {
@@ -42,11 +56,20 @@ function encodeCursor(row: { created_at: string; history_key: string }) {
 
 export async function GET(req: Request) {
   let cursor: z.infer<typeof cursorSchema> | null;
+  let filters: z.infer<typeof historyFiltersSchema>;
   try {
-    cursor = decodeCursor(new URL(req.url).searchParams.get("cursor"));
+    const searchParams = new URL(req.url).searchParams;
+    cursor = decodeCursor(searchParams.get("cursor"));
+    filters = historyFiltersSchema.parse({
+      search: searchParams.get("search") || "",
+      month: searchParams.get("month") || "",
+      status: searchParams.get("status") || "",
+      courier: searchParams.get("courier") || "",
+      country: searchParams.get("country") || "",
+    });
   } catch {
     return NextResponse.json(
-      { ok: false, error: "Invalid history cursor" },
+      { ok: false, error: "Invalid return history query" },
       { status: 400 }
     );
   }
@@ -64,6 +87,11 @@ export async function GET(req: Request) {
         p_cursor_created_at: cursor?.created_at || null,
         p_cursor_history_key: cursor?.history_key || null,
         p_limit: HISTORY_PAGE_SIZE + 1,
+        p_search: filters.search || null,
+        p_month: filters.month ? `${filters.month}-01` : null,
+        p_return_status: filters.status || null,
+        p_courier: filters.courier || null,
+        p_country_code: filters.country || null,
       }
     );
 

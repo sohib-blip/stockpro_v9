@@ -14,6 +14,7 @@ import {
   readItem,
   readOtherBinId,
   readReturnMovement,
+  readReturnRecord,
   readSupplyForProduct,
   type StagingRun,
 } from "./support/staging-run";
@@ -468,6 +469,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
       for (const [table, query] of [
         ["items", `select=item_id,imei&imei=eq.${run.manualImei}`],
         ["movements", `select=item_id,imei&imei=eq.${run.manualImei}`],
+        ["return_records", `select=item_id,imei&imei=eq.${run.manualImei}`],
       ]) {
         const response = await directResponse(
           token,
@@ -914,6 +916,11 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
     await page.goto("/returns");
     await page.getByLabel("Return reference").fill(`E2E-RETURN-${run.stamp}`);
+    await page.getByLabel("Return courier").selectOption("DHL");
+    await page.getByLabel("Return country").selectOption("BE");
+    await page.getByLabel("Customer").fill("E2E Customer");
+    await page.getByLabel("SUR ID").fill(`SUR-${run.stamp}`);
+    await page.getByLabel("Return status").selectOption("available");
     await page.getByLabel("Return type").selectOption("cancellation_stop");
     await page.getByLabel("Return reason").selectOption("Other");
     await page.getByLabel("Return target box").fill(run.returnBox);
@@ -921,15 +928,17 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByLabel("Returned IMEIs").fill(run.manualImei);
     await page.getByRole("button", { name: "Preview Return" }).click();
     await expect(page.getByText("Return Preview")).toBeVisible();
-    await expect(page.getByText("Valid returns").locator("..").getByText("1")).toBeVisible();
+    await expect(
+      page.getByText("Valid", { exact: true }).locator("..").getByText("1")
+    ).toBeVisible();
     await page.getByRole("button", { name: "Confirm Return" }).click();
-    await expect(page.getByText("Return completed: 1 IMEIs returned to stock.")).toBeVisible();
+    await expect(page.getByText("Return completed: 1 IMEIs added to stock.")).toBeVisible();
     await expect(
       page.locator("#returns-history tbody tr").filter({ hasText: `E2E-RETURN-${run.stamp}` })
     ).toBeVisible();
     await expectDownload(
       page,
-      page.getByRole("button", { name: "Export all returns" }),
+      page.getByRole("button", { name: "Export Excel" }),
       /\.xlsx$/
     );
 
@@ -1050,6 +1059,96 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await signOut(page);
   });
 
+  test("records damaged and unprocessed returns without changing stock", async ({
+    request,
+  }) => {
+    const itemBefore = await readItem(run.spreadsheetImei);
+    expect(itemBefore?.status).toBe("OUT");
+    const operatorToken = await accessTokenFor(run.users.operator);
+    const returnReferences: string[] = [];
+
+    for (const [index, returnStatus] of [
+      "damaged",
+      "returned_unprocessed",
+    ].entries()) {
+      const operationId = randomUUID();
+      const returnReference = `E2E-NO-STOCK-${index}-${run.stamp}`;
+      returnReferences.push(returnReference);
+      const response = await request.post("/api/returns/confirm", {
+        headers: { Authorization: `Bearer ${operatorToken}` },
+        data: {
+          operation_id: operationId,
+          items: [{ item_id: itemBefore?.item_id }],
+          target_box: null,
+          target_floor: null,
+          return_ref: returnReference,
+          return_type: "technical_stop",
+          return_reason: "Faulty unit",
+          return_status: returnStatus,
+          courier: index === 0 ? "DHL" : "EASYPOST",
+          country_code: "BE",
+          customer: "E2E No Stock Customer",
+          sur_id: `SUR-NO-STOCK-${index}-${run.stamp}`,
+        },
+      });
+
+      expect(response.status()).toBe(200);
+      expect(await response.json()).toMatchObject({
+        recorded: 1,
+        added_to_stock: 0,
+        logged_only: 1,
+        return_status: returnStatus,
+      });
+      expect((await readItem(run.spreadsheetImei))?.status).toBe("OUT");
+
+      const record = await readReturnRecord(operationId);
+      expect(record).toMatchObject({
+        item_id: itemBefore?.item_id,
+        imei: run.spreadsheetImei,
+        device_id: run.bin.id,
+        return_status: returnStatus,
+        target_box: null,
+        target_floor: null,
+        stock_action: "no_stock_change",
+      });
+    }
+
+    const exportResponse = await request.get("/api/returns/export", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+    });
+    expect(exportResponse.status()).toBe(200);
+    expect(exportResponse.headers()["content-disposition"]).toContain(
+      "stockpro_returns_export.xlsx"
+    );
+
+    const workbook = XLSX.read(await exportResponse.body(), { type: "buffer" });
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    const exportRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
+      worksheet,
+      { defval: "" }
+    );
+    const noStockRows = exportRows.filter((row) =>
+      returnReferences.includes(String(row["Return reference"]))
+    );
+
+    expect(noStockRows).toHaveLength(2);
+    expect(noStockRows.map((row) => row.Status).sort()).toEqual([
+      "Damaged",
+      "Returned — Unprocessed",
+    ]);
+    for (const row of noStockRows) {
+      expect(row["Return date & time"]).toBeTruthy();
+      expect(row["SUR ID"]).toContain("SUR-NO-STOCK-");
+      expect(row.Customer).toBe("E2E No Stock Customer");
+      expect(["DHL", "EasyPost"]).toContain(row.Courier);
+      expect(row.Country).toBe("🇧🇪 Belgium");
+      expect(row.Device).toBe(run.bin.name);
+      expect(String(row.IMEI)).toBe(run.spreadsheetImei);
+      expect(row["Target location"]).toBe("");
+      expect(row["Stock action"]).toBe("No stock change");
+    }
+  });
+
   test("binds return state and audit to canonical item metadata", async ({ request }) => {
     const itemBefore = await readItem(run.spreadsheetImei);
     expect(itemBefore?.status).toBe("OUT");
@@ -1074,6 +1173,11 @@ test.describe.serial("StockPro staging end-to-end", () => {
         return_ref: `E2E-SECURITY-RETURN-${run.stamp}`,
         return_type: "technical_stop",
         return_reason: "Faulty unit",
+        return_status: "available",
+        courier: "EASYPOST",
+        country_code: "NL",
+        customer: "E2E Security Customer",
+        sur_id: `SUR-SECURITY-${run.stamp}`,
       },
     });
 
@@ -1091,6 +1195,20 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(movement.imei).not.toBe(fakeImei);
     expect(movement.device_id).toBe(run.bin.id);
     expect(movement.device_id).not.toBe(alternateBinId);
+
+    const record = await readReturnRecord(operationId);
+    expect(record).toMatchObject({
+      item_id: itemBefore?.item_id,
+      imei: run.spreadsheetImei,
+      device_id: run.bin.id,
+      return_status: "available",
+      courier: "EASYPOST",
+      country_code: "NL",
+      customer: "E2E Security Customer",
+      target_box: run.securityReturnBox,
+      target_floor: "00",
+      stock_action: "added_to_stock",
+    });
   });
 
   test("retires unaudited legacy inventory mutations", async ({ request }) => {

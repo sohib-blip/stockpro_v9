@@ -26,6 +26,7 @@ const TABLE_CANDIDATES = [
   "nrd_time_logs",
   "profiles",
   "return_history_entries",
+  "return_records",
   "supplies",
   "supply_items",
   "supply_status_history",
@@ -50,6 +51,7 @@ const COPY_ORDER = [
   "supply_items",
   "supply_status_history",
   "movements",
+  "return_records",
   "accessory_movements",
   "nrd_time_logs",
 ];
@@ -71,6 +73,7 @@ const LEGACY_PRODUCTION_SNAPSHOT_TABLES = [
 ];
 
 const DELETE_ORDER = [
+  "return_records",
   "return_history_entries",
   "app_sessions",
   "workload_leases",
@@ -115,6 +118,7 @@ const PRIMARY_KEYS = {
   nrd_time_logs: "id",
   profiles: "user_id",
   return_history_entries: "history_key",
+  return_records: "id",
   supplies: "id",
   supply_items: "id",
   supply_status_history: "id",
@@ -540,6 +544,9 @@ function transformRows(
     if (table === "movements") {
       row.actor_id = remapId(row.actor_id, userIdMap);
       row.created_by = remapId(row.created_by, userIdMap);
+    }
+    if (table === "return_records") {
+      row.actor_id = remapId(row.actor_id, userIdMap);
     }
     if (table === "supplies") {
       row.created_by_id = remapId(row.created_by_id, userIdMap);

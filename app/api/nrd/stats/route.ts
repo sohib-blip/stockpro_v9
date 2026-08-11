@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { resolveApiUserEmail } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -37,15 +38,11 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
 
-    const userEmail = url.searchParams.get("user_email");
+    const userEmail = resolveApiUserEmail(
+      req,
+      url.searchParams.get("user_email")
+    );
     const periodMonth = url.searchParams.get("period_month");
-
-    if (!userEmail) {
-      return NextResponse.json(
-        { ok: false, error: "Missing user_email" },
-        { status: 400 }
-      );
-    }
 
     const range = getMonthRange(periodMonth);
 

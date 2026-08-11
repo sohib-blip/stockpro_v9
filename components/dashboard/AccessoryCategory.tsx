@@ -1,6 +1,7 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
+import { ChevronRight } from "lucide-react";
 
 type Props = {
   title: string;
@@ -39,7 +40,7 @@ export default function AccessoryCategory({
           animate={{ rotate: open ? 90 : 0 }}
           transition={{ duration: 0.2 }}
         >
-          ▶
+          <ChevronRight size={16} />
         </motion.span>
 
       </button>
@@ -60,8 +61,8 @@ export default function AccessoryCategory({
 
                 <tr className="text-left text-slate-400 border-b border-white/5">
                   <th className="py-3 px-4">Accessory</th>
-                  <th>Qty</th>
-                  <th>Min</th>
+                  <th>Quantity</th>
+                  <th>Minimum</th>
                   <th>Status</th>
                 </tr>
 
@@ -94,12 +95,12 @@ export default function AccessoryCategory({
                         className={`px-2 py-1 rounded text-xs font-semibold
                           ${
                             a.status === "OK"
-                              ? "bg-green-500/20 text-green-400"
+                              ? "bg-emerald-500/20 text-emerald-400"
                               : ""
                           }
                           ${
                             a.status === "LOW"
-                              ? "bg-yellow-500/20 text-yellow-400"
+                              ? "bg-amber-500/20 text-amber-300"
                               : ""
                           }
                           ${

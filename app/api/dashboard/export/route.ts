@@ -1,29 +1,53 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import {
+  authorizeCapabilityRequest,
+  supabaseService,
+} from "@/lib/auth";
+import {
+  acquireWorkloadLease,
+  releaseWorkloadLease,
+  workloadRejectionResponse,
+} from "@/lib/security/workload-budget";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const MAX_EXPORT_ROWS = 50_000;
+const MAX_EXPORT_BYTES = 32 * 1024 * 1024;
 
-export async function GET() {
+export async function GET(req: Request) {
+  const authorization = await authorizeCapabilityRequest(
+    req,
+    "inventory.export.raw"
+  );
+  if (!authorization.ok) {
+    return NextResponse.json(
+      { ok: false, error: authorization.error },
+      { status: authorization.status }
+    );
+  }
+
+  const admission = await acquireWorkloadLease(req, "dashboardExport", {
+    principal: authorization.user.id,
+  });
+  if (!admission.ok) return workloadRejectionResponse(admission);
+
   try {
+    const supabase = supabaseService();
     let allRows: any[] = [];
-    let page = 0;
     const pageSize = 1000;
+    const requestedRows = MAX_EXPORT_ROWS + 1;
 
-    while (true) {
-      const from = page * pageSize;
-      const to = from + pageSize - 1;
+    while (allRows.length < requestedRows) {
+      const from = allRows.length;
+      const to =
+        from + Math.min(pageSize, requestedRows - allRows.length) - 1;
 
       const { data, error } = await supabase
         .from("stock_export_view")
-        .select("*")
+        .select("item_id,floor,device,box_code,imei")
         .order("item_id", { ascending: true })
         .range(from, to);
 
@@ -38,8 +62,17 @@ export async function GET() {
 
       allRows.push(...data);
 
-      if (data.length < pageSize) break;
-      page++;
+      if (data.length < to - from + 1) break;
+    }
+
+    if (allRows.length > MAX_EXPORT_ROWS) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Stock export exceeds the ${MAX_EXPORT_ROWS}-row synchronous limit.`,
+        },
+        { status: 413 }
+      );
     }
 
     const rows = allRows.map((r: any) => ({
@@ -84,6 +117,13 @@ export async function GET() {
       bookType: "xlsx",
     });
 
+    if (buffer.length > MAX_EXPORT_BYTES) {
+      return NextResponse.json(
+        { ok: false, error: "Generated stock export is too large." },
+        { status: 413 }
+      );
+    }
+
     return new NextResponse(buffer, {
       headers: {
         "Content-Type":
@@ -97,5 +137,7 @@ export async function GET() {
       { ok: false, error: e?.message || "Export failed" },
       { status: 500 }
     );
+  } finally {
+    await releaseWorkloadLease(admission.leaseId);
   }
 }

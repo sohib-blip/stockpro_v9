@@ -1,83 +1,35 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { ReactNode, useEffect, useMemo, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import { getUserRole } from "@/lib/getUserRoles";
+import { ReactNode, useEffect } from "react";
+import { permissionForPage } from "@/lib/access-control";
+import { useAccess } from "@/components/AccessProvider";
 
 type Props = { children: ReactNode };
 
-function safeStartsWith(a: any, b: any) {
-  return String(a ?? "").startsWith(String(b ?? ""));
-}
-
 export default function RouteGuard({ children }: Props) {
-
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const pathnameRaw = usePathname();
   const pathname = String(pathnameRaw ?? "");
   const router = useRouter();
-
-  const [ready, setReady] = useState(false);
+  const { loading, user, hasPermission } = useAccess();
 
   useEffect(() => {
-
-    let mounted = true;
-
-    async function check() {
-
-      const role = await getUserRole();
-
-      const { data } = await supabase.auth.getSession();
-      const logged = !!data.session;
-
-      const isLogin = safeStartsWith(pathname, "/login");
-      const isPublic =
-        pathname === "/" ||
-        isLogin ||
-        safeStartsWith(pathname, "/auth") ||
-        safeStartsWith(pathname, "/api");
-
-      if (isPublic) {
-        if (mounted) setReady(true);
-        return;
-      }
-
-      if (!logged) {
-        router.push("/login");
-        return;
-      }
-
-      // 🔒 ROLE SECURITY
-
-      if (pathname.startsWith("/settings") && role !== "admin") {
-        router.push("/dashboard");
-        return;
-      }
-
-      if (
-        (pathname.startsWith("/inbound") ||
-          pathname.startsWith("/outbound") ||
-          pathname.startsWith("/transfer")) &&
-        role === "viewer"
-      ) {
-        router.push("/dashboard");
-        return;
-      }
-
-      if (mounted) setReady(true);
-
+    if (loading) return;
+    if (!user) {
+      router.replace("/login");
+      return;
     }
 
-    check();
+    const required = permissionForPage(pathname);
+    if (required && !hasPermission(required)) {
+      router.replace("/denied");
+    }
+  }, [hasPermission, loading, pathname, router, user]);
 
-    return () => {
-      mounted = false;
-    };
+  if (loading || !user) return null;
 
-  }, [pathname, router, supabase]);
-
-  if (!ready) return null;
+  const required = permissionForPage(pathname);
+  if (required && !hasPermission(required)) return null;
 
   return <>{children}</>;
 }

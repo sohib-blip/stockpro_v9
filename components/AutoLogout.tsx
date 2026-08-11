@@ -1,9 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
-import ConfirmDialog from "@/components/ConfirmDialog";
+import { isAuthenticationRoute } from "@/lib/auth-routes";
+import {
+  signOutCurrentDevice,
+  STOCKPRO_SESSION_KEY,
+  STOCKPRO_SESSION_NOTICE_KEY,
+} from "@/lib/session-control";
+import { apiFetch } from "@/lib/apiFetch";
 
 const INACTIVITY_LIMIT = 60 * 60 * 1000; // 1 hour
 const SESSION_CHECK_INTERVAL = 30 * 1000; // 30 seconds
@@ -11,38 +17,37 @@ const HEARTBEAT_INTERVAL = 60 * 1000; // 1 minute
 
 export default function AutoLogout() {
   const router = useRouter();
-  const [sessionExpired, setSessionExpired] = useState(false);
+  const pathname = usePathname() || "";
+  const isAuthRoute = isAuthenticationRoute(pathname);
 
   useEffect(() => {
+    if (isAuthRoute) return;
+
     const supabase = createSupabaseBrowserClient();
 
     let inactivityTimer: ReturnType<typeof setTimeout>;
     let sessionChecker: ReturnType<typeof setInterval>;
     let heartbeat: ReturnType<typeof setInterval>;
     let expired = false;
+    let stopping = false;
 
     async function logout(showMessage = false) {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (user) {
-        await supabase
-          .from("profiles")
-          .update({
-            current_session_id: null,
-            last_seen_at: new Date().toISOString(),
-          })
-          .eq("user_id", user.id);
-      }
-
-      window.sessionStorage.removeItem("stockpro_session_id");
-
-      await supabase.auth.signOut();
+      if (stopping) return;
+      stopping = true;
+      if (showMessage) expired = true;
 
       if (showMessage) {
-        expired = true;
-        setSessionExpired(true);
+        window.sessionStorage.setItem(
+          STOCKPRO_SESSION_NOTICE_KEY,
+          "session-expired"
+        );
+      }
+
+      await signOutCurrentDevice(supabase, window.sessionStorage);
+
+      if (showMessage) {
+        router.replace("/login?reason=session-expired");
+        router.refresh();
         return;
       }
 
@@ -51,58 +56,45 @@ export default function AutoLogout() {
     }
 
     function resetTimer() {
-      if (expired) return;
+      if (expired || stopping) return;
 
       clearTimeout(inactivityTimer);
       inactivityTimer = setTimeout(() => logout(false), INACTIVITY_LIMIT);
     }
 
     async function checkSession() {
-      if (expired) return;
+      if (expired || stopping) return;
 
       const localSessionId =
-        window.sessionStorage.getItem("stockpro_session_id");
-
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) return;
+        window.sessionStorage.getItem(STOCKPRO_SESSION_KEY);
 
       if (!localSessionId) {
         await logout(false);
         return;
       }
 
-      const { data: profile, error } = await supabase
-        .from("profiles")
-        .select("current_session_id")
-        .eq("user_id", user.id)
-        .single();
-
-      if (error || !profile) return;
-
-      if (profile.current_session_id !== localSessionId) {
+      const response = await apiFetch("/api/auth/session", {
+        cache: "no-store",
+      }).catch(() => null);
+      if (response?.status === 401) {
         await logout(true);
       }
     }
 
     async function updateHeartbeat() {
+      if (expired || stopping) return;
+
       const localSessionId =
-        window.sessionStorage.getItem("stockpro_session_id");
+        window.sessionStorage.getItem(STOCKPRO_SESSION_KEY);
 
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
+      if (!localSessionId) return;
 
-      if (!user || !localSessionId) return;
-
-      await supabase
-        .from("profiles")
-        .update({
-          last_seen_at: new Date().toISOString(),
-        })
-        .eq("user_id", user.id);
+      const response = await apiFetch("/api/auth/session", {
+        method: "PATCH",
+      }).catch(() => null);
+      if (response?.status === 401) {
+        await logout(true);
+      }
     }
 
     const events = [
@@ -133,28 +125,7 @@ export default function AutoLogout() {
         window.removeEventListener(event, resetTimer);
       });
     };
-  }, [router]);
+  }, [isAuthRoute, router]);
 
-  return (
-    <ConfirmDialog
-      open={sessionExpired}
-      title="🔒 Session expired"
-      message={
-        "Someone has signed in to your account from another device.\n\nFor security reasons, this session has been closed."
-      }
-      confirmText="Login again"
-      cancelText="Close"
-      danger
-      onConfirm={() => {
-        setSessionExpired(false);
-        router.replace("/login");
-        router.refresh();
-      }}
-      onCancel={() => {
-        setSessionExpired(false);
-        router.replace("/login");
-        router.refresh();
-      }}
-    />
-  );
+  return null;
 }

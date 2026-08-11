@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { resolveApiUserEmail } from "@/lib/api-identity";
 import * as XLSX from "xlsx";
 
 export const runtime = "nodejs";
@@ -35,13 +36,13 @@ function getMonthRange(periodMonth?: string | null) {
 }
 
 function formatDate(value: string) {
-  return new Date(value).toLocaleDateString("fr-BE", {
+  return new Date(value).toLocaleDateString("en-GB", {
     timeZone: "Europe/Brussels",
   });
 }
 
 function formatTime(value: string) {
-  return new Date(value).toLocaleTimeString("fr-BE", {
+  return new Date(value).toLocaleTimeString("en-GB", {
     timeZone: "Europe/Brussels",
     hour: "2-digit",
     minute: "2-digit",
@@ -58,15 +59,11 @@ export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
 
-    const userEmail = url.searchParams.get("user_email");
+    const userEmail = resolveApiUserEmail(
+      req,
+      url.searchParams.get("user_email")
+    );
     const periodMonth = url.searchParams.get("period_month");
-
-    if (!userEmail) {
-      return NextResponse.json(
-        { ok: false, error: "Missing user_email" },
-        { status: 400 }
-      );
-    }
 
     const range = getMonthRange(periodMonth);
 

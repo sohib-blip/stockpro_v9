@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch } from "@/lib/apiFetch";
 
 type AccessoryCategory =
   | "Packages"
@@ -55,6 +56,7 @@ export default function BinsPage() {
   useState<AccessoryCategory>("Consumables");
 
   const [loading, setLoading] = useState(false);
+  const [activeSetupTab, setActiveSetupTab] = useState<"bins" | "rules" | "accessories">("bins");
 
   async function loadBins() {
     const { data } = await supabase
@@ -66,7 +68,7 @@ export default function BinsPage() {
   }
 
   async function loadAccessoryBins() {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/accessory-bins/list?include_hidden=1&t=${Date.now()}`,
       { cache: "no-store" }
     );
@@ -91,7 +93,7 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    await fetch("/api/accessory-bins/create", {
+    await apiFetch("/api/accessory-bins/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -119,7 +121,7 @@ export default function BinsPage() {
   async function toggleAccessoryVisibility(id: string, active: boolean) {
     setLoading(true);
 
-    await fetch("/api/accessory-bins/toggle-active", {
+    await apiFetch("/api/accessory-bins/toggle-active", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, active }),
@@ -148,7 +150,7 @@ export default function BinsPage() {
   async function saveAccessoryEdit(id: string) {
     setLoading(true);
 
-    await fetch("/api/accessory-bins/update", {
+    await apiFetch("/api/accessory-bins/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -171,7 +173,7 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    await fetch("/api/accessory-bins/delete", {
+    await apiFetch("/api/accessory-bins/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -183,8 +185,9 @@ export default function BinsPage() {
 
   async function openTemplate(bin: Bin) {
     setSelectedDevice(bin);
+    setActiveSetupTab("rules");
 
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/bins/templates/list?device_id=${bin.id}&t=${Date.now()}`,
       { cache: "no-store" }
     );
@@ -202,7 +205,7 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    const res = await fetch("/api/bins/templates/save", {
+    const res = await apiFetch("/api/bins/templates/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -247,7 +250,7 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    const res = await fetch("/api/bins/templates/save", {
+    const res = await apiFetch("/api/bins/templates/save", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -278,7 +281,7 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    const res = await fetch("/api/bins/templates/delete", {
+    const res = await apiFetch("/api/bins/templates/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
@@ -307,17 +310,31 @@ export default function BinsPage() {
   });
 
   return (
-    <div className="space-y-10 w-full">
-      <h1 className="text-xl font-semibold">Bins</h1>
+    <div className="prototype-page prototype-module-page bins-prototype-page">
+      <div className="prototype-page-header">
+        <div>
+        <h1>Inventory Setup</h1>
+        <p>
+          Configure device bins, automatic accessory rules and the accessory catalogue.
+        </p>
+        </div>
+      </div>
 
-      <div className="card-glow p-6 space-y-4">
+      <div className="prototype-section-tabs" role="tablist" aria-label="Inventory setup sections">
+        <button type="button" role="tab" aria-selected={activeSetupTab === "bins"} className={activeSetupTab === "bins" ? "is-active" : ""} onClick={() => setActiveSetupTab("bins")}>Device Bins <span>{bins.length}</span></button>
+        <button type="button" role="tab" aria-selected={activeSetupTab === "rules"} className={activeSetupTab === "rules" ? "is-active" : ""} onClick={() => { setActiveSetupTab("rules"); if (!selectedDevice && bins[0]) openTemplate(bins[0]); }}>Automatic Accessory Rules <span>{templates.length}</span></button>
+        <button type="button" role="tab" aria-selected={activeSetupTab === "accessories"} className={activeSetupTab === "accessories" ? "is-active" : ""} onClick={() => setActiveSetupTab("accessories")}>Accessory Inventory <span>{accessoryBins.length}</span></button>
+      </div>
+
+      {activeSetupTab === "bins" && (
+      <div className="prototype-card prototype-history-card space-y-4">
         <div className="font-semibold">Device Bins</div>
 
-        <div className="flex gap-2 items-center">
+        <div className="inventory-bin-create">
           <input
             value={newBin}
             onChange={(e) => setNewBin(e.target.value)}
-            placeholder="New device bin..."
+            placeholder="New device bin"
             className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-64"
           />
 
@@ -326,11 +343,11 @@ export default function BinsPage() {
             disabled={loading}
             className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
           >
-            Add
+            Add Bin
           </button>
         </div>
 
-        <div className="border border-slate-800 rounded-xl overflow-hidden">
+        <div className="inventory-bins-table-scroll border border-slate-800 rounded-xl">
           <table className="w-full text-sm">
             <thead className="bg-slate-900">
               <tr>
@@ -348,7 +365,7 @@ export default function BinsPage() {
                       onClick={() => openTemplate(bin)}
                       className="text-cyan-400 hover:text-cyan-300"
                     >
-                      Template
+                      Accessory Rules
                     </button>
 
                     <button
@@ -364,7 +381,7 @@ export default function BinsPage() {
               {bins.length === 0 && (
                 <tr>
                   <td colSpan={2} className="p-4 text-center text-slate-500">
-                    No device bins yet
+                    No device bins have been configured.
                   </td>
                 </tr>
               )}
@@ -372,11 +389,19 @@ export default function BinsPage() {
           </table>
         </div>
       </div>
+      )}
 
-      {selectedDevice && (
-        <div className="card-glow p-6 space-y-4">
+      {activeSetupTab === "rules" && selectedDevice && (
+        <div className="prototype-rules-layout">
+        <aside className="prototype-rule-sidebar">
+          <div>Rules by device bin</div>
+          {bins.map((bin) => (
+            <button type="button" key={bin.id} className={selectedDevice.id === bin.id ? "is-active" : ""} onClick={() => openTemplate(bin)}><span>{bin.name}</span><small>{selectedDevice.id === bin.id ? templates.length : ""} rules</small></button>
+          ))}
+        </aside>
+        <div className="prototype-card prototype-history-card space-y-4">
           <div className="flex items-center justify-between">
-            <div className="font-semibold">Template for {selectedDevice.name}</div>
+            <div className="font-semibold">Automatic Accessory Rules for {selectedDevice.name}</div>
 
             <button
               onClick={() => setSelectedDevice(null)}
@@ -395,7 +420,7 @@ export default function BinsPage() {
                 onChange={(e) => setTemplateAccessoryId(e.target.value)}
                 className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
               >
-                <option value="">Select accessory...</option>
+                <option value="">Select an accessory</option>
                 {templateAccessories.map((a) => (
                   <option key={a.id} value={a.id}>
                     {a.name}
@@ -417,7 +442,7 @@ export default function BinsPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">For every X devices</label>
+              <label className="text-xs text-slate-400">Devices per allocation</label>
 
               <input
                 type="number"
@@ -434,7 +459,7 @@ export default function BinsPage() {
               <button
                 onClick={saveTemplate}
                 disabled={loading || !templateAccessoryId}
-                className="w-full bg-cyan-600 hover:bg-cyan-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+                className="w-full bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
               >
                 Save Rule
               </button>
@@ -443,7 +468,7 @@ export default function BinsPage() {
 
           <div className="text-xs text-slate-500">
             Example: If an order contains <b>25 devices</b> and the rule is{" "}
-            <b>1 every 5 devices</b>, StockPro will automatically remove{" "}
+            <b>1 accessory per 5 devices</b>, StockPro will automatically remove{" "}
             <b>5 accessories</b>.
           </div>
 
@@ -452,8 +477,8 @@ export default function BinsPage() {
               <thead className="bg-slate-900">
                 <tr>
                   <th className="text-left p-3">Accessory</th>
-                  <th className="text-right p-3">Qty</th>
-                  <th className="text-right p-3">Per devices</th>
+                  <th className="text-right p-3">Quantity</th>
+                  <th className="text-right p-3">Device Interval</th>
                   <th className="text-right p-3">Actions</th>
                 </tr>
               </thead>
@@ -558,7 +583,7 @@ export default function BinsPage() {
                 {templates.length === 0 && (
                   <tr>
                     <td colSpan={4} className="p-4 text-center text-slate-500">
-                      No template rules yet
+                      No automatic accessory rules have been configured.
                     </td>
                   </tr>
                 )}
@@ -566,15 +591,17 @@ export default function BinsPage() {
             </table>
           </div>
         </div>
+        </div>
       )}
 
-      <div className="card-glow p-6 space-y-4">
+      {activeSetupTab === "accessories" && (
+      <div className="prototype-card prototype-history-card space-y-4">
         <div className="flex items-start justify-between gap-4">
           <div>
-            <div className="font-semibold text-lg">Accessories</div>
+            <div className="font-semibold text-lg">Accessory Inventory</div>
             <div className="text-xs text-slate-500 mt-1">
               Create accessories, define stock levels and choose if they are
-              visible in outbound/dashboard.
+              available in outbound processing and on the dashboard.
             </div>
           </div>
 
@@ -589,7 +616,7 @@ export default function BinsPage() {
                     : "bg-slate-800 text-slate-400"
                 }`}
               >
-                {f.toUpperCase()}
+                {f === "all" ? "All" : f === "show" ? "Visible" : "Hidden"}
               </button>
             ))}
           </div>
@@ -599,7 +626,7 @@ export default function BinsPage() {
           <input
             value={newAccessoryBin}
             onChange={(e) => setNewAccessoryBin(e.target.value)}
-            placeholder="Accessory name (QR Guide, Wipe...)"
+            placeholder="Accessory name, e.g. QR Guide"
             className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
           />
 
@@ -636,7 +663,7 @@ export default function BinsPage() {
           <button
             onClick={addAccessoryBin}
             disabled={loading || !newAccessoryBin.trim()}
-            className="bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+            className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
           >
             Create Accessory
           </button>
@@ -648,7 +675,7 @@ export default function BinsPage() {
   <tr>
     <th className="text-left p-3">Accessory</th>
     <th className="text-right p-3">Stock</th>
-    <th className="text-right p-3">Min stock</th>
+    <th className="text-right p-3">Minimum Stock</th>
     <th className="text-left p-3">Category</th>
     <th className="text-right p-3">Visibility</th>
     <th className="text-right p-3">Actions</th>
@@ -734,11 +761,11 @@ export default function BinsPage() {
                         disabled={isEditing}
                         className={`px-3 py-1 rounded text-xs font-semibold disabled:opacity-40 ${
                           isActive
-                            ? "bg-green-500/20 text-green-400"
+                            ? "bg-emerald-500/20 text-emerald-400"
                             : "bg-slate-700 text-slate-300"
                         }`}
                       >
-                        {isActive ? "SHOW" : "HIDE"}
+                        {isActive ? "Visible" : "Hidden"}
                       </button>
                     </td>
 
@@ -792,6 +819,7 @@ export default function BinsPage() {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }

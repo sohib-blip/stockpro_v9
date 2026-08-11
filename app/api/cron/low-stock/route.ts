@@ -1,23 +1,40 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  areLowStockEmailsEnabled,
+  isCronRequestAuthorized,
+} from "@/lib/cron/lowStockPolicy";
+import { buildLowStockEmail } from "@/lib/cron/lowStockEmail";
 
 export async function GET(req: Request) {
   const cronSecret = process.env.CRON_SECRET;
 
-  if (
-    cronSecret &&
-    req.headers.get("authorization") !== `Bearer ${cronSecret}`
-  ) {
+  if (!isCronRequestAuthorized(req.headers.get("authorization"), cronSecret)) {
     return NextResponse.json(
       { ok: false, error: "Unauthorized" },
       { status: 401 }
     );
   }
 
-  const emailFlag = process.env.ENABLE_LOW_STOCK_EMAILS;
-  const emailEnabled =
-    emailFlag === "true" ||
-    (emailFlag === undefined && process.env.VERCEL_ENV === "production");
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+  const { error: maintenanceError } = await supabase.rpc(
+    "run_workload_maintenance"
+  );
+
+  if (maintenanceError) {
+    return NextResponse.json(
+      { ok: false, error: "Security maintenance failed" },
+      { status: 500 }
+    );
+  }
+
+  const emailEnabled = areLowStockEmailsEnabled(
+    process.env.ENABLE_LOW_STOCK_EMAILS,
+    process.env.VERCEL_ENV
+  );
 
   if (!emailEnabled) {
     return NextResponse.json({
@@ -26,11 +43,6 @@ export async function GET(req: Request) {
       reason: "low-stock emails disabled for this environment",
     });
   }
-
-  const supabase = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!
-  );
 
   // emails
   const { data: subs } = await supabase
@@ -42,38 +54,28 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, reason: "no subscribers" });
   }
 
-  // thresholds
-  const { data: thresholds } = await supabase
-    .from("device_thresholds")
-    .select("device,min_stock");
+  // Use the exact same min-stock values and stock calculation as Dashboard.
+  const { data: summary, error: summaryError } = await supabase
+    .from("dashboard_bins_view")
+    .select("device,imei_count,min_stock,stock_status")
+    .eq("stock_status", "low");
 
-  const minMap = new Map<string, number>();
-  thresholds?.forEach((t) =>
-    minMap.set(t.device, Number(t.min_stock || 0))
-  );
+  if (summaryError) {
+    return NextResponse.json(
+      { ok: false, error: summaryError.message },
+      { status: 500 }
+    );
+  }
 
-  // stock summary (tu l’as déjà)
-  const { data: summary } = await supabase.rpc(
-    "dashboard_summary_per_device"
-  );
-
-  const low = (summary || []).filter((r: any) => {
-    const min = minMap.get(r.device) ?? 0;
-    return r.in_stock <= min;
-  });
+  const low = summary || [];
 
   if (low.length === 0) {
     return NextResponse.json({ ok: true, reason: "no low stock" });
   }
 
-  const html = low
-    .map(
-      (d: any) =>
-        `<li><b>${d.device}</b> — IN ${d.in_stock} ≤ MIN ${minMap.get(d.device)}</li>`
-    )
-    .join("");
+  const email = buildLowStockEmail(low);
 
-  await fetch("https://api.resend.com/emails", {
+  const resend = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
@@ -82,10 +84,18 @@ export async function GET(req: Request) {
     body: JSON.stringify({
       from: "StockPro <alerts@stockpro.app>",
       to: subs.map((s) => s.email),
-      subject: `⚠️ LOW STOCK (${low.length})`,
-      html: `<h2>Low stock alert</h2><ul>${html}</ul>`,
+      subject: email.subject,
+      html: email.html,
+      text: email.text,
     }),
   });
+
+  if (!resend.ok) {
+    return NextResponse.json(
+      { ok: false, error: "Unable to send low-stock alerts" },
+      { status: 502 }
+    );
+  }
 
   return NextResponse.json({ ok: true, low: low.length });
 }

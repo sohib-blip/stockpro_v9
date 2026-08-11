@@ -37,6 +37,13 @@ Avant d'ouvrir une pull request :
 npm run check
 ```
 
+Cette commande execute le typecheck, les tests automatises et le build de
+production. GitHub execute egalement ces controles pour chaque pull request
+vers `staging`.
+
+La base de l'audit de securite se trouve dans
+[`docs/SECURITY_AUDIT.md`](docs/SECURITY_AUDIT.md).
+
 ## Variables principales
 
 - `NEXT_PUBLIC_APP_ENV` : `production`, `staging` ou `development`.

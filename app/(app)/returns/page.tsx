@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
 const cancellationReasons = [
   "Lack of Radius accuracy",
@@ -49,7 +50,14 @@ export default function ReturnsPage() {
 
   const [history, setHistory] = useState<any[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [page, setPage] = useState(1);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [historyCursorStack, setHistoryCursorStack] = useState<
+    Array<string | null>
+  >([]);
+  const [nextHistoryCursor, setNextHistoryCursor] = useState<string | null>(
+    null
+  );
+  const returnOperationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -60,15 +68,18 @@ export default function ReturnsPage() {
   }, [supabase]);
 
   useEffect(() => {
-    loadHistory();
+    loadHistory(historyCursor);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page]);
+  }, [historyCursor]);
 
-  async function loadHistory() {
+  async function loadHistory(cursor: string | null = historyCursor) {
     setLoadingHistory(true);
 
     try {
-      const res = await fetch(`/api/returns/history?page=${page}&t=${Date.now()}`, {
+      const query = new URLSearchParams({ t: String(Date.now()) });
+      if (cursor) query.set("cursor", cursor);
+
+      const res = await apiFetch(`/api/returns/history?${query.toString()}`, {
         method: "GET",
         cache: "no-store",
         headers: {
@@ -78,8 +89,13 @@ export default function ReturnsPage() {
 
       const json = await res.json();
 
-      if (json.ok) setHistory(json.rows || []);
-      else setHistory([]);
+      if (json.ok) {
+        setHistory(json.rows || []);
+        setNextHistoryCursor(json.next_cursor || null);
+      } else {
+        setHistory([]);
+        setNextHistoryCursor(null);
+      }
     } finally {
       setLoadingHistory(false);
     }
@@ -87,7 +103,7 @@ export default function ReturnsPage() {
 
   function fmtDateTime(iso: string) {
     try {
-      return new Date(iso).toLocaleString("fr-BE");
+      return new Date(iso).toLocaleString("en-GB");
     } catch {
       return iso;
     }
@@ -97,9 +113,10 @@ export default function ReturnsPage() {
     setBusy(true);
     setMsg("");
     setPreview(null);
+    returnOperationIdRef.current = null;
 
     try {
-      const res = await fetch("/api/returns/preview", {
+      const res = await apiFetch("/api/returns/preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imeisText }),
@@ -108,13 +125,13 @@ export default function ReturnsPage() {
       const json = await res.json();
 
       if (!json.ok) {
-        setMsg("❌ " + (json.error || "Preview failed"));
+        setMsg(json.error || "Return preview failed");
         return;
       }
 
       setPreview(json);
     } catch (e: any) {
-      setMsg("❌ " + (e?.message || "Preview failed"));
+      setMsg(e?.message || "Return preview failed");
     } finally {
       setBusy(false);
     }
@@ -122,22 +139,22 @@ export default function ReturnsPage() {
 
   async function confirmReturn() {
     if (!preview?.valid_returns?.length) {
-      setMsg("❌ No valid returns to confirm.");
+      setMsg("No valid returns are available to confirm.");
       return;
     }
 
     if (!returnType) {
-      setMsg("❌ Return type required.");
+      setMsg("Select a return type.");
       return;
     }
 
     if (!returnReason) {
-      setMsg("❌ Return reason required.");
+      setMsg("Select a return reason.");
       return;
     }
 
     if (!targetBox.trim()) {
-      setMsg("❌ Target box required.");
+      setMsg("Enter a destination box.");
       return;
     }
 
@@ -145,10 +162,14 @@ export default function ReturnsPage() {
     setMsg("");
 
     try {
-      const res = await fetch("/api/returns/confirm", {
+      const operationId =
+        returnOperationIdRef.current || crypto.randomUUID();
+      returnOperationIdRef.current = operationId;
+      const res = await apiFetch("/api/returns/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          operation_id: operationId,
           items: preview.valid_returns,
           target_box: targetBox.trim(),
           target_floor: targetFloor,
@@ -163,47 +184,55 @@ export default function ReturnsPage() {
       const json = await res.json();
 
       if (!json.ok) {
-        setMsg("❌ " + (json.error || "Confirm failed"));
+        setMsg(json.error || "Return confirmation failed");
         return;
       }
 
-      setMsg(`✅ Return saved: ${json.returned} IMEIs returned to stock.`);
+      setMsg(`Return completed: ${json.returned} IMEIs returned to stock.`);
       setPreview(null);
       setImeisText("");
       setReturnRef("");
       setReturnType("");
       setReturnReason("");
+      returnOperationIdRef.current = null;
 
-      await loadHistory();
+      setHistoryCursorStack([]);
+      setHistoryCursor(null);
+      await loadHistory(null);
     } catch (e: any) {
-      setMsg("❌ " + (e?.message || "Confirm failed"));
+      setMsg(e?.message || "Return confirmation failed");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="space-y-8 w-full">
+    <div className="prototype-page prototype-module-page returns-prototype-page">
       {busy && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl shadow-xl">
-            Processing...
+            Processing…
           </div>
         </div>
       )}
 
-      <div>
-        <div className="text-xs text-slate-500">Returns</div>
-        <h2 className="text-xl font-semibold">Customer Return</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          User: <b>{actor}</b>
+      <div className="prototype-page-header">
+        <div>
+        <h1>Customer Returns</h1>
+        <p>
+          Return previously outbound devices to stock. Devices become IN at the target location.
         </p>
+        </div>
+        <button type="button" className="prototype-button secondary" onClick={() => document.getElementById("returns-history")?.scrollIntoView({ behavior: "smooth" })}>History &amp; exports</button>
       </div>
 
-      <div className="card-glow p-6 space-y-4">
-        <div className="font-semibold">Return information</div>
+      <div className="prototype-process-grid returns-process-grid">
+      <div className="prototype-process-input-column">
+      <div className="prototype-input-card space-y-4">
+        <div className="prototype-input-section-title">Return information</div>
 
         <input
+          aria-label="Return reference"
           value={returnRef}
           onChange={(e) => setReturnRef(e.target.value)}
           placeholder="Return reference / customer / note"
@@ -212,6 +241,7 @@ export default function ReturnsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <select
+            aria-label="Return type"
             value={returnType}
             onChange={(e) => {
               setReturnType(e.target.value);
@@ -226,6 +256,7 @@ export default function ReturnsPage() {
 
           {returnType && (
             <select
+              aria-label="Return reason"
               value={returnReason}
               onChange={(e) => setReturnReason(e.target.value)}
               className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -245,6 +276,7 @@ export default function ReturnsPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input
+            aria-label="Return target box"
             value={targetBox}
             onChange={(e) => setTargetBox(e.target.value)}
             placeholder="Target return box, ex: RETURN-001"
@@ -252,6 +284,7 @@ export default function ReturnsPage() {
           />
 
           <select
+            aria-label="Return target floor"
             value={targetFloor}
             onChange={(e) => setTargetFloor(e.target.value)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -264,6 +297,7 @@ export default function ReturnsPage() {
         </div>
 
         <textarea
+          aria-label="Returned IMEIs"
           value={imeisText}
           onChange={(e) => setImeisText(e.target.value)}
           placeholder="Scan or paste returned IMEIs here, one per line"
@@ -273,7 +307,7 @@ export default function ReturnsPage() {
         <button
           onClick={previewReturn}
           disabled={busy}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
+          className="prototype-button primary grow"
         >
           Preview Return
         </button>
@@ -284,12 +318,14 @@ export default function ReturnsPage() {
           {msg}
         </div>
       )}
+      </div>
 
       {preview?.ok && (
-        <div className="card-glow p-6 space-y-5">
-          <div className="flex justify-between items-center">
+        <div className="prototype-preview-card">
+          <div className="prototype-preview-content">
+          <div className="prototype-preview-heading">
             <div className="font-semibold">Return Preview</div>
-            <div className="text-sm text-slate-400">
+            <div>
               Scanned: {preview.total_scanned}
             </div>
           </div>
@@ -300,8 +336,8 @@ export default function ReturnsPage() {
               <div className="text-3xl font-bold">{preview.valid_returns.length}</div>
             </div>
 
-            <div className="rounded-xl border border-orange-800 bg-orange-950/30 p-4">
-              <div className="text-xs text-orange-300">Already in stock</div>
+            <div className="rounded-xl border border-amber-800 bg-amber-950/30 p-4">
+              <div className="text-xs text-amber-300">Already in stock</div>
               <div className="text-3xl font-bold">{preview.already_in_stock.length}</div>
             </div>
 
@@ -315,7 +351,8 @@ export default function ReturnsPage() {
             <div>
               <div className="font-semibold mb-2">Return details</div>
 
-              <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+              <div className="prototype-preview-table-scroll is-wide">
+              <table className="w-full text-sm">
                 <thead className="bg-slate-950/50">
                   <tr>
                     <th className="p-2 text-left">IMEI</th>
@@ -344,6 +381,7 @@ export default function ReturnsPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
             </div>
           )}
 
@@ -362,22 +400,25 @@ export default function ReturnsPage() {
             </div>
           )}
 
-          <div className="flex gap-3">
+          </div>
+          <div className="prototype-preview-actions">
             <button
+              type="button"
               onClick={confirmReturn}
               disabled={busy || preview.valid_returns.length === 0}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
+              className="prototype-button confirm"
             >
               Confirm Return
             </button>
 
             <button
+              type="button"
               onClick={() => {
                 setPreview(null);
                 setMsg("");
               }}
               disabled={busy}
-              className="rounded-xl border border-slate-800 bg-slate-950 hover:bg-slate-800 px-4 py-2 font-semibold disabled:opacity-50"
+              className="prototype-button secondary"
             >
               Cancel Preview
             </button>
@@ -385,25 +426,38 @@ export default function ReturnsPage() {
         </div>
       )}
 
-      <div className="card-glow p-6 space-y-4">
+      {!preview?.ok && (
+        <div className="prototype-empty-preview">
+          <div className="prototype-empty-icon"><span /></div>
+          <strong>No preview yet</strong>
+          <p>Choose the return reason and target location, paste the returned IMEIs, then preview their classification before confirmation.</p>
+        </div>
+      )}
+      </div>
+
+      <div id="returns-history" className="prototype-card prototype-history-card space-y-4">
         <div className="flex items-center justify-between">
           <div>
-            <div className="font-semibold">Returns history</div>
+            <div className="font-semibold">Returns History</div>
             <div className="text-xs text-slate-500">
               All customer returns with reason and export
             </div>
           </div>
 
           <div className="flex gap-2">
-            <a
-              href="/api/returns/export"
+            <button
+              onClick={() =>
+                downloadApiFile("/api/returns/export", "returns.xlsx").catch(
+                  (error) => setMsg(error.message)
+                )
+              }
               className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
             >
               Export all returns
-            </a>
+            </button>
 
             <button
-              onClick={loadHistory}
+              onClick={() => loadHistory()}
               className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm font-semibold hover:bg-slate-800"
             >
               {loadingHistory ? "Refreshing…" : "Refresh"}
@@ -415,12 +469,12 @@ export default function ReturnsPage() {
           <table className="w-full text-sm">
             <thead className="bg-slate-950/50">
               <tr>
-                <th className="p-2 text-left">Date/Time</th>
+                <th className="p-2 text-left">Date and Time</th>
                 <th className="p-2 text-left">User</th>
                 <th className="p-2 text-left">Type</th>
                 <th className="p-2 text-left">Reason</th>
-                <th className="p-2 text-left">Ref</th>
-                <th className="p-2 text-right">Qty</th>
+                <th className="p-2 text-left">Reference</th>
+                <th className="p-2 text-right">Quantity</th>
               </tr>
             </thead>
 
@@ -449,16 +503,32 @@ export default function ReturnsPage() {
 
         <div className="flex justify-between items-center pt-2">
           <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={historyCursorStack.length === 0}
+            onClick={() => {
+              const previous =
+                historyCursorStack[historyCursorStack.length - 1] ?? null;
+              setHistoryCursorStack((current) => current.slice(0, -1));
+              setHistoryCursor(previous);
+            }}
             className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
           >
             Previous
           </button>
 
-          <div className="text-sm text-slate-400">Page {page}</div>
+          <div className="text-sm text-slate-400">
+            Page {historyCursorStack.length + 1}
+          </div>
 
           <button
-            onClick={() => setPage((p) => p + 1)}
+            disabled={!nextHistoryCursor}
+            onClick={() => {
+              if (!nextHistoryCursor) return;
+              setHistoryCursorStack((current) => [
+                ...current,
+                historyCursor,
+              ]);
+              setHistoryCursor(nextHistoryCursor);
+            }}
             className="rounded-xl border border-slate-800 px-4 py-2 text-sm hover:bg-slate-800"
           >
             Next

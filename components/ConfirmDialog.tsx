@@ -51,7 +51,7 @@ export default function ConfirmDialog({
             onClick={onConfirm}
             className={
               "rounded-xl px-4 py-2 text-sm font-semibold text-white " +
-              (danger ? "bg-rose-600 hover:bg-rose-700" : "bg-emerald-600 hover:bg-emerald-700")
+              (danger ? "bg-red-600 hover:bg-red-700" : "bg-indigo-600 hover:bg-indigo-700")
             }
           >
             {confirmText}

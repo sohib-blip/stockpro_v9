@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch } from "@/lib/apiFetch";
 
 type HistoryRow = {
   created_at: string;
@@ -37,6 +38,7 @@ export default function TransferPage() {
 
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const operationIdRef = useRef<string | null>(null);
 
   async function loadBins() {
     const { data, error } = await supabase
@@ -47,9 +49,7 @@ export default function TransferPage() {
 
     if (!error && data) {
       setBins(data as BinRow[]);
-      if (!sourceBinId && data.length > 0) {
-        setSourceBinId(data[0].id);
-      }
+      setSourceBinId((current) => current || data[0]?.id || "");
     }
   }
 
@@ -57,7 +57,7 @@ export default function TransferPage() {
     try {
       setLoadingHistory(true);
 
-      const res = await fetch("/api/transfer/history?ts=" + Date.now(), {
+      const res = await apiFetch("/api/transfer/history?ts=" + Date.now(), {
         cache: "no-store",
       });
 
@@ -98,7 +98,7 @@ export default function TransferPage() {
 
     setLoadingPreview(true);
 
-    const res = await fetch("/api/transfer/preview", {
+    const res = await apiFetch("/api/transfer/preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -112,21 +112,31 @@ export default function TransferPage() {
     setLoadingPreview(false);
 
     if (json.ok) {
-      setPreview(json);
+      operationIdRef.current = crypto.randomUUID();
+      setPreview({
+        ...json,
+        request: {
+          box_codes,
+          source_bin_id: sourceBinId,
+          target_floor: targetFloor,
+        },
+      });
     } else {
       setErrorMsg(json.error);
     }
   }
 
   async function confirmTransfer() {
-    const box_codes = boxInput
+    const box_codes = preview?.request?.box_codes || boxInput
       .split("\n")
       .map((b) => b.trim())
       .filter(Boolean);
+    const confirmedSourceBinId = preview?.request?.source_bin_id || sourceBinId;
+    const confirmedTargetFloor = preview?.request?.target_floor || targetFloor;
 
     if (box_codes.length === 0) return;
 
-    if (!sourceBinId) {
+    if (!confirmedSourceBinId) {
       setErrorMsg("Select a device.");
       return;
     }
@@ -142,16 +152,19 @@ export default function TransferPage() {
       return;
     }
 
-    const res = await fetch("/api/transfer/confirm", {
+    const res = await apiFetch("/api/transfer/confirm", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
+        operation_id:
+          operationIdRef.current ||
+          (operationIdRef.current = crypto.randomUUID()),
         box_codes,
-        source_bin_id: sourceBinId,
-        target_floor: targetFloor,
+        source_bin_id: confirmedSourceBinId,
+        target_floor: confirmedTargetFloor,
       }),
     });
 
@@ -162,6 +175,7 @@ export default function TransferPage() {
       setSuccess(true);
       setPreview(null);
       setBoxInput("");
+      operationIdRef.current = null;
       await loadHistory();
       setTimeout(() => setSuccess(false), 2500);
     } else {
@@ -170,7 +184,7 @@ export default function TransferPage() {
   }
 
   function fmtDate(iso: string) {
-    return new Date(iso).toLocaleString();
+    return new Date(iso).toLocaleString("en-GB");
   }
 
   const filteredHistory = history.filter((row) => {
@@ -184,27 +198,37 @@ export default function TransferPage() {
   });
 
   return (
-    <div className="space-y-10 w-full">
+    <div className="prototype-page prototype-module-page transfer-prototype-page">
       {success && (
         <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
-          ✅ Transfer completed
+          Transfer completed
         </div>
       )}
 
-      <div>
-        <div className="text-xs text-slate-500">Transfer</div>
-        <h2 className="text-xl font-semibold">Move Multiple Boxes</h2>
+      <div className="prototype-page-header">
+        <div>
+        <h1>Stock Transfers</h1>
+        <p>
+          Move complete boxes between warehouse floors. Device stock status does not change.
+        </p>
+        </div>
+        <button type="button" className="prototype-button secondary" onClick={() => document.getElementById("transfer-history")?.scrollIntoView({ behavior: "smooth" })}>History</button>
       </div>
 
-      <div className="card-glow p-6 space-y-4">
+      <div className="prototype-process-grid transfer-process-grid">
+      <div className="prototype-process-input-column">
+      <div className="prototype-input-card space-y-4">
+        <div className="prototype-input-section-title">Transfer boxes</div>
         <textarea
+          aria-label="Transfer box codes"
           value={boxInput}
           onChange={(e) => setBoxInput(e.target.value)}
-          placeholder="Enter box codes (1 per line)"
+          placeholder="Enter box codes, one per line"
           className="w-full h-28 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3"
         />
 
         <select
+          aria-label="Transfer source device"
           value={sourceBinId}
           onChange={(e) => setSourceBinId(e.target.value)}
           className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
@@ -218,68 +242,83 @@ export default function TransferPage() {
         </select>
 
         <select
+          aria-label="Transfer destination floor"
           value={targetFloor}
           onChange={(e) => setTargetFloor(e.target.value)}
           className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2"
         >
-          <option value="00">To Floor 00</option>
-          <option value="1">To Floor 1</option>
-          <option value="6">To Floor 6</option>
-          <option value="Cabinet">To Cabinet</option>
+          <option value="00">Destination: Floor 00</option>
+          <option value="1">Destination: Floor 1</option>
+          <option value="6">Destination: Floor 6</option>
+          <option value="Cabinet">Destination: Cabinet</option>
         </select>
 
         <button
           onClick={previewTransfer}
           disabled={loadingPreview}
-          className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
+          className="prototype-button primary grow"
         >
-          {loadingPreview ? "Loading..." : "Preview Transfer"}
+          {loadingPreview ? "Loading…" : "Preview Transfer"}
         </button>
+      </div>
       </div>
 
       {preview?.preview && (
-        <div className="card-glow p-6 space-y-5">
-          <div className="flex justify-between items-center">
-            <div className="font-semibold text-lg">Transfer Preview</div>
-            <div className="text-sm text-slate-400">
-              {preview.total_boxes} boxes • {preview.total_items} IMEIs
+        <div className="prototype-preview-card">
+          <div className="prototype-preview-content">
+            <div className="prototype-preview-heading">
+              <div className="font-semibold text-lg">Transfer Preview</div>
+              <div>{preview.total_boxes} boxes • {preview.total_items} IMEIs</div>
+            </div>
+
+            <div className="prototype-preview-table-scroll">
+              <table className="w-full text-sm">
+                <thead className="bg-slate-950/50">
+                  <tr>
+                    <th className="p-2 text-left">Box</th>
+                    <th className="p-2 text-left">Device</th>
+                    <th className="p-2 text-left">Current Floor</th>
+                    <th className="p-2 text-right">IMEIs</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.boxes.map((b: any, i: number) => (
+                    <tr key={i} className="hover:bg-slate-950/40">
+                      <td className="p-2 font-semibold">{b.box_code}</td>
+                      <td className="p-2">{b.device}</td>
+                      <td className="p-2">{b.current_floor}</td>
+                      <td className="p-2 text-right">{b.imei_count}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
-
-          <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
-            <thead className="bg-slate-950/50">
-              <tr>
-                <th className="p-2 text-left">Box</th>
-                <th className="p-2 text-left">Device</th>
-                <th className="p-2 text-left">Current Floor</th>
-                <th className="p-2 text-right">IMEIs</th>
-              </tr>
-            </thead>
-            <tbody>
-              {preview.boxes.map((b: any, i: number) => (
-                <tr key={i} className="hover:bg-slate-950/40">
-                  <td className="p-2 font-semibold">{b.box_code}</td>
-                  <td className="p-2">{b.device}</td>
-                  <td className="p-2">{b.current_floor}</td>
-                  <td className="p-2 text-right">{b.imei_count}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-
-          <button
-            onClick={confirmTransfer}
-            disabled={loadingConfirm}
-            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
-          >
-            {loadingConfirm ? "Transferring..." : "Confirm Transfer"}
-          </button>
+          <div className="prototype-preview-actions">
+            <button
+              type="button"
+              onClick={confirmTransfer}
+              disabled={loadingConfirm}
+              className="prototype-button confirm"
+            >
+              {loadingConfirm ? "Transferring…" : "Confirm Transfer"}
+            </button>
+          </div>
         </div>
       )}
 
+      {!preview?.preview && (
+        <div className="prototype-empty-preview">
+          <div className="prototype-empty-icon"><span /></div>
+          <strong>No preview yet</strong>
+          <p>Select a device bin and destination, enter complete box codes, then preview every movement before confirmation.</p>
+        </div>
+      )}
+      </div>
+
       {errorMsg && <div className="text-red-500 text-sm">{errorMsg}</div>}
 
-      <div className="card-glow p-6 space-y-4">
+      <div id="transfer-history" className="prototype-card prototype-history-card space-y-4">
         <div className="flex flex-wrap gap-3 justify-between items-center">
           <div className="font-semibold">Transfer History</div>
 
@@ -287,7 +326,7 @@ export default function TransferPage() {
             <input
               value={searchBox}
               onChange={(e) => setSearchBox(e.target.value)}
-              placeholder="Search box..."
+              placeholder="Search by box code"
               className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
             />
 
@@ -307,7 +346,7 @@ export default function TransferPage() {
               onClick={loadHistory}
               className="rounded-xl border border-slate-800 bg-slate-950 px-4 py-2 text-sm hover:bg-slate-800"
             >
-              {loadingHistory ? "Refreshing..." : "Refresh"}
+              {loadingHistory ? "Refreshing…" : "Refresh"}
             </button>
           </div>
         </div>

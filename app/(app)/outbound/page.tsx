@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
 type HistoryRow = {
   operation_id: string;
@@ -38,6 +39,8 @@ const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
   const [success, setSuccess] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
+  const operationIdRef = useRef<string | null>(null);
 
   const filteredHistory =
     filter === "all"
@@ -58,7 +61,7 @@ const [page, setPage] = useState(1);
   async function loadHistory() {
   setLoadingHistory(true);
   try {
-    const res = await fetch(
+    const res = await apiFetch(
       `/api/outbound/history?page=${page}&t=${Date.now()}`,
       {
         method: "GET",
@@ -89,7 +92,7 @@ setPreview(null);
 
     const imeis = imeiInput.match(/\d{15}/g) || [];
 
-    const res = await fetch("/api/outbound/eod-preview", {
+    const res = await apiFetch("/api/outbound/eod-preview", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ imeisText: imeiInput, imeis }),
@@ -104,13 +107,14 @@ if (!json.summary) json.summary = [];
 if (!json.ok) {
   setPreview(json);
   setPreviewSource("manual");
-  setErrorMsg("⚠ Confirm blocked. Please correct duplicate, unknown or already outbound IMEIs.");
+  setErrorMsg("Confirmation blocked. Resolve duplicate, unknown, or previously outbound IMEIs.");
   setBusy(false);
   return;
 }
 
 setPreview(json);
 setPreviewSource("manual");
+operationIdRef.current = crypto.randomUUID();
 setBusy(false);
   }
 
@@ -125,7 +129,7 @@ setBusy(false);
     const form = new FormData();
     form.append("file", file);
 
-    const res = await fetch("/api/outbound/eod-preview", {
+    const res = await apiFetch("/api/outbound/eod-preview", {
       method: "POST",
       body: form,
     });
@@ -139,34 +143,38 @@ if (!json.summary) json.summary = [];
 if (!json.ok) {
   setPreview(json);
   setPreviewSource("excel");
-  setErrorMsg("⚠ Confirm blocked. Please correct duplicate, unknown or already outbound IMEIs.");
+  setErrorMsg("Confirmation blocked. Resolve duplicate, unknown, or previously outbound IMEIs.");
   setBusy(false);
   return;
 }
 
 setPreview(json);
 setPreviewSource("excel");
+operationIdRef.current = crypto.randomUUID();
 setBusy(false);
   }
 
   // ================= CONFIRM =================
   async function confirmOut() {
     if (!preview?.ok || !previewSource) {
-  setErrorMsg("Preview missing");
+  setErrorMsg("Preview the outbound before confirming it.");
   return;
 }
 
 if (!actorId) {
-  setErrorMsg("User not authenticated");
+  setErrorMsg("Your session could not be verified. Please sign in again.");
   return;
 }
 
     setBusy(true);
 
-    const res = await fetch("/api/outbound/eod-confirm", {
+    const res = await apiFetch("/api/outbound/eod-confirm", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        operation_id:
+          operationIdRef.current ||
+          (operationIdRef.current = crypto.randomUUID()),
         imeis: preview.imeis,
         shipment_ref: shipmentRef || null,
         actor,
@@ -184,6 +192,7 @@ if (!actorId) {
       setShipmentRef("");
       setImeiInput("");
       setFile(null);
+      operationIdRef.current = null;
       await loadHistory();
       setTimeout(() => setSuccess(false), 2500);
     } else {
@@ -193,7 +202,7 @@ if (!actorId) {
 
   function fmtDateTime(iso: string) {
     try {
-      return new Date(iso).toLocaleString();
+      return new Date(iso).toLocaleString("en-GB");
     } catch {
       return iso;
     }
@@ -205,14 +214,14 @@ if (!actorId) {
   preview?.unknown_imeis?.length > 0;
 
   return (
-    <div className="space-y-10 w-full">
+    <div className="prototype-page prototype-module-page outbound-prototype-page">
 
       {/* LOADER */}
       {busy && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center">
           <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl flex items-center gap-3 shadow-xl">
             <div className="h-5 w-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
-            <div className="font-semibold text-sm">Processing...</div>
+            <div className="font-semibold text-sm">Processing…</div>
           </div>
         </div>
       )}
@@ -220,65 +229,87 @@ if (!actorId) {
       {/* SUCCESS */}
       {success && (
         <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
-          ✅ Stock OUT confirmed
+          Device outbound completed
         </div>
       )}
 
       {/* HEADER */}
-      <div>
-        <div className="text-xs text-slate-500">Outbound</div>
-        <h2 className="text-xl font-semibold">Stock Out</h2>
-        <p className="text-sm text-slate-400 mt-1">
-          User: <b>{actor}</b>
+      <div className="prototype-page-header">
+        <div>
+        <h1>Device Outbound</h1>
+        <p>
+          Remove IMEI-tracked devices from stock. Devices become OUT on confirmation.
         </p>
+        </div>
+        <button type="button" className="prototype-button secondary" onClick={() => document.getElementById("outbound-history")?.scrollIntoView({ behavior: "smooth" })}>History &amp; exports</button>
       </div>
 
+      <div className="prototype-process-grid">
+      <div className="prototype-process-input-column">
+        <div className="prototype-segmented-control">
+          <button type="button" className={inputMode === "manual" ? "is-active" : ""} onClick={() => setInputMode("manual")}>Manual IMEIs</button>
+          <button type="button" className={inputMode === "spreadsheet" ? "is-active" : ""} onClick={() => setInputMode("spreadsheet")}>End-of-Day Report</button>
+        </div>
+
       {/* SHIPMENT */}
-      <div className="card-glow p-6 relative overflow-hidden">
-        <div className="font-semibold mb-2">Shipment reference</div>
+      <div className="prototype-shared-reference">
+        <label htmlFor="outbound-reference">Shipment reference</label>
         <input
+          id="outbound-reference"
+          aria-label="Outbound shipment reference"
           value={shipmentRef}
           onChange={(e) => setShipmentRef(e.target.value)}
-          className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
         />
       </div>
 
       {/* MANUAL */}
-      <div className="card-glow p-6 relative overflow-hidden">
-        <div className="font-semibold mb-3">Manual Scan</div>
+      {inputMode === "manual" && (
+      <div className="prototype-input-card">
+        <div className="prototype-field-heading"><label htmlFor="outbound-imeis">IMEIs — scan or paste, one per line</label><span>{(imeiInput.match(/\d{15}/g) || []).length} detected</span></div>
         <textarea
+          id="outbound-imeis"
+          aria-label="Outbound IMEIs"
           value={imeiInput}
           onChange={(e) => setImeiInput(e.target.value)}
-          className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
+          className="prototype-imei-textarea"
         />
         <button
           onClick={previewManual}
-          className="mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
+          className="prototype-button primary grow mt-4"
         >
-          Preview Manual
+          Preview Outbound
         </button>
       </div>
+      )}
 
       {/* EXCEL */}
-      <div className="card-glow p-6 relative overflow-hidden">
-        <div className="font-semibold mb-3">Import End Of Day Report</div>
+      {inputMode === "spreadsheet" && (
+      <div className="prototype-input-card">
+        <div className="prototype-input-section-title">End-of-Day Report Import</div>
         <input
           type="file"
+          aria-label="Outbound spreadsheet file"
           accept=".xlsx,.xls"
           onChange={(e) => setFile(e.target.files?.[0] ?? null)}
         />
         <button
           onClick={previewExcel}
-          className="mt-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold"
+          className="prototype-button primary mt-4"
         >
-          Preview Excel
+          Preview Spreadsheet
         </button>
+      </div>
+      )}
       </div>
 
 {/* ERROR MESSAGE */}
-{errorMsg && (
-  <div className="bg-red-600/20 border border-red-500 text-red-300 px-4 py-3 rounded-xl text-sm">
+{errorMsg && !preview && (
+  <div className="prototype-preview-card prototype-error-preview">
+    <div className="prototype-error-banner"><span>!</span><div><strong>Outbound blocked</strong><p>{errorMsg}</p></div></div>
+    {preview && <div className="prototype-preview-chips"><span>{preview.duplicates?.length || 0} duplicates</span><span>{preview.unknown_imeis?.length || 0} unknown</span><span>{preview.already_out?.length || 0} already out</span></div>}
+    <div className="p-6 text-sm text-red-300">
     {errorMsg}
+    </div>
   </div>
 )}
 
@@ -286,12 +317,13 @@ if (!actorId) {
 
       {/* PREVIEW */}
 {preview && (
-  <div className="card-glow p-6 space-y-5 relative overflow-hidden">
-    <div className="flex justify-between">
+  <div className="prototype-preview-card relative overflow-hidden">
+    <div className="prototype-preview-content">
+    <div className="prototype-preview-heading">
       <div className="font-semibold">
         Preview ({previewSource})
       </div>
-      <div className="text-xs text-slate-400">
+      <div>
         {preview.totalDetected ?? 0} IMEIs
       </div>
     </div>
@@ -306,7 +338,7 @@ if (!actorId) {
           <thead className="bg-slate-950/50">
             <tr>
               <th className="p-2 text-left">IMEI</th>
-              <th className="p-2 text-right">Times found</th>
+              <th className="p-2 text-right">Occurrences</th>
             </tr>
           </thead>
           <tbody>
@@ -323,7 +355,7 @@ if (!actorId) {
 
     {preview.unknown_imeis?.length > 0 && (
       <div>
-        <div className="font-semibold text-yellow-300 mb-2">
+        <div className="font-semibold text-amber-300 mb-2">
           Unknown IMEIs
         </div>
 
@@ -346,8 +378,8 @@ if (!actorId) {
 
     {preview.already_out?.length > 0 && (
       <div>
-        <div className="font-semibold text-orange-300 mb-2">
-          Already OUT IMEIs
+        <div className="font-semibold text-amber-300 mb-2">
+          Already Outbound IMEIs
         </div>
 
         <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
@@ -376,7 +408,8 @@ if (!actorId) {
     )}
 
     {preview.summary?.length > 0 && (
-      <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+      <div className="prototype-preview-table-scroll">
+      <table className="w-full text-sm">
         <thead className="bg-slate-950/50">
           <tr>
             <th className="p-2 text-left">Device</th>
@@ -384,7 +417,7 @@ if (!actorId) {
             <th className="p-2 text-left">Floor</th>
             <th className="p-2 text-right">Detected</th>
             <th className="p-2 text-right">Remaining</th>
-            <th className="p-2 text-right">% After</th>
+            <th className="p-2 text-right">Remaining %</th>
           </tr>
         </thead>
         <tbody>
@@ -400,23 +433,36 @@ if (!actorId) {
           ))}
         </tbody>
       </table>
+      </div>
     )}
-
+    </div>
+    <div className="prototype-preview-actions">
     <button
+      type="button"
       onClick={confirmOut}
       disabled={!preview?.ok || hasPreviewErrors}
-      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-40 disabled:cursor-not-allowed"
+      className="prototype-button confirm disabled:opacity-40 disabled:cursor-not-allowed"
     >
-      Confirm Stock Out
+      Confirm Outbound
     </button>
+    </div>
   </div>
 )}
 
+      {!preview && !errorMsg && (
+        <div className="prototype-empty-preview">
+          <div className="prototype-empty-icon"><span /></div>
+          <strong>No preview yet</strong>
+          <p>Enter a shipment reference and IMEIs, then run <b>Preview Outbound</b>. Stock changes only after confirmation.</p>
+        </div>
+      )}
+      </div>
+
       {/* HISTORY */}
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
+      <div id="outbound-history" className="prototype-card prototype-history-card space-y-4 relative overflow-hidden">
 
         <div className="flex items-center justify-between">
-          <div className="font-semibold">Outbound history</div>
+          <div className="font-semibold">Outbound History</div>
 
           <div className="flex gap-3">
             <select
@@ -426,7 +472,7 @@ if (!actorId) {
             >
               <option value="all">All</option>
               <option value="manual">Manual</option>
-              <option value="excel">Excel</option>
+              <option value="excel">Spreadsheet</option>
             </select>
 
             <button
@@ -442,13 +488,13 @@ if (!actorId) {
   <table className="w-full text-sm">
     <thead className="bg-slate-950/50">
       <tr>
-        <th className="p-2 text-left">Date/Time</th>
+        <th className="p-2 text-left">Date and Time</th>
         <th className="p-2 text-left">User</th>
         <th className="p-2 text-left">Source</th>
-        <th className="p-2 text-left">Shipment ref</th>
+        <th className="p-2 text-left">Shipment Reference</th>
 <th className="p-2 text-left">Devices</th>
-<th className="p-2 text-right">Qty</th>
-        <th className="p-2 text-right">Excel</th>
+<th className="p-2 text-right">Quantity</th>
+        <th className="p-2 text-right">Export</th>
       </tr>
     </thead>
 
@@ -462,12 +508,17 @@ if (!actorId) {
 <td className="p-2">{h.devices?.join(", ") || "-"}</td>
 <td className="p-2 text-right font-semibold">{h.qty}</td>
           <td className="p-2 text-right">
-            <a
-              href={`/api/outbound/export?operation_id=${encodeURIComponent(h.operation_id)}`}
+            <button
+              onClick={() =>
+                downloadApiFile(
+                  `/api/outbound/export?operation_id=${encodeURIComponent(h.operation_id)}`,
+                  `outbound-${h.operation_id}.xlsx`
+                ).catch((error) => setErrorMsg(error.message))
+              }
               className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
             >
-              Excel
-            </a>
+              Download
+            </button>
           </td>
         </tr>
       ))}

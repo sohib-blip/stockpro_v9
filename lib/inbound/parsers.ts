@@ -6,6 +6,7 @@ import {
   ParsedLabel,
   ParseResult,
   Vendor,
+  canonicalize,
   isImei,
   makeFail,
   makeOk,
@@ -441,10 +442,12 @@ export function parseDigitalMatterExcel(bytes: Uint8Array, devices: DeviceMatch[
 
 /**
  * TRUSTED / TRUSTER
- * One spreadsheet represents one box.
+ * Maps Truster models to StockPro device bins:
+ * - T7LTE -> Neon-R
+ * - T1 -> Neon-P
+ * Groups rows into boxes using the Groupe column (POD-prefixed values).
  * Accepts "Serialnumber" as the IMEI column.
  * Automatically detects the IMEI column when its header changes.
- * Uses the configured device name (currently Neon-R T7).
  */
 export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): ParseResult {
   const rows = sheetToRows(bytes);
@@ -453,73 +456,164 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
   const multOf = (deviceDisplay: string) =>
     devices.find((d) => d.display === deviceDisplay)?.units_per_imei ?? 1;
 
-  const header = (rows[0] || []).map(norm);
+  const isImeiHeader = (value: string) =>
+    value === "imei" ||
+    value.includes("imei") ||
+    value === "serialnumber" ||
+    value === "serial number" ||
+    value.includes("serialnumber") ||
+    value.includes("serial number") ||
+    value === "serial";
+  const isModelHeader = (value: string) =>
+    value === "model" ||
+    value === "modele" ||
+    value === "modèle" ||
+    value.includes("model");
+  const isGroupHeader = (value: string) =>
+    value === "groupe" || value === "group" || value.includes("group");
 
-  const idxImeiHeader = header.findIndex((h) => {
-    const x = String(h || "");
-    return (
-      x === "imei" ||
-      x.includes("imei") ||
-      x === "serialnumber" ||
-      x === "serial number" ||
-      x.includes("serialnumber") ||
-      x.includes("serial number") ||
-      x === "serial"
+  const scannedHeaders = rows
+    .slice(0, Math.min(rows.length, 60))
+    .map((row) => (row || []).map(norm));
+  const headerRowIdx = scannedHeaders.findIndex(
+    (candidate) =>
+      candidate.some(isModelHeader) && candidate.some(isGroupHeader)
+  );
+
+  if (headerRowIdx < 0) {
+    return makeFail(
+      "Truster: header row not found (expected Model and Groupe columns)",
+      [],
+      { sampleTop: rows.slice(0, 10) }
     );
-  });
+  }
 
-  const idxImei = idxImeiHeader >= 0 ? idxImeiHeader : detectImeiColumn(rows, 60);
+  const header = scannedHeaders[headerRowIdx];
+  const idxModel = header.findIndex(isModelHeader);
+  const idxGroup = header.findIndex(isGroupHeader);
+
+  const idxImeiHeader = header.findIndex(isImeiHeader);
+
+  const idxImei =
+    idxImeiHeader >= 0
+      ? idxImeiHeader
+      : detectImeiColumn(rows.slice(headerRowIdx), 60);
 
   if (idxImei < 0) {
     return makeFail(
       "Truster: IMEI/Serial column not found (expected IMEI or Serialnumber, or a column with many 15-digit values)",
       [],
-      { header, sampleTop: rows.slice(0, 10) }
+      { headerRowIdx, header, sampleTop: rows.slice(0, 10) }
     );
   }
 
-  const debug: Record<string, any> = { header, idxImei };
+  const debug: Record<string, any> = {
+    headerRowIdx,
+    header,
+    idxImei,
+    idxModel,
+    idxGroup,
+  };
+  const modelToBin: Record<string, string> = {
+    T7LTE: "Neon-R",
+    T1: "Neon-P",
+  };
+  const grouped = new Map<
+    string,
+    { device: string; box_no: string; imeis: string[] }
+  >();
+  const unsupportedModels = new Set<string>();
+  const invalidGroups = new Set<string>();
+  const missingBins = new Set<string>();
+  const seenImeis = new Set<string>();
 
-  const forcedDeviceRaw = "Neon-R";
-  const deviceDisplay = resolveDeviceDisplay(forcedDeviceRaw, devices);
+  for (let r = headerRowIdx + 1; r < rows.length; r++) {
+    const row = rows[r] || [];
+    const imei = isImei(row[idxImei]);
+    if (!imei) continue;
 
-  if (!deviceDisplay) {
+    const rawModel = String(row[idxModel] ?? "").trim();
+    const mappedBin = modelToBin[canonicalize(rawModel)];
+    if (!mappedBin) {
+      unsupportedModels.add(rawModel || "(empty)");
+      continue;
+    }
+
+    const rawGroup = String(row[idxGroup] ?? "").trim();
+    if (!/^POD/i.test(rawGroup)) {
+      invalidGroups.add(rawGroup || "(empty)");
+      continue;
+    }
+
+    const deviceDisplay = resolveDeviceDisplay(mappedBin, devices);
+    if (!deviceDisplay) {
+      missingBins.add(mappedBin);
+      continue;
+    }
+
+    if (seenImeis.has(imei)) continue;
+    seenImeis.add(imei);
+
+    const boxNo = rawGroup.replace(/^pod/i, "POD");
+    const key = `${deviceDisplay}__${boxNo}`;
+    const existing = grouped.get(key) || {
+      device: deviceDisplay,
+      box_no: boxNo,
+      imeis: [],
+    };
+    existing.imeis.push(imei);
+    grouped.set(key, existing);
+  }
+
+  if (unsupportedModels.size > 0) {
     return makeFail(
-      `device(s) not found in Admin > Devices: ${forcedDeviceRaw}`,
-      [forcedDeviceRaw],
-      { ...debug, forcedDeviceRaw }
+      `Truster: unsupported Model value(s): ${Array.from(unsupportedModels).join(", ")}. Supported mappings: T7LTE -> Neon-R, T1 -> Neon-P`,
+      [],
+      { ...debug, unsupportedModels: Array.from(unsupportedModels) }
     );
   }
 
-  const allImeis: string[] = [];
-  for (let r = 1; r < rows.length; r++) {
-    const imei = isImei((rows[r] || [])[idxImei]);
-    if (imei) allImeis.push(imei);
+  if (invalidGroups.size > 0) {
+    return makeFail(
+      `Truster: invalid Groupe value(s): ${Array.from(invalidGroups).join(", ")}. Every box ID must start with POD`,
+      [],
+      { ...debug, invalidGroups: Array.from(invalidGroups) }
+    );
   }
 
-  const uniqueImeis = uniq(allImeis);
+  if (missingBins.size > 0) {
+    const names = Array.from(missingBins).sort();
+    return makeFail(
+      `Truster: bin(s) not found or inactive: ${names.join(", ")}. Create and activate the bin in Inventory Setup before importing`,
+      names,
+      { ...debug, missingBins: names }
+    );
+  }
 
-  if (!uniqueImeis.length) {
+  if (grouped.size === 0) {
     return makeFail("Truster: no IMEI parsed from Serial/IMEI column", [], {
       ...debug,
-      deviceDisplay,
     });
   }
 
-  const qty = uniqueImeis.length * multOf(deviceDisplay);
+  const labels: ParsedLabel[] = Array.from(grouped.values()).map((group) => ({
+    vendor: "truster",
+    device: group.device,
+    box_no: group.box_no,
+    imeis: group.imeis,
+    qty: group.imeis.length * multOf(group.device),
+    qr_data: "",
+  }));
 
-  const labels: ParsedLabel[] = [
+  return makeOk(
+    labels,
     {
-      vendor: "truster",
-      device: deviceDisplay,
-      box_no: "1",
-      imeis: uniqueImeis,
-      qty,
-      qr_data: "",
+      ...debug,
+      modelMappings: modelToBin,
+      mode: "grouped_by_model_and_groupe",
     },
-  ];
-
-  return makeOk(labels, { ...debug, deviceDisplay, mode: "single_box" }, []);
+    []
+  );
 }
 
 /**

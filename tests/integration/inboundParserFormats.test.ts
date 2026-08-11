@@ -46,6 +46,12 @@ const devices = toDeviceMatchList([
     active: true,
     units_per_imei: 1,
   },
+  {
+    canonical_name: "NEONP",
+    device: "Neon-P T1",
+    active: true,
+    units_per_imei: 1,
+  },
 ]);
 
 describe("inbound spreadsheet parser integration", () => {
@@ -125,33 +131,45 @@ describe("inbound spreadsheet parser integration", () => {
     ]);
   });
 
-  it("parses Truster serial-number files and falls back to data-based column detection", () => {
+  it("maps Truster models and groups IMEIs into POD boxes", () => {
     const explicit = parseTrustedExcel(
       workbookBytes([
-        ["Serialnumber", "Comment"],
-        ["423456789012345", "first"],
-        ["423456789012346", "second"],
+        ["Serialnumber", "Model", "Groupe", "Comment"],
+        ["423456789012345", "T7LTE", "POD-001", "first"],
+        ["423456789012346", "T7LTE", "POD-001", "second"],
+        ["423456789012347", "T1", "POD-002", "third"],
       ]),
       devices
     );
     expect(explicit.ok).toBe(true);
     if (explicit.ok) {
-      expect(explicit.labels[0]).toEqual(
-        expect.objectContaining({
-          vendor: "truster",
-          device: "Neon-R T7",
-          box_no: "1",
-          qty: 2,
-        })
+      expect(explicit.labels).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            vendor: "truster",
+            device: "Neon-R T7",
+            box_no: "POD-001",
+            qty: 2,
+            imeis: ["423456789012345", "423456789012346"],
+          }),
+          expect.objectContaining({
+            vendor: "truster",
+            device: "Neon-P T1",
+            box_no: "POD-002",
+            qty: 1,
+            imeis: ["423456789012347"],
+          }),
+        ])
       );
+      expect(explicit.counts).toEqual({ devices: 2, boxes: 2, items: 3 });
     }
 
     const detected = parseTrustedExcel(
       workbookBytes([
-        ["Reference", "Identifier value"],
-        ["A", "523456789012345"],
-        ["B", "523456789012346"],
-        ["C", "523456789012347"],
+        ["Reference", "Identifier value", "Model", "Groupe"],
+        ["A", "523456789012345", "T7 LTE", "pod-003"],
+        ["B", "523456789012346", "T7LTE", "POD-003"],
+        ["C", "523456789012347", "T7LTE", "POD-003"],
       ]),
       devices
     );
@@ -162,8 +180,49 @@ describe("inbound spreadsheet parser integration", () => {
         "523456789012346",
         "523456789012347",
       ]);
+      expect(detected.labels[0].box_no).toBe("POD-003");
       expect(detected.debug.idxImei).toBe(1);
     }
+  });
+
+  it("blocks Truster imports for invalid groups, unsupported models and missing bins", () => {
+    const invalidGroup = parseTrustedExcel(
+      workbookBytes([
+        ["Serialnumber", "Model", "Groupe"],
+        ["423456789012345", "T7LTE", "BOX-001"],
+      ]),
+      devices
+    );
+    expect(invalidGroup).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("must start with POD"),
+    });
+
+    const unsupportedModel = parseTrustedExcel(
+      workbookBytes([
+        ["Serialnumber", "Model", "Groupe"],
+        ["423456789012345", "UNKNOWN", "POD-001"],
+      ]),
+      devices
+    );
+    expect(unsupportedModel).toMatchObject({
+      ok: false,
+      error: expect.stringContaining("unsupported Model"),
+    });
+
+    const withoutNeonP = devices.filter((device) => device.canonical !== "NEONP");
+    const missingBin = parseTrustedExcel(
+      workbookBytes([
+        ["Serialnumber", "Model", "Groupe"],
+        ["423456789012345", "T1", "POD-001"],
+      ]),
+      withoutNeonP
+    );
+    expect(missingBin).toMatchObject({
+      ok: false,
+      unknown_devices: ["Neon-P"],
+      error: expect.stringContaining("bin(s) not found or inactive: Neon-P"),
+    });
   });
 
   it("returns actionable failures for malformed files, missing devices and unknown vendors", () => {

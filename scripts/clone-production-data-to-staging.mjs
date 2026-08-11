@@ -54,6 +54,22 @@ const COPY_ORDER = [
   "nrd_time_logs",
 ];
 
+const LEGACY_PRODUCTION_SNAPSHOT_TABLES = [
+  "stock_count_scans",
+  "stock_counts",
+  "inbound_import_boxes",
+  "inbound_import_log_boxes",
+  "inbound_imports_log",
+  "inbound_import_logs",
+  "inbound_imports",
+  "device_aliases",
+  "box_movements",
+  "device_stock",
+  "imeis",
+  "import_batches",
+  "outbound_batches",
+];
+
 const DELETE_ORDER = [
   "return_history_entries",
   "app_sessions",
@@ -415,7 +431,7 @@ async function snapshotProduction() {
     production,
     productionClient,
     productionDefinitions,
-    COPY_ORDER
+    [...COPY_ORDER, ...LEGACY_PRODUCTION_SNAPSHOT_TABLES]
   );
   const outputPath = await writeArtifact(
     `production-snapshot-${stamp()}.json`,

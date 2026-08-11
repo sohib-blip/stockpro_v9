@@ -920,6 +920,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByLabel("Customer").fill("E2E Customer");
     await page.getByLabel("SUR ID").fill(`SUR-${run.stamp}`);
     await page.getByLabel("Return status").selectOption("available");
+    await expect(
+      page.getByRole("combobox", { name: "Return device", exact: true })
+    ).toHaveCount(0);
     await page.getByLabel("Return type").selectOption("cancellation_stop");
     await page.getByLabel("Return reason").selectOption("Other");
     await page.getByLabel("Return target box").fill(run.returnBox);
@@ -927,6 +930,11 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByLabel("Returned IMEIs").fill(run.manualImei);
     await page.getByRole("button", { name: "Preview Return" }).click();
     await expect(page.getByText("Return Preview")).toBeVisible();
+    await expect(
+      page.locator(".returns-preview-table tbody tr").filter({
+        hasText: run.manualImei,
+      })
+    ).toContainText(run.bin.name);
     await expect(
       page.getByText("Valid", { exact: true }).locator("..").getByText("1")
     ).toBeVisible();
@@ -1059,12 +1067,40 @@ test.describe.serial("StockPro staging end-to-end", () => {
   });
 
   test("records damaged and unprocessed returns without changing stock", async ({
+    page,
     request,
   }) => {
     const itemBefore = await readItem(run.spreadsheetImei);
     expect(itemBefore?.status).toBe("OUT");
-    const operatorToken = await accessTokenFor(run.users.operator);
     const returnReferences: string[] = [];
+    const deviceByReference = new Map<string, string>();
+
+    await login(page, "operator");
+    await page.goto("/returns");
+    await page.getByLabel("Return status").selectOption("damaged");
+    const deviceSearch = page.getByRole("combobox", {
+      name: "Return device",
+      exact: true,
+    });
+    await expect(deviceSearch).toBeVisible();
+    await deviceSearch.fill("FMB64");
+    await expect(
+      page.getByRole("option", { name: "FMB640", exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("option", { name: "FMB641", exact: true })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("option", { name: "LMU2640", exact: true })
+    ).toHaveCount(0);
+    await page.getByRole("option", { name: "FMB641", exact: true }).click();
+    await expect(deviceSearch).toHaveValue("FMB641");
+    await page.getByLabel("Return status").selectOption("available");
+    await expect(
+      page.getByRole("combobox", { name: "Return device", exact: true })
+    ).toHaveCount(0);
+    await signOut(page);
+    const operatorToken = await accessTokenFor(run.users.operator);
 
     for (const [index, returnStatus] of [
       "damaged",
@@ -1072,7 +1108,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     ].entries()) {
       const operationId = randomUUID();
       const returnReference = `E2E-NO-STOCK-${index}-${run.stamp}`;
+      const reportedDevice = index === 0 ? "FMB640" : "Badai";
       returnReferences.push(returnReference);
+      deviceByReference.set(returnReference, reportedDevice);
       const response = await request.post("/api/returns/confirm", {
         headers: { Authorization: `Bearer ${operatorToken}` },
         data: {
@@ -1088,6 +1126,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
           country_code: "BE",
           customer: "E2E No Stock Customer",
           sur_id: `SUR-NO-STOCK-${index}-${run.stamp}`,
+          reported_device: reportedDevice,
         },
       });
 
@@ -1105,6 +1144,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
         item_id: itemBefore?.item_id,
         imei: run.spreadsheetImei,
         device_id: run.bin.id,
+        reported_device: reportedDevice,
         return_status: returnStatus,
         target_box: null,
         target_floor: null,
@@ -1141,7 +1181,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
       expect(row.Customer).toBe("E2E No Stock Customer");
       expect(["DHL", "EasyPost"]).toContain(row.Courier);
       expect(row.Country).toBe("🇧🇪 Belgium");
-      expect(row.Device).toBe(run.bin.name);
+      expect(row.Device).toBe(
+        deviceByReference.get(String(row["Return reference"]))
+      );
       expect(String(row.IMEI)).toBe(run.spreadsheetImei);
       expect(row["Target location"]).toBe("");
       expect(row["Stock action"]).toBe("No stock change");
@@ -1177,6 +1219,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
         country_code: "NL",
         customer: "E2E Security Customer",
         sur_id: `SUR-SECURITY-${run.stamp}`,
+        reported_device: "Badai",
       },
     });
 
@@ -1200,6 +1243,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
       item_id: itemBefore?.item_id,
       imei: run.spreadsheetImei,
       device_id: run.bin.id,
+      reported_device: run.bin.name,
       return_status: "available",
       courier: "EASYPOST",
       country_code: "NL",

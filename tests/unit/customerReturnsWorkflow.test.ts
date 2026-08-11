@@ -7,6 +7,9 @@ const read = (path: string) => readFileSync(join(root, path), "utf8");
 const migration = read(
   "supabase/migrations/20260811143000_expand_customer_returns.sql"
 ).toLowerCase();
+const deviceMigration = read(
+  "supabase/migrations/20260811163500_add_return_reported_device.sql"
+).toLowerCase();
 const confirmRoute = read("app/api/returns/confirm/route.ts");
 const previewRoute = read("app/api/returns/preview/route.ts");
 const historyRoute = read("app/api/returns/history/route.ts");
@@ -36,6 +39,17 @@ describe("complete customer return workflow", () => {
     expect(migration).toContain("return_item_state_changed");
   });
 
+  it("uses canonical devices for stock returns and declared devices otherwise", () => {
+    expect(deviceMigration).toContain("add column if not exists reported_device");
+    expect(deviceMigration).toContain(
+      "when v_status = 'available' then v_item.canonical_device"
+    );
+    expect(deviceMigration).toContain("else v_reported_device");
+    expect(deviceMigration).toContain("return_device_invalid");
+    expect(confirmRoute).toContain("p_reported_device");
+    expect(previewRoute).toContain("matchReturnDeviceOption");
+  });
+
   it("requires complete business metadata on the server", () => {
     for (const field of [
       "return_ref",
@@ -46,11 +60,12 @@ describe("complete customer return workflow", () => {
       "country_code",
       "customer",
       "sur_id",
+      "reported_device",
     ]) {
       expect(confirmRoute).toContain(`${field}:`);
-      expect(migration).toContain(`p_${field}`);
+      expect(`${migration}\n${deviceMigration}`).toContain(`p_${field}`);
     }
-    expect(confirmRoute).toContain('command.return_status !== "available"');
+    expect(confirmRoute).toContain('command.return_status === "available"');
     expect(confirmRoute).toContain("A target box is required for Available returns");
     expect(previewRoute).toContain("RETURN_STATUS_VALUES");
   });
@@ -64,6 +79,23 @@ describe("complete customer return workflow", () => {
     expect(page).toContain('useState<ReturnStatus>("available")');
     expect(returnConstants).toContain("Returned — Unprocessed");
     expect(page).toContain("stock remains unchanged");
+    expect(page).toContain('aria-label="Return device"');
+    expect(page).toContain("filteredDeviceOptions");
+    for (const model of [
+      "LMU2640",
+      "FMT100",
+      "FMB020",
+      "FMB003",
+      "FMB920",
+      "FMB130",
+      "GL50B",
+      "FMB640",
+      "FMB641",
+      "FMB204",
+      "Badai",
+    ]) {
+      expect(returnConstants).toContain(model);
+    }
   });
 
   it("serves bounded filterable history and a complete Brussels-time export", () => {

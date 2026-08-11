@@ -43,6 +43,20 @@ export const RETURN_COUNTRY_CODES = [
   "IT",
 ] as const;
 
+export const RETURN_FALLBACK_DEVICE_MODELS = [
+  "LMU2640",
+  "FMT100",
+  "FMB020",
+  "FMB003",
+  "FMB920",
+  "FMB130",
+  "GL50B",
+  "FMB640",
+  "FMB641",
+  "FMB204",
+  "Badai",
+] as const;
+
 export type ReturnStatus = (typeof RETURN_STATUS_VALUES)[number];
 
 export function returnStatusLabel(value: string) {
@@ -65,4 +79,30 @@ export function returnCountryLabel(value: string) {
 
 export function returnStockActionLabel(value: string) {
   return value === "added_to_stock" ? "Added to stock" : "No stock change";
+}
+
+export function mergeReturnDeviceOptions(databaseDevices: string[]) {
+  const options = [...databaseDevices, ...RETURN_FALLBACK_DEVICE_MODELS];
+  const seen = new Set<string>();
+
+  return options
+    .map((value) => String(value || "").trim())
+    .filter((value) => {
+      if (!value) return false;
+      const key = value.toLocaleLowerCase("en");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
+export function matchReturnDeviceOption(
+  value: string,
+  options: readonly string[]
+) {
+  const normalized = value.trim().toLocaleLowerCase("en");
+  return options.find(
+    (option) => option.toLocaleLowerCase("en") === normalized
+  );
 }

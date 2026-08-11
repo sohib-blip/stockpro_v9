@@ -7,6 +7,7 @@ import {
   RETURN_COUNTRIES,
   RETURN_COURIERS,
   RETURN_STATUSES,
+  matchReturnDeviceOption,
   returnCountryLabel,
   returnCourierLabel,
   returnStatusLabel,
@@ -94,6 +95,9 @@ export default function ReturnsPage() {
   const [surId, setSurId] = useState("");
   const [returnStatus, setReturnStatus] =
     useState<ReturnStatus>("available");
+  const [reportedDevice, setReportedDevice] = useState("");
+  const [deviceOptions, setDeviceOptions] = useState<string[]>([]);
+  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
   const [returnType, setReturnType] = useState("");
   const [returnReason, setReturnReason] = useState("");
   const [targetBox, setTargetBox] = useState("");
@@ -120,6 +124,7 @@ export default function ReturnsPage() {
   const [historyCourier, setHistoryCourier] = useState("");
   const [historyCountry, setHistoryCountry] = useState("");
   const returnOperationIdRef = useRef<string | null>(null);
+  const deviceComboboxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -128,6 +133,41 @@ export default function ReturnsPage() {
       if (data?.user?.id) setActorId(data.user.id);
     })();
   }, [supabase]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch("/api/returns/devices", {
+          method: "GET",
+          cache: "no-store",
+        });
+        const json = await response.json();
+        if (!cancelled && json.ok) {
+          setDeviceOptions(json.devices || []);
+        }
+      } catch {
+        if (!cancelled) setDeviceOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    function closeDeviceMenu(event: MouseEvent) {
+      if (
+        deviceComboboxRef.current &&
+        !deviceComboboxRef.current.contains(event.target as Node)
+      ) {
+        setDeviceMenuOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", closeDeviceMenu);
+    return () => document.removeEventListener("mousedown", closeDeviceMenu);
+  }, []);
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -153,6 +193,8 @@ export default function ReturnsPage() {
       customer: customer.trim(),
       surId: surId.trim(),
       returnStatus,
+      reportedDevice:
+        returnStatus === "available" ? null : reportedDevice.trim(),
       returnType,
       returnReason,
       targetBox: returnStatus === "available" ? targetBox.trim() : null,
@@ -168,6 +210,15 @@ export default function ReturnsPage() {
     if (!customer.trim()) return "Enter the customer name.";
     if (!surId.trim()) return "Enter the SUR ID.";
     if (!returnStatus) return "Select a return status.";
+    if (returnStatus !== "available" && !reportedDevice.trim()) {
+      return "Select the returned device.";
+    }
+    if (
+      returnStatus !== "available" &&
+      !matchReturnDeviceOption(reportedDevice, deviceOptions)
+    ) {
+      return "Select a valid device from the list.";
+    }
     if (!returnType) return "Select a return type.";
     if (!returnReason) return "Select a return reason.";
     if (!imeisText.trim()) return "Scan or paste at least one returned IMEI.";
@@ -249,6 +300,8 @@ export default function ReturnsPage() {
         body: JSON.stringify({
           imeisText,
           return_status: returnStatus,
+          reported_device:
+            returnStatus === "available" ? null : reportedDevice.trim(),
         }),
       });
       const json = await response.json();
@@ -297,6 +350,8 @@ export default function ReturnsPage() {
           country_code: countryCode,
           customer: customer.trim(),
           sur_id: surId.trim(),
+          reported_device:
+            returnStatus === "available" ? null : reportedDevice.trim(),
           actor,
           actor_id: actorId,
         }),
@@ -320,6 +375,7 @@ export default function ReturnsPage() {
       setSurId("");
       setReturnType("");
       setReturnReason("");
+      setReportedDevice("");
       setTargetBox("");
       returnOperationIdRef.current = null;
       setHistoryCursorStack([]);
@@ -334,6 +390,19 @@ export default function ReturnsPage() {
 
   const statusLabel = returnStatusLabel(returnStatus);
   const addsToStock = returnStatus === "available";
+  const filteredDeviceOptions = useMemo(() => {
+    const query = reportedDevice.trim().toLocaleLowerCase("en");
+    if (!query) return deviceOptions;
+
+    return deviceOptions
+      .filter((option) => option.toLocaleLowerCase("en").includes(query))
+      .sort((a, b) => {
+        const aStarts = a.toLocaleLowerCase("en").startsWith(query);
+        const bStarts = b.toLocaleLowerCase("en").startsWith(query);
+        if (aStarts !== bStarts) return aStarts ? -1 : 1;
+        return a.localeCompare(b, undefined, { sensitivity: "base" });
+      });
+  }, [deviceOptions, reportedDevice]);
 
   return (
     <div className="prototype-page prototype-module-page returns-prototype-page">
@@ -441,6 +510,10 @@ export default function ReturnsPage() {
                   value={returnStatus}
                   onChange={(event) => {
                     setReturnStatus(event.target.value as ReturnStatus);
+                    if (event.target.value === "available") {
+                      setReportedDevice("");
+                      setDeviceMenuOpen(false);
+                    }
                     setPreview(null);
                     setReviewedFingerprint("");
                   }}
@@ -452,6 +525,85 @@ export default function ReturnsPage() {
                   ))}
                 </select>
               </label>
+
+              {!addsToStock && (
+                <div className="returns-device-field">
+                  <label htmlFor="return-reported-device">
+                    Device <b>*</b>
+                  </label>
+                  <div
+                    ref={deviceComboboxRef}
+                    className={`returns-device-combobox ${
+                      deviceMenuOpen ? "is-open" : ""
+                    }`}
+                  >
+                    <input
+                      id="return-reported-device"
+                      aria-label="Return device"
+                      role="combobox"
+                      aria-autocomplete="list"
+                      aria-expanded={deviceMenuOpen}
+                      aria-controls="return-device-options"
+                      autoComplete="off"
+                      value={reportedDevice}
+                      onFocus={() => setDeviceMenuOpen(true)}
+                      onChange={(event) => {
+                        setReportedDevice(event.target.value);
+                        setDeviceMenuOpen(true);
+                        setPreview(null);
+                        setReviewedFingerprint("");
+                      }}
+                      onKeyDown={(event) => {
+                        if (event.key === "Escape") {
+                          setDeviceMenuOpen(false);
+                        }
+                      }}
+                      placeholder="Search or select a device…"
+                    />
+                    <button
+                      type="button"
+                      className="returns-device-toggle"
+                      aria-label="Open return device list"
+                      onClick={() => setDeviceMenuOpen((open) => !open)}
+                    >
+                      ▾
+                    </button>
+                    {deviceMenuOpen && (
+                      <div
+                        id="return-device-options"
+                        role="listbox"
+                        className="returns-device-options"
+                      >
+                        {filteredDeviceOptions.length > 0 ? (
+                          filteredDeviceOptions.map((option) => (
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={reportedDevice === option}
+                              key={option}
+                              onClick={() => {
+                                setReportedDevice(option);
+                                setDeviceMenuOpen(false);
+                                setPreview(null);
+                                setReviewedFingerprint("");
+                              }}
+                            >
+                              {option}
+                            </button>
+                          ))
+                        ) : (
+                          <div className="returns-device-empty">
+                            No matching device
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <span className="returns-device-hint">
+                    Type to filter all database bins and supported models.
+                  </span>
+                </div>
+              )}
 
               <label>
                 Return type <b>*</b>

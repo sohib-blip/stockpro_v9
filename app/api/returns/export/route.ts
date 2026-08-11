@@ -54,6 +54,7 @@ export async function GET() {
         return_reason,
         imei,
         device_id,
+        reported_device,
         previous_box,
         previous_floor,
         target_box,
@@ -89,7 +90,10 @@ export async function GET() {
       Customer: record.customer,
       Courier: returnCourierLabel(record.courier),
       Country: returnCountryLabel(record.country_code),
-      Device: binMap[String(record.device_id)] || "",
+      Device:
+        String(record.reported_device || "").trim() ||
+        binMap[String(record.device_id)] ||
+        "",
       IMEI: record.imei,
       Status: returnStatusLabel(record.return_status),
       "Return type": record.return_type,

@@ -478,7 +478,7 @@ export async function readReturnRecord(operationId: string) {
   const { data, error } = await supabase
     .from("return_records")
     .select(
-      "operation_id,item_id,imei,device_id,return_ref,customer,sur_id,courier,country_code,return_status,target_box,target_floor,stock_action"
+      "operation_id,item_id,imei,device_id,reported_device,return_ref,customer,sur_id,courier,country_code,return_status,target_box,target_floor,stock_action"
     )
     .eq("operation_id", operationId)
     .single();
@@ -488,6 +488,7 @@ export async function readReturnRecord(operationId: string) {
     item_id: string;
     imei: string;
     device_id: string;
+    reported_device: string;
     return_ref: string;
     customer: string;
     sur_id: string;

@@ -366,6 +366,13 @@ const FR: Record<string, string> = {
   Customer: "Client",
   "SUR ID": "Identifiant SUR",
   "Return status": "Statut du retour",
+  "Search or select a device…": "Rechercher ou sélectionner un appareil…",
+  "Type to filter all database bins and supported models.":
+    "Saisissez du texte pour filtrer tous les emplacements et modèles pris en charge.",
+  "No matching device": "Aucun appareil correspondant",
+  "Select the returned device.": "Sélectionnez l’appareil retourné.",
+  "Select a valid device from the list.":
+    "Sélectionnez un appareil valide dans la liste.",
   Available: "Disponible",
   Damaged: "Endommagé",
   "Returned — Unprocessed": "Retourné — non traité",
@@ -934,6 +941,13 @@ const NL: Record<string, string> = {
   Customer: "Klant",
   "SUR ID": "SUR-ID",
   "Return status": "Retourstatus",
+  "Search or select a device…": "Zoek of selecteer een apparaat…",
+  "Type to filter all database bins and supported models.":
+    "Typ om alle databaselocaties en ondersteunde modellen te filteren.",
+  "No matching device": "Geen overeenkomend apparaat",
+  "Select the returned device.": "Selecteer het geretourneerde apparaat.",
+  "Select a valid device from the list.":
+    "Selecteer een geldig apparaat uit de lijst.",
   Available: "Beschikbaar",
   Damaged: "Beschadigd",
   "Returned — Unprocessed": "Geretourneerd — onverwerkt",

@@ -33,21 +33,32 @@ const returnCommandSchema = z
     country_code: z.enum(RETURN_COUNTRY_CODES),
     customer: z.string().trim().min(1).max(300),
     sur_id: z.string().trim().min(1).max(200),
+    reported_device: z.string().trim().max(200).nullish(),
   })
   .superRefine((command, context) => {
-    if (command.return_status !== "available") return;
-    if (!command.target_box?.trim()) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["target_box"],
-        message: "A target box is required for Available returns",
-      });
+    if (command.return_status === "available") {
+      if (!command.target_box?.trim()) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["target_box"],
+          message: "A target box is required for Available returns",
+        });
+      }
+      if (!command.target_floor) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["target_floor"],
+          message: "A target floor is required for Available returns",
+        });
+      }
+      return;
     }
-    if (!command.target_floor) {
+
+    if (!command.reported_device?.trim()) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["target_floor"],
-        message: "A target floor is required for Available returns",
+        path: ["reported_device"],
+        message: "A device is required for non-stock returns",
       });
     }
   });
@@ -101,6 +112,10 @@ export async function POST(req: Request) {
         p_country_code: parsed.data.country_code,
         p_customer: parsed.data.customer,
         p_sur_id: parsed.data.sur_id,
+        p_reported_device:
+          parsed.data.return_status === "available"
+            ? null
+            : parsed.data.reported_device,
       }
     );
 

@@ -12,7 +12,7 @@ export function middleware(req: NextRequest) {
   ];
 
   if (protectedRoutes.some(r => url.startsWith(r))) {
-    // ici on pourra vérifier le role
+    // Role-specific checks can be added here when required.
   }
 
   return NextResponse.next();

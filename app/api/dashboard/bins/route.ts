@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { mergeDashboardBinRows } from "@/lib/dashboard-bin-rows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,17 +12,25 @@ const supabase = createClient(
 );
 
 export async function GET() {
- const { data, error } = await supabase
-  .from("dashboard_bins_view")
-  .select("*")
-  .order("device");
+ const [
+  { data: activeBins, error: binsError },
+  { data: stockRows, error: stockError },
+ ] = await Promise.all([
+  supabase
+   .from("bins")
+   .select("id,name,min_stock")
+   .eq("active", true)
+   .order("name"),
+  supabase.from("dashboard_bins_view").select("*"),
+ ]);
 
+ const error = binsError || stockError;
  if (error) {
   return NextResponse.json({ ok:false, error:error.message }, { status:500 });
  }
 
  return NextResponse.json({
   ok:true,
-  rows:data ?? []
+  rows:mergeDashboardBinRows(activeBins ?? [], stockRows ?? [])
  });
 }

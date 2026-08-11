@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getApiIdentity, resolveApiUserEmail } from "@/lib/api-identity";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,14 +22,9 @@ function getPeriodMonth(date = new Date()) {
 export async function POST(req: Request) {
   try {
     const supabase = sb();
-    const { user_id, user_email, task } = await req.json();
-
-    if (!user_email) {
-      return NextResponse.json(
-        { ok: false, error: "Missing user_email" },
-        { status: 400 }
-      );
-    }
+    const { user_email: requestedEmail, task } = await req.json();
+    const identity = getApiIdentity(req);
+    const userEmail = resolveApiUserEmail(req, requestedEmail);
 
     if (!task) {
       return NextResponse.json(
@@ -40,7 +36,7 @@ export async function POST(req: Request) {
     const { data: active, error: activeErr } = await supabase
       .from("nrd_time_logs")
       .select("*")
-      .eq("user_email", user_email)
+      .eq("user_email", userEmail)
       .is("ended_at", null)
       .limit(1);
 
@@ -62,8 +58,8 @@ export async function POST(req: Request) {
     const { data, error } = await supabase
       .from("nrd_time_logs")
       .insert({
-        user_id: user_id || null,
-        user_email,
+        user_id: identity.userId,
+        user_email: userEmail,
         task,
         started_at: startedAt.toISOString(),
         period_month: getPeriodMonth(startedAt),

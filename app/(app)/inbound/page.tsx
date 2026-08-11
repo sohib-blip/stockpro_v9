@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { parseVendorExcel } from "@/lib/inbound/parsers";
 import { toDeviceMatchList } from "@/lib/inbound/vendorParser";
+import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 
 type Vendor = "teltonika" | "quicklink" | "digitalmatter" | "truster";
 type HistoryFilter = "all" | "excel" | "manual";
@@ -14,14 +15,14 @@ type HistoryRow = {
   actor: string;
   vendor: string;
   source: string;
-  shipment_ref?: string;   // ✅ AJOUT
+  shipment_ref?: string;
   qty_imeis: number;
   qty_boxes: number;
 };
 
 type DeviceRow = {
-  device_id: string; // (on garde le nom pour pas toucher le UI)
-  device: string; // label affiché
+  device_id: string;
+  device: string;
 };
 
 function normName(s: any) {
@@ -39,7 +40,7 @@ export default function InboundPage() {
   const [file, setFile] = useState<File | null>(null);
   const [floor, setFloor] = useState("00");
   const [busy, setBusy] = useState(false);
-  const [busyText, setBusyText] = useState<string>(""); // ✅ NEW (overlay text)
+  const [busyText, setBusyText] = useState<string>("");
   const [result, setResult] = useState<any>(null);
   const [err, setErr] = useState("");
 
@@ -69,6 +70,13 @@ const [page, setPage] = useState(1);
   const [manualPreview, setManualPreview] = useState<any>(null);
   const [manualReadyToImport, setManualReadyToImport] = useState(false);
   const [manualMsg, setManualMsg] = useState<string>("");
+  const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
+  const excelOperationIdRef = useRef<string | null>(null);
+  const manualOperationIdRef = useRef<string | null>(null);
+  const manualDeviceInputRef = useRef<HTMLSelectElement>(null);
+  const manualBoxInputRef = useRef<HTMLInputElement>(null);
+  const manualFloorInputRef = useRef<HTMLSelectElement>(null);
+  const manualImeisInputRef = useRef<HTMLTextAreaElement>(null);
 
   // Zebra label size (default 105x155mm)
   const LABEL_W = 105;
@@ -82,6 +90,12 @@ const [page, setPage] = useState(1);
   function stopBusy() {
     setBusy(false);
     setBusyText("");
+  }
+
+  function invalidateManualPreview() {
+    setManualPreview(null);
+    setManualReadyToImport(false);
+    manualOperationIdRef.current = null;
   }
 
   useEffect(() => {
@@ -115,8 +129,8 @@ const [page, setPage] = useState(1);
       }
       setBinNameToId(map);
 
-      if (!manualDevice && mapped.length > 0) {
-        setManualDevice(mapped[0].device_id);
+      if (mapped.length > 0) {
+        setManualDevice((current) => current || mapped[0].device_id);
       }
     }
   }
@@ -124,7 +138,7 @@ const [page, setPage] = useState(1);
   async function loadHistory() {
   setLoadingHistory(true);
   try {
-    const res = await fetch(`/api/inbound/history?page=${page}`, {
+    const res = await apiFetch(`/api/inbound/history?page=${page}`, {
       method: "GET",
       cache: "no-store",
       headers: {
@@ -150,7 +164,7 @@ useEffect(() => {
 
   function fmtDateTime(iso: string) {
     try {
-      return new Date(iso).toLocaleString();
+      return new Date(iso).toLocaleString("en-GB");
     } catch {
       return iso;
     }
@@ -163,10 +177,11 @@ useEffect(() => {
     setLastBatchId("");
     setManualPreview(null);
     setManualMsg("");
+    excelOperationIdRef.current = null;
 
     if (!file) return setErr("Choose a file.");
 
-    startBusy("Préparation du preview…");
+    startBusy("Preparing spreadsheet preview…");
     try {
       const { data: bins, error: binsErr } = await supabase
         .from("bins")
@@ -202,7 +217,7 @@ useEffect(() => {
           floor,
         }));
 
-        // ✅ Preview details
+        // Build preview details.
         const devicesFound = new Set<string>();
 
         // box_no -> { imeisCount, deviceName }
@@ -221,7 +236,7 @@ useEffect(() => {
             }
             boxAgg[boxNo].imeis += imeiCount;
 
-            // si jamais une même box apparait avec 2 devices différents
+            // Flag boxes that contain more than one device type.
             if (deviceName && boxAgg[boxNo].device && boxAgg[boxNo].device !== deviceName) {
               boxAgg[boxNo].device = "MULTI";
             } else if (deviceName && !boxAgg[boxNo].device) {
@@ -230,7 +245,7 @@ useEffect(() => {
           }
         }
 
-        // ✅ detect unknown bins directly in preview
+        // Detect unknown bins directly in the preview.
         const unknownBins: string[] = [];
         for (const l of parsed.labels || []) {
           const deviceName = String(l.device || "").trim();
@@ -247,12 +262,38 @@ useEffect(() => {
             device: v.device,
           }))
           .sort((a, b) => a.box_no.localeCompare(b.box_no, undefined, { numeric: true }));
+
+        const spreadsheetImeis = Array.from(
+          new Set(
+            (parsed.labels || []).flatMap((label: any) =>
+              (label.imeis || [])
+                .map((imei: unknown) => String(imei).replace(/\D/g, ""))
+                .filter((imei: string) => imei.length === 15)
+            )
+          )
+        ) as string[];
+        const existingImeis = new Set<string>();
+
+        for (let index = 0; index < spreadsheetImeis.length; index += 200) {
+          const chunk = spreadsheetImeis.slice(index, index + 200);
+          const { data: existingRows, error: existingError } = await supabase
+            .rpc("check_existing_imeis", { requested_imeis: chunk });
+
+          if (existingError) throw existingError;
+          for (const row of existingRows || []) {
+            existingImeis.add(String(row.imei));
+          }
+        }
+
+        (parsed as any).stock_check = {
+          total: spreadsheetImeis.length,
+          existing: existingImeis.size,
+          new: spreadsheetImeis.length - existingImeis.size,
+        };
       }
 
       if (!parsed?.ok) {
         setErr(parsed?.error || "Parse failed");
-        // eslint-disable-next-line no-console
-        console.log("PARSE DEBUG:", parsed?.debug);
         return;
       }
 
@@ -266,6 +307,14 @@ useEffect(() => {
 
   async function confirmExcelInbound() {
     if (!result?.ok) return;
+
+    if (result.stock_check?.total > 0 && result.stock_check?.new === 0) {
+      const total = Number(result.stock_check.total);
+      setErr(
+        `Import blocked: all ${total} ${total === 1 ? "IMEI" : "IMEIs"} from this spreadsheet ${total === 1 ? "is" : "are"} already in stock. Nothing was imported and no history was created.`
+      );
+      return;
+    }
 
     if (Array.isArray(result.unknown_devices) && result.unknown_devices.length > 0) {
       setErr(`Import blocked: unknown devices -> ${result.unknown_devices.join(", ")}`);
@@ -296,15 +345,19 @@ useEffect(() => {
     setManualMsg("");
 
     try {
+      const operationId =
+        excelOperationIdRef.current || crypto.randomUUID();
+      excelOperationIdRef.current = operationId;
       const payload = {
-  labels: labelsConverted,
-  actor,
-  actor_id: actorId,
-  vendor,
-  shipment_ref: shipmentRef || null,
-};
+        operation_id: operationId,
+        labels: labelsConverted,
+        actor,
+        actor_id: actorId,
+        vendor,
+        shipment_ref: shipmentRef || null,
+      };
 
-      const res = await fetch("/api/inbound/confirm", {
+      const res = await apiFetch("/api/inbound/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -313,6 +366,18 @@ useEffect(() => {
       const json = await res.json();
 
       if (!json.ok) {
+        if (json.code === "ALL_IMEIS_ALREADY_IN_STOCK") {
+          setResult((current: any) => ({
+            ...current,
+            stock_check: {
+              total: json.totals?.skipped_existing_imeis || 0,
+              existing: json.totals?.skipped_existing_imeis || 0,
+              new: 0,
+            },
+          }));
+          setErr(json.error);
+          return;
+        }
         if (json.unknown_devices?.length) {
           setErr(`Import blocked: unknown devices -> ${json.unknown_devices.join(", ")}`);
           return;
@@ -323,12 +388,13 @@ useEffect(() => {
       setLastBatchId(json.batch_id);
       setResult(null);
       setFile(null);
+      excelOperationIdRef.current = null;
 
       alert(
-        `Inbound OK ✅\nInserted: ${json.totals.inserted_imeis}\nSkipped(existing): ${json.totals.skipped_existing_imeis}\nBoxes created: ${json.totals.created_boxes}\nBoxes reused: ${json.totals.reused_boxes}`
+        `Inbound completed\nImported: ${json.totals.inserted_imeis}\nSkipped (already in stock): ${json.totals.skipped_existing_imeis}\nBoxes created: ${json.totals.created_boxes}\nBoxes reused: ${json.totals.reused_boxes}`
       );
 
-      // ✅ IMPORTANT: refresh history directly, no reload
+      // Refresh history without reloading the page.
       await loadHistory();
     } catch (e: any) {
       setErr(e?.message || "Confirm failed");
@@ -346,6 +412,8 @@ useEffect(() => {
 
   const hasUnknownExcelDevices =
     result?.ok && Array.isArray(result.unknown_devices) && result.unknown_devices.length > 0;
+  const allExcelImeisAlreadyInStock =
+    result?.ok && result.stock_check?.total > 0 && result.stock_check?.new === 0;
 
   // ========== MANUAL FLOW ==========
   function extractManualImeis(text: string): string[] {
@@ -365,22 +433,29 @@ useEffect(() => {
     setErr("");
     setResult(null);
     setManualReadyToImport(false);
+    manualOperationIdRef.current = null;
 
-    const imeis = extractManualImeis(manualImeis);
+    const selectedDevice = manualDeviceInputRef.current?.value ?? manualDevice;
+    const selectedBox =
+      manualBoxInputRef.current?.value.trim() ?? manualBox.trim();
+    const selectedFloor = manualFloorInputRef.current?.value ?? manualFloor;
+    const imeis = extractManualImeis(
+      manualImeisInputRef.current?.value ?? manualImeis
+    );
 
-    if (!manualDevice) return setManualMsg("❌ Select a device.");
-    if (!manualBox.trim()) return setManualMsg("❌ Enter box number.");
-    if (imeis.length === 0) return setManualMsg("❌ No valid 15-digit IMEIs found.");
+    if (!selectedDevice) return setManualMsg("Select a device.");
+    if (!selectedBox) return setManualMsg("Enter a box number.");
+    if (imeis.length === 0) return setManualMsg("No valid 15-digit IMEIs found.");
 
-    startBusy("Préparation du preview manuel…");
+    startBusy("Preparing manual inbound preview…");
     try {
-      const res = await fetch("/api/inbound/manual-preview", {
+      const res = await apiFetch("/api/inbound/manual-preview", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device: manualDevice,
-          box_no: manualBox.trim(),
-          floor: manualFloor,
+          device: selectedDevice,
+          box_no: selectedBox,
+          floor: selectedFloor,
           imeis,
         }),
       });
@@ -388,15 +463,15 @@ useEffect(() => {
       const json = await res.json();
 
       if (!json.ok) {
-  setManualMsg("❌ " + (json.error || "Manual preview failed"));
+  setManualMsg(json.error || "Manual preview failed");
   return;
 }
 
 setManualPreview(json);
-setManualReadyToImport(true); // 🔥 AJOUTE ICI
+setManualReadyToImport(true);
 setManualMsg("");
     } catch (e: any) {
-      setManualMsg("❌ " + (e?.message || "Manual preview failed"));
+      setManualMsg(e?.message || "Manual preview failed");
     } finally {
       stopBusy();
     }
@@ -406,24 +481,45 @@ setManualMsg("");
     setManualMsg("");
 
     if (!manualReadyToImport) {
-    return setManualMsg("❌ Please preview before importing.");
+    return setManualMsg("Preview the inbound before confirming it.");
   }
 
-    if (!manualPreview?.ok) return setManualMsg("❌ No preview available.");
+    if (!manualPreview?.ok) return setManualMsg("No preview is available.");
 
     const imeisToInsert: string[] = manualPreview.preview_imeis || [];
-    if (imeisToInsert.length === 0) return setManualMsg("❌ Nothing to import (all duplicates?).");
+    if (imeisToInsert.length === 0) return setManualMsg("Nothing to import. All IMEIs may already be in stock.");
 
-    startBusy("Import manuel en cours…");
+    const previewDevice = String(manualPreview.bin_id || "");
+    const previewBox = String(manualPreview.box_code || "");
+    const previewFloor = String(manualPreview.floor || "");
+    const currentDevice = manualDeviceInputRef.current?.value ?? manualDevice;
+    const currentBox =
+      manualBoxInputRef.current?.value.trim() ?? manualBox.trim();
+    const currentFloor = manualFloorInputRef.current?.value ?? manualFloor;
+    if (
+      currentDevice !== previewDevice ||
+      currentBox !== previewBox ||
+      currentFloor !== previewFloor
+    ) {
+      invalidateManualPreview();
+      return setManualMsg("Inbound details changed. Preview the inbound again before confirming.");
+    }
+
+    startBusy("Importing manual inbound…");
     try {
-      const res = await fetch("/api/inbound/manual-confirm", {
+      const operationId =
+        manualOperationIdRef.current || crypto.randomUUID();
+      manualOperationIdRef.current = operationId;
+      const res = await apiFetch("/api/inbound/manual-confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          device: manualDevice,
-          box_no: manualBox.trim(),
-          floor: manualFloor,
+          operation_id: operationId,
+          device: previewDevice,
+          box_no: previewBox,
+          floor: previewFloor,
           imeis: imeisToInsert,
+          shipment_ref: shipmentRef.trim() || null,
           actor,
           actor_id: actorId,
         }),
@@ -432,12 +528,12 @@ setManualMsg("");
       const json = await res.json();
 
       if (!json.ok) {
-        setManualMsg("❌ " + (json.error || "Manual confirm failed"));
+        setManualMsg(json.error || "Manual confirmation failed");
         return;
       }
 
       if (json.inserted === 0) {
-        setManualMsg(`⚠️ Nothing inserted. Skipped existing: ${json.skipped_existing || 0}`);
+        setManualMsg(`Nothing was imported. Existing IMEIs skipped: ${json.skipped_existing || 0}.`);
         setManualPreview(null);
         return;
       }
@@ -447,14 +543,15 @@ setManualMsg("");
       setManualPreview(null);
       setManualImeis("");
       setManualBox("");
+      manualOperationIdRef.current = null;
 
       const skipped = json.skipped_existing || 0;
-      setManualMsg(`✅ Manual inbound saved (${json.inserted} IMEIs). Skipped existing: ${skipped}`);
+      setManualMsg(`Manual inbound completed: ${json.inserted} IMEIs imported, ${skipped} existing IMEIs skipped.`);
 
-      // ✅ IMPORTANT: refresh history directly, no reload
+      // Refresh history without reloading the page.
       await loadHistory();
     } catch (e: any) {
-      setManualMsg("❌ " + (e?.message || "Manual confirm failed"));
+      setManualMsg(e?.message || "Manual confirmation failed");
     } finally {
       stopBusy();
     }
@@ -482,8 +579,8 @@ setManualMsg("");
 });
 
   return (
-  <div className="space-y-8 w-full">
-      {/* ✅ GLOBAL LOADER OVERLAY (no layout change, just overlay) */}
+  <div className="prototype-page prototype-module-page inbound-prototype-page">
+      {/* Global processing overlay */}
       {busy && (
         <div className="fixed inset-0 z-[999] bg-black/50 flex items-center justify-center p-4">
           <div className="rounded-2xl border border-slate-800 bg-slate-950 px-6 py-5 w-full max-w-sm">
@@ -494,55 +591,71 @@ setManualMsg("");
               </div>
             </div>
             <div className="text-xs text-slate-400 mt-2">
-              Don't close the tab 👀
+              Keep this tab open while processing.
             </div>
           </div>
         </div>
       )}
 
       {/* HEADER */}
-      <div className="flex items-center justify-between gap-3">
-        {/* SHIPMENT NOTE */}
-<div className="card-glow p-6">
-  <div className="font-semibold mb-2">Reference / note</div>
-
-  <input
-    value={shipmentRef}
-    onChange={(e) => setShipmentRef(e.target.value)}
-    placeholder="ex: Teltonika delivery 18/03"
-    className="w-full rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-  />
-</div>
+      <div className="prototype-page-header">
         <div>
-          <div className="text-xs text-slate-500">Inbound</div>
-          <h2 className="text-xl font-semibold">Inbound Import</h2>
-          <p className="text-sm text-slate-400 mt-1">
-            User: <b>{actor}</b>
+          <h1>Inbound Processing</h1>
+          <p>
+            Register received IMEIs, boxes and floors. Nothing changes until you confirm.
           </p>
         </div>
-
-        {lastBatchId && (
-          <a
-            href={`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold"
-          >
-           QR labels 
-          </a>
-        )}
+        <button
+          type="button"
+          className="prototype-button secondary"
+          onClick={() => document.getElementById("inbound-history")?.scrollIntoView({ behavior: "smooth" })}
+        >
+          History &amp; exports
+        </button>
       </div>
 
-      {/* MANUAL IMPORT */}
-      <div className="card-glow p-6 space-y-4 relative overflow-hidden">
-        <div>
-          <div className="font-semibold">Manual Import</div>
-          <div className="text-xs text-slate-500">
-          </div>
+      <div className="prototype-stepper" aria-label="Inbound progress">
+        <div className={`prototype-step ${!manualPreview && !result && !lastBatchId ? "is-active" : "is-complete"}`}><span>{manualPreview || result || lastBatchId ? "✓" : "1"}</span><strong>Input</strong></div>
+        <i />
+        <div className={`prototype-step ${manualPreview || result ? "is-active" : lastBatchId ? "is-complete" : ""}`}><span>{lastBatchId ? "✓" : "2"}</span><strong>Preview</strong></div>
+        <i />
+        <div className={`prototype-step ${lastBatchId ? "is-active" : ""}`}><span>3</span><strong>Confirm</strong></div>
+      </div>
+
+      {/* Manual inbound */}
+      <div className="prototype-process-grid">
+      <div className="prototype-process-input-column">
+        <div className="prototype-segmented-control">
+          <button type="button" className={inputMode === "manual" ? "is-active" : ""} onClick={() => setInputMode("manual")}>Manual Inbound</button>
+          <button type="button" className={inputMode === "spreadsheet" ? "is-active" : ""} onClick={() => setInputMode("spreadsheet")}>Spreadsheet Import</button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="prototype-shared-reference">
+          <label htmlFor="inbound-reference">Reference or note <span>(optional)</span></label>
+          <input
+            id="inbound-reference"
+            aria-label="Inbound reference"
+            value={shipmentRef}
+            onChange={(e) => setShipmentRef(e.target.value)}
+            placeholder="e.g. Teltonika delivery 21/07"
+          />
+        </div>
+
+      {inputMode === "manual" && (
+      <div className="prototype-input-card">
+        <div>
+          <div className="prototype-input-section-title">Manual Inbound</div>
+        </div>
+
+        <div className="inbound-manual-fields">
           <select
+            ref={manualDeviceInputRef}
+            aria-label="Manual inbound device"
             value={manualDevice}
-            onChange={(e) => setManualDevice(e.target.value)}
+            onChange={(e) => {
+              setManualDevice(e.target.value);
+              invalidateManualPreview();
+            }}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           >
             {devices.length === 0 && <option value="">No active devices found</option>}
@@ -554,15 +667,25 @@ setManualMsg("");
           </select>
 
           <input
+            ref={manualBoxInputRef}
+            aria-label="Manual inbound box"
             placeholder="Box number"
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
             value={manualBox}
-            onChange={(e) => setManualBox(e.target.value)}
+            onChange={(e) => {
+              setManualBox(e.target.value);
+              invalidateManualPreview();
+            }}
           />
 
           <select
+            ref={manualFloorInputRef}
+            aria-label="Manual inbound floor"
             value={manualFloor}
-            onChange={(e) => setManualFloor(e.target.value)}
+            onChange={(e) => {
+              setManualFloor(e.target.value);
+              invalidateManualPreview();
+            }}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
           >
             <option value="00">Floor 00</option>
@@ -572,31 +695,29 @@ setManualMsg("");
           </select>
         </div>
 
+        <div className="prototype-field-heading"><label htmlFor="manual-imeis">IMEIs — scan or paste, one per line</label><span>{extractManualImeis(manualImeis).length} detected</span></div>
         <textarea
+          ref={manualImeisInputRef}
+          id="manual-imeis"
+          aria-label="Manual inbound IMEIs"
           placeholder="Scan or paste IMEIs (one per line). Only 15-digit kept."
-          className="w-full h-32 rounded-xl border border-slate-800 bg-slate-950 px-3 py-3 text-sm"
+          className="prototype-imei-textarea"
           value={manualImeis}
-          onChange={(e) => setManualImeis(e.target.value)}
+          onChange={(e) => {
+            setManualImeis(e.target.value);
+            invalidateManualPreview();
+          }}
         />
 
         <div className="flex flex-wrap gap-2">
   <button
     onClick={previewManualImport}
     disabled={busy}
-    className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 font-semibold disabled:opacity-50"
+    className="prototype-button primary grow"
   >
-    Preview Manual Import
+    Preview Inbound
   </button>
 
-  {manualReadyToImport && (
-    <button
-      onClick={confirmManualImport}
-      disabled={busy}
-      className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
-    >
-      Import (Save)
-    </button>
-  )}
 </div>
         {manualMsg && (
           <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm">
@@ -605,7 +726,7 @@ setManualMsg("");
         )}
 
         {manualPreview?.ok && (
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-4 text-sm space-y-2">
+          <div className="hidden">
             <div className="font-semibold">Manual Preview</div>
             <div>
               Scanned: <b>{manualPreview.total_scanned}</b> • New:{" "}
@@ -615,13 +736,16 @@ setManualMsg("");
           </div>
         )}
       </div>
+      )}
 
-      {/* EXCEL IMPORT */}
-      <div className="card-glow p-6 space-y-3">
-        <div className="font-semibold">Excel Import</div>
+      {/* Spreadsheet import */}
+      {inputMode === "spreadsheet" && (
+      <div className="prototype-input-card">
+        <div className="prototype-input-section-title">Spreadsheet Import</div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+        <div className="spreadsheet-import-grid">
           <select
+            aria-label="Inbound spreadsheet vendor"
             value={vendor}
             onChange={(e) => setVendor(e.target.value as Vendor)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -632,14 +756,8 @@ setManualMsg("");
             <option value="truster">Truster</option>
           </select>
 
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-            className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
-          />
-
           <select
+            aria-label="Inbound spreadsheet floor"
             value={floor}
             onChange={(e) => setFloor(e.target.value)}
             className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
@@ -650,12 +768,20 @@ setManualMsg("");
             <option value="Cabinet">Cabinet</option>
           </select>
 
+          <input
+            type="file"
+            aria-label="Inbound spreadsheet file"
+            accept=".xlsx,.xls"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="spreadsheet-file-input"
+          />
+
           <button
             onClick={parseExcel}
             disabled={busy}
-            className="rounded-xl bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-semibold disabled:opacity-50"
+            className="prototype-button primary"
           >
-            {busy ? "Working…" : "Preview import"}
+            {busy ? "Working…" : "Preview Import"}
           </button>
         </div>
 
@@ -665,18 +791,19 @@ setManualMsg("");
           </div>
         )}
       </div>
+      )}
+      </div>
 
-            {result?.ok && (
-        <div className="card-glow p-6 space-y-4 relative overflow-hidden">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            {/* LEFT */}
+      {result?.ok && (
+        <div className="prototype-preview-card">
+          <div className="prototype-preview-content">
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <div className="font-semibold">
                   Preview: {excelTotals.boxes} boxes • {excelTotals.imeis} IMEIs
                 </div>
 
-                {(result?.unknown_bins_preview?.length ?? 0) > 0 ? (
+                {(result?.unknown_bins_preview?.length ?? 0) > 0 || allExcelImeisAlreadyInStock ? (
                   <span className="px-2 py-1 text-xs rounded-lg bg-rose-900/60 text-rose-200 border border-rose-800">
                     ERROR
                   </span>
@@ -700,6 +827,24 @@ setManualMsg("");
                 </div>
               )}
 
+              {allExcelImeisAlreadyInStock && (
+                <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
+                  <div className="font-semibold">Import blocked — already in stock</div>
+                  <div className="mt-1">
+                    {`All ${result.stock_check.total} ${result.stock_check.total === 1 ? "IMEI" : "IMEIs"} from this spreadsheet already ${result.stock_check.total === 1 ? "exists" : "exist"} in stock. Nothing will be imported and no history entry will be created.`}
+                  </div>
+                </div>
+              )}
+
+              {!allExcelImeisAlreadyInStock && result?.stock_check?.existing > 0 && (
+                <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
+                  <div className="font-semibold">Existing stock detected</div>
+                  <div className="mt-1">
+                    {`${result.stock_check.existing} existing IMEIs will be skipped and ${result.stock_check.new} new IMEIs will be imported.`}
+                  </div>
+                </div>
+              )}
+
               {result?.box_breakdown?.length > 0 && (
                 <div className="text-xs text-slate-400 space-y-1">
                   <b>Boxes detected:</b>
@@ -719,37 +864,88 @@ setManualMsg("");
               )}
             </div>
 
-            {/* RIGHT */}
+            {hasUnknownExcelDevices && (
+              <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
+                <div className="font-semibold">Import blocked</div>
+                <div className="mt-1">
+                  Unknown devices found: <b>{result.unknown_devices.join(", ")}</b>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="prototype-preview-actions">
             <button
+              type="button"
               onClick={confirmExcelInbound}
-              disabled={busy || (result?.unknown_bins_preview?.length ?? 0) > 0}
-              className="rounded-xl bg-emerald-600 hover:bg-emerald-700 px-4 py-2 font-semibold disabled:opacity-50"
+              disabled={
+                busy ||
+                (result?.unknown_bins_preview?.length ?? 0) > 0 ||
+                allExcelImeisAlreadyInStock
+              }
+              className="prototype-button confirm"
             >
-              Confirm Inbound (Save)
+              {allExcelImeisAlreadyInStock ? "Already in stock" : "Confirm Inbound"}
             </button>
           </div>
+        </div>
+      )}
 
-          {hasUnknownExcelDevices && (
-            <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
-              <div className="font-semibold">Import blocked</div>
-              <div className="mt-1">
-                Unknown devices found: <b>{result.unknown_devices.join(", ")}</b>
-              </div>
+      {manualPreview?.ok && !result?.ok && (
+        <div className="prototype-preview-card">
+          <div className="prototype-success-banner">
+            <span>✓</span>
+            <div><strong>Preview ready — no blocking problems</strong><p>{manualPreview.valid_new} devices will be added to stock.</p></div>
+          </div>
+          <div className="prototype-preview-chips">
+            <span className="success">{manualPreview.valid_new} valid</span>
+            <span>{manualPreview.duplicates} duplicates</span>
+            <span>1 box</span>
+          </div>
+          <div className="prototype-preview-summary">
+            <div><span>Device bin</span><strong>{manualPreview.bin_name || "—"}</strong></div>
+            <div><span>Box</span><strong>{manualPreview.box_code || "—"}</strong></div>
+            <div><span>Floor</span><strong>Floor {manualPreview.floor || "—"}</strong></div>
+            <div><span>New IMEIs</span><strong>{manualPreview.valid_new}</strong></div>
+          </div>
+          <div className="prototype-preview-footer">
+            <span>No blocking errors. Review the summary before confirmation.</span>
+            <button type="button" onClick={confirmManualImport} disabled={busy || !manualReadyToImport} className="prototype-button confirm">Confirm Inbound</button>
+          </div>
+        </div>
+      )}
+
+      {!manualPreview?.ok && !result?.ok && (
+        <div className="prototype-empty-preview">
+          <div className="prototype-empty-icon"><span /></div>
+          <strong>No preview yet</strong>
+          <p>Fill in the box, scan or paste IMEIs, then run <b>Preview Inbound</b>. You will see every device and problem before anything is committed.</p>
+        </div>
+      )}
+      </div>
+
+      {lastBatchId && (
+        <div className="prototype-completion-card">
+          <div className="prototype-success-banner">
+            <span>✓</span>
+            <div><strong>Inbound completed</strong><p>{shipmentRef || "Manual inbound"} · {actor}</p></div>
+            <div className="prototype-page-actions">
+              <button type="button" className="prototype-button secondary" onClick={() => downloadApiFile(`/api/inbound/export?batch_id=${encodeURIComponent(lastBatchId)}`, `inbound-${lastBatchId}.xlsx`).catch((error) => setErr(error.message))}>Download batch Excel</button>
+              <button type="button" className="prototype-button confirm" onClick={() => downloadApiFile(`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`, `labels-${lastBatchId}.pdf`).catch((error) => setErr(error.message))}>Download ZD220 label PDF</button>
             </div>
-          )}
+          </div>
         </div>
       )}
 
       {/* HISTORY */}
-      <div className="card-glow p-6 space-y-3">
-        <div className="flex items-center justify-between gap-3">
+      <div id="inbound-history" className="prototype-card prototype-history-card">
+        <div className="inbound-history-toolbar">
           <div>
-            <div className="font-semibold">Inbound history</div>
+            <div className="font-semibold">Inbound History</div>
             <div className="text-xs text-slate-500">
             </div>
           </div>
 
-          <div className="flex gap-2 items-center">
+          <div className="inbound-history-filters">
 
             <input
   placeholder="Search user / vendor / reference"
@@ -764,8 +960,8 @@ setManualMsg("");
               className="rounded-xl border border-slate-800 bg-slate-950 px-3 py-2 text-sm"
             >
               <option value="all">All</option>
-              <option value="excel">Excel only</option>
-              <option value="manual">Manual only</option>
+              <option value="excel">Spreadsheet</option>
+              <option value="manual">Manual</option>
             </select>
 
             <button
@@ -777,17 +973,17 @@ setManualMsg("");
           </div>
         </div>
 
-        <div className="max-h-[400px] overflow-y-auto border border-slate-800 rounded-xl">
+        <div className="inbound-history-table border border-slate-800 rounded-xl">
           <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
             <thead className="bg-slate-950/50">
               <tr>
-                <th className="p-2 border-b border-slate-800 text-left">Date/Time</th>
+                <th className="p-2 border-b border-slate-800 text-left">Date and Time</th>
                 <th className="p-2 border-b border-slate-800 text-left">User</th>
                 <th className="p-2 border-b border-slate-800 text-left">Vendor</th>
                 <th className="p-2 border-b border-slate-800 text-left">Reference</th>
                 <th className="p-2 border-b border-slate-800 text-right">Boxes</th>
                 <th className="p-2 border-b border-slate-800 text-right">IMEIs</th>
-                <th className="p-2 border-b border-slate-800 text-right">Excel</th>
+                <th className="p-2 border-b border-slate-800 text-right">Export</th>
                 <th className="p-2 border-b border-slate-800 text-right">Labels</th>
               </tr>
             </thead>
@@ -818,24 +1014,30 @@ setManualMsg("");
                     {h.qty_imeis}
                   </td>
                   <td className="p-2 border-b border-slate-800 text-right">
-                    <a
-                      href={`/api/inbound/export?batch_id=${encodeURIComponent(
-                        h.batch_id
-                      )}`}
+                    <button
+                      onClick={() =>
+                        downloadApiFile(
+                          `/api/inbound/export?batch_id=${encodeURIComponent(h.batch_id)}`,
+                          `inbound-${h.batch_id}.xlsx`
+                        ).catch((error) => setErr(error.message))
+                      }
                       className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
                     >
-                      Excel
-                    </a>
+                      Download
+                    </button>
                   </td>
                   <td className="p-2 border-b border-slate-800 text-right">
-                    <a
-                      href={`/api/inbound/labels?batch_id=${encodeURIComponent(
-                        h.batch_id
-                      )}&w_mm=105&h_mm=155`}
+                    <button
+                      onClick={() =>
+                        downloadApiFile(
+                          `/api/inbound/labels?batch_id=${encodeURIComponent(h.batch_id)}&w_mm=105&h_mm=155`,
+                          `labels-${h.batch_id}.pdf`
+                        ).catch((error) => setErr(error.message))
+                      }
                       className="rounded-lg border border-slate-800 bg-slate-950 px-3 py-2 text-xs font-semibold hover:bg-slate-800 inline-block"
                     >
                       ZD220 PDF
-                    </a>
+                    </button>
                   </td>
                 </tr>
               ))}

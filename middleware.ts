@@ -1,52 +1,83 @@
-import { NextResponse } from "next/server"
-import type { NextRequest } from "next/server"
-import { createServerClient } from "@supabase/ssr"
+import { NextRequest, NextResponse } from "next/server";
+import { createServerClient } from "@supabase/ssr";
+import { permissionsForApi } from "@/lib/access-control";
+import { authorizeApiRequest } from "@/lib/auth";
 
 export async function middleware(req: NextRequest) {
+  if (!req.nextUrl.pathname.startsWith("/api/")) {
+    const response = NextResponse.next();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name) {
+            return req.cookies.get(name)?.value;
+          },
+          set(name, value, options) {
+            response.cookies.set(name, value, options);
+          },
+          remove(name, options) {
+            response.cookies.set(name, "", options);
+          },
+        },
+      }
+    );
 
-  const res = NextResponse.next()
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        get(name) {
-          return req.cookies.get(name)?.value
-        },
-        set(name, value, options) {
-          res.cookies.set(name, value, options)
-        },
-        remove(name, options) {
-          res.cookies.set(name, "", options)
-        },
-      },
+    const isPublicAuthPage =
+      req.nextUrl.pathname === "/login" ||
+      req.nextUrl.pathname === "/set-password" ||
+      req.nextUrl.pathname === "/reset-password" ||
+      req.nextUrl.pathname.startsWith("/auth/");
+
+    if (!session && !isPublicAuthPage) {
+      const url = req.nextUrl.clone();
+      url.pathname = "/login";
+      return NextResponse.redirect(url);
     }
-  )
 
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
+    if (session && req.nextUrl.pathname === "/login") {
+      const url = req.nextUrl.clone();
+      url.pathname = "/dashboard";
+      return NextResponse.redirect(url);
+    }
 
-  const url = req.nextUrl.clone()
-
-  // pas connecté → login
-  if (!session && url.pathname !== "/login") {
-    url.pathname = "/login"
-    return NextResponse.redirect(url)
+    return response;
   }
 
-  // connecté → dashboard si accès login
-  if (session && url.pathname === "/login") {
-    url.pathname = "/dashboard"
-    return NextResponse.redirect(url)
+  const required = permissionsForApi(req.nextUrl.pathname, req.method);
+
+  // The low-stock cron route has its own CRON_SECRET authentication.
+  if (required === null) return NextResponse.next();
+
+  // Fail closed: every newly added API route must be explicitly mapped.
+  if (required.length === 0) {
+    return NextResponse.json(
+      { ok: false, error: "API route has no access policy" },
+      { status: 403 }
+    );
   }
 
-  return res
+  const authorization = await authorizeApiRequest(req, required);
+  if (!authorization.ok) {
+    return NextResponse.json(
+      { ok: false, error: authorization.error },
+      { status: authorization.status }
+    );
+  }
+
+  const headers = new Headers(req.headers);
+  headers.set("x-stockpro-user-id", authorization.user.id);
+  headers.set("x-stockpro-user-email", authorization.user.email ?? "");
+  headers.set("x-stockpro-user-role", authorization.access.role ?? "");
+
+  return NextResponse.next({ request: { headers } });
 }
 
 export const config = {
-  matcher: [
-    "/((?!_next|favicon.ico|api).*)",
-  ],
-}
+  matcher: ["/api/:path*", "/((?!_next|favicon.ico|api).*)"],
+};

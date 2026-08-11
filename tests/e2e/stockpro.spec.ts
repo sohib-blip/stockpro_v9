@@ -771,7 +771,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(layout?.cellsSeparated).toBe(true);
     expect(layout?.routeFits).toBe(true);
     if (layout?.routeCodes) {
-      expect(layout.routeCodes).toMatch(/[A-Z]{2}\s*→\s*[A-Z]{2}/);
+      expect(layout.routeCodes).toMatch(/UK\s*→\s*.*BE/);
     }
 
     await signOut(page);

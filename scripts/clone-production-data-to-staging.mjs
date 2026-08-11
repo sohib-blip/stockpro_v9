@@ -56,10 +56,12 @@ const COPY_ORDER = [
 
 const DELETE_ORDER = [
   "return_history_entries",
+  "app_sessions",
   "workload_leases",
   "workload_budget_buckets",
   "connection_events",
   "inventory_command_receipts",
+  "alerts",
   "accessory_movements",
   "device_accessory_templates",
   "supply_status_history",
@@ -76,6 +78,7 @@ const DELETE_ORDER = [
   "alert_subscribers",
   "accessory_bins",
   "bins",
+  "devices",
 ];
 
 const PRIMARY_KEYS = {
@@ -773,6 +776,63 @@ async function clearStagingTechnicalState() {
   console.log("Staging technical test state cleared");
 }
 
+async function clearAllStagingData() {
+  const { staging, stagingClient } = await context();
+  const stagingDefinitions = await readOpenApi(staging);
+  const outputStamp = stamp();
+  const stagingBackup = await readSnapshot(
+    "Staging backup before full clear",
+    staging,
+    stagingClient,
+    stagingDefinitions,
+    TABLE_CANDIDATES
+  );
+  const stagingBackupPath = await writeArtifact(
+    `staging-backup-before-clear-${outputStamp}.json`,
+    stagingBackup
+  );
+
+  if ((stagingBackup.storageBuckets || []).length > 0) {
+    throw new Error(
+      "Safety stop: Staging contains Storage buckets; object deletion must be reviewed separately"
+    );
+  }
+
+  console.log(`Staging backup before clear: ${stagingBackupPath}`);
+  for (const table of DELETE_ORDER) {
+    await deleteAllRows(stagingClient, stagingDefinitions, table);
+  }
+
+  const stagingUsers = await listAuthUsers(stagingClient);
+  for (const user of stagingUsers) {
+    const { error } = await stagingClient.auth.admin.deleteUser(user.id);
+    if (error) throw new Error(`Delete Staging user ${user.id}: ${error.message}`);
+  }
+
+  const verification = [];
+  for (const table of TABLE_CANDIDATES) {
+    if (!stagingDefinitions[table]) continue;
+    const result = await countRows(stagingClient, table);
+    if (result.error || result.count !== 0) {
+      throw new Error(
+        `Verify empty Staging ${table}: received ${result.count ?? result.error}`
+      );
+    }
+    verification.push({ table, rows: 0 });
+  }
+
+  const remainingUsers = await listAuthUsers(stagingClient);
+  if (remainingUsers.length !== 0) {
+    throw new Error(
+      `Verify empty Staging auth: received ${remainingUsers.length} users`
+    );
+  }
+
+  console.table(verification);
+  console.log(`Staging: deleted ${stagingUsers.length} auth users`);
+  console.log("Staging business and technical data cleared; Production was read-only");
+}
+
 function sessionIdFromToken(accessToken) {
   const payload = JSON.parse(
     Buffer.from(accessToken.split(".")[1], "base64url").toString("utf8")
@@ -933,6 +993,8 @@ if (command === "inventory") {
   await cloneProductionToStaging();
 } else if (command === "clear-technical") {
   await clearStagingTechnicalState();
+} else if (command === "clear-staging") {
+  await clearAllStagingData();
 } else if (command === "rotate-credentials") {
   await rotateStagingCredentials();
 } else if (command === "verify-admin") {

@@ -11,6 +11,10 @@ const stagingRun = readFileSync(
   join(root, "tests/e2e/support/staging-run.ts"),
   "utf8"
 );
+const cloneScript = readFileSync(
+  join(root, "scripts/clone-production-data-to-staging.mjs"),
+  "utf8"
+);
 const gitignore = readFileSync(join(root, ".gitignore"), "utf8");
 
 describe("E2E staging safety", () => {
@@ -36,6 +40,26 @@ describe("E2E staging safety", () => {
   it("removes legacy movement references before deleting the E2E bin", () => {
     expect(stagingRun).toContain(
       'from("movements").delete().eq("device_id", run.bin.id)'
+    );
+  });
+
+  it("backs up and clears only the pinned Staging project", () => {
+    expect(cloneScript).toContain(
+      'const PRODUCTION_PROJECT_REF = "tqoblbwvvvqmwlsfoxni"'
+    );
+    expect(cloneScript).toContain(
+      'const STAGING_PROJECT_REF = "enjusebvcfjudrrnvjgl"'
+    );
+    expect(cloneScript).toContain(
+      'assertProject(staging, STAGING_PROJECT_REF, "Staging")'
+    );
+    expect(cloneScript).toContain(
+      'throw new Error("Safety stop: Production and Staging URLs are identical")'
+    );
+    expect(cloneScript).toContain("staging-backup-before-clear-");
+    expect(cloneScript).toContain('command === "clear-staging"');
+    expect(cloneScript).toContain(
+      "Staging business and technical data cleared; Production was read-only"
     );
   });
 });

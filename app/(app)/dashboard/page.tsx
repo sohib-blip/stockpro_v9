@@ -21,6 +21,15 @@ type KPI = {
   alerts: number;
 };
 
+type ImeiSearchRow = {
+  imei: string;
+  found: boolean;
+  device: string | null;
+  box_id: string | null;
+  location: string | null;
+  status: string | null;
+};
+
 const ACCESSORY_CATEGORIES = [
   "All",
   "Packages",
@@ -108,6 +117,11 @@ export default function DashboardPage() {
   const [chartPage, setChartPage] = useState(0);
   const [showAllAccessories, setShowAllAccessories] = useState(false);
   const [showShippedRanking, setShowShippedRanking] = useState(false);
+  const [showImeiSearch, setShowImeiSearch] = useState(false);
+  const [imeiSearchText, setImeiSearchText] = useState("");
+  const [imeiSearchRows, setImeiSearchRows] = useState<ImeiSearchRow[]>([]);
+  const [imeiSearchBusy, setImeiSearchBusy] = useState(false);
+  const [imeiSearchError, setImeiSearchError] = useState("");
 
   const filteredBins = useMemo(
     () =>
@@ -229,16 +243,50 @@ export default function DashboardPage() {
     setEditingMinStock(null);
   }
 
+  async function searchImeis() {
+    setImeiSearchBusy(true);
+    setImeiSearchError("");
+
+    try {
+      const response = await apiFetch("/api/dashboard/imei-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imeisText: imeiSearchText }),
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.ok) {
+        throw new Error(json.error || "IMEI search failed");
+      }
+
+      setImeiSearchRows(json.rows || []);
+    } catch (error: any) {
+      setImeiSearchRows([]);
+      setImeiSearchError(error?.message || "IMEI search failed");
+    } finally {
+      setImeiSearchBusy(false);
+    }
+  }
+
+  function clearImeiSearch() {
+    setImeiSearchText("");
+    setImeiSearchRows([]);
+    setImeiSearchError("");
+  }
+
   useEffect(() => {
     loadAll();
   }, []);
 
   useEffect(() => {
-    if (!showShippedRanking) return;
+    if (!showShippedRanking && !showImeiSearch) return;
 
     const previousOverflow = document.body.style.overflow;
     const closeOnEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setShowShippedRanking(false);
+      if (event.key === "Escape") {
+        setShowShippedRanking(false);
+        setShowImeiSearch(false);
+      }
     };
 
     document.body.style.overflow = "hidden";
@@ -247,7 +295,7 @@ export default function DashboardPage() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [showShippedRanking]);
+  }, [showImeiSearch, showShippedRanking]);
 
   return (
     <div className="prototype-page prototype-dashboard">
@@ -257,6 +305,14 @@ export default function DashboardPage() {
           <p>Stock position, alerts and recent activity across the warehouse.</p>
         </div>
         <div className="prototype-page-actions">
+          <button
+            type="button"
+            className="prototype-button secondary dashboard-imei-trigger"
+            aria-haspopup="dialog"
+            onClick={() => setShowImeiSearch(true)}
+          >
+            <span aria-hidden="true">⌕</span> IMEI Search
+          </button>
           {hasPermission("can_inventory_export") && (
             <>
               <button
@@ -298,6 +354,125 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
+
+      {showImeiSearch && (
+        <div
+          className="dashboard-ranking-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowImeiSearch(false);
+            }
+          }}
+        >
+          <section
+            className="dashboard-imei-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="imei-search-title"
+          >
+            <header className="dashboard-ranking-header">
+              <div>
+                <span>Inventory lookup</span>
+                <h2 id="imei-search-title">IMEI Search</h2>
+                <p>Search one IMEI or paste up to 200 IMEIs.</p>
+              </div>
+              <button
+                type="button"
+                className="dashboard-ranking-close"
+                aria-label="Close"
+                onClick={() => setShowImeiSearch(false)}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="dashboard-imei-form">
+              <label htmlFor="dashboard-imei-input">IMEIs</label>
+              <textarea
+                id="dashboard-imei-input"
+                aria-label="IMEIs to search"
+                value={imeiSearchText}
+                onChange={(event) => setImeiSearchText(event.target.value)}
+                placeholder="Paste IMEIs here, separated by spaces, commas or new lines."
+                autoFocus
+              />
+              <div className="dashboard-imei-form-actions">
+                <button
+                  type="button"
+                  className="prototype-button secondary"
+                  onClick={clearImeiSearch}
+                  disabled={imeiSearchBusy}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="prototype-button primary"
+                  onClick={searchImeis}
+                  disabled={imeiSearchBusy}
+                >
+                  {imeiSearchBusy ? "Searching…" : "Search"}
+                </button>
+              </div>
+              {imeiSearchError && (
+                <div className="dashboard-imei-error" role="alert">
+                  {imeiSearchError}
+                </div>
+              )}
+            </div>
+
+            {imeiSearchRows.length > 0 && (
+              <div className="dashboard-imei-summary" aria-label="Search results">
+                <span>
+                  Found <strong>{imeiSearchRows.filter((row) => row.found).length}</strong>
+                </span>
+                <span>
+                  Not found <strong>{imeiSearchRows.filter((row) => !row.found).length}</strong>
+                </span>
+              </div>
+            )}
+
+            <div className="dashboard-imei-results">
+              {imeiSearchRows.length > 0 ? (
+                <table className="prototype-table dashboard-imei-table">
+                  <thead>
+                    <tr>
+                      <th>IMEI</th>
+                      <th>Device</th>
+                      <th>Box ID</th>
+                      <th>Location</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {imeiSearchRows.map((row) => (
+                      <tr key={row.imei} className={!row.found ? "is-missing" : ""}>
+                        <td className="dashboard-imei-value">{row.imei}</td>
+                        <td>{row.device || "—"}</td>
+                        <td>{row.box_id || "—"}</td>
+                        <td>{row.location || "—"}</td>
+                        <td>
+                          <span
+                            className={`dashboard-imei-status ${
+                              row.found ? String(row.status || "").toLowerCase() : "missing"
+                            }`}
+                          >
+                            {row.found ? row.status || "Unknown" : "Not found"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="prototype-empty dashboard-imei-empty">
+                  Enter one or more IMEIs to locate devices in the warehouse.
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
 
       <section className="prototype-kpi-grid" aria-label="Inventory summary">
         <article className="prototype-kpi-card">

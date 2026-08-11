@@ -23,6 +23,7 @@ describe("central authorization capability matrix", () => {
         "bins.manage",
         "bins.read",
         "inventory.export.raw",
+        "inventory.item-locate",
         "inventory.item-match",
         "inventory.read",
         "movement.read",
@@ -55,8 +56,29 @@ describe("central authorization capability matrix", () => {
     ]);
   });
 
+  it("limits dashboard IMEI location lookup to exact authorized requests", () => {
+    expect(
+      capabilityForApiRequest("/api/dashboard/imei-search", "POST")
+    ).toBe("inventory.item-locate");
+    expect(permissionsForCapability("inventory.item-locate")).toEqual([
+      "can_dashboard",
+    ]);
+    expect(AUTHORIZATION_CAPABILITIES["inventory.item-locate"].scope).toBe(
+      "1 to 200 exact requested IMEIs"
+    );
+  });
+
   it("keeps reviewed SQL adapters traceable to the central capability names", () => {
-    for (const capability of Object.keys(AUTHORIZATION_CAPABILITIES)) {
+    for (const [capability, definition] of Object.entries(
+      AUTHORIZATION_CAPABILITIES
+    )) {
+      const enforcement = definition.enforcement as readonly string[];
+      if (
+        !enforcement.includes("rls") &&
+        !enforcement.includes("rpc")
+      ) {
+        continue;
+      }
       expect(authorizationMigrations).toContain(capability);
     }
   });

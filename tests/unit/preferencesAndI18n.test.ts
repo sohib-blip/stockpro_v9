@@ -28,6 +28,8 @@ describe("theme and language preferences", () => {
     );
     expect(translateUiText("fr", "View all")).toBe("Voir tout");
     expect(translateUiText("nl", "View all")).toBe("Alles bekijken");
+    expect(translateUiText("fr", "IMEI Search")).toBe("Recherche IMEI");
+    expect(translateUiText("nl", "Not found")).toBe("Niet gevonden");
     expect(translateUiText("nl", "Complete shipped device ranking")).toBe(
       "Volledige ranglijst van verzonden apparaten"
     );

@@ -22,6 +22,7 @@ describe("shared workload budgets", () => {
       "outboundPreview",
       "shipmentPdf",
       "returnsHistory",
+      "imeiSearch",
       "transferPreview",
     ];
 

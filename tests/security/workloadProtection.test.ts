@@ -37,6 +37,7 @@ describe("workload protection boundaries", () => {
     ["app/api/outbound/eod-preview/route.ts", "await extractWorkbookValues(req)"],
     ["app/api/outbound/shipment-pdf/route.ts", "new PDFDocument"],
     ["app/api/returns/history/route.ts", ".rpc("],
+    ["app/api/dashboard/imei-search/route.ts", '.from("items")'],
     ["app/api/transfer/preview/route.ts", ".rpc("],
   ])(
     "admits %s before its expensive transition",
@@ -75,6 +76,12 @@ describe("workload protection boundaries", () => {
     expect(stockExport).toContain("MAX_EXPORT_ROWS + 1");
     expect(countSheet).toContain("MAX_COUNT_SHEET_ROWS");
     expect(countSheet).toContain("MAX_FORMULA_CELLS");
+
+    const imeiSearch = read("app/api/dashboard/imei-search/route.ts");
+    expect(imeiSearch).toContain("MAX_SEARCH_IMEIS");
+    expect(imeiSearch).toContain("readJsonBodyWithinLimit");
+    expect(imeiSearch).toContain('.in("imei", imeis)');
+    expect(imeiSearch).not.toContain(".ilike(");
   });
 
   it("moves grouped returns and transfer counts into bounded database queries", () => {

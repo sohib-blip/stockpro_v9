@@ -936,6 +936,30 @@ test.describe.serial("StockPro staging end-to-end", () => {
     item = await readItem(run.manualImei);
     expect(item?.status).toBe("IN");
     expect(item?.boxes?.box_code).toBe(run.returnBox);
+
+    await page.goto("/dashboard");
+    await page.getByRole("button", { name: "IMEI Search" }).click();
+    const imeiSearch = page.getByRole("dialog", { name: "IMEI Search" });
+    await expect(imeiSearch).toBeVisible();
+    await imeiSearch
+      .getByLabel("IMEIs to search")
+      .fill(`${run.manualImei}\n999999999999999`);
+    await imeiSearch.getByRole("button", { name: "Search", exact: true }).click();
+    await expect(imeiSearch.locator("tbody tr")).toHaveCount(2);
+
+    const locatedRow = imeiSearch.locator("tbody tr").filter({
+      hasText: run.manualImei,
+    });
+    await expect(locatedRow).toContainText(run.bin.name);
+    await expect(locatedRow).toContainText(run.returnBox);
+    await expect(locatedRow).toContainText("00");
+    await expect(locatedRow).toContainText("IN");
+
+    const missingRow = imeiSearch.locator("tbody tr").filter({
+      hasText: "999999999999999",
+    });
+    await expect(missingRow).toContainText("Not found");
+    await imeiSearch.getByRole("button", { name: "Close" }).click();
     await signOut(page);
   });
 

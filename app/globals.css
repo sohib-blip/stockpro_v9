@@ -880,6 +880,170 @@ body {
   box-shadow: 0 28px 80px rgba(2, 6, 23, 0.32);
 }
 
+.dashboard-imei-trigger > span {
+  font-size: 18px;
+  line-height: 0;
+}
+
+.dashboard-imei-modal {
+  width: min(100%, 920px);
+  max-height: min(88vh, 760px);
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--surface-elevated);
+  box-shadow: 0 28px 80px rgba(2, 6, 23, 0.32);
+}
+
+.dashboard-imei-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px 14px;
+  padding: 18px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dashboard-imei-form label {
+  grid-column: 1 / -1;
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dashboard-imei-form textarea {
+  width: 100%;
+  min-height: 82px;
+  resize: vertical;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  color: var(--foreground);
+  font: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.dashboard-imei-form textarea:focus {
+  border-color: var(--brand);
+  outline: 3px solid color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.dashboard-imei-form-actions {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.dashboard-imei-form-actions .prototype-button {
+  min-width: 92px;
+  justify-content: center;
+}
+
+.dashboard-imei-error {
+  grid-column: 1 / -1;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: 8px;
+  padding: 9px 11px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 12.5px;
+}
+
+.dashboard-imei-summary {
+  display: flex;
+  gap: 22px;
+  padding: 11px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.dashboard-imei-summary strong {
+  margin-left: 3px;
+  color: var(--foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-imei-results {
+  min-height: 180px;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.dashboard-imei-table {
+  min-width: 720px;
+}
+
+.dashboard-imei-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.dashboard-imei-table th:nth-child(1),
+.dashboard-imei-table td:nth-child(1) {
+  width: 27%;
+}
+
+.dashboard-imei-table th:nth-child(2),
+.dashboard-imei-table td:nth-child(2) {
+  width: 23%;
+}
+
+.dashboard-imei-table th:nth-child(3),
+.dashboard-imei-table td:nth-child(3) {
+  width: 20%;
+}
+
+.dashboard-imei-table th:nth-child(4),
+.dashboard-imei-table td:nth-child(4),
+.dashboard-imei-table th:nth-child(5),
+.dashboard-imei-table td:nth-child(5) {
+  width: 15%;
+}
+
+.dashboard-imei-table tr.is-missing {
+  background: color-mix(in srgb, var(--danger-soft) 34%, var(--surface));
+}
+
+.dashboard-imei-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-imei-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: var(--surface-muted);
+  color: var(--muted-strong);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dashboard-imei-status.in {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.dashboard-imei-status.out,
+.dashboard-imei-status.missing {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.dashboard-imei-empty {
+  min-height: 180px;
+}
+
 .dashboard-ranking-header {
   display: flex;
   align-items: flex-start;
@@ -3181,6 +3345,23 @@ main.min-h-screen {
 
   .app-content {
     padding: 22px 16px 48px;
+  }
+
+  .dashboard-ranking-backdrop {
+    padding: 12px;
+  }
+
+  .dashboard-imei-form {
+    grid-template-columns: 1fr;
+    padding-inline: 16px;
+  }
+
+  .dashboard-imei-form-actions {
+    width: 100%;
+  }
+
+  .dashboard-imei-form-actions .prototype-button {
+    flex: 1;
   }
 
   .nrd-running-banner {

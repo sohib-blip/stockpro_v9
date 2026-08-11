@@ -56,6 +56,18 @@ export const AUTHORIZATION_CAPABILITIES = {
     enforcement: ["rpc"],
     routes: [],
   },
+  "inventory.item-locate": {
+    description: "Locate only explicitly requested IMEIs in warehouse stock.",
+    dataClass: "IMEI inventory location",
+    scope: "1 to 200 exact requested IMEIs",
+    projection: ["imei", "device", "box_id", "location", "status"],
+    roles: [],
+    permissions: ["can_dashboard"],
+    enforcement: ["api", "handler", "server-only"],
+    routes: [
+      { method: "POST", pathname: "/api/dashboard/imei-search" },
+    ],
+  },
   "inventory.read": {
     description: "Read inventory data through a purpose-specific server API.",
     dataClass: "inventory",

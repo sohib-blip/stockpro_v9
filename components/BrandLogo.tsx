@@ -19,21 +19,22 @@ export default function BrandLogo({
         aria-hidden="true"
         focusable="false"
       >
-        <path d="M32 3 58 17 32 31 6 17 32 3Z" fill="#155EEF" />
-        <path d="M6 21 29 33.4V61L6 47.5V21Z" fill="#1D4ED8" />
-        <path d="M35 33.4 58 21v26.5L35 61V33.4Z" fill="#2563EB" />
+        <rect x="4" y="4" width="56" height="56" rx="13" fill="#071A3D" />
         <path
-          d="m12 16.8 19.8 10.6 15.8-8.5M48.2 27.1l-16.4 8.8-16-8.5M15.8 27.4l16 8.5 12.6 6.8-12.5 7.1-17.3-9.3"
+          d="M4 32h56v15c0 7.2-5.8 13-13 13H17C9.8 60 4 54.2 4 47V32Z"
+          fill="#155EEF"
+        />
+        <path
+          d="M46 16H21c-6.1 0-10 3.8-10 9s3.9 9 10 9h22c6.1 0 10 3.8 10 9s-3.9 9-10 9H18"
           fill="none"
           stroke="#FFFFFF"
-          strokeLinecap="square"
-          strokeLinejoin="miter"
-          strokeWidth="5.2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="9"
         />
-        <path
-          d="M10.5 40.1h7.3v-3.6l8.6 7-8.6 7v-3.6h-7.3v-6.8Z"
-          fill="#12B76A"
-        />
+        <path d="M23 18v-6h5v6m5 0v-6h5v6" stroke="#FFFFFF" strokeWidth="4" />
+        <path d="M27 50v6h5v-6m5 0v6h5v-6" stroke="#FFFFFF" strokeWidth="4" />
+        <circle cx="51" cy="14" r="3.6" fill="#12B76A" />
       </svg>
 
       <span className="stockpro-brand-copy">

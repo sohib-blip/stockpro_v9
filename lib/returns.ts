@@ -18,6 +18,7 @@ export const RETURN_COUNTRIES = [
 export const RETURN_STATUSES = [
   { value: "available", label: "Available" },
   { value: "damaged", label: "Damaged" },
+  { value: "disposed", label: "Disposed" },
   {
     value: "returned_unprocessed",
     label: "Returned — Unprocessed",
@@ -27,6 +28,7 @@ export const RETURN_STATUSES = [
 export const RETURN_STATUS_VALUES = [
   "available",
   "damaged",
+  "disposed",
   "returned_unprocessed",
 ] as const;
 

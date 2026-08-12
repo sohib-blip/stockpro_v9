@@ -3,6 +3,15 @@ begin;
 alter table public.return_records
   add column if not exists reported_device text;
 
+alter table public.return_records
+  drop constraint if exists return_records_return_status_check;
+
+alter table public.return_records
+  add constraint return_records_return_status_check
+  check (
+    return_status in ('available', 'damaged', 'disposed', 'returned_unprocessed')
+  );
+
 update public.return_records r
 set reported_device = b.name
 from public.bins b
@@ -86,7 +95,7 @@ begin
     raise exception 'RETURN_ITEM_LIMIT' using errcode = '22023';
   end if;
 
-  if v_status not in ('available', 'damaged', 'returned_unprocessed')
+  if v_status not in ('available', 'damaged', 'disposed', 'returned_unprocessed')
     or v_courier not in ('DHL', 'EASYPOST')
     or v_country_code not in ('BE', 'UK', 'NL', 'DE', 'FR', 'ES', 'IE', 'PT', 'IT')
     or nullif(btrim(p_return_ref), '') is null

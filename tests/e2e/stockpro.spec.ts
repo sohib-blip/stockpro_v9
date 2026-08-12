@@ -945,7 +945,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     ).toBeVisible();
     await expectDownload(
       page,
-      page.getByRole("button", { name: "Export Excel" }),
+      page.getByRole("button", { name: "Detailed export" }),
       /\.xlsx$/
     );
 
@@ -1066,13 +1066,14 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await signOut(page);
   });
 
-  test("records damaged and unprocessed returns without changing stock", async ({
+  test("records damaged, disposed and unprocessed returns without changing stock", async ({
     page,
     request,
   }) => {
     const itemBefore = await readItem(run.spreadsheetImei);
     expect(itemBefore?.status).toBe("OUT");
     const returnReferences: string[] = [];
+    const operationIds: string[] = [];
     const deviceByReference = new Map<string, string>();
 
     await login(page, "operator");
@@ -1104,11 +1105,14 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
     for (const [index, returnStatus] of [
       "damaged",
+      "disposed",
       "returned_unprocessed",
     ].entries()) {
       const operationId = randomUUID();
+      operationIds.push(operationId);
       const returnReference = `E2E-NO-STOCK-${index}-${run.stamp}`;
-      const reportedDevice = index === 0 ? "FMB640" : "Badai";
+      const reportedDevice =
+        index === 0 ? "FMB640" : index === 1 ? "GL50B" : "Badai";
       returnReferences.push(returnReference);
       deviceByReference.set(returnReference, reportedDevice);
       const response = await request.post("/api/returns/confirm", {
@@ -1170,9 +1174,10 @@ test.describe.serial("StockPro staging end-to-end", () => {
       returnReferences.includes(String(row["Return reference"]))
     );
 
-    expect(noStockRows).toHaveLength(2);
+    expect(noStockRows).toHaveLength(3);
     expect(noStockRows.map((row) => row.Status).sort()).toEqual([
       "Damaged",
+      "Disposed",
       "Returned — Unprocessed",
     ]);
     for (const row of noStockRows) {
@@ -1188,6 +1193,62 @@ test.describe.serial("StockPro staging end-to-end", () => {
       expect(row["Target location"]).toBe("");
       expect(row["Stock action"]).toBe("No stock change");
     }
+
+    const templateResponse = await request.get(
+      "/api/returns/template-export",
+      { headers: { Authorization: `Bearer ${operatorToken}` } }
+    );
+    expect(templateResponse.status()).toBe(200);
+    expect(templateResponse.headers()["content-disposition"]).toContain(
+      "multi-device-returns-"
+    );
+    const templateWorkbook = XLSX.read(await templateResponse.body(), {
+      type: "buffer",
+    });
+    const templateRows = XLSX.utils.sheet_to_json<string[]>(
+      templateWorkbook.Sheets[templateWorkbook.SheetNames[0]],
+      { header: 1, defval: "", raw: false }
+    );
+    expect(templateRows[0]).toEqual([
+      "RETURNED",
+      "DAMAGED",
+      "DISPOSED",
+      "LOST",
+      "MANUFACTURER",
+      "RETURNED_UNPROCESSED",
+      "IN_TRANSIT",
+      "GRADE_A_UNPROCESSED",
+      "GRADE_B_UNPROCESSED",
+      "GRADE_C_UNPROCESSED",
+      "GRADE_D",
+      "GRADE_W",
+    ]);
+    expect(templateRows.slice(1).some((row) => row[1] === run.spreadsheetImei)).toBe(true);
+    expect(templateRows.slice(1).some((row) => row[2] === run.spreadsheetImei)).toBe(true);
+    expect(templateRows.slice(1).some((row) => row[5] === run.spreadsheetImei)).toBe(true);
+
+    const noNewReturns = await request.get("/api/returns/template-export", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+    });
+    expect(noNewReturns.status()).toBe(409);
+    expect((await noNewReturns.json()).error).toContain("No new returns");
+
+    const operationResponse = await request.get(
+      `/api/returns/template-export?operation_id=${operationIds[1]}`,
+      { headers: { Authorization: `Bearer ${operatorToken}` } }
+    );
+    expect(operationResponse.status()).toBe(200);
+    const operationWorkbook = XLSX.read(await operationResponse.body(), {
+      type: "buffer",
+    });
+    const operationRows = XLSX.utils.sheet_to_json<string[]>(
+      operationWorkbook.Sheets[operationWorkbook.SheetNames[0]],
+      { header: 1, defval: "", raw: false }
+    );
+    expect(operationRows[1][2]).toBe(run.spreadsheetImei);
+    expect(operationRows[1][0]).toBe("");
+    expect(operationRows[1][1]).toBe("");
+    expect(operationRows[1][5]).toBe("");
   });
 
   test("binds return state and audit to canonical item metadata", async ({ request }) => {

@@ -123,6 +123,8 @@ export default function ReturnsPage() {
   const [historyStatus, setHistoryStatus] = useState("");
   const [historyCourier, setHistoryCourier] = useState("");
   const [historyCountry, setHistoryCountry] = useState("");
+  const [pendingTemplateReturns, setPendingTemplateReturns] = useState(0);
+  const [templateExportBusy, setTemplateExportBusy] = useState(false);
   const returnOperationIdRef = useRef<string | null>(null);
   const deviceComboboxRef = useRef<HTMLDivElement | null>(null);
 
@@ -153,6 +155,11 @@ export default function ReturnsPage() {
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  useEffect(() => {
+    loadTemplateExportStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -262,6 +269,55 @@ export default function ReturnsPage() {
       }
     } finally {
       setLoadingHistory(false);
+    }
+  }
+
+  async function loadTemplateExportStatus() {
+    try {
+      const response = await apiFetch("/api/returns/template-export/status", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const json = await response.json();
+      if (json.ok) setPendingTemplateReturns(Number(json.pending || 0));
+    } catch {
+      // History remains usable when the optional export counter is unavailable.
+    }
+  }
+
+  async function downloadNewReturns() {
+    setTemplateExportBusy(true);
+    setMsg("");
+    try {
+      await downloadApiFile(
+        "/api/returns/template-export",
+        "multi-device-returns.xlsx"
+      );
+      setMsg(
+        `${pendingTemplateReturns} new return${
+          pendingTemplateReturns === 1 ? "" : "s"
+        } exported. The next download will contain only later returns.`
+      );
+      await loadTemplateExportStatus();
+    } catch (error: any) {
+      setMsg(error?.message || "New returns export failed");
+      await loadTemplateExportStatus();
+    } finally {
+      setTemplateExportBusy(false);
+    }
+  }
+
+  async function downloadReturnOperation(operationId: string) {
+    setMsg("");
+    try {
+      await downloadApiFile(
+        `/api/returns/template-export?operation_id=${encodeURIComponent(
+          operationId
+        )}`,
+        "multi-device-returns-operation.xlsx"
+      );
+    } catch (error: any) {
+      setMsg(error?.message || "Return operation export failed");
     }
   }
 
@@ -380,7 +436,7 @@ export default function ReturnsPage() {
       returnOperationIdRef.current = null;
       setHistoryCursorStack([]);
       setHistoryCursor(null);
-      await loadHistory(null);
+      await Promise.all([loadHistory(null), loadTemplateExportStatus()]);
     } catch (error: any) {
       setMsg(error?.message || "Return confirmation failed");
     } finally {
@@ -403,6 +459,15 @@ export default function ReturnsPage() {
         return a.localeCompare(b, undefined, { sensitivity: "base" });
       });
   }, [deviceOptions, reportedDevice]);
+  const firstHistoryRowByOperation = useMemo(() => {
+    const firstRows = new Map<string, string>();
+    for (const row of history) {
+      if (row.operation_id && !firstRows.has(row.operation_id)) {
+        firstRows.set(row.operation_id, row.history_key);
+      }
+    }
+    return firstRows;
+  }, [history]);
 
   return (
     <div className="prototype-page prototype-module-page returns-prototype-page">
@@ -734,8 +799,8 @@ export default function ReturnsPage() {
               </div>
 
               <div className="returns-policy-reminder">
-                Only Available returns affect inventory. Damaged and Returned —
-                Unprocessed returns remain outside stock.
+                Only Available returns affect inventory. Damaged, Disposed and
+                Returned — Unprocessed returns remain outside stock.
               </div>
 
               {preview.valid_returns.length > 0 && (
@@ -851,18 +916,38 @@ export default function ReturnsPage() {
               automatically.
             </div>
           </div>
-          <button
-            type="button"
-            onClick={() =>
-              downloadApiFile(
-                "/api/returns/export",
-                "stockpro_returns_export.xlsx"
-              ).catch((error) => setMsg(error.message))
-            }
-            className="prototype-button secondary"
-          >
-            Export Excel
-          </button>
+          <div className="returns-history-export-actions">
+            <div className="returns-new-export-control">
+              <button
+                type="button"
+                onClick={downloadNewReturns}
+                disabled={templateExportBusy || pendingTemplateReturns === 0}
+                className="prototype-button primary"
+              >
+                {templateExportBusy ? (
+                  "Preparing…"
+                ) : (
+                  <>
+                    <span>Download new returns</span>
+                    <span aria-hidden="true">({pendingTemplateReturns})</span>
+                  </>
+                )}
+              </button>
+              <span>Only returns not downloaded before.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                downloadApiFile(
+                  "/api/returns/export",
+                  "stockpro_returns_export.xlsx"
+                ).catch((error) => setMsg(error.message))
+              }
+              className="prototype-button secondary"
+            >
+              Detailed export
+            </button>
+          </div>
         </div>
 
         <div className="returns-history-filters">
@@ -946,6 +1031,7 @@ export default function ReturnsPage() {
                 <th>Status</th>
                 <th>Stock action</th>
                 <th>User</th>
+                <th>Operation Excel</th>
               </tr>
             </thead>
             <tbody>
@@ -978,11 +1064,28 @@ export default function ReturnsPage() {
                     </span>
                   </td>
                   <td>{row.actor || "unknown"}</td>
+                  <td>
+                    {row.operation_id &&
+                    firstHistoryRowByOperation.get(row.operation_id) ===
+                      row.history_key ? (
+                      <button
+                        type="button"
+                        className="returns-operation-export-button"
+                        onClick={() =>
+                          downloadReturnOperation(row.operation_id as string)
+                        }
+                      >
+                        Re-download
+                      </button>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                 </tr>
               ))}
               {history.length === 0 && (
                 <tr>
-                  <td colSpan={11} className="returns-history-empty">
+                  <td colSpan={12} className="returns-history-empty">
                     {loadingHistory ? "Loading…" : "No returns found."}
                   </td>
                 </tr>

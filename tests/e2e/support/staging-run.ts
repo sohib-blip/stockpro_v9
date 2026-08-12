@@ -207,6 +207,19 @@ export async function cleanupStagingRun(
   const boxIds = (items || []).map((row) => row.box_id).filter(Boolean);
   const batchIds = (items || []).map((row) => row.import_id).filter(Boolean);
 
+  if (userIds.length) {
+    const { data: exportBatches } = await supabase
+      .from("return_template_export_batches")
+      .select("id,actor_id")
+      .in("actor_id", userIds);
+    for (const batch of exportBatches || []) {
+      await supabase.rpc("release_return_template_export_batch", {
+        p_batch_id: batch.id,
+        p_actor_id: batch.actor_id,
+      });
+    }
+  }
+
   if (itemIds.length) {
     await supabase.from("return_records").delete().in("item_id", itemIds);
   }
@@ -328,6 +341,10 @@ export async function assertStagingRunClean(run: StagingRun) {
     rowCount(
       supabase.from("return_records").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei]),
       "return records"
+    ),
+    rowCount(
+      supabase.from("return_template_export_batches").select("*", { count: "exact", head: true }).in("actor_id", userIds),
+      "return template export batches"
     ),
     rowCount(
       supabase.from("inbound_batches").select("*", { count: "exact", head: true }).in("actor", userEmails),

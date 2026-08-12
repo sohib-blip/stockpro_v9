@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import ExcelJS from "exceljs";
+import {
+  createReturnTemplateWorkbook,
+  RETURN_TEMPLATE_HEADERS,
+} from "../../lib/return-template-export";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -10,10 +15,19 @@ const migration = read(
 const deviceMigration = read(
   "supabase/migrations/20260811163500_add_return_reported_device.sql"
 ).toLowerCase();
+const templateExportMigration = read(
+  "supabase/migrations/20260812090000_add_return_template_exports.sql"
+).toLowerCase();
 const confirmRoute = read("app/api/returns/confirm/route.ts");
 const previewRoute = read("app/api/returns/preview/route.ts");
 const historyRoute = read("app/api/returns/history/route.ts");
 const exportRoute = read("app/api/returns/export/route.ts");
+const templateExportRoute = read(
+  "app/api/returns/template-export/route.ts"
+);
+const templateExportStatusRoute = read(
+  "app/api/returns/template-export/status/route.ts"
+);
 const page = read("app/(app)/returns/page.tsx");
 const returnConstants = read("lib/returns.ts");
 
@@ -78,6 +92,10 @@ describe("complete customer return workflow", () => {
     );
     expect(page).toContain('useState<ReturnStatus>("available")');
     expect(returnConstants).toContain("Returned — Unprocessed");
+    expect(returnConstants).toContain("Disposed");
+    expect(deviceMigration).toContain(
+      "'available', 'damaged', 'disposed', 'returned_unprocessed'"
+    );
     expect(page).toContain("stock remains unchanged");
     expect(page).toContain('aria-label="Return device"');
     expect(page).toContain("filteredDeviceOptions");
@@ -95,6 +113,64 @@ describe("complete customer return workflow", () => {
       "Badai",
     ]) {
       expect(returnConstants).toContain(model);
+    }
+  });
+
+  it("atomically claims each new template export once and can release failures", () => {
+    expect(templateExportMigration).toContain(
+      "create table if not exists public.return_template_export_batches"
+    );
+    expect(templateExportMigration).toContain("template_exported_at is null");
+    expect(templateExportMigration).toContain("for update of r skip locked");
+    expect(templateExportMigration).toContain(
+      "claim_return_template_export_batch"
+    );
+    expect(templateExportMigration).toContain(
+      "release_return_template_export_batch"
+    );
+    expect(templateExportMigration).toContain(
+      "from public, anon, authenticated"
+    );
+    expect(templateExportRoute).toContain(
+      '"claim_return_template_export_batch"'
+    );
+    expect(templateExportRoute).toContain("operation_id");
+    expect(templateExportRoute).toContain(
+      '"release_return_template_export_batch"'
+    );
+    expect(templateExportStatusRoute).toContain(
+      '.is("template_exported_at", null)'
+    );
+    expect(page).toContain("Download new returns");
+    expect(page).toContain("Re-download");
+  });
+
+  it("fills the exact multi-device template columns and keeps IMEIs as text", async () => {
+    const buffer = await createReturnTemplateWorkbook([
+      { imei: "865031064765315", return_status: "available" },
+      { imei: "865031064766602", return_status: "damaged" },
+      { imei: "865031064766917", return_status: "disposed" },
+      {
+        imei: "865031064767634",
+        return_status: "returned_unprocessed",
+      },
+    ]);
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(Buffer.from(buffer) as any);
+    const worksheet = workbook.getWorksheet("Sheet1");
+
+    expect(worksheet).toBeTruthy();
+    expect(
+      RETURN_TEMPLATE_HEADERS.map((_, index) =>
+        String(worksheet?.getCell(1, index + 1).value || "")
+      )
+    ).toEqual([...RETURN_TEMPLATE_HEADERS]);
+    expect(worksheet?.getCell("A2").value).toBe("865031064765315");
+    expect(worksheet?.getCell("B2").value).toBe("865031064766602");
+    expect(worksheet?.getCell("C2").value).toBe("865031064766917");
+    expect(worksheet?.getCell("F2").value).toBe("865031064767634");
+    for (const address of ["D2", "E2", "G2", "H2", "I2", "J2", "K2", "L2"]) {
+      expect(worksheet?.getCell(address).value).toBeNull();
     }
   });
 

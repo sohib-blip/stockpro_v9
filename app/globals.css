@@ -156,6 +156,9 @@ body {
   height: 32px;
   display: block;
   flex: none;
+  border-radius: 22%;
+  background: #ffffff;
+  object-fit: contain;
 }
 
 .stockpro-brand-copy {

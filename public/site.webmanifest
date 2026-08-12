@@ -1,0 +1,17 @@
+{
+  "name": "StockPro",
+  "short_name": "StockPro",
+  "description": "Inventory management console",
+  "start_url": "/login",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#071a3d",
+  "icons": [
+    {
+      "src": "/stockpro-icon-v2.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

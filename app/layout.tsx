@@ -9,16 +9,20 @@ import { AuthPreferenceControls } from "@/components/PreferenceControls";
 export const metadata: Metadata = {
   title: "StockPro",
   description: "Inventory management console",
+  manifest: "/site.webmanifest?v=3",
   icons: {
-    icon: [{ url: "/stockpro-icon-v2.png", type: "image/png", sizes: "512x512" }],
+    icon: [
+      { url: "/favicon.ico?v=3", type: "image/x-icon", sizes: "any" },
+      { url: "/stockpro-icon-v2.png?v=3", type: "image/png", sizes: "512x512" },
+    ],
     apple: [
       {
-        url: "/stockpro-apple-touch-v2.png",
+        url: "/apple-touch-icon.png?v=3",
         sizes: "180x180",
         type: "image/png",
       },
     ],
-    shortcut: "/stockpro-favicon-v2.ico",
+    shortcut: "/favicon.ico?v=3",
   },
 };
 
@@ -30,6 +34,12 @@ export default function RootLayout({
   return (
     <html lang="en" data-theme="light" suppressHydrationWarning>
       <head>
+        <link
+          rel="mask-icon"
+          href="/safari-pinned-tab.svg?v=3"
+          color="#155eef"
+        />
+        <meta name="theme-color" content="#071a3d" />
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link

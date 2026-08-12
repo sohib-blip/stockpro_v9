@@ -940,9 +940,26 @@ test.describe.serial("StockPro staging end-to-end", () => {
     ).toBeVisible();
     await page.getByRole("button", { name: "Confirm Return" }).click();
     await expect(page.getByText("Return completed: 1 IMEIs added to stock.")).toBeVisible();
-    await expect(
-      page.locator("#returns-history tbody tr").filter({ hasText: `E2E-RETURN-${run.stamp}` })
-    ).toBeVisible();
+    const returnBatchRow = page.locator("#returns-history tbody tr").filter({
+      hasText: `E2E-RETURN-${run.stamp}`,
+    });
+    await expect(returnBatchRow).toBeVisible();
+    await expect(returnBatchRow).toContainText("1");
+    await returnBatchRow.click();
+    const returnBatchDialog = page.getByRole("dialog", {
+      name: `E2E-RETURN-${run.stamp}`,
+    });
+    await expect(returnBatchDialog).toBeVisible();
+    await expect(returnBatchDialog.getByText("E2E Customer")).toBeVisible();
+    const returnDetailRow = returnBatchDialog.locator("tbody tr").filter({
+      hasText: run.manualImei,
+    });
+    await expect(returnDetailRow).toContainText(run.bin.name);
+    await expect(returnDetailRow).toContainText(run.returnBox);
+    await returnBatchDialog
+      .getByRole("button", { name: "Close return operation details" })
+      .click();
+    await expect(returnBatchDialog).toBeHidden();
     await expectDownload(
       page,
       page.getByRole("button", { name: "Detailed export" }),

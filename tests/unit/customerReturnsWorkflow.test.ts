@@ -18,6 +18,9 @@ const deviceMigration = read(
 const templateExportMigration = read(
   "supabase/migrations/20260812090000_add_return_template_exports.sql"
 ).toLowerCase();
+const groupedHistoryMigration = read(
+  "supabase/migrations/20260812103000_group_return_history_operations.sql"
+).toLowerCase();
 const confirmRoute = read("app/api/returns/confirm/route.ts");
 const previewRoute = read("app/api/returns/preview/route.ts");
 const historyRoute = read("app/api/returns/history/route.ts");
@@ -175,7 +178,20 @@ describe("complete customer return workflow", () => {
   });
 
   it("serves bounded filterable history and a complete Brussels-time export", () => {
-    expect(historyRoute).toMatch(/\.rpc\(\s*"get_return_history_page"/);
+    expect(historyRoute).toMatch(
+      /\.rpc\(\s*"get_return_operation_history_page"/
+    );
+    expect(groupedHistoryMigration).toContain(
+      "create or replace function public.get_return_operation_history_page"
+    );
+    expect(groupedHistoryMigration).toContain("group by rr.operation_key");
+    expect(groupedHistoryMigration).toContain("count(*)::bigint as item_count");
+    expect(groupedHistoryMigration).toContain("matching.imei");
+    expect(historyRoute).toContain('searchParams.get("operation_id")');
+    expect(historyRoute).toContain('.eq("operation_id", operationId)');
+    expect(page).toContain("One auditable row per return operation");
+    expect(page).toContain('role="dialog"');
+    expect(page).toContain("Device and stock location for every returned unit.");
     for (const filter of [
       "p_search",
       "p_month",

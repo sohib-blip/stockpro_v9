@@ -18,6 +18,8 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 const HISTORY_PAGE_SIZE = 50;
+const OPERATION_ITEM_LIMIT = 50_000;
+const operationIdSchema = z.string().uuid();
 const cursorSchema = z.object({
   created_at: z.string().datetime({ offset: true }),
   history_key: z.string().min(1).max(500),
@@ -57,8 +59,13 @@ function encodeCursor(row: { created_at: string; history_key: string }) {
 export async function GET(req: Request) {
   let cursor: z.infer<typeof cursorSchema> | null;
   let filters: z.infer<typeof historyFiltersSchema>;
+  let operationId: string | null;
   try {
     const searchParams = new URL(req.url).searchParams;
+    const rawOperationId = searchParams.get("operation_id");
+    operationId = rawOperationId
+      ? operationIdSchema.parse(rawOperationId)
+      : null;
     cursor = decodeCursor(searchParams.get("cursor"));
     filters = historyFiltersSchema.parse({
       search: searchParams.get("search") || "",
@@ -81,8 +88,76 @@ export async function GET(req: Request) {
   if (!admission.ok) return workloadRejectionResponse(admission);
 
   try {
+    if (operationId) {
+      const service = supabaseService();
+      const { data, error } = await service
+        .from("return_records")
+        .select(`
+          id,
+          operation_id,
+          created_at,
+          actor,
+          return_ref,
+          return_type,
+          return_reason,
+          customer,
+          sur_id,
+          courier,
+          country_code,
+          return_status,
+          reported_device,
+          device_id,
+          imei,
+          previous_box,
+          previous_floor,
+          target_box,
+          target_floor,
+          stock_action
+        `)
+        .eq("operation_id", operationId)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .limit(OPERATION_ITEM_LIMIT);
+      if (error) throw error;
+      if (!data?.length) {
+        return NextResponse.json(
+          { ok: false, error: "Return operation not found" },
+          { status: 404 }
+        );
+      }
+
+      const deviceIds = Array.from(
+        new Set(data.map((row) => row.device_id).filter(Boolean))
+      );
+      const { data: bins, error: binsError } = await service
+        .from("bins")
+        .select("id,name")
+        .in(
+          "id",
+          deviceIds.length
+            ? deviceIds
+            : ["00000000-0000-0000-0000-000000000000"]
+        );
+      if (binsError) throw binsError;
+      const deviceById = new Map(
+        (bins || []).map((bin) => [String(bin.id), String(bin.name || "")])
+      );
+
+      return NextResponse.json({
+        ok: true,
+        operation_id: operationId,
+        rows: data.map((row) => ({
+          ...row,
+          device:
+            String(row.reported_device || "").trim() ||
+            deviceById.get(String(row.device_id)) ||
+            "",
+        })),
+      });
+    }
+
     const { data, error } = await supabaseService().rpc(
-      "get_return_history_page",
+      "get_return_operation_history_page",
       {
         p_cursor_created_at: cursor?.created_at || null,
         p_cursor_history_key: cursor?.history_key || null,

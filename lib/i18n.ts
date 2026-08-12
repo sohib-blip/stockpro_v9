@@ -406,6 +406,21 @@ const FR: Record<string, string> = {
   "Confirm Return": "Confirmer le retour",
   "Cancel Preview": "Annuler la prévisualisation",
   "Returns History": "Historique des retours",
+  "One auditable row per return operation. Select a row to inspect every returned IMEI.":
+    "Une ligne vérifiable par opération de retour. Sélectionnez-la pour consulter chaque IMEI retourné.",
+  "Return operation": "Opération de retour",
+  "Return batch": "Lot de retours",
+  "Device summary": "Résumé des appareils",
+  Excel: "Excel",
+  "Close return operation details": "Fermer les détails de l’opération de retour",
+  "IMEI details": "Détails des IMEI",
+  "Device and stock location for every returned unit.":
+    "Appareil et emplacement de stock pour chaque unité retournée.",
+  "Re-download Excel": "Retélécharger l’Excel",
+  Destination: "Destination",
+  "Processed by": "Traité par",
+  "Mixed stock actions": "Actions de stock mixtes",
+  "Loading operation details…": "Chargement des détails de l’opération…",
   "Download new returns": "Télécharger les nouveaux retours",
   "Only returns not downloaded before.":
     "Uniquement les retours jamais téléchargés auparavant.",
@@ -988,6 +1003,21 @@ const NL: Record<string, string> = {
   "Confirm Return": "Retour bevestigen",
   "Cancel Preview": "Voorbeeld annuleren",
   "Returns History": "Retourgeschiedenis",
+  "One auditable row per return operation. Select a row to inspect every returned IMEI.":
+    "Eén controleerbare rij per retourbewerking. Selecteer de rij om elke geretourneerde IMEI te bekijken.",
+  "Return operation": "Retourbewerking",
+  "Return batch": "Retourbatch",
+  "Device summary": "Apparaatoverzicht",
+  Excel: "Excel",
+  "Close return operation details": "Details van de retourbewerking sluiten",
+  "IMEI details": "IMEI-details",
+  "Device and stock location for every returned unit.":
+    "Apparaat en voorraadlocatie voor elke geretourneerde eenheid.",
+  "Re-download Excel": "Excel opnieuw downloaden",
+  Destination: "Bestemming",
+  "Processed by": "Verwerkt door",
+  "Mixed stock actions": "Gemengde voorraadacties",
+  "Loading operation details…": "Details van de bewerking laden…",
   "Download new returns": "Nieuwe retouren downloaden",
   "Only returns not downloaded before.":
     "Alleen retouren die nog niet eerder zijn gedownload.",

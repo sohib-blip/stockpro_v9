@@ -61,9 +61,28 @@ type ReturnPreview = {
   stock_action: "added_to_stock" | "no_stock_change";
 };
 
-type HistoryRow = {
+type HistoryBatch = {
   history_key: string;
   operation_id: string | null;
+  created_at: string;
+  actor: string;
+  return_ref: string;
+  return_type: string;
+  return_reason: string;
+  item_count: number;
+  customer: string;
+  sur_id: string;
+  courier: string;
+  country_code: string;
+  return_status: ReturnStatus;
+  device_summary: string;
+  device_count: number;
+  stock_action: "added_to_stock" | "no_stock_change" | "mixed";
+};
+
+type HistoryDetailRow = {
+  id: string;
+  operation_id: string;
   created_at: string;
   actor: string;
   return_ref: string;
@@ -109,7 +128,7 @@ export default function ReturnsPage() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
 
-  const [history, setHistory] = useState<HistoryRow[]>([]);
+  const [history, setHistory] = useState<HistoryBatch[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [historyCursor, setHistoryCursor] = useState<string | null>(null);
   const [historyCursorStack, setHistoryCursorStack] = useState<
@@ -125,6 +144,11 @@ export default function ReturnsPage() {
   const [historyCountry, setHistoryCountry] = useState("");
   const [pendingTemplateReturns, setPendingTemplateReturns] = useState(0);
   const [templateExportBusy, setTemplateExportBusy] = useState(false);
+  const [selectedHistoryBatch, setSelectedHistoryBatch] =
+    useState<HistoryBatch | null>(null);
+  const [historyDetails, setHistoryDetails] = useState<HistoryDetailRow[]>([]);
+  const [loadingHistoryDetails, setLoadingHistoryDetails] = useState(false);
+  const [historyDetailsError, setHistoryDetailsError] = useState("");
   const returnOperationIdRef = useRef<string | null>(null);
   const deviceComboboxRef = useRef<HTMLDivElement | null>(null);
 
@@ -175,6 +199,17 @@ export default function ReturnsPage() {
     document.addEventListener("mousedown", closeDeviceMenu);
     return () => document.removeEventListener("mousedown", closeDeviceMenu);
   }, []);
+
+  useEffect(() => {
+    if (!selectedHistoryBatch) return;
+
+    function closeHistoryDialog(event: KeyboardEvent) {
+      if (event.key === "Escape") setSelectedHistoryBatch(null);
+    }
+
+    document.addEventListener("keydown", closeHistoryDialog);
+    return () => document.removeEventListener("keydown", closeHistoryDialog);
+  }, [selectedHistoryBatch]);
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -321,6 +356,33 @@ export default function ReturnsPage() {
     }
   }
 
+  async function openHistoryBatch(batch: HistoryBatch) {
+    if (!batch.operation_id) return;
+    setSelectedHistoryBatch(batch);
+    setHistoryDetails([]);
+    setHistoryDetailsError("");
+    setLoadingHistoryDetails(true);
+    try {
+      const response = await apiFetch(
+        `/api/returns/history?operation_id=${encodeURIComponent(
+          batch.operation_id
+        )}`,
+        { method: "GET", cache: "no-store" }
+      );
+      const json = await response.json();
+      if (!response.ok || !json.ok) {
+        throw new Error(json.error || "Return operation details failed");
+      }
+      setHistoryDetails(json.rows || []);
+    } catch (error: any) {
+      setHistoryDetailsError(
+        error?.message || "Return operation details failed"
+      );
+    } finally {
+      setLoadingHistoryDetails(false);
+    }
+  }
+
   function resetHistoryPagination() {
     setHistoryCursorStack([]);
     setHistoryCursor(null);
@@ -459,15 +521,6 @@ export default function ReturnsPage() {
         return a.localeCompare(b, undefined, { sensitivity: "base" });
       });
   }, [deviceOptions, reportedDevice]);
-  const firstHistoryRowByOperation = useMemo(() => {
-    const firstRows = new Map<string, string>();
-    for (const row of history) {
-      if (row.operation_id && !firstRows.has(row.operation_id)) {
-        firstRows.set(row.operation_id, row.history_key);
-      }
-    }
-    return firstRows;
-  }, [history]);
 
   return (
     <div className="prototype-page prototype-module-page returns-prototype-page">
@@ -476,6 +529,156 @@ export default function ReturnsPage() {
           <div className="bg-slate-950 border border-slate-800 px-6 py-4 rounded-2xl shadow-xl">
             Processing…
           </div>
+        </div>
+      )}
+
+      {selectedHistoryBatch && (
+        <div
+          className="returns-history-dialog-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.currentTarget === event.target) {
+              setSelectedHistoryBatch(null);
+            }
+          }}
+        >
+          <section
+            className="returns-history-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="returns-history-dialog-title"
+          >
+            <div className="returns-history-dialog-header">
+              <div>
+                <span>Return operation</span>
+                <h2 id="returns-history-dialog-title">
+                  {selectedHistoryBatch.return_ref || "Return batch"}
+                </h2>
+                <p>
+                  {selectedHistoryBatch.item_count} returned IMEI
+                  {selectedHistoryBatch.item_count === 1 ? "" : "s"} · {" "}
+                  {formatDateTime(selectedHistoryBatch.created_at)}
+                </p>
+              </div>
+              <button
+                type="button"
+                aria-label="Close return operation details"
+                onClick={() => setSelectedHistoryBatch(null)}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="returns-history-dialog-summary">
+              <div>
+                <span>Customer</span>
+                <strong>{selectedHistoryBatch.customer || "—"}</strong>
+              </div>
+              <div>
+                <span>SUR ID</span>
+                <strong>{selectedHistoryBatch.sur_id || "—"}</strong>
+              </div>
+              <div>
+                <span>Courier</span>
+                <strong>
+                  {returnCourierLabel(selectedHistoryBatch.courier)}
+                </strong>
+              </div>
+              <div>
+                <span>Country</span>
+                <strong>
+                  {returnCountryLabel(selectedHistoryBatch.country_code) || "—"}
+                </strong>
+              </div>
+              <div>
+                <span>Return type</span>
+                <strong>{selectedHistoryBatch.return_type || "—"}</strong>
+              </div>
+              <div>
+                <span>Reason</span>
+                <strong>{selectedHistoryBatch.return_reason || "—"}</strong>
+              </div>
+              <div>
+                <span>Status</span>
+                <strong>{returnStatusLabel(selectedHistoryBatch.return_status)}</strong>
+              </div>
+              <div>
+                <span>Processed by</span>
+                <strong>{selectedHistoryBatch.actor || "unknown"}</strong>
+              </div>
+            </div>
+
+            <div className="returns-history-dialog-toolbar">
+              <div>
+                <strong>IMEI details</strong>
+                <span>Device and stock location for every returned unit.</span>
+              </div>
+              {selectedHistoryBatch.operation_id && (
+                <button
+                  type="button"
+                  className="prototype-button secondary"
+                  onClick={() =>
+                    downloadReturnOperation(selectedHistoryBatch.operation_id as string)
+                  }
+                >
+                  Re-download Excel
+                </button>
+              )}
+            </div>
+
+            <div className="returns-history-dialog-table-scroll">
+              {loadingHistoryDetails ? (
+                <div className="returns-history-dialog-state">Loading operation details…</div>
+              ) : historyDetailsError ? (
+                <div className="returns-history-dialog-state is-error">
+                  {historyDetailsError}
+                </div>
+              ) : (
+                <table>
+                  <thead>
+                    <tr>
+                      <th>IMEI</th>
+                      <th>Device</th>
+                      <th>Status</th>
+                      <th>Previous location</th>
+                      <th>Destination</th>
+                      <th>Stock action</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {historyDetails.map((detail) => (
+                      <tr key={detail.id}>
+                        <td>{detail.imei}</td>
+                        <td>{detail.device || "—"}</td>
+                        <td>{returnStatusLabel(detail.return_status)}</td>
+                        <td>
+                          {[
+                            detail.previous_box,
+                            detail.previous_floor
+                              ? `Floor ${detail.previous_floor}`
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
+                        </td>
+                        <td>
+                          {[
+                            detail.target_box,
+                            detail.target_floor
+                              ? `Floor ${detail.target_floor}`
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
+                        </td>
+                        <td>{returnStockActionLabel(detail.stock_action)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </section>
         </div>
       )}
 
@@ -912,8 +1115,8 @@ export default function ReturnsPage() {
           <div>
             <div className="font-semibold">Returns History</div>
             <div className="text-xs text-slate-500">
-              One auditable row per returned IMEI. Date and time are recorded
-              automatically.
+              One auditable row per return operation. Select a row to inspect
+              every returned IMEI.
             </div>
           </div>
           <div className="returns-history-export-actions">
@@ -1026,25 +1229,38 @@ export default function ReturnsPage() {
                 <th>Customer</th>
                 <th>Courier</th>
                 <th>Country</th>
-                <th>Device</th>
-                <th>IMEI</th>
+                <th>Device summary</th>
+                <th>IMEIs</th>
                 <th>Status</th>
                 <th>Stock action</th>
                 <th>User</th>
-                <th>Operation Excel</th>
+                <th>Excel</th>
               </tr>
             </thead>
             <tbody>
               {history.map((row) => (
-                <tr key={row.history_key}>
+                <tr
+                  key={row.history_key}
+                  className={row.operation_id ? "is-clickable" : ""}
+                  tabIndex={row.operation_id ? 0 : undefined}
+                  onClick={() => openHistoryBatch(row)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openHistoryBatch(row);
+                    }
+                  }}
+                >
                   <td>{formatDateTime(row.created_at)}</td>
                   <td>{row.return_ref || "—"}</td>
                   <td>{row.sur_id || "—"}</td>
                   <td>{row.customer || "—"}</td>
                   <td>{returnCourierLabel(row.courier)}</td>
                   <td>{returnCountryLabel(row.country_code) || "—"}</td>
-                  <td>{row.device || "—"}</td>
-                  <td>{row.imei}</td>
+                  <td>{row.device_summary || "—"}</td>
+                  <td>
+                    <strong>{row.item_count}</strong>
+                  </td>
                   <td>
                     <span
                       className={`returns-status-badge is-${row.return_status}`}
@@ -1060,20 +1276,21 @@ export default function ReturnsPage() {
                           : "is-unchanged"
                       }`}
                     >
-                      {returnStockActionLabel(row.stock_action)}
+                      {row.stock_action === "mixed"
+                        ? "Mixed stock actions"
+                        : returnStockActionLabel(row.stock_action)}
                     </span>
                   </td>
                   <td>{row.actor || "unknown"}</td>
                   <td>
-                    {row.operation_id &&
-                    firstHistoryRowByOperation.get(row.operation_id) ===
-                      row.history_key ? (
+                    {row.operation_id ? (
                       <button
                         type="button"
                         className="returns-operation-export-button"
-                        onClick={() =>
-                          downloadReturnOperation(row.operation_id as string)
-                        }
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          downloadReturnOperation(row.operation_id as string);
+                        }}
                       >
                         Re-download
                       </button>

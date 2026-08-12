@@ -95,7 +95,7 @@ describe("workload protection boundaries", () => {
     expect(migration).toContain(
       "function public.preview_box_transfer("
     );
-    expect(history).toContain('"get_return_history_page"');
+    expect(history).toContain('"get_return_operation_history_page"');
     expect(history).not.toContain("while (true)");
     expect(history).not.toContain('.from("movements")');
     expect(transfer).toContain('"preview_box_transfer"');

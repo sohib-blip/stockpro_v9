@@ -79,5 +79,8 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*", "/((?!_next|favicon.ico|api).*)"],
+  matcher: [
+    "/api/:path*",
+    "/((?!_next|favicon.ico|stockpro-icon-v2.png|stockpro-apple-touch-v2.png|stockpro-favicon-v2.ico|api).*)",
+  ],
 };

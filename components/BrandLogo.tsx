@@ -1,5 +1,3 @@
-import stockProMark from "@/app/icon.png";
-
 type BrandLogoProps = {
   className?: string;
   tagline?: string;
@@ -16,7 +14,7 @@ export default function BrandLogo({
       className={`stockpro-brand stockpro-brand--${variant} ${className}`.trim()}
     >
       <img
-        src={stockProMark.src}
+        src="/stockpro-icon-v2.png"
         alt=""
         width={512}
         height={512}

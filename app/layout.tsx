@@ -10,12 +10,15 @@ export const metadata: Metadata = {
   title: "StockPro",
   description: "Inventory management console",
   icons: {
-    icon: [
-      { url: "/icon.png", type: "image/png", sizes: "512x512" },
-      { url: "/favicon.ico", sizes: "any" },
+    icon: [{ url: "/stockpro-icon-v2.png", type: "image/png", sizes: "512x512" }],
+    apple: [
+      {
+        url: "/stockpro-apple-touch-v2.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
     ],
-    apple: [{ url: "/apple-icon.png", sizes: "180x180", type: "image/png" }],
-    shortcut: "/favicon.ico",
+    shortcut: "/stockpro-favicon-v2.ico",
   },
 };
 

@@ -10,6 +10,7 @@ describe("accessory outbound history route", () => {
     );
 
     expect(route).toContain('.from("accessory_movements")');
+    expect(route).toContain('cache: "no-store"');
     expect(route).toContain('.select("*")');
     expect(route).toContain("movement.actor || movement.performed_by || null");
     expect(route).not.toContain(

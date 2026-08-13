@@ -18,16 +18,24 @@ export async function GET() {
   try {
     const { data: movements, error: movementError } = await supabase
       .from("accessory_movements")
-      .select(
-        "id,created_at,shipment_ref,note,qty,actor,source,movement_type,accessory_bin_id"
-      )
+      .select("*")
       .eq("movement_type", "OUT")
       .order("created_at", { ascending: false })
       .limit(50);
 
     if (movementError) throw movementError;
 
-    const typedMovements = (movements || []) as AccessoryMovementHistoryRow[];
+    const typedMovements = (movements || []).map((movement: any) => ({
+      id: movement.id,
+      created_at: movement.created_at,
+      shipment_ref: movement.shipment_ref || null,
+      note: movement.note || null,
+      qty: Number(movement.qty || 0),
+      actor: movement.actor || movement.performed_by || null,
+      source: movement.source || null,
+      movement_type: movement.movement_type,
+      accessory_bin_id: movement.accessory_bin_id || null,
+    })) as AccessoryMovementHistoryRow[];
     const accessoryIds = Array.from(
       new Set(
         typedMovements

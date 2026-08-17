@@ -26,6 +26,8 @@ const TABLE_CANDIDATES = [
   "nrd_time_logs",
   "profiles",
   "return_history_entries",
+  "return_records",
+  "return_template_export_batches",
   "supplies",
   "supply_items",
   "supply_status_history",
@@ -50,6 +52,7 @@ const COPY_ORDER = [
   "supply_items",
   "supply_status_history",
   "movements",
+  "return_records",
   "accessory_movements",
   "nrd_time_logs",
 ];
@@ -71,6 +74,8 @@ const LEGACY_PRODUCTION_SNAPSHOT_TABLES = [
 ];
 
 const DELETE_ORDER = [
+  "return_records",
+  "return_template_export_batches",
   "return_history_entries",
   "app_sessions",
   "workload_leases",
@@ -115,6 +120,8 @@ const PRIMARY_KEYS = {
   nrd_time_logs: "id",
   profiles: "user_id",
   return_history_entries: "history_key",
+  return_records: "id",
+  return_template_export_batches: "id",
   supplies: "id",
   supply_items: "id",
   supply_status_history: "id",
@@ -541,6 +548,15 @@ function transformRows(
       row.actor_id = remapId(row.actor_id, userIdMap);
       row.created_by = remapId(row.created_by, userIdMap);
     }
+    if (table === "return_records") {
+      row.actor_id = remapId(row.actor_id, userIdMap);
+      // Export bookkeeping is environment-specific. Every cloned return is a
+      // fresh Staging export candidate, regardless of Production downloads.
+      row.template_export_batch_id = null;
+      row.template_exported_at = null;
+      row.template_exported_by = null;
+      row.template_exported_by_email = null;
+    }
     if (table === "supplies") {
       row.created_by_id = remapId(row.created_by_id, userIdMap);
     }
@@ -738,6 +754,7 @@ async function cloneProductionToStaging() {
   for (const table of [
     "connection_events",
     "inventory_command_receipts",
+    "return_template_export_batches",
     "workload_budget_buckets",
     "workload_leases",
   ]) {

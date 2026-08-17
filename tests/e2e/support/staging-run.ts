@@ -15,6 +15,7 @@ export type StagingRun = {
   users: Record<AppRole, TestUser>;
   inviteEmail: string;
   bin: { id: string; name: string };
+  alternateBin: { id: string; name: string };
   accessory: { id: string; name: string };
   manualImei: string;
   spreadsheetImei: string;
@@ -53,6 +54,7 @@ export async function createStagingRun(): Promise<StagingRun> {
     users,
     inviteEmail: `stockpro.e2e.invited.${stamp}@gmail.com`,
     bin: { id: "", name: `TESTDEVICE${shortNumber}` },
+    alternateBin: { id: "", name: `TESTALTERNATE${shortNumber}` },
     accessory: { id: "", name: `E2E Accessory ${stamp}` },
     manualImei: makeImei(numericStamp),
     spreadsheetImei: makeImei(numericStamp + 1),
@@ -103,6 +105,20 @@ export async function createStagingRun(): Promise<StagingRun> {
     throwOnError(binError, "Create E2E device bin");
     if (!bin) throw new Error("Create E2E device bin: no row returned");
     run.bin = { id: String(bin.id), name: String(bin.name) };
+
+    const { data: alternateBin, error: alternateBinError } = await supabase
+      .from("bins")
+      .insert({ name: run.alternateBin.name, active: true })
+      .select("id,name")
+      .single();
+    throwOnError(alternateBinError, "Create alternate E2E device bin");
+    if (!alternateBin) {
+      throw new Error("Create alternate E2E device bin: no row returned");
+    }
+    run.alternateBin = {
+      id: String(alternateBin.id),
+      name: String(alternateBin.name),
+    };
 
     const { error: emptyBoxError } = await supabase.from("boxes").insert({
       bin_id: run.bin.id,
@@ -191,6 +207,23 @@ export async function cleanupStagingRun(
   const boxIds = (items || []).map((row) => row.box_id).filter(Boolean);
   const batchIds = (items || []).map((row) => row.import_id).filter(Boolean);
 
+  if (userIds.length) {
+    const { data: exportBatches } = await supabase
+      .from("return_template_export_batches")
+      .select("id,actor_id")
+      .in("actor_id", userIds);
+    for (const batch of exportBatches || []) {
+      await supabase.rpc("release_return_template_export_batch", {
+        p_batch_id: batch.id,
+        p_actor_id: batch.actor_id,
+      });
+    }
+  }
+
+  if (itemIds.length) {
+    await supabase.from("return_records").delete().in("item_id", itemIds);
+  }
+  await supabase.from("return_records").delete().in("imei", imeis);
   if (itemIds.length) await supabase.from("movements").delete().in("item_id", itemIds);
   if (boxIds.length) await supabase.from("movements").delete().in("box_id", boxIds);
   await supabase.from("movements").delete().in("imei", imeis);
@@ -246,6 +279,9 @@ export async function cleanupStagingRun(
       .delete()
       .eq("device_id", run.bin.id);
     await supabase.from("bins").delete().eq("id", run.bin.id);
+  }
+  if (run.alternateBin.id) {
+    await supabase.from("bins").delete().eq("id", run.alternateBin.id);
   }
 
   if (userIds.length) {
@@ -303,6 +339,14 @@ export async function assertStagingRunClean(run: StagingRun) {
       "device movements"
     ),
     rowCount(
+      supabase.from("return_records").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei]),
+      "return records"
+    ),
+    rowCount(
+      supabase.from("return_template_export_batches").select("*", { count: "exact", head: true }).in("actor_id", userIds),
+      "return template export batches"
+    ),
+    rowCount(
       supabase.from("inbound_batches").select("*", { count: "exact", head: true }).in("actor", userEmails),
       "inbound batches"
     ),
@@ -319,7 +363,10 @@ export async function assertStagingRunClean(run: StagingRun) {
       "automatic accessory rules"
     ),
     rowCount(
-      supabase.from("bins").select("*", { count: "exact", head: true }).in("name", [run.bin.name, run.uiBinName]),
+      supabase
+        .from("bins")
+        .select("*", { count: "exact", head: true })
+        .in("name", [run.bin.name, run.alternateBin.name, run.uiBinName]),
       "bins"
     ),
     rowCount(
@@ -426,19 +473,6 @@ export async function readItem(imei: string) {
     | null;
 }
 
-export async function readOtherBinId(excludedId: string) {
-  const supabase = serviceClient();
-  const { data, error } = await supabase
-    .from("bins")
-    .select("id")
-    .neq("id", excludedId)
-    .limit(1)
-    .maybeSingle();
-  throwOnError(error, "Read alternate E2E bin");
-  if (!data?.id) throw new Error("Read alternate E2E bin: no row returned");
-  return String(data.id);
-}
-
 export async function readReturnMovement(operationId: string) {
   const supabase = serviceClient();
   const { data, error } = await supabase
@@ -453,6 +487,34 @@ export async function readReturnMovement(operationId: string) {
     imei: string;
     device_id: string;
     box_id: string;
+  };
+}
+
+export async function readReturnRecord(operationId: string) {
+  const supabase = serviceClient();
+  const { data, error } = await supabase
+    .from("return_records")
+    .select(
+      "operation_id,item_id,imei,device_id,reported_device,return_ref,customer,sur_id,courier,country_code,return_status,target_box,target_floor,stock_action"
+    )
+    .eq("operation_id", operationId)
+    .single();
+  throwOnError(error, "Read E2E return record");
+  return data as {
+    operation_id: string;
+    item_id: string;
+    imei: string;
+    device_id: string;
+    reported_device: string;
+    return_ref: string;
+    customer: string;
+    sur_id: string;
+    courier: string;
+    country_code: string;
+    return_status: string;
+    target_box: string | null;
+    target_floor: string | null;
+    stock_action: string;
   };
 }
 

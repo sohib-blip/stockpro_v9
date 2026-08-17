@@ -345,94 +345,6 @@ export default function AccessoriesPage() {
         </div>
       )}
 
-      {previewOpen && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
-          <div className="bg-slate-950 border border-slate-800 rounded-2xl shadow-2xl w-full max-w-3xl overflow-hidden">
-            <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-              <div>
-                <div className="text-xs text-slate-500">Preview</div>
-                <div className="font-semibold text-lg">
-                  Confirm Accessory Outbound
-                </div>
-              </div>
-
-              <button
-                onClick={closePreview}
-                className="text-slate-400 hover:text-slate-200 text-sm"
-              >
-                Close
-              </button>
-            </div>
-
-            <div className="prototype-preview-content">
-              <div className="text-sm text-slate-400">
-                Please review the stock changes before confirming.
-              </div>
-
-              <div className="prototype-preview-table-scroll">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-900">
-                    <tr>
-                      <th className="p-3 text-left">Accessory</th>
-                      <th className="p-3 text-right">Quantity</th>
-                      <th className="p-3 text-right">Current Stock</th>
-                      <th className="p-3 text-right">Stock After</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {previewRows.map((row) => (
-                      <tr
-                        key={row.accessory_bin_id}
-                        className="border-t border-slate-800"
-                      >
-                        <td className="p-3 font-semibold">{row.accessory}</td>
-                        <td className="p-3 text-right">{row.qty}</td>
-                        <td className="p-3 text-right">{row.current_stock}</td>
-                        <td className="p-3 text-right">{row.after_stock}</td>
-                      </tr>
-                    ))}
-
-                    {previewRows.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={4}
-                          className="p-4 text-center text-slate-500"
-                        >
-                          No preview rows.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-            </div>
-            <div className="prototype-preview-actions">
-              <button
-                type="button"
-                onClick={confirmPreview}
-                disabled={busy || previewRows.length === 0}
-                className="prototype-button confirm disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {busy && (
-                  <span className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                )}
-                {busy ? "Processing…" : "Confirm Outbound"}
-              </button>
-              <button
-                type="button"
-                onClick={closePreview}
-                disabled={busy}
-                className="prototype-button secondary disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {errorMsg && (
         <div className="bg-red-600/20 border border-red-500 text-red-300 px-4 py-3 rounded-xl text-sm">
           {errorMsg}
@@ -568,11 +480,81 @@ export default function AccessoriesPage() {
       )}
       </div>
 
-      <div className="prototype-empty-preview">
-        <div className="prototype-empty-icon"><span /></div>
-        <strong>No preview yet</strong>
-        <p>Add accessory lines or select a spreadsheet, then preview every stock change before confirmation.</p>
-      </div>
+      {previewOpen ? (
+        <div className="prototype-preview-card accessory-inline-preview">
+          <div className="prototype-preview-content">
+            <div className="prototype-preview-heading">
+              <div>
+                <div className="prototype-input-section-title">Preview</div>
+                <strong>Confirm Accessory Outbound</strong>
+              </div>
+              <span>
+                {previewRows.length} stock change
+                {previewRows.length === 1 ? "" : "s"}
+              </span>
+            </div>
+
+            <p className="accessory-preview-description">
+              Review every stock change before confirming the outbound.
+            </p>
+
+            <div className="prototype-preview-table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Accessory</th>
+                    <th className="text-right">Quantity</th>
+                    <th className="text-right">Current Stock</th>
+                    <th className="text-right">Stock After</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewRows.map((row) => (
+                    <tr key={row.accessory_bin_id}>
+                      <td>
+                        <strong>{row.accessory}</strong>
+                      </td>
+                      <td className="text-right">{row.qty}</td>
+                      <td className="text-right">{row.current_stock}</td>
+                      <td className="text-right">{row.after_stock}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div className="prototype-preview-actions">
+            <button
+              type="button"
+              onClick={confirmPreview}
+              disabled={busy || previewRows.length === 0}
+              className="prototype-button confirm disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {busy ? "Processing…" : "Confirm Outbound"}
+            </button>
+            <button
+              type="button"
+              onClick={closePreview}
+              disabled={busy}
+              className="prototype-button secondary disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="prototype-empty-preview">
+          <div className="prototype-empty-icon">
+            <span />
+          </div>
+          <strong>No preview yet</strong>
+          <p>
+            Add accessory lines or select a spreadsheet, then preview every
+            stock change before confirmation.
+          </p>
+        </div>
+      )}
       </div>
 
       <div id="accessory-history" className="prototype-card prototype-history-card space-y-4">

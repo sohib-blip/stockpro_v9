@@ -53,16 +53,16 @@ describe("transactional returns and inbound commands", () => {
     expect(migration).toContain("to service_role;");
   });
 
-  it("derives return device and IMEI values from the locked canonical item row", () => {
+  it("derives known returns from locked rows and isolates unknown audit-only IMEIs", () => {
     expect(migration).toContain("from public.items i");
     expect(migration).toContain("for update of i");
     expect(migration).toContain("v_item.device_id");
     expect(migration).toContain("v_item.imei");
-    expect(returnsRoute).toMatch(/\.rpc\(\s*"confirm_return_batch"/);
+    expect(returnsRoute).toMatch(/\.rpc\(\s*"confirm_return_batch_v2"/);
     expect(returnsRoute).toContain("item_ids:");
+    expect(returnsRoute).toContain("p_unknown_imeis:");
     expect(returnsRoute).not.toContain(".from(\"items\")");
     expect(returnsRoute).not.toContain("item.device_id");
-    expect(returnsRoute).not.toContain("item.imei");
   });
 
   it("commits inbound batch, boxes, items and movements inside one RPC", () => {

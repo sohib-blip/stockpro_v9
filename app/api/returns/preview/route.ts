@@ -5,6 +5,7 @@ import {
   RETURN_STATUS_VALUES,
   matchReturnDeviceOption,
   mergeReturnDeviceOptions,
+  returnRequiresCanonicalItem,
 } from "@/lib/returns";
 
 export const runtime = "nodejs";
@@ -123,7 +124,21 @@ export async function POST(req: Request) {
       const item: any = foundMap.get(imei);
 
       if (!item) {
-        unknown_imeis.push(imei);
+        if (returnRequiresCanonicalItem(parsed.data.return_status)) {
+          unknown_imeis.push(imei);
+          continue;
+        }
+
+        valid_returns.push({
+          item_id: null,
+          imei,
+          device: reportedDevice,
+          previous_box: "",
+          previous_floor: "",
+          return_status: parsed.data.return_status,
+          stock_action: "no_stock_change",
+          inventory_match: "unknown",
+        });
         continue;
       }
 
@@ -146,6 +161,7 @@ export async function POST(req: Request) {
             parsed.data.return_status === "available"
               ? "added_to_stock"
               : "no_stock_change",
+          inventory_match: "known",
         });
       }
     }

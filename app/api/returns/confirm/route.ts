@@ -6,6 +6,7 @@ import {
   RETURN_COUNTRY_CODES,
   RETURN_COURIER_VALUES,
   RETURN_STATUS_VALUES,
+  returnRequiresCanonicalItem,
 } from "@/lib/returns";
 
 export const runtime = "nodejs";
@@ -17,9 +18,19 @@ const returnCommandSchema = z
     operation_id: z.string().uuid().optional(),
     items: z
       .array(
-        z.object({
-          item_id: z.string().uuid(),
-        })
+        z
+          .object({
+            item_id: z.string().uuid().nullish(),
+            imei: z.string().regex(/^\d{15}$/).nullish(),
+          })
+          .superRefine((item, context) => {
+            if (!item.item_id && !item.imei) {
+              context.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: "A canonical item or a 15-digit IMEI is required",
+              });
+            }
+          })
       )
       .min(1)
       .max(500),
@@ -36,7 +47,14 @@ const returnCommandSchema = z
     reported_device: z.string().trim().max(200).nullish(),
   })
   .superRefine((command, context) => {
-    if (command.return_status === "available") {
+    if (returnRequiresCanonicalItem(command.return_status)) {
+      if (command.items.some((item) => !item.item_id)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["items"],
+          message: "Available returns must already exist in inventory",
+        });
+      }
       if (!command.target_box?.trim()) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
@@ -93,15 +111,28 @@ export async function POST(req: Request) {
     const identity = getApiIdentity(req);
     const operationId = parsed.data.operation_id || crypto.randomUUID();
     const itemIds = Array.from(
-      new Set(parsed.data.items.map((item) => item.item_id))
+      new Set(
+        parsed.data.items
+          .map((item) => item.item_id)
+          .filter((itemId): itemId is string => Boolean(itemId))
+      )
+    );
+    const unknownImeis = Array.from(
+      new Set(
+        parsed.data.items
+          .filter((item) => !item.item_id)
+          .map((item) => item.imei)
+          .filter((imei): imei is string => Boolean(imei))
+      )
     );
     const { data, error } = await serviceClient().rpc(
-      "confirm_return_batch",
+      "confirm_return_batch_v2",
       {
         p_operation_id: operationId,
         p_actor_id: identity.userId,
         p_actor: identity.email,
         p_item_ids: itemIds,
+        p_unknown_imeis: unknownImeis,
         p_target_box: parsed.data.target_box || null,
         p_target_floor: parsed.data.target_floor || null,
         p_return_ref: parsed.data.return_ref,

@@ -87,6 +87,16 @@ describe("remaining transactional inventory commands", () => {
     }
   });
 
+  it("renders accessory outbound previews inside the right-hand process panel", () => {
+    expect(accessoriesPage).toContain(
+      'className="prototype-preview-card accessory-inline-preview"'
+    );
+    expect(accessoriesPage).toContain("accessories-process-grid");
+    expect(accessoriesPage).not.toContain(
+      'className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"'
+    );
+  });
+
   it("cuts routes over to RPCs without direct multi-step table writes", () => {
     expect(manualAccessoryRoute).toMatch(
       /\.rpc\(\s*"confirm_accessory_outbound"/

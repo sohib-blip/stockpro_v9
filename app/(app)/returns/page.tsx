@@ -6,8 +6,10 @@ import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import {
   RETURN_COUNTRIES,
   RETURN_COURIERS,
+  RETURN_FALLBACK_DEVICE_MODELS,
   RETURN_STATUSES,
   matchReturnDeviceOption,
+  mergeReturnDeviceOptions,
   returnCountryLabel,
   returnCourierLabel,
   returnStatusLabel,
@@ -115,7 +117,9 @@ export default function ReturnsPage() {
   const [returnStatus, setReturnStatus] =
     useState<ReturnStatus>("available");
   const [reportedDevice, setReportedDevice] = useState("");
-  const [deviceOptions, setDeviceOptions] = useState<string[]>([]);
+  const [deviceOptions, setDeviceOptions] = useState<string[]>(() =>
+    mergeReturnDeviceOptions([...RETURN_FALLBACK_DEVICE_MODELS])
+  );
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
   const [returnType, setReturnType] = useState("");
   const [returnReason, setReturnReason] = useState("");
@@ -170,10 +174,19 @@ export default function ReturnsPage() {
         });
         const json = await response.json();
         if (!cancelled && json.ok) {
-          setDeviceOptions(json.devices || []);
+          setDeviceOptions(
+            mergeReturnDeviceOptions([
+              ...RETURN_FALLBACK_DEVICE_MODELS,
+              ...(json.devices || []),
+            ])
+          );
         }
       } catch {
-        if (!cancelled) setDeviceOptions([]);
+        if (!cancelled) {
+          setDeviceOptions(
+            mergeReturnDeviceOptions([...RETURN_FALLBACK_DEVICE_MODELS])
+          );
+        }
       }
     })();
     return () => {

@@ -1101,6 +1101,10 @@ test.describe.serial("StockPro staging end-to-end", () => {
       exact: true,
     });
     await expect(deviceSearch).toBeVisible();
+    await deviceSearch.click();
+    await expect(
+      page.getByRole("option", { name: run.bin.name, exact: true })
+    ).toBeVisible();
     await deviceSearch.fill("FMB64");
     await expect(
       page.getByRole("option", { name: "FMB640", exact: true })
@@ -1371,7 +1375,14 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByLabel("Accessory line 1").selectOption(run.accessory.id);
     await page.getByLabel("Accessory quantity 1").fill("2");
     await page.getByRole("button", { name: "Preview Outbound" }).click();
-    await expect(page.getByText("Confirm Accessory Outbound")).toBeVisible();
+    await expect(
+      page
+        .locator(".accessories-process-grid .accessory-inline-preview")
+        .getByText("Confirm Accessory Outbound")
+    ).toBeVisible();
+    await expect(page.locator(".accessories-process-grid")).toContainText(
+      run.accessory.name
+    );
     await page.getByRole("button", { name: "Confirm Outbound" }).click();
     await expect(page.getByText("Accessory outbound completed")).toBeVisible();
     expect(await readAccessoryStock(run.accessory.id)).toBe(8);

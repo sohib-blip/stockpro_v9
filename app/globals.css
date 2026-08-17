@@ -2766,6 +2766,23 @@ body {
   padding-top: 18px;
 }
 
+.accessories-process-grid > .accessory-inline-preview {
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.accessory-inline-preview .prototype-preview-content {
+  flex: 1;
+}
+
+.accessory-preview-description {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
 .prototype-error-banner {
   display: flex;
   align-items: flex-start;

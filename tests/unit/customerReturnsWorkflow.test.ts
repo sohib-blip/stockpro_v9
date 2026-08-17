@@ -23,6 +23,7 @@ const groupedHistoryMigration = read(
 ).toLowerCase();
 const confirmRoute = read("app/api/returns/confirm/route.ts");
 const previewRoute = read("app/api/returns/preview/route.ts");
+const devicesRoute = read("app/api/returns/devices/route.ts");
 const historyRoute = read("app/api/returns/history/route.ts");
 const exportRoute = read("app/api/returns/export/route.ts");
 const templateExportRoute = read(
@@ -102,6 +103,10 @@ describe("complete customer return workflow", () => {
     expect(page).toContain("stock remains unchanged");
     expect(page).toContain('aria-label="Return device"');
     expect(page).toContain("filteredDeviceOptions");
+    expect(page).toContain("RETURN_FALLBACK_DEVICE_MODELS");
+    expect(page).toContain("mergeReturnDeviceOptions");
+    expect(devicesRoute).toContain('.from("bins")');
+    expect(devicesRoute).toContain("mergeReturnDeviceOptions");
     for (const model of [
       "LMU2640",
       "FMT100",

@@ -61,6 +61,10 @@ export const RETURN_FALLBACK_DEVICE_MODELS = [
 
 export type ReturnStatus = (typeof RETURN_STATUS_VALUES)[number];
 
+export function returnRequiresCanonicalItem(status: ReturnStatus | string) {
+  return status === "available";
+}
+
 export function returnStatusLabel(value: string) {
   return (
     RETURN_STATUSES.find((status) => status.value === value)?.label || value

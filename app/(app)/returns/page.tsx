@@ -44,13 +44,14 @@ const technicalReasons = [
 ];
 
 type PreviewItem = {
-  item_id: string;
+  item_id: string | null;
   imei: string;
   device: string;
   previous_box: string;
   previous_floor: string;
   return_status: ReturnStatus;
   stock_action: "added_to_stock" | "no_stock_change";
+  inventory_match: "known" | "unknown";
 };
 
 type ReturnPreview = {
@@ -1037,9 +1038,11 @@ export default function ReturnsPage() {
                           <td>{item.imei}</td>
                           <td>{item.device}</td>
                           <td>
-                            {[item.previous_box, item.previous_floor]
-                              .filter(Boolean)
-                              .join(" · ") || "—"}
+                            {item.inventory_match === "unknown"
+                              ? "Not in inventory"
+                              : [item.previous_box, item.previous_floor]
+                                  .filter(Boolean)
+                                  .join(" · ") || "—"}
                           </td>
                           <td>
                             <span

@@ -6,6 +6,10 @@ import {
   createReturnTemplateWorkbook,
   RETURN_TEMPLATE_HEADERS,
 } from "../../lib/return-template-export";
+import {
+  RETURN_STATUS_VALUES,
+  returnRequiresCanonicalItem,
+} from "../../lib/returns";
 
 const root = process.cwd();
 const read = (path: string) => readFileSync(join(root, path), "utf8");
@@ -20,6 +24,9 @@ const templateExportMigration = read(
 ).toLowerCase();
 const groupedHistoryMigration = read(
   "supabase/migrations/20260812103000_group_return_history_operations.sql"
+).toLowerCase();
+const unknownNonStockMigration = read(
+  "supabase/migrations/20260817093000_allow_unknown_nonstock_returns.sql"
 ).toLowerCase();
 const confirmRoute = read("app/api/returns/confirm/route.ts");
 const previewRoute = read("app/api/returns/preview/route.ts");
@@ -57,6 +64,41 @@ describe("complete customer return workflow", () => {
     expect(migration).toContain("return_item_state_changed");
   });
 
+  it("accepts unknown IMEIs only for audit-only non-stock returns", () => {
+    expect(returnRequiresCanonicalItem("available")).toBe(true);
+    for (const status of RETURN_STATUS_VALUES.filter(
+      (value) => value !== "available"
+    )) {
+      expect(returnRequiresCanonicalItem(status)).toBe(false);
+    }
+    expect(unknownNonStockMigration).toContain(
+      "alter column item_id drop not null"
+    );
+    expect(unknownNonStockMigration).toContain(
+      "alter column movement_id drop not null"
+    );
+    expect(unknownNonStockMigration).toContain(
+      "function public.confirm_return_batch_v2("
+    );
+    expect(unknownNonStockMigration).toContain(
+      "if v_status = 'available' and v_unknown_count > 0"
+    );
+    expect(unknownNonStockMigration).toContain(
+      "'no_stock_change'"
+    );
+    expect(unknownNonStockMigration).toContain(
+      "null only for audit-only non-stock returns"
+    );
+    expect(previewRoute).toContain("returnRequiresCanonicalItem");
+    expect(previewRoute).toContain('inventory_match: "unknown"');
+    expect(confirmRoute).toContain('"confirm_return_batch_v2"');
+    expect(confirmRoute).toContain("p_unknown_imeis: unknownImeis");
+    expect(confirmRoute).toContain(
+      "Available returns must already exist in inventory"
+    );
+    expect(page).toContain("Not in inventory");
+  });
+
   it("uses canonical devices for stock returns and declared devices otherwise", () => {
     expect(deviceMigration).toContain("add column if not exists reported_device");
     expect(deviceMigration).toContain(
@@ -83,7 +125,9 @@ describe("complete customer return workflow", () => {
       expect(confirmRoute).toContain(`${field}:`);
       expect(`${migration}\n${deviceMigration}`).toContain(`p_${field}`);
     }
-    expect(confirmRoute).toContain('command.return_status === "available"');
+    expect(confirmRoute).toContain(
+      "returnRequiresCanonicalItem(command.return_status)"
+    );
     expect(confirmRoute).toContain("A target box is required for Available returns");
     expect(previewRoute).toContain("RETURN_STATUS_VALUES");
   });

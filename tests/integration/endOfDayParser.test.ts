@@ -165,4 +165,20 @@ describe("End-of-Day outbound parser", () => {
       }),
     ]);
   });
+
+  it("accepts an accessory-only report for the shared accessory workflow", () => {
+    const workbook = workbookWithSheets({
+      Report: [
+        ["A-1", "HARDWIRED Cable for CV200", "861778063561681", "N/A"],
+        ["A-2", "OBD Cable FMC003", "862129085814980", "N/A"],
+      ],
+    });
+
+    const result = parseEndOfDayWorkbook(workbook);
+
+    expect(result.errors).toEqual([]);
+    expect(result.deviceRows).toBe(0);
+    expect(result.imeis).toEqual([]);
+    expect(result.accessories).toHaveLength(2);
+  });
 });

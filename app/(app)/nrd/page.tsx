@@ -5,6 +5,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import { useAccess } from "@/components/AccessProvider";
 import { usePreferences } from "@/components/PreferencesProvider";
+import ProcessFeedback from "@/components/ProcessFeedback";
 
 const NRD_TASKS = [
   "Prepare FMC234",
@@ -435,15 +436,21 @@ async function stopTaskWithCorrection() {
       </div>
 
       {errorMsg && (
-        <div className="bg-red-600/20 border border-red-500 text-red-300 px-4 py-3 rounded-xl text-sm">
-          {errorMsg}
-        </div>
+        <ProcessFeedback
+          kind="error"
+          title="NRD action failed"
+          message={errorMsg}
+          onDismiss={() => setErrorMsg("")}
+        />
       )}
 
       {successMsg && (
-        <div className="bg-emerald-600/20 border border-emerald-500 text-emerald-300 px-4 py-3 rounded-xl text-sm">
-          {successMsg}
-        </div>
+        <ProcessFeedback
+          kind="success"
+          title={successMsg}
+          message="The NRD history and monthly summary are up to date."
+          onDismiss={() => setSuccessMsg("")}
+        />
       )}
 
       <div className="nrd-overview-grid">

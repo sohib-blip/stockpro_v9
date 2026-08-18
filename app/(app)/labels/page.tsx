@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/apiFetch";
+import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
 
 type DeviceRow = { device_id: string; device: string };
 
@@ -30,7 +31,7 @@ function extractImeis(text: string): string[] {
 export default function LabelsPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const [devices, setDevices] = useState<DeviceRow[]>([]);
-  const [msg, setMsg] = useState("");
+  const [feedback, setFeedback] = useState<ProcessFeedbackValue | null>(null);
 
   // ZD220 default label size
   const [wMm, setWMm] = useState(105);
@@ -86,7 +87,7 @@ export default function LabelsPage() {
   }
 
   async function downloadPdf() {
-    setMsg("");
+    setFeedback(null);
 
     const payloadLabels = labels
   .map((l) => {
@@ -101,7 +102,11 @@ export default function LabelsPage() {
   .filter((l) => l.device && l.box_no && l.imeis.length > 0);
 
     if (payloadLabels.length === 0) {
-      setMsg("Add at least one valid label with a bin, box number, and IMEI.");
+      setFeedback({
+        kind: "error",
+        title: "Label generation blocked",
+        message: "Add at least one valid label with a bin, box number, and IMEI.",
+      });
       return;
     }
 
@@ -117,7 +122,11 @@ export default function LabelsPage() {
 
     if (!res.ok) {
       const json = await res.json().catch(() => null);
-      setMsg(json?.error || "Label generation failed");
+      setFeedback({
+        kind: "error",
+        title: "Label generation failed",
+        message: json?.error || "The PDF could not be generated.",
+      });
       return;
     }
 
@@ -130,6 +139,11 @@ export default function LabelsPage() {
     a.click();
     a.remove();
     window.URL.revokeObjectURL(url);
+    setFeedback({
+      kind: "success",
+      title: "Labels generated",
+      message: `PDF download started for ${payloadLabels.length} label${payloadLabels.length === 1 ? "" : "s"}.`,
+    });
   }
 
   return (
@@ -149,6 +163,13 @@ export default function LabelsPage() {
           <button type="button" className="prototype-button primary" onClick={downloadPdf}>Download all labels — PDF ({labels.length})</button>
         </div>
       </div>
+
+      {feedback && (
+        <ProcessFeedback
+          {...feedback}
+          onDismiss={() => setFeedback(null)}
+        />
+      )}
 
       <div className="hidden">
         <div className="flex flex-wrap items-center gap-3">
@@ -193,11 +214,6 @@ export default function LabelsPage() {
           </button>
         </div>
 
-        {msg && (
-          <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
-            {msg}
-          </div>
-        )}
       </div>
 
       <div className="labels-workspace">

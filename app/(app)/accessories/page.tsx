@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/apiFetch";
+import ProcessFeedback from "@/components/ProcessFeedback";
 
 type Accessory = {
   id: string;
@@ -210,8 +211,12 @@ export default function AccessoriesPage() {
       return;
     }
 
+    const removedUnits = previewRows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
+    const reference = previewCommand.shipmentRef.trim();
     closePreview();
-    setSuccessMsg("Accessory outbound completed");
+    setSuccessMsg(
+      `Accessory outbound completed — ${removedUnits} unit${removedUnits === 1 ? "" : "s"} removed${reference ? ` · ${reference}` : ""}`
+    );
     setLines([{ accessory_id: "", qty: 1 }]);
     setShipmentRef("");
     setComment("");
@@ -309,8 +314,12 @@ export default function AccessoriesPage() {
       return;
     }
 
+    const removedUnits = previewRows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
+    const reference = previewCommand.shipmentRef.trim();
     closePreview();
-    setSuccessMsg("Spreadsheet outbound completed");
+    setSuccessMsg(
+      `Spreadsheet outbound completed — ${removedUnits} unit${removedUnits === 1 ? "" : "s"} removed${reference ? ` · ${reference}` : ""}`
+    );
     setFile(null);
     setShipmentRef("");
     setComment("");
@@ -369,15 +378,21 @@ export default function AccessoriesPage() {
       )}
 
       {errorMsg && (
-        <div className="bg-red-600/20 border border-red-500 text-red-300 px-4 py-3 rounded-xl text-sm">
-          {errorMsg}
-        </div>
+        <ProcessFeedback
+          kind="error"
+          title="Accessory outbound blocked"
+          message={errorMsg}
+          onDismiss={() => setErrorMsg("")}
+        />
       )}
 
       {successMsg && (
-        <div className="bg-emerald-600/20 border border-emerald-500 text-emerald-300 px-4 py-3 rounded-xl text-sm">
-          {successMsg}
-        </div>
+        <ProcessFeedback
+          kind="success"
+          title="Accessory outbound completed"
+          message={successMsg.replace(/^.*?completed — /, "")}
+          onDismiss={() => setSuccessMsg("")}
+        />
       )}
 
       <div className="prototype-process-grid accessories-process-grid">

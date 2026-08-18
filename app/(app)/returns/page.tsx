@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
+import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
 import {
   RETURN_COUNTRIES,
   RETURN_COURIERS,
@@ -104,6 +105,7 @@ export default function ReturnsPage() {
   const [reviewedFingerprint, setReviewedFingerprint] = useState("");
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [msgKind, setMsgKind] = useState<ProcessFeedbackKind>("error");
 
   const [history, setHistory] = useState<HistoryBatch[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -118,6 +120,21 @@ export default function ReturnsPage() {
   const [historyMonth, setHistoryMonth] = useState("");
   const [historyStatus, setHistoryStatus] = useState("");
   const [historyCourier, setHistoryCourier] = useState("");
+
+  function showReturnError(message: string) {
+    setMsgKind("error");
+    setMsg(message);
+  }
+
+  function showReturnSuccess(message: string) {
+    setMsgKind("success");
+    setMsg(message);
+  }
+
+  function showReturnInfo(message: string) {
+    setMsgKind("info");
+    setMsg(message);
+  }
   const [historyCountry, setHistoryCountry] = useState("");
   const [pendingTemplateReturns, setPendingTemplateReturns] = useState(0);
   const [templateExportBusy, setTemplateExportBusy] = useState(false);
@@ -312,14 +329,14 @@ export default function ReturnsPage() {
         "/api/returns/template-export",
         "multi-device-returns.xlsx"
       );
-      setMsg(
+      showReturnInfo(
         `${pendingTemplateReturns} new return${
           pendingTemplateReturns === 1 ? "" : "s"
         } exported. The next download will contain only later returns.`
       );
       await loadTemplateExportStatus();
     } catch (error: any) {
-      setMsg(error?.message || "New returns export failed");
+      showReturnError(error?.message || "New returns export failed");
       await loadTemplateExportStatus();
     } finally {
       setTemplateExportBusy(false);
@@ -335,8 +352,9 @@ export default function ReturnsPage() {
         )}`,
         "multi-device-returns-operation.xlsx"
       );
+      showReturnInfo("Return operation Excel download started.");
     } catch (error: any) {
-      setMsg(error?.message || "Return operation export failed");
+      showReturnError(error?.message || "Return operation export failed");
     }
   }
 
@@ -387,7 +405,7 @@ export default function ReturnsPage() {
     const validationError = validateRequiredInformation();
     if (validationError) {
       setPreview(null);
-      setMsg(validationError);
+      showReturnError(validationError);
       return;
     }
 
@@ -408,13 +426,13 @@ export default function ReturnsPage() {
       });
       const json = await response.json();
       if (!json.ok) {
-        setMsg(json.error || "Return preview failed");
+        showReturnError(json.error || "Return preview failed");
         return;
       }
       setPreview(json);
       setReviewedFingerprint(formFingerprint());
     } catch (error: any) {
-      setMsg(error?.message || "Return preview failed");
+      showReturnError(error?.message || "Return preview failed");
     } finally {
       setBusy(false);
     }
@@ -422,11 +440,11 @@ export default function ReturnsPage() {
 
   async function confirmReturn() {
     if (!preview?.valid_returns?.length) {
-      setMsg("No valid returns are available to confirm.");
+      showReturnError("No valid returns are available to confirm.");
       return;
     }
     if (reviewedFingerprint !== formFingerprint()) {
-      setMsg("Return details changed. Preview the return again before confirming.");
+      showReturnError("Return details changed. Preview the return again before confirming.");
       return;
     }
 
@@ -459,11 +477,11 @@ export default function ReturnsPage() {
       });
       const json = await response.json();
       if (!json.ok) {
-        setMsg(json.error || "Return confirmation failed");
+        showReturnError(json.error || "Return confirmation failed");
         return;
       }
 
-      setMsg(
+      showReturnSuccess(
         returnStatus === "available"
           ? `Return completed: ${json.added_to_stock} IMEIs added to stock.`
           : `${returnStatusLabel(returnStatus)} return recorded: ${json.logged_only} IMEIs logged with no stock change.`
@@ -482,7 +500,7 @@ export default function ReturnsPage() {
       setHistoryCursor(null);
       await Promise.all([loadHistory(null), loadTemplateExportStatus()]);
     } catch (error: any) {
-      setMsg(error?.message || "Return confirmation failed");
+      showReturnError(error?.message || "Return confirmation failed");
     } finally {
       setBusy(false);
     }
@@ -677,6 +695,21 @@ export default function ReturnsPage() {
           History &amp; exports
         </button>
       </div>
+
+      {msg && (
+        <ProcessFeedback
+          kind={msgKind}
+          title={
+            msgKind === "success"
+              ? "Return operation completed"
+              : msgKind === "info"
+                ? "Return export ready"
+                : "Return action blocked"
+          }
+          message={msg}
+          onDismiss={() => setMsg("")}
+        />
+      )}
 
       <div className="prototype-process-grid returns-process-grid">
         <div className="prototype-process-input-column returns-input-column">
@@ -921,7 +954,6 @@ export default function ReturnsPage() {
             </button>
           </div>
 
-          {msg && <div className="returns-message">{msg}</div>}
         </div>
 
         {preview?.ok ? (
@@ -1104,7 +1136,7 @@ export default function ReturnsPage() {
                 downloadApiFile(
                   "/api/returns/export",
                   "stockpro_returns_export.xlsx"
-                ).catch((error) => setMsg(error.message))
+                ).catch((error) => showReturnError(error.message))
               }
               className="prototype-button secondary"
             >

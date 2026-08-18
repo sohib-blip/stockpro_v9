@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
+import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
 
 const OFFICES = [
   { code: "BE", label: "🇧🇪 Belgium" },
@@ -66,12 +67,23 @@ const pageSize = 20;
 
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
+  const [msgKind, setMsgKind] = useState<ProcessFeedbackKind>("error");
   const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
   const [confirmDone, setConfirmDone] = useState(false);
   const [detailTarget, setDetailTarget] = useState<any | null>(null);
   const [statusHistory, setStatusHistory] = useState<any[]>([]);
   const supplyOperationIdRef = useRef<string | null>(null);
   const deleteOperationIdRef = useRef<string | null>(null);
+
+  function showError(message: string) {
+    setMsgKind("error");
+    setMsg(message);
+  }
+
+  function showSuccess(message: string) {
+    setMsgKind("success");
+    setMsg(message);
+  }
 
   async function loadUser() {
     const { data } = await supabase.auth.getUser();
@@ -145,6 +157,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
 
   function openCreate() {
     resetForm();
+    setMsg("");
     supplyOperationIdRef.current = crypto.randomUUID();
     setOpenModal(true);
   }
@@ -173,6 +186,7 @@ function availableStatuses(
   }
 }
   function openEdit(row: any) {
+    setMsg("");
     supplyOperationIdRef.current = crypto.randomUUID();
     setEditing(row);
     setFromOffice(row.from_office || "UK");
@@ -218,7 +232,7 @@ function availableStatuses(
   }
 
   if (editing && status === "FAILED" && !failedReason.trim()) {
-  setMsg("Please enter a failure reason.");
+  showError("Please enter a failure reason.");
   return;
 }
 
@@ -265,9 +279,17 @@ function availableStatuses(
   setBusy(false);
 
   if (!json.ok) {
-    setMsg(json.error || "Save failed");
+    setConfirmDone(false);
+    showError(json.error || "Save failed");
     return;
   }
+
+  const savedOrder = editing?.order_number || json.order_number || "Supply order";
+  showSuccess(
+    editing
+      ? `${savedOrder} updated to ${status}.`
+      : `${savedOrder} created successfully.`
+  );
 
   setOpenModal(false);
 setConfirmDone(false);
@@ -389,14 +411,14 @@ async function openDetails(row: any) {
     const json = await res.json();
 
     if (!res.ok || !json.ok) {
-      setMsg(json.error || "Could not load status history");
+      showError(json.error || "Could not load status history");
       return;
     }
 
     setStatusHistory(json.rows ?? []);
   } catch (error) {
     console.error("OPEN SUPPLY DETAILS ERROR:", error);
-    setMsg("Could not load status history");
+    showError("Could not load status history");
   }
 }
 
@@ -421,13 +443,16 @@ async function openDetails(row: any) {
   setBusy(false);
 
   if (!json.ok) {
-    setMsg(json.error || "Delete failed");
+    setDeleteTarget(null);
+    showError(json.error || "Delete failed");
     return;
   }
 
+  const deletedOrder = deleteTarget.order_number || "Supply order";
   setDeleteTarget(null);
   deleteOperationIdRef.current = null;
   await loadSupply();
+  showSuccess(`${deletedOrder} deleted successfully.`);
 }
 
   return (
@@ -444,7 +469,7 @@ async function openDetails(row: any) {
   <button
     onClick={() =>
       downloadApiFile(`/api/supply/export?t=${Date.now()}`, "supply.xlsx").catch(
-        (error) => setMsg(error.message)
+        (error) => showError(error.message)
       )
     }
     className="prototype-button secondary"
@@ -461,10 +486,13 @@ async function openDetails(row: any) {
 </div>
       </div>
 
-      {msg && (
-        <div className="rounded-xl border border-red-500 bg-red-500/20 px-4 py-3 text-sm text-red-300">
-          {msg}
-        </div>
+      {msg && !openModal && !detailTarget && (
+        <ProcessFeedback
+          kind={msgKind}
+          title={msgKind === "success" ? "Supply order updated" : "Supply action failed"}
+          message={msg}
+          onDismiss={() => setMsg("")}
+        />
       )}
 
       <div className="prototype-compact-kpi-grid">
@@ -737,6 +765,15 @@ async function openDetails(row: any) {
             </div>
 
             <div className="p-5 space-y-5">
+              {msg && (
+                <ProcessFeedback
+                  kind={msgKind}
+                  title={msgKind === "success" ? "Supply order updated" : "Supply action failed"}
+                  message={msg}
+                  onDismiss={() => setMsg("")}
+                />
+              )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <select
                   aria-label="Supply origin office"

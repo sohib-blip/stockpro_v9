@@ -9,6 +9,7 @@ import {
 } from "@/lib/session-control";
 import { apiFetch } from "@/lib/apiFetch";
 import BrandLogo from "@/components/BrandLogo";
+import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
 
 export default function LoginPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -18,6 +19,7 @@ export default function LoginPage() {
 
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [msgKind, setMsgKind] = useState<ProcessFeedbackKind>("error");
 
   const [showSessionDialog, setShowSessionDialog] = useState(false);
   const [pendingSessionId, setPendingSessionId] = useState("");
@@ -28,6 +30,7 @@ export default function LoginPage() {
       new URLSearchParams(window.location.search).get("reason") ||
       window.sessionStorage.getItem(STOCKPRO_SESSION_NOTICE_KEY);
     if (reason === "session-expired") {
+      setMsgKind("info");
       setMsg(
         "Your previous session was closed because this account signed in on another device."
       );
@@ -67,6 +70,7 @@ export default function LoginPage() {
 
   async function signIn() {
     if (!email.trim() || !password) {
+      setMsgKind("error");
       setMsg("Please enter an email and a password");
       return;
     }
@@ -83,6 +87,7 @@ export default function LoginPage() {
 
     if (!response.ok || !result?.session) {
       setLoading(false);
+      setMsgKind("error");
       setMsg(result?.error || "Login failed");
       return;
     }
@@ -94,12 +99,14 @@ export default function LoginPage() {
 
     if (error) {
       setLoading(false);
+      setMsgKind("error");
       setMsg("Login failed");
       return;
     }
 
     if (!data.user || !result.stockpro_session_id) {
       setLoading(false);
+      setMsgKind("error");
       setMsg("Login failed");
       return;
     }
@@ -132,6 +139,7 @@ export default function LoginPage() {
       setPendingSessionId("");
       setPendingConnectionEventId("");
       setLoading(false);
+      setMsgKind("error");
       setMsg(body?.error || "Unable to take over the existing session");
       return;
     }
@@ -146,11 +154,13 @@ export default function LoginPage() {
 
     await supabase.auth.signOut({ scope: "local" });
 
+    setMsgKind("info");
     setMsg("Login cancelled. Existing session remains active.");
   }
 
   async function resetPassword() {
     if (!email.trim()) {
+      setMsgKind("error");
       setMsg("Enter your email first");
       return;
     }
@@ -165,10 +175,12 @@ export default function LoginPage() {
     setLoading(false);
 
     if (error) {
+      setMsgKind("error");
       setMsg(error.message);
       return;
     }
 
+    setMsgKind("success");
     setMsg("Password reset email sent");
   }
 
@@ -188,7 +200,6 @@ export default function LoginPage() {
       />
 
       <div className="auth-panel w-full max-w-sm">
-      <div className="auth-card-environment">Test environment</div>
       <div className="auth-card w-full rounded-xl border border-slate-800 bg-slate-900/70 p-8">
         <div className="auth-brand">
           <BrandLogo variant="auth" tagline="Warehouse operations" />
@@ -234,7 +245,16 @@ export default function LoginPage() {
           </button>
         </div>
 
-        {msg && <p className="mt-4 text-sm text-slate-200">{msg}</p>}
+        {msg && (
+          <div className="mt-4">
+            <ProcessFeedback
+              kind={msgKind}
+              title={msgKind === "success" ? "Email sent" : msgKind === "error" ? "Sign-in action failed" : "Sign-in information"}
+              message={msg}
+              onDismiss={() => setMsg(null)}
+            />
+          </div>
+        )}
       </div>
       </div>
     </main>

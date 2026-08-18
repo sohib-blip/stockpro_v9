@@ -20,6 +20,18 @@ describe("theme and language preferences", () => {
     expect(translateUiText("nl", "Customer Returns")).toBe("Klantretouren");
     expect(translateUiText("fr", "Page 3")).toBe("Page 3");
     expect(translateUiText("nl", "Floor 6")).toBe("Verdieping 6");
+    expect(translateUiText("fr", "Inbound completed")).toBe("Entrée terminée");
+    expect(translateUiText("nl", "Dismiss notification")).toBe(
+      "Melding sluiten"
+    );
+    expect(
+      translateUiText(
+        "fr",
+        "47 devices shipped · SHIP-4471. Stock and history are up to date."
+      )
+    ).toBe(
+      "47 appareil(s) expédié(s) · SHIP-4471. Le stock et l’historique sont à jour."
+    );
     expect(translateUiText("fr", "Most shipped devices")).toBe(
       "Appareils les plus expédiés"
     );

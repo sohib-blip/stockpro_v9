@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import { useAccess } from "@/components/AccessProvider";
+import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
 
 type KPI = {
   total_bins: number;
@@ -122,6 +123,7 @@ export default function DashboardPage() {
   const [imeiSearchRows, setImeiSearchRows] = useState<ImeiSearchRow[]>([]);
   const [imeiSearchBusy, setImeiSearchBusy] = useState(false);
   const [imeiSearchError, setImeiSearchError] = useState("");
+  const [feedback, setFeedback] = useState<ProcessFeedbackValue | null>(null);
 
   const filteredBins = useMemo(
     () =>
@@ -235,12 +237,45 @@ export default function DashboardPage() {
   }
 
   async function saveMinimumStock(deviceId: string, value: number) {
-    await apiFetch("/api/bins/update-min-stock", {
+    setFeedback(null);
+    const response = await apiFetch("/api/bins/update-min-stock", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ device_id: deviceId, min_stock: value }),
     });
+    const json = await response.json().catch(() => null);
+    if (!response.ok || !json?.ok) {
+      setFeedback({
+        kind: "error",
+        title: "Minimum stock update failed",
+        message: json?.error || "The minimum stock value could not be saved.",
+      });
+      return;
+    }
     setEditingMinStock(null);
+    setFeedback({
+      kind: "success",
+      title: "Minimum stock updated",
+      message: `The new minimum stock is ${value}. Dashboard alerts are up to date.`,
+    });
+  }
+
+  async function downloadDashboardFile(url: string, filename: string, label: string) {
+    setFeedback(null);
+    try {
+      await downloadApiFile(url, filename);
+      setFeedback({
+        kind: "info",
+        title: "Export ready",
+        message: `${label} download started.`,
+      });
+    } catch (error: any) {
+      setFeedback({
+        kind: "error",
+        title: "Export failed",
+        message: error?.message || `${label} could not be downloaded.`,
+      });
+    }
   }
 
   async function searchImeis() {
@@ -319,9 +354,7 @@ export default function DashboardPage() {
                 type="button"
                 className="prototype-button secondary"
                 onClick={() =>
-                  downloadApiFile("/api/dashboard/export", "stock.xlsx").catch(
-                    (error) => window.alert(error.message)
-                  )
+                  void downloadDashboardFile("/api/dashboard/export", "stock.xlsx", "Stock export")
                 }
               >
                 Export Stock
@@ -330,10 +363,11 @@ export default function DashboardPage() {
                 type="button"
                 className="prototype-button secondary"
                 onClick={() =>
-                  downloadApiFile(
+                  void downloadDashboardFile(
                     "/api/dashboard/export-count-sheet",
-                    "count-sheet.xlsx"
-                  ).catch((error) => window.alert(error.message))
+                    "count-sheet.xlsx",
+                    "Count sheet"
+                  )
                 }
               >
                 Export Count Sheet
@@ -344,16 +378,24 @@ export default function DashboardPage() {
             type="button"
             className="prototype-button secondary"
             onClick={() =>
-              downloadApiFile(
+              void downloadDashboardFile(
                 "/api/accessory-bins/export",
-                "accessories.xlsx"
-              ).catch((error) => window.alert(error.message))
+                "accessories.xlsx",
+                "Accessory export"
+              )
             }
           >
             Export Accessories
           </button>
         </div>
       </header>
+
+      {feedback && (
+        <ProcessFeedback
+          {...feedback}
+          onDismiss={() => setFeedback(null)}
+        />
+      )}
 
       {showImeiSearch && (
         <div

@@ -336,14 +336,6 @@ export function parseEndOfDayWorkbook(
       locations,
     }));
 
-  if (deviceRows.length === 0 && parsedSheets.length > 0) {
-    errors.push({
-      sheet: parsedSheets[0],
-      row: 1,
-      message: "No supported device rows were found in the workbook.",
-    });
-  }
-
   return {
     imeis: selected.map((row) => row.imei),
     duplicates,

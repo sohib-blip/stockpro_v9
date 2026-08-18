@@ -8,6 +8,7 @@ import {
   permissionsForRole,
 } from "@/lib/access-control";
 import { apiFetch } from "@/lib/apiFetch";
+import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
 
 type ManagedUser = {
   id: string;
@@ -52,6 +53,7 @@ export default function AdminPage() {
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [messageKind, setMessageKind] = useState<ProcessFeedbackKind>("info");
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState<AppRole>("viewer");
   const [invitePermissions, setInvitePermissions] = useState<Permissions>(
@@ -70,6 +72,7 @@ export default function AdminPage() {
     const response = await apiFetch("/api/admin/users", { cache: "no-store" });
     const body = await response.json().catch(() => null);
     if (!response.ok) {
+      setMessageKind("error");
       setMessage(body?.error || "Unable to load users");
       setLoading(false);
       return;
@@ -117,12 +120,14 @@ export default function AdminPage() {
     setSavingId(null);
 
     if (!response.ok) {
+      setMessageKind("error");
       setMessage(body?.error || "Unable to save permissions");
       await loadUsers();
       return;
     }
 
     await loadUsers();
+    setMessageKind("success");
     setMessage(`Permissions saved for ${user.email}`);
   }
 
@@ -143,6 +148,7 @@ export default function AdminPage() {
     setInviting(false);
 
     if (!response.ok) {
+      setMessageKind("error");
       setMessage(body?.error || "Unable to send invitation");
       return;
     }
@@ -151,6 +157,7 @@ export default function AdminPage() {
     setInviteRole("viewer");
     setInvitePermissions(permissionsForRole("viewer"));
     await loadUsers();
+    setMessageKind("success");
     setMessage("Invitation sent and access configured");
   }
 
@@ -218,9 +225,12 @@ export default function AdminPage() {
       </section>
 
       {message && (
-        <div className="rounded-xl border border-cyan-700/60 bg-cyan-950/30 px-4 py-3 text-sm text-cyan-100">
-          {message}
-        </div>
+        <ProcessFeedback
+          kind={messageKind}
+          title={messageKind === "success" ? "Admin action completed" : "Admin action failed"}
+          message={message}
+          onDismiss={() => setMessage(null)}
+        />
       )}
 
       <section className="prototype-card admin-users-card">

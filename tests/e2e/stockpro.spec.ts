@@ -117,10 +117,28 @@ function createQuicklinkSpreadsheet(path: string) {
   XLSX.writeFile(workbook, path);
 }
 
+function createEndOfDayDeviceSpreadsheet(path: string, imei: string) {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ["End of Day Report"],
+    ["Generated for StockPro E2E"],
+    [],
+    [],
+    ["Order Ref", "Item Type", "IMEI / ID", "Companion Device IMEI"],
+    ["E2E-OUTBOUND", "OBD", imei, "N/A"],
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Outbound");
+  XLSX.writeFile(workbook, path);
+}
+
 function createAccessorySpreadsheet(path: string) {
   const sheet = XLSX.utils.aoa_to_sheet([
-    ["Item Type"],
-    [run.accessory.name],
+    ["End of Day Report"],
+    ["Generated for StockPro E2E"],
+    [],
+    [],
+    ["Order Ref", "Item Type", "IMEI / ID", "Companion Device IMEI"],
+    ["E2E-ACCESSORY", run.accessory.name, "N/A", "N/A"],
   ]);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Outbound");
@@ -129,8 +147,12 @@ function createAccessorySpreadsheet(path: string) {
 
 function createAutomaticAccessorySpreadsheet(path: string) {
   const sheet = XLSX.utils.aoa_to_sheet([
-    ["IMEI"],
-    [run.manualImei],
+    ["End of Day Report"],
+    ["Generated for StockPro E2E"],
+    [],
+    [],
+    ["Order Ref", "Item Type", "IMEI / ID", "Companion Device IMEI"],
+    ["E2E-AUTOMATIC", "OBD", run.manualImei, "N/A"],
   ]);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Automatic Accessories");
@@ -853,7 +875,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(manualPreview).toContainText(run.bin.name);
     await expect(manualPreview).toContainText(run.manualBox);
     await page.getByRole("button", { name: "Confirm Inbound" }).click();
-    await expect(page.getByText(/Manual inbound completed: 1 IMEIs imported/)).toBeVisible();
+    const inboundCompletion = page.locator(".prototype-completion-card");
+    await expect(inboundCompletion).toContainText("Inbound completed");
+    await expect(inboundCompletion).toContainText("1 IMEIs imported");
     await expectDownload(
       page,
       page.getByRole("button", { name: "Download batch Excel" }),
@@ -997,9 +1021,11 @@ test.describe.serial("StockPro staging end-to-end", () => {
 
   test("imports spreadsheets and blocks an all-duplicate inbound without history", async ({ page, request }) => {
     const file = spreadsheetPath(`quicklink-${run.stamp}.xlsx`);
+    const outboundFile = spreadsheetPath(`end-of-day-${run.stamp}.xlsx`);
     const outboundReference = `E2E-XLSX-OUT-${run.stamp}`;
     const duplicateReference = `E2E-XLSX-DUPLICATE-${run.stamp}`;
     createQuicklinkSpreadsheet(file);
+    createEndOfDayDeviceSpreadsheet(outboundFile, run.spreadsheetImei);
     const operatorToken = await login(page, "operator");
 
     await page.goto("/inbound");
@@ -1011,10 +1037,6 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByRole("button", { name: "Preview Import" }).click();
     await expect(page.getByText("Preview: 1 boxes • 1 IMEIs")).toBeVisible();
 
-    page.once("dialog", async (dialog) => {
-      expect(dialog.message()).toContain("Inbound completed");
-      await dialog.accept();
-    });
     await page.getByRole("button", { name: "Confirm Inbound" }).click();
     await expect(page.getByRole("button", { name: "Download ZD220 label PDF" })).toBeVisible();
     await expectDownload(
@@ -1064,7 +1086,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.goto("/outbound");
     await page.getByRole("button", { name: "End-of-Day Report" }).click();
     await page.getByLabel("Outbound shipment reference").fill(outboundReference);
-    await page.getByLabel("Outbound spreadsheet file").setInputFiles(file);
+    await page.getByLabel("Outbound spreadsheet file").setInputFiles(outboundFile);
     await page.getByRole("button", { name: "Preview Spreadsheet" }).click();
     await expect(page.getByText("Preview (excel)")).toBeVisible();
     await page.getByRole("button", { name: "Confirm Outbound" }).click();
@@ -1416,7 +1438,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByRole("button", { name: "Preview Spreadsheet" }).click();
     await expect(page.getByText("Confirm Accessory Outbound")).toBeVisible();
     await page.getByRole("button", { name: "Confirm Outbound" }).click();
-    await expect(page.getByText("Spreadsheet outbound completed")).toBeVisible();
+    await expect(page.getByText("Accessory outbound completed")).toBeVisible();
     expect(await readAccessoryStock(run.accessory.id)).toBe(7);
 
     await page.getByLabel("Accessory shipment reference").fill(`E2E-ACC-AUTO-${run.stamp}`);
@@ -1429,7 +1451,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
       })
     ).toBeVisible();
     await page.getByRole("button", { name: "Confirm Outbound" }).click();
-    await expect(page.getByText("Spreadsheet outbound completed")).toBeVisible();
+    await expect(page.getByText("Accessory outbound completed")).toBeVisible();
     expect(await readAccessoryStock(run.accessory.id)).toBe(6);
     await signOut(page);
   });
@@ -1575,6 +1597,10 @@ test.describe.serial("StockPro staging end-to-end", () => {
     const binRow = page.getByRole("row", { name: new RegExp(run.uiBinName) });
     await expect(binRow).toBeVisible();
     await binRow.getByRole("button", { name: "Delete" }).click();
+    await page
+      .getByRole("dialog", { name: "Delete inventory setup item?" })
+      .getByRole("button", { name: "Delete" })
+      .click();
     await expect(binRow).toHaveCount(0);
 
     await page.goto("/supply");

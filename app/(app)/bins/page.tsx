@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/apiFetch";
+import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
+import ConfirmDialog from "@/components/ConfirmDialog";
 
 type AccessoryCategory =
   | "Packages"
@@ -56,7 +58,21 @@ export default function BinsPage() {
   useState<AccessoryCategory>("Consumables");
 
   const [loading, setLoading] = useState(false);
+  const [feedback, setFeedback] = useState<ProcessFeedbackValue | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{
+    kind: "device-bin" | "accessory" | "rule";
+    id: string;
+    name: string;
+  } | null>(null);
   const [activeSetupTab, setActiveSetupTab] = useState<"bins" | "rules" | "accessories">("bins");
+
+  function showSetupError(message: string) {
+    setFeedback({ kind: "error", title: "Inventory setup action failed", message });
+  }
+
+  function showSetupSuccess(message: string) {
+    setFeedback({ kind: "success", title: "Inventory setup updated", message });
+  }
 
   async function loadBins() {
     const { data } = await supabase
@@ -81,11 +97,20 @@ export default function BinsPage() {
     if (!newBin.trim()) return;
 
     setLoading(true);
-    await supabase.from("bins").insert({ name: newBin.trim() });
+    setFeedback(null);
+    const binName = newBin.trim();
+    const { error } = await supabase.from("bins").insert({ name: binName });
+
+    if (error) {
+      setLoading(false);
+      showSetupError(error.message || "Device bin creation failed");
+      return;
+    }
 
     setNewBin("");
     setLoading(false);
-    loadBins();
+    await loadBins();
+    showSetupSuccess(`Device bin ${binName} created successfully.`);
   }
 
   async function addAccessoryBin() {
@@ -93,7 +118,9 @@ export default function BinsPage() {
 
     setLoading(true);
 
-    await apiFetch("/api/accessory-bins/create", {
+    setFeedback(null);
+    const accessoryName = newAccessoryBin.trim();
+    const response = await apiFetch("/api/accessory-bins/create", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -104,31 +131,55 @@ export default function BinsPage() {
       }),
     });
 
+    const json = await response.json().catch(() => null);
+    if (!response.ok || !json?.ok) {
+      setLoading(false);
+      showSetupError(json?.error || "Accessory creation failed");
+      return;
+    }
+
     setNewAccessoryBin("");
     setNewAccessoryStock(0);
     setNewAccessoryMinStock(0);
     setNewAccessoryCategory("Consumables");
 
     setLoading(false);
-    loadAccessoryBins();
+    await loadAccessoryBins();
+    showSetupSuccess(`Accessory ${accessoryName} created successfully.`);
   }
 
   async function deleteBin(id: string) {
-    await supabase.from("bins").delete().eq("id", id);
-    loadBins();
+    setFeedback(null);
+    const binName = bins.find((bin) => bin.id === id)?.name || "Device bin";
+    const { error } = await supabase.from("bins").delete().eq("id", id);
+    if (error) {
+      showSetupError(error.message || "Device bin deletion failed");
+      return;
+    }
+    await loadBins();
+    showSetupSuccess(`${binName} deleted successfully.`);
   }
 
   async function toggleAccessoryVisibility(id: string, active: boolean) {
     setLoading(true);
 
-    await apiFetch("/api/accessory-bins/toggle-active", {
+    setFeedback(null);
+    const response = await apiFetch("/api/accessory-bins/toggle-active", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id, active }),
     });
 
+    const json = await response.json().catch(() => null);
+    if (!response.ok || !json?.ok) {
+      setLoading(false);
+      showSetupError(json?.error || "Accessory visibility update failed");
+      return;
+    }
+
     setLoading(false);
-    loadAccessoryBins();
+    await loadAccessoryBins();
+    showSetupSuccess(`Accessory ${active ? "shown" : "hidden"} successfully.`);
   }
 
   function startEditAccessory(bin: Bin) {
@@ -150,7 +201,8 @@ export default function BinsPage() {
   async function saveAccessoryEdit(id: string) {
     setLoading(true);
 
-    await apiFetch("/api/accessory-bins/update", {
+    setFeedback(null);
+    const response = await apiFetch("/api/accessory-bins/update", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -162,25 +214,40 @@ export default function BinsPage() {
       }),
     });
 
+    const json = await response.json().catch(() => null);
+    if (!response.ok || !json?.ok) {
+      setLoading(false);
+      showSetupError(json?.error || "Accessory update failed");
+      return;
+    }
+
     setLoading(false);
     cancelEditAccessory();
-    loadAccessoryBins();
+    await loadAccessoryBins();
+    showSetupSuccess(`${editAccessoryName.trim() || "Accessory"} updated successfully.`);
   }
 
   async function deleteAccessory(id: string) {
-    const ok = confirm("Are you sure you want to delete this accessory?");
-    if (!ok) return;
-
     setLoading(true);
 
-    await apiFetch("/api/accessory-bins/delete", {
+    setFeedback(null);
+    const accessoryName = accessoryBins.find((bin) => bin.id === id)?.name || "Accessory";
+    const response = await apiFetch("/api/accessory-bins/delete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id }),
     });
 
+    const json = await response.json().catch(() => null);
+    if (!response.ok || !json?.ok) {
+      setLoading(false);
+      showSetupError(json?.error || "Accessory deletion failed");
+      return;
+    }
+
     setLoading(false);
-    loadAccessoryBins();
+    await loadAccessoryBins();
+    showSetupSuccess(`${accessoryName} deleted successfully.`);
   }
 
   async function openTemplate(bin: Bin) {
@@ -197,6 +264,8 @@ export default function BinsPage() {
     if (json.ok) {
       setTemplateAccessories(json.accessories || []);
       setTemplates(json.templates || []);
+    } else {
+      showSetupError(json.error || "Automatic accessory rules could not be loaded");
     }
   }
 
@@ -220,7 +289,7 @@ export default function BinsPage() {
     setLoading(false);
 
     if (!json.ok) {
-      alert(json.error || "Save template failed");
+      showSetupError(json.error || "Save template failed");
       return;
     }
 
@@ -229,6 +298,7 @@ export default function BinsPage() {
     setTemplatePerDevices(1);
 
     await openTemplate(selectedDevice);
+    showSetupSuccess("Automatic accessory rule created successfully.");
   }
 
   function startEditTemplate(t: any) {
@@ -265,19 +335,17 @@ export default function BinsPage() {
     setLoading(false);
 
     if (!json.ok) {
-      alert(json.error || "Update template failed");
+      showSetupError(json.error || "Update template failed");
       return;
     }
 
     cancelEditTemplate();
     await openTemplate(selectedDevice);
+    showSetupSuccess("Automatic accessory rule updated successfully.");
   }
 
   async function deleteTemplate(id: string) {
     if (!selectedDevice) return;
-
-    const ok = confirm("Delete this template rule?");
-    if (!ok) return;
 
     setLoading(true);
 
@@ -291,11 +359,12 @@ export default function BinsPage() {
     setLoading(false);
 
     if (!json.ok) {
-      alert(json.error || "Delete template failed");
+      showSetupError(json.error || "Delete template failed");
       return;
     }
 
     await openTemplate(selectedDevice);
+    showSetupSuccess("Automatic accessory rule deleted successfully.");
   }
 
   useEffect(() => {
@@ -319,6 +388,13 @@ export default function BinsPage() {
         </p>
         </div>
       </div>
+
+      {feedback && (
+        <ProcessFeedback
+          {...feedback}
+          onDismiss={() => setFeedback(null)}
+        />
+      )}
 
       <div className="prototype-section-tabs" role="tablist" aria-label="Inventory setup sections">
         <button type="button" role="tab" aria-selected={activeSetupTab === "bins"} className={activeSetupTab === "bins" ? "is-active" : ""} onClick={() => setActiveSetupTab("bins")}>Device Bins <span>{bins.length}</span></button>
@@ -369,7 +445,7 @@ export default function BinsPage() {
                     </button>
 
                     <button
-                      onClick={() => deleteBin(bin.id)}
+                      onClick={() => setDeleteTarget({ kind: "device-bin", id: bin.id, name: bin.name })}
                       className="text-rose-400 hover:text-rose-500"
                     >
                       Delete
@@ -568,7 +644,7 @@ export default function BinsPage() {
                             </button>
 
                             <button
-                              onClick={() => deleteTemplate(t.id)}
+                              onClick={() => setDeleteTarget({ kind: "rule", id: t.id, name: t.accessory_bins?.name || "this automatic rule" })}
                               className="text-rose-400 hover:text-rose-500"
                             >
                               Delete
@@ -796,7 +872,7 @@ export default function BinsPage() {
                           </button>
 
                           <button
-                            onClick={() => deleteAccessory(bin.id)}
+                            onClick={() => setDeleteTarget({ kind: "accessory", id: bin.id, name: bin.name })}
                             className="text-rose-400 hover:text-rose-500"
                           >
                             Delete
@@ -820,6 +896,28 @@ export default function BinsPage() {
         </div>
       </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Delete inventory setup item?"
+        message={
+          deleteTarget
+            ? `Delete ${deleteTarget.name}? This action cannot be undone.`
+            : undefined
+        }
+        confirmText={loading ? "Deleting…" : "Delete"}
+        cancelText="Cancel"
+        danger
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          const target = deleteTarget;
+          if (!target || loading) return;
+          setDeleteTarget(null);
+          if (target.kind === "device-bin") void deleteBin(target.id);
+          else if (target.kind === "accessory") void deleteAccessory(target.id);
+          else void deleteTemplate(target.id);
+        }}
+      />
     </div>
   );
 }

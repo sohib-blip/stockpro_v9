@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
+import ProcessFeedback from "@/components/ProcessFeedback";
 
 type HistoryRow = {
   operation_id: string;
@@ -37,7 +38,7 @@ const [page, setPage] = useState(1);
   const [filter, setFilter] = useState("all");
 
   const [busy, setBusy] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
   const operationIdRef = useRef<string | null>(null);
@@ -189,14 +190,17 @@ if (!actorId) {
     setBusy(false);
 
     if (json.ok) {
-      setSuccess(true);
+      const imeiCount = Array.isArray(preview.imeis) ? preview.imeis.length : 0;
+      const reference = shipmentRef.trim();
+      setSuccessMsg(
+        `${imeiCount} device${imeiCount === 1 ? "" : "s"} shipped${reference ? ` · ${reference}` : ""}. Stock and history are up to date.`
+      );
       setPreview(null);
       setShipmentRef("");
       setImeiInput("");
       setFile(null);
       operationIdRef.current = null;
       await loadHistory();
-      setTimeout(() => setSuccess(false), 2500);
     } else {
       setErrorMsg(json.error || "Confirm failed");
     }
@@ -229,13 +233,6 @@ if (!actorId) {
         </div>
       )}
 
-      {/* SUCCESS */}
-      {success && (
-        <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
-          Device outbound completed
-        </div>
-      )}
-
       {/* HEADER */}
       <div className="prototype-page-header">
         <div>
@@ -246,6 +243,24 @@ if (!actorId) {
         </div>
         <button type="button" className="prototype-button secondary" onClick={() => document.getElementById("outbound-history")?.scrollIntoView({ behavior: "smooth" })}>History &amp; exports</button>
       </div>
+
+      {successMsg && (
+        <ProcessFeedback
+          kind="success"
+          title="Device outbound completed"
+          message={successMsg}
+          onDismiss={() => setSuccessMsg("")}
+        />
+      )}
+
+      {errorMsg && !preview && (
+        <ProcessFeedback
+          kind="error"
+          title="Device outbound blocked"
+          message={errorMsg}
+          onDismiss={() => setErrorMsg("")}
+        />
+      )}
 
       <div className="prototype-process-grid">
       <div className="prototype-process-input-column">
@@ -306,18 +321,6 @@ if (!actorId) {
       </div>
 
 {/* ERROR MESSAGE */}
-{errorMsg && !preview && (
-  <div className="prototype-preview-card prototype-error-preview">
-    <div className="prototype-error-banner"><span>!</span><div><strong>Outbound blocked</strong><p>{errorMsg}</p></div></div>
-    {preview && <div className="prototype-preview-chips"><span>{preview.duplicates?.length || 0} duplicates</span><span>{preview.unknown_imeis?.length || 0} unknown</span><span>{preview.already_out?.length || 0} already out</span></div>}
-    <div className="p-6 text-sm text-red-300">
-    {errorMsg}
-    </div>
-  </div>
-)}
-
-
-
       {/* PREVIEW */}
 {preview && (
   <div className="prototype-preview-card relative overflow-hidden">

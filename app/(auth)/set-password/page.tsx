@@ -3,6 +3,7 @@
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { parseAuthCallbackSession } from "@/lib/auth-callback";
 import { useEffect, useMemo, useState } from "react";
+import ProcessFeedback from "@/components/ProcessFeedback";
 
 export default function SetPasswordPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
@@ -123,8 +124,13 @@ export default function SetPasswordPage() {
         </div>
 
         {message && (
-          <div className="mt-4 rounded-xl border border-rose-800 bg-rose-950/30 px-4 py-3 text-sm text-rose-200">
-            {message}
+          <div className="mt-4">
+            <ProcessFeedback
+              kind="error"
+              title="Password action failed"
+              message={message}
+              onDismiss={() => setMessage("")}
+            />
           </div>
         )}
       </div>

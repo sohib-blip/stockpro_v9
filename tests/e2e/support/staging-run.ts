@@ -55,7 +55,7 @@ export async function createStagingRun(): Promise<StagingRun> {
     inviteEmail: `stockpro.e2e.invited.${stamp}@gmail.com`,
     bin: { id: "", name: `TESTDEVICE${shortNumber}` },
     alternateBin: { id: "", name: `TESTALTERNATE${shortNumber}` },
-    accessory: { id: "", name: `E2E Accessory ${stamp}` },
+    accessory: { id: "", name: `E2E Cable ${stamp}` },
     manualImei: makeImei(numericStamp),
     spreadsheetImei: makeImei(numericStamp + 1),
     manualBox: `E2E-MANUAL-${stamp}`,

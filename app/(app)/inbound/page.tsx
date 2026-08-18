@@ -5,6 +5,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { parseVendorExcel } from "@/lib/inbound/parsers";
 import { toDeviceMatchList } from "@/lib/inbound/vendorParser";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
+import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
 
 type Vendor = "teltonika" | "quicklink" | "digitalmatter" | "truster";
 type HistoryFilter = "all" | "excel" | "manual";
@@ -23,6 +24,13 @@ type HistoryRow = {
 type DeviceRow = {
   device_id: string;
   device: string;
+};
+
+type InboundBatchSummary = {
+  imported: number;
+  skipped: number;
+  boxesCreated?: number;
+  boxesReused?: number;
 };
 
 function normName(s: any) {
@@ -54,6 +62,8 @@ const [page, setPage] = useState(1);
 
   // Labels after confirm
   const [lastBatchId, setLastBatchId] = useState<string>("");
+  const [lastBatchSummary, setLastBatchSummary] =
+    useState<InboundBatchSummary | null>(null);
 
   // Devices list (for manual dropdown) => NOW BINS
   const [devices, setDevices] = useState<DeviceRow[]>([]);
@@ -70,6 +80,8 @@ const [page, setPage] = useState(1);
   const [manualPreview, setManualPreview] = useState<any>(null);
   const [manualReadyToImport, setManualReadyToImport] = useState(false);
   const [manualMsg, setManualMsg] = useState<string>("");
+  const [manualMsgKind, setManualMsgKind] =
+    useState<ProcessFeedbackKind>("error");
   const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
   const excelOperationIdRef = useRef<string | null>(null);
   const manualOperationIdRef = useRef<string | null>(null);
@@ -90,6 +102,16 @@ const [page, setPage] = useState(1);
   function stopBusy() {
     setBusy(false);
     setBusyText("");
+  }
+
+  function showManualError(message: string) {
+    setManualMsgKind("error");
+    setManualMsg(message);
+  }
+
+  function showManualInfo(message: string) {
+    setManualMsgKind("info");
+    setManualMsg(message);
   }
 
   function invalidateManualPreview() {
@@ -175,6 +197,7 @@ useEffect(() => {
     setErr("");
     setResult(null);
     setLastBatchId("");
+    setLastBatchSummary(null);
     setManualPreview(null);
     setManualMsg("");
     excelOperationIdRef.current = null;
@@ -386,13 +409,15 @@ useEffect(() => {
       }
 
       setLastBatchId(json.batch_id);
+      setLastBatchSummary({
+        imported: json.totals.inserted_imeis,
+        skipped: json.totals.skipped_existing_imeis,
+        boxesCreated: json.totals.created_boxes,
+        boxesReused: json.totals.reused_boxes,
+      });
       setResult(null);
       setFile(null);
       excelOperationIdRef.current = null;
-
-      alert(
-        `Inbound completed\nImported: ${json.totals.inserted_imeis}\nSkipped (already in stock): ${json.totals.skipped_existing_imeis}\nBoxes created: ${json.totals.created_boxes}\nBoxes reused: ${json.totals.reused_boxes}`
-      );
 
       // Refresh history without reloading the page.
       await loadHistory();
@@ -430,6 +455,7 @@ useEffect(() => {
     setManualMsg("");
     setManualPreview(null);
     setLastBatchId("");
+    setLastBatchSummary(null);
     setErr("");
     setResult(null);
     setManualReadyToImport(false);
@@ -443,9 +469,9 @@ useEffect(() => {
       manualImeisInputRef.current?.value ?? manualImeis
     );
 
-    if (!selectedDevice) return setManualMsg("Select a device.");
-    if (!selectedBox) return setManualMsg("Enter a box number.");
-    if (imeis.length === 0) return setManualMsg("No valid 15-digit IMEIs found.");
+    if (!selectedDevice) return showManualError("Select a device.");
+    if (!selectedBox) return showManualError("Enter a box number.");
+    if (imeis.length === 0) return showManualError("No valid 15-digit IMEIs found.");
 
     startBusy("Preparing manual inbound preview…");
     try {
@@ -463,7 +489,7 @@ useEffect(() => {
       const json = await res.json();
 
       if (!json.ok) {
-  setManualMsg(json.error || "Manual preview failed");
+  showManualError(json.error || "Manual preview failed");
   return;
 }
 
@@ -471,7 +497,7 @@ setManualPreview(json);
 setManualReadyToImport(true);
 setManualMsg("");
     } catch (e: any) {
-      setManualMsg(e?.message || "Manual preview failed");
+      showManualError(e?.message || "Manual preview failed");
     } finally {
       stopBusy();
     }
@@ -481,13 +507,13 @@ setManualMsg("");
     setManualMsg("");
 
     if (!manualReadyToImport) {
-    return setManualMsg("Preview the inbound before confirming it.");
+    return showManualError("Preview the inbound before confirming it.");
   }
 
-    if (!manualPreview?.ok) return setManualMsg("No preview is available.");
+    if (!manualPreview?.ok) return showManualError("No preview is available.");
 
     const imeisToInsert: string[] = manualPreview.preview_imeis || [];
-    if (imeisToInsert.length === 0) return setManualMsg("Nothing to import. All IMEIs may already be in stock.");
+    if (imeisToInsert.length === 0) return showManualError("Nothing to import. All IMEIs may already be in stock.");
 
     const previewDevice = String(manualPreview.bin_id || "");
     const previewBox = String(manualPreview.box_code || "");
@@ -502,7 +528,7 @@ setManualMsg("");
       currentFloor !== previewFloor
     ) {
       invalidateManualPreview();
-      return setManualMsg("Inbound details changed. Preview the inbound again before confirming.");
+      return showManualError("Inbound details changed. Preview the inbound again before confirming.");
     }
 
     startBusy("Importing manual inbound…");
@@ -528,12 +554,12 @@ setManualMsg("");
       const json = await res.json();
 
       if (!json.ok) {
-        setManualMsg(json.error || "Manual confirmation failed");
+        showManualError(json.error || "Manual confirmation failed");
         return;
       }
 
       if (json.inserted === 0) {
-        setManualMsg(`Nothing was imported. Existing IMEIs skipped: ${json.skipped_existing || 0}.`);
+        showManualInfo(`Nothing was imported. Existing IMEIs skipped: ${json.skipped_existing || 0}.`);
         setManualPreview(null);
         return;
       }
@@ -546,12 +572,13 @@ setManualMsg("");
       manualOperationIdRef.current = null;
 
       const skipped = json.skipped_existing || 0;
-      setManualMsg(`Manual inbound completed: ${json.inserted} IMEIs imported, ${skipped} existing IMEIs skipped.`);
+      setLastBatchSummary({ imported: json.inserted, skipped });
+      setManualMsg("");
 
       // Refresh history without reloading the page.
       await loadHistory();
     } catch (e: any) {
-      setManualMsg(e?.message || "Manual confirmation failed");
+      showManualError(e?.message || "Manual confirmation failed");
     } finally {
       stopBusy();
     }
@@ -720,9 +747,12 @@ setManualMsg("");
 
 </div>
         {manualMsg && (
-          <div className="rounded-xl border border-slate-800 bg-slate-950 p-3 text-sm">
-            {manualMsg}
-          </div>
+          <ProcessFeedback
+            kind={manualMsgKind}
+            title={manualMsgKind === "error" ? "Manual inbound blocked" : "Manual inbound information"}
+            message={manualMsg}
+            onDismiss={() => setManualMsg("")}
+          />
         )}
 
         {manualPreview?.ok && (
@@ -786,9 +816,12 @@ setManualMsg("");
         </div>
 
         {err && (
-          <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
-            {err}
-          </div>
+          <ProcessFeedback
+            kind="error"
+            title="Spreadsheet inbound blocked"
+            message={err}
+            onDismiss={() => setErr("")}
+          />
         )}
       </div>
       )}
@@ -925,14 +958,22 @@ setManualMsg("");
 
       {lastBatchId && (
         <div className="prototype-completion-card">
-          <div className="prototype-success-banner">
-            <span>✓</span>
-            <div><strong>Inbound completed</strong><p>{shipmentRef || "Manual inbound"} · {actor}</p></div>
-            <div className="prototype-page-actions">
+          <ProcessFeedback
+            kind="success"
+            title="Inbound completed"
+            message={
+              lastBatchSummary
+                ? `${lastBatchSummary.imported} IMEIs imported · ${lastBatchSummary.skipped} skipped${lastBatchSummary.boxesCreated !== undefined ? ` · ${lastBatchSummary.boxesCreated} boxes created · ${lastBatchSummary.boxesReused || 0} boxes reused` : ""} · ${shipmentRef || "Manual inbound"}`
+                : `${shipmentRef || "Manual inbound"} · ${actor}`
+            }
+            onDismiss={() => {
+              setLastBatchId("");
+              setLastBatchSummary(null);
+            }}
+          >
               <button type="button" className="prototype-button secondary" onClick={() => downloadApiFile(`/api/inbound/export?batch_id=${encodeURIComponent(lastBatchId)}`, `inbound-${lastBatchId}.xlsx`).catch((error) => setErr(error.message))}>Download batch Excel</button>
               <button type="button" className="prototype-button confirm" onClick={() => downloadApiFile(`/api/inbound/labels?batch_id=${encodeURIComponent(lastBatchId)}&w_mm=${LABEL_W}&h_mm=${LABEL_H}`, `labels-${lastBatchId}.pdf`).catch((error) => setErr(error.message))}>Download ZD220 label PDF</button>
-            </div>
-          </div>
+          </ProcessFeedback>
         </div>
       )}
 

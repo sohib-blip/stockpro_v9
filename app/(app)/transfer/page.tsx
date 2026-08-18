@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/apiFetch";
+import ProcessFeedback from "@/components/ProcessFeedback";
 
 type HistoryRow = {
   created_at: string;
@@ -36,7 +37,7 @@ export default function TransferPage() {
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [loadingConfirm, setLoadingConfirm] = useState(false);
 
-  const [success, setSuccess] = useState(false);
+  const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const operationIdRef = useRef<string | null>(null);
 
@@ -172,12 +173,13 @@ export default function TransferPage() {
     setLoadingConfirm(false);
 
     if (json.ok) {
-      setSuccess(true);
+      setSuccessMsg(
+        `${box_codes.length} box${box_codes.length === 1 ? "" : "es"} moved to ${confirmedTargetFloor === "Cabinet" ? "Cabinet" : `Floor ${confirmedTargetFloor}`}. History is up to date.`
+      );
       setPreview(null);
       setBoxInput("");
       operationIdRef.current = null;
       await loadHistory();
-      setTimeout(() => setSuccess(false), 2500);
     } else {
       setErrorMsg(json.error);
     }
@@ -199,12 +201,6 @@ export default function TransferPage() {
 
   return (
     <div className="prototype-page prototype-module-page transfer-prototype-page">
-      {success && (
-        <div className="fixed bottom-6 right-6 bg-emerald-600 text-white px-6 py-4 rounded-2xl shadow-xl">
-          Transfer completed
-        </div>
-      )}
-
       <div className="prototype-page-header">
         <div>
         <h1>Stock Transfers</h1>
@@ -214,6 +210,24 @@ export default function TransferPage() {
         </div>
         <button type="button" className="prototype-button secondary" onClick={() => document.getElementById("transfer-history")?.scrollIntoView({ behavior: "smooth" })}>History</button>
       </div>
+
+      {successMsg && (
+        <ProcessFeedback
+          kind="success"
+          title="Transfer completed"
+          message={successMsg}
+          onDismiss={() => setSuccessMsg("")}
+        />
+      )}
+
+      {errorMsg && (
+        <ProcessFeedback
+          kind="error"
+          title="Transfer blocked"
+          message={errorMsg}
+          onDismiss={() => setErrorMsg("")}
+        />
+      )}
 
       <div className="prototype-process-grid transfer-process-grid">
       <div className="prototype-process-input-column">
@@ -315,8 +329,6 @@ export default function TransferPage() {
         </div>
       )}
       </div>
-
-      {errorMsg && <div className="text-red-500 text-sm">{errorMsg}</div>}
 
       <div id="transfer-history" className="prototype-card prototype-history-card space-y-4">
         <div className="flex flex-wrap gap-3 justify-between items-center">

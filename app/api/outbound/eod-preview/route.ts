@@ -135,7 +135,19 @@ export async function POST(req: Request) {
       cleaned = collectImeisWithinLimit(rawValues);
     }
 
-    const parseErrors = workbookResult?.errors || [];
+    const parseErrors = [...(workbookResult?.errors || [])];
+    if (
+      isMultipart &&
+      workbookResult &&
+      workbookResult.deviceRows === 0 &&
+      workbookResult.parsedSheets.length > 0
+    ) {
+      parseErrors.push({
+        sheet: workbookResult.parsedSheets[0],
+        row: 1,
+        message: "No supported device rows were found in the workbook.",
+      });
+    }
 
     if (cleaned.length === 0) {
       return NextResponse.json(

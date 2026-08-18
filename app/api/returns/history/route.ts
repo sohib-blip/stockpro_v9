@@ -98,7 +98,6 @@ export async function GET(req: Request) {
           created_at,
           actor,
           return_ref,
-          return_type,
           return_reason,
           customer,
           sur_id,
@@ -179,7 +178,11 @@ export async function GET(req: Request) {
 
     return NextResponse.json({
       ok: true,
-      rows,
+      rows: rows.map((row: Record<string, unknown>) => {
+        const publicRow = { ...row };
+        delete publicRow.return_type;
+        return publicRow;
+      }),
       has_more: hasMore,
       next_cursor:
         hasMore && last

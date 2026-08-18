@@ -7,7 +7,9 @@ import {
   RETURN_TEMPLATE_HEADERS,
 } from "../../lib/return-template-export";
 import {
+  RETURN_REASONS,
   RETURN_STATUS_VALUES,
+  normalizeReturnReasonForTemplate,
   returnRequiresCanonicalItem,
 } from "../../lib/returns";
 
@@ -27,6 +29,9 @@ const groupedHistoryMigration = read(
 ).toLowerCase();
 const unknownNonStockMigration = read(
   "supabase/migrations/20260817093000_allow_unknown_nonstock_returns.sql"
+).toLowerCase();
+const returnReasonMigration = read(
+  "supabase/migrations/20260818143000_return_reason_catalog_and_lmu30g600.sql"
 ).toLowerCase();
 const confirmRoute = read("app/api/returns/confirm/route.ts");
 const previewRoute = read("app/api/returns/preview/route.ts");
@@ -91,7 +96,7 @@ describe("complete customer return workflow", () => {
     );
     expect(previewRoute).toContain("returnRequiresCanonicalItem");
     expect(previewRoute).toContain('inventory_match: "unknown"');
-    expect(confirmRoute).toContain('"confirm_return_batch_v2"');
+    expect(confirmRoute).toContain('"confirm_return_batch_v3"');
     expect(confirmRoute).toContain("p_unknown_imeis: unknownImeis");
     expect(confirmRoute).toContain(
       "Available returns must already exist in inventory"
@@ -110,10 +115,9 @@ describe("complete customer return workflow", () => {
     expect(previewRoute).toContain("matchReturnDeviceOption");
   });
 
-  it("requires complete business metadata on the server", () => {
+  it("requires complete business metadata and the official reason catalogue", () => {
     for (const field of [
       "return_ref",
-      "return_type",
       "return_reason",
       "return_status",
       "courier",
@@ -125,6 +129,19 @@ describe("complete customer return workflow", () => {
       expect(confirmRoute).toContain(`${field}:`);
       expect(`${migration}\n${deviceMigration}`).toContain(`p_${field}`);
     }
+    expect(confirmRoute).not.toContain("return_type:");
+    expect(confirmRoute).toContain("RETURN_REASON_VALUES");
+    expect(confirmRoute).toContain('"confirm_return_batch_v3"');
+    expect(returnReasonMigration).toContain("return_reason_invalid");
+    expect(returnReasonMigration).toContain("'returned device'");
+    expect(page).not.toContain("Return type");
+    expect(page).toContain("RETURN_REASONS.map");
+    expect(RETURN_REASONS).toHaveLength(15);
+    expect(RETURN_REASONS[0]).toEqual({
+      value: "Returned device",
+      controlCode: 10001,
+    });
+    expect(RETURN_REASONS.at(-1)?.controlCode).toBe(10015);
     expect(confirmRoute).toContain(
       "returnRequiresCanonicalItem(command.return_status)"
     );
@@ -153,6 +170,7 @@ describe("complete customer return workflow", () => {
     expect(devicesRoute).toContain("mergeReturnDeviceOptions");
     for (const model of [
       "LMU2640",
+      "LMU30G600",
       "FMT100",
       "FMB020",
       "FMB003",
@@ -166,6 +184,7 @@ describe("complete customer return workflow", () => {
     ]) {
       expect(returnConstants).toContain(model);
     }
+    expect(returnReasonMigration).toContain("lmu30g600");
   });
 
   it("atomically claims each new template export once and can release failures", () => {
@@ -184,7 +203,7 @@ describe("complete customer return workflow", () => {
       "from public, anon, authenticated"
     );
     expect(templateExportRoute).toContain(
-      '"claim_return_template_export_batch"'
+      '"claim_return_template_export_batch_v2"'
     );
     expect(templateExportRoute).toContain("operation_id");
     expect(templateExportRoute).toContain(
@@ -199,12 +218,25 @@ describe("complete customer return workflow", () => {
 
   it("fills the exact multi-device template columns and keeps IMEIs as text", async () => {
     const buffer = await createReturnTemplateWorkbook([
-      { imei: "865031064765315", return_status: "available" },
-      { imei: "865031064766602", return_status: "damaged" },
-      { imei: "865031064766917", return_status: "disposed" },
+      {
+        imei: "865031064765315",
+        return_status: "available",
+        return_reason: "Returned device",
+      },
+      {
+        imei: "865031064766602",
+        return_status: "damaged",
+        return_reason: "Replacement (wrong device/swap out)",
+      },
+      {
+        imei: "865031064766917",
+        return_status: "disposed",
+        return_reason: "Credit Stop – Fraud",
+      },
       {
         imei: "865031064767634",
         return_status: "returned_unprocessed",
+        return_reason: "Faulty unit",
       },
     ]);
     const workbook = new ExcelJS.Workbook();
@@ -217,11 +249,22 @@ describe("complete customer return workflow", () => {
         String(worksheet?.getCell(1, index + 1).value || "")
       )
     ).toEqual([...RETURN_TEMPLATE_HEADERS]);
-    expect(worksheet?.getCell("A2").value).toBe("865031064765315");
-    expect(worksheet?.getCell("B2").value).toBe("865031064766602");
-    expect(worksheet?.getCell("C2").value).toBe("865031064766917");
-    expect(worksheet?.getCell("F2").value).toBe("865031064767634");
-    for (const address of ["D2", "E2", "G2", "H2", "I2", "J2", "K2", "L2"]) {
+    expect(worksheet?.getCell("A2").value).toBe("Returned device");
+    expect(worksheet?.getCell("B2").value).toBe("865031064765315");
+    expect(worksheet?.getCell("A3").value).toBe(
+      "Replacement (wrong device/swap out)"
+    );
+    expect(worksheet?.getCell("C3").value).toBe("865031064766602");
+    expect(worksheet?.getCell("A4").value).toBe("Credit Stop – Fraud");
+    expect(worksheet?.getCell("D4").value).toBe("865031064766917");
+    expect(worksheet?.getCell("A5").value).toBe("Other");
+    expect(worksheet?.getCell("G5").value).toBe("865031064767634");
+    expect(worksheet?.getCell("A2").dataValidation).toMatchObject({
+      type: "list",
+      formulae: ["Return_Reasons!$A$1:$A$15"],
+    });
+    expect(normalizeReturnReasonForTemplate("Faulty unit")).toBe("Other");
+    for (const address of ["C2", "D2", "E2", "F2", "G2", "H2", "I2", "J2", "K2", "L2", "M2"]) {
       expect(worksheet?.getCell(address).value).toBeNull();
     }
   });
@@ -268,5 +311,6 @@ describe("complete customer return workflow", () => {
       expect(exportRoute).toContain(column);
     }
     expect(exportRoute).not.toContain("Tracking number");
+    expect(exportRoute).not.toContain('"Return type"');
   });
 });

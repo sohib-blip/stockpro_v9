@@ -7,6 +7,7 @@ import {
   RETURN_COUNTRIES,
   RETURN_COURIERS,
   RETURN_FALLBACK_DEVICE_MODELS,
+  RETURN_REASONS,
   RETURN_STATUSES,
   matchReturnDeviceOption,
   mergeReturnDeviceOptions,
@@ -16,32 +17,6 @@ import {
   returnStockActionLabel,
   type ReturnStatus,
 } from "@/lib/returns";
-
-const cancellationReasons = [
-  "Lack of Radius accuracy",
-  "Poor customer experience",
-  "Incorrect solution for customer",
-  "Hardware error",
-  "Implementation error",
-  "Dispatch warehouse error",
-  "Price dissatisfaction",
-  "Don't see value",
-  "Product inadequacy",
-  "Customer's circumstance changed",
-  "Dissatisfaction with Radius Group",
-  "Other",
-];
-
-const technicalReasons = [
-  "Return to sender",
-  "Faulty unit",
-  "Wrong device",
-  "Damaged unit in transit",
-  "Damaged unit by customer",
-  "Lost in post",
-  "Vehicle lost",
-  "Vehicle sold",
-];
 
 type PreviewItem = {
   item_id: string | null;
@@ -70,7 +45,6 @@ type HistoryBatch = {
   created_at: string;
   actor: string;
   return_ref: string;
-  return_type: string;
   return_reason: string;
   item_count: number;
   customer: string;
@@ -89,7 +63,6 @@ type HistoryDetailRow = {
   created_at: string;
   actor: string;
   return_ref: string;
-  return_type: string;
   return_reason: string;
   customer: string;
   sur_id: string;
@@ -122,7 +95,6 @@ export default function ReturnsPage() {
     mergeReturnDeviceOptions([...RETURN_FALLBACK_DEVICE_MODELS])
   );
   const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
-  const [returnType, setReturnType] = useState("");
   const [returnReason, setReturnReason] = useState("");
   const [targetBox, setTargetBox] = useState("");
   const [targetFloor, setTargetFloor] = useState("00");
@@ -251,7 +223,6 @@ export default function ReturnsPage() {
       returnStatus,
       reportedDevice:
         returnStatus === "available" ? null : reportedDevice.trim(),
-      returnType,
       returnReason,
       targetBox: returnStatus === "available" ? targetBox.trim() : null,
       targetFloor: returnStatus === "available" ? targetFloor : null,
@@ -275,7 +246,6 @@ export default function ReturnsPage() {
     ) {
       return "Select a valid device from the list.";
     }
-    if (!returnType) return "Select a return type.";
     if (!returnReason) return "Select a return reason.";
     if (!imeisText.trim()) return "Scan or paste at least one returned IMEI.";
     if (returnStatus === "available" && !targetBox.trim()) {
@@ -475,7 +445,6 @@ export default function ReturnsPage() {
           target_box: returnStatus === "available" ? targetBox.trim() : null,
           target_floor: returnStatus === "available" ? targetFloor : null,
           return_ref: returnRef.trim(),
-          return_type: returnType,
           return_reason: returnReason,
           return_status: returnStatus,
           courier,
@@ -505,7 +474,6 @@ export default function ReturnsPage() {
       setReturnRef("");
       setCustomer("");
       setSurId("");
-      setReturnType("");
       setReturnReason("");
       setReportedDevice("");
       setTargetBox("");
@@ -603,10 +571,6 @@ export default function ReturnsPage() {
                 <strong>
                   {returnCountryLabel(selectedHistoryBatch.country_code) || "—"}
                 </strong>
-              </div>
-              <div>
-                <span>Return type</span>
-                <strong>{selectedHistoryBatch.return_type || "—"}</strong>
               </div>
               <div>
                 <span>Reason</span>
@@ -888,36 +852,16 @@ export default function ReturnsPage() {
               )}
 
               <label>
-                Return type <b>*</b>
-                <select
-                  aria-label="Return type"
-                  value={returnType}
-                  onChange={(event) => {
-                    setReturnType(event.target.value);
-                    setReturnReason("");
-                  }}
-                >
-                  <option value="">Choose return type</option>
-                  <option value="cancellation_stop">Cancellation stop</option>
-                  <option value="technical_stop">Technical stop</option>
-                </select>
-              </label>
-
-              <label>
                 Return reason <b>*</b>
                 <select
                   aria-label="Return reason"
                   value={returnReason}
-                  disabled={!returnType}
                   onChange={(event) => setReturnReason(event.target.value)}
                 >
                   <option value="">Choose reason</option>
-                  {(returnType === "cancellation_stop"
-                    ? cancellationReasons
-                    : technicalReasons
-                  ).map((reason) => (
-                    <option key={reason} value={reason}>
-                      {reason}
+                  {RETURN_REASONS.map((reason) => (
+                    <option key={reason.controlCode} value={reason.value}>
+                      {reason.value}
                     </option>
                   ))}
                 </select>

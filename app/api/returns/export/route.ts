@@ -50,7 +50,6 @@ export async function GET() {
         courier,
         country_code,
         return_status,
-        return_type,
         return_reason,
         imei,
         device_id,
@@ -96,7 +95,6 @@ export async function GET() {
         "",
       IMEI: record.imei,
       Status: returnStatusLabel(record.return_status),
-      "Return type": record.return_type,
       "Return reason": record.return_reason,
       "Previous location": locationLabel(
         record.previous_box,
@@ -118,7 +116,6 @@ export async function GET() {
       { wch: 20 },
       { wch: 18 },
       { wch: 26 },
-      { wch: 22 },
       { wch: 34 },
       { wch: 30 },
       { wch: 30 },

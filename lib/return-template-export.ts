@@ -1,9 +1,13 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import ExcelJS from "exceljs";
-import type { ReturnStatus } from "@/lib/returns";
+import {
+  normalizeReturnReasonForTemplate,
+  type ReturnStatus,
+} from "./returns";
 
 export const RETURN_TEMPLATE_HEADERS = [
+  "RETURN REASON",
   "RETURNED",
   "DAMAGED",
   "DISPOSED",
@@ -26,15 +30,22 @@ const TEMPLATE_PATH = join(
 );
 
 const STATUS_COLUMN: Record<ReturnStatus, number> = {
-  available: 1,
-  damaged: 2,
-  disposed: 3,
-  returned_unprocessed: 6,
+  available: 2,
+  damaged: 3,
+  disposed: 4,
+  returned_unprocessed: 7,
+};
+
+type WorksheetWithRangeValidations = ExcelJS.Worksheet & {
+  dataValidations: {
+    add(range: string, validation: ExcelJS.DataValidation): void;
+  };
 };
 
 export type ReturnTemplateRow = {
   imei: string;
   return_status: ReturnStatus;
+  return_reason: string;
 };
 
 export async function createReturnTemplateWorkbook(
@@ -52,20 +63,8 @@ export async function createReturnTemplateWorkbook(
     }
   });
 
-  const grouped = new Map<number, string[]>();
-  for (const row of rows) {
-    const column = STATUS_COLUMN[row.return_status];
-    if (!column) throw new Error(`Unsupported return status: ${row.return_status}`);
-    const imei = String(row.imei || "").trim();
-    if (!/^\d{14,17}$/.test(imei)) {
-      throw new Error(`Invalid IMEI in return export: ${imei || "empty"}`);
-    }
-    grouped.set(column, [...(grouped.get(column) || []), imei]);
-  }
-
   const minimumRows = Math.max(worksheet.rowCount, 55);
-  const longestColumn = Math.max(0, ...Array.from(grouped.values(), (v) => v.length));
-  const finalRows = Math.max(minimumRows, longestColumn + 1);
+  const finalRows = Math.max(minimumRows, rows.length + 1);
 
   for (let rowNumber = 2; rowNumber <= finalRows; rowNumber += 1) {
     for (let column = 1; column <= RETURN_TEMPLATE_HEADERS.length; column += 1) {
@@ -73,13 +72,34 @@ export async function createReturnTemplateWorkbook(
     }
   }
 
-  for (const [column, imeis] of grouped) {
-    imeis.forEach((imei, index) => {
-      const cell = worksheet.getCell(index + 2, column);
-      cell.value = imei;
-      cell.numFmt = "@";
-    });
-  }
+  (worksheet as WorksheetWithRangeValidations).dataValidations.add(
+    `A2:A${finalRows}`,
+    {
+      type: "list",
+      allowBlank: true,
+      showErrorMessage: true,
+      errorTitle: "Invalid return reason",
+      error: "Choose a return reason from the official list.",
+      formulae: ["Return_Reasons!$A$1:$A$15"],
+    }
+  );
+
+  rows.forEach((row, index) => {
+    const column = STATUS_COLUMN[row.return_status];
+    if (!column) throw new Error(`Unsupported return status: ${row.return_status}`);
+    const imei = String(row.imei || "").trim();
+    if (!/^\d{14,17}$/.test(imei)) {
+      throw new Error(`Invalid IMEI in return export: ${imei || "empty"}`);
+    }
+
+    const rowNumber = index + 2;
+    worksheet.getCell(rowNumber, 1).value = normalizeReturnReasonForTemplate(
+      row.return_reason
+    );
+    const imeiCell = worksheet.getCell(rowNumber, column);
+    imeiCell.value = imei;
+    imeiCell.numFmt = "@";
+  });
 
   const output = await workbook.xlsx.writeBuffer();
   return new Uint8Array(output as any).slice().buffer;

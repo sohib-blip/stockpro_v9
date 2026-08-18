@@ -25,6 +25,30 @@ export const RETURN_STATUSES = [
   },
 ] as const;
 
+export const RETURN_REASONS = [
+  { value: "Returned device", controlCode: 10001 },
+  { value: "Other", controlCode: 10002 },
+  { value: "Fleet reductions/too many devices", controlCode: 10003 },
+  { value: "Replacement (wrong device/swap out)", controlCode: 10004 },
+  { value: "Service/Installation issues", controlCode: 10005 },
+  { value: "Moving to competitor/price", controlCode: 10006 },
+  { value: "Don't see value", controlCode: 10007 },
+  { value: "Need more functionality", controlCode: 10008 },
+  { value: "Account Transfer", controlCode: 10009 },
+  { value: "Device Transfer", controlCode: 10010 },
+  { value: "Business Closure", controlCode: 10011 },
+  { value: "Returned to Sender", controlCode: 10012 },
+  { value: "Credit Stop – Fraud", controlCode: 10013 },
+  {
+    value: "Credit Stop - Insolvency/administration",
+    controlCode: 10014,
+  },
+  {
+    value: "Credit Stop – Non payer/exhausted all recoveries",
+    controlCode: 10015,
+  },
+] as const;
+
 export const RETURN_STATUS_VALUES = [
   "available",
   "damaged",
@@ -47,6 +71,7 @@ export const RETURN_COUNTRY_CODES = [
 
 export const RETURN_FALLBACK_DEVICE_MODELS = [
   "LMU2640",
+  "LMU30G600",
   "FMT100",
   "FMB020",
   "FMB003",
@@ -60,9 +85,23 @@ export const RETURN_FALLBACK_DEVICE_MODELS = [
 ] as const;
 
 export type ReturnStatus = (typeof RETURN_STATUS_VALUES)[number];
+export type ReturnReason = (typeof RETURN_REASONS)[number]["value"];
+
+export const RETURN_REASON_VALUES = RETURN_REASONS.map(
+  (reason) => reason.value
+) as [ReturnReason, ...ReturnReason[]];
 
 export function returnRequiresCanonicalItem(status: ReturnStatus | string) {
   return status === "available";
+}
+
+export function normalizeReturnReasonForTemplate(value: string): ReturnReason {
+  const normalized = String(value || "").trim().toLocaleLowerCase("en");
+  return (
+    RETURN_REASON_VALUES.find(
+      (reason) => reason.toLocaleLowerCase("en") === normalized
+    ) || "Other"
+  );
 }
 
 export function returnStatusLabel(value: string) {

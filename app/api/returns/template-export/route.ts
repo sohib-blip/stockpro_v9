@@ -53,7 +53,7 @@ export async function GET(req: Request) {
     try {
       const { data, error } = await service
         .from("return_records")
-        .select("imei,return_status,return_ref,created_at")
+        .select("imei,return_status,return_reason,return_ref,created_at")
         .eq("operation_id", parsedOperationId.data)
         .order("created_at", { ascending: true });
       if (error) throw error;
@@ -97,7 +97,7 @@ export async function GET(req: Request) {
   let claimed = false;
   try {
     const { data, error } = await service.rpc(
-      "claim_return_template_export_batch",
+      "claim_return_template_export_batch_v2",
       {
         p_batch_id: batchId,
         p_actor_id: identity.userId,

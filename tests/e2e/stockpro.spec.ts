@@ -923,7 +923,6 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(
       page.getByRole("combobox", { name: "Return device", exact: true })
     ).toHaveCount(0);
-    await page.getByLabel("Return type").selectOption("cancellation_stop");
     await page.getByLabel("Return reason").selectOption("Other");
     await page.getByLabel("Return target box").fill(run.returnBox);
     await page.getByLabel("Return target floor").selectOption("00");
@@ -1144,8 +1143,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
           target_box: null,
           target_floor: null,
           return_ref: returnReference,
-          return_type: "technical_stop",
-          return_reason: "Faulty unit",
+          return_reason: "Service/Installation issues",
           return_status: returnStatus,
           courier: index === 0 ? "DHL" : "EASYPOST",
           country_code: "BE",
@@ -1231,6 +1229,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
       { header: 1, defval: "", raw: false }
     );
     expect(templateRows[0]).toEqual([
+      "RETURN REASON",
       "RETURNED",
       "DAMAGED",
       "DISPOSED",
@@ -1244,9 +1243,33 @@ test.describe.serial("StockPro staging end-to-end", () => {
       "GRADE_D",
       "GRADE_W",
     ]);
-    expect(templateRows.slice(1).some((row) => row[1] === run.spreadsheetImei)).toBe(true);
-    expect(templateRows.slice(1).some((row) => row[2] === run.spreadsheetImei)).toBe(true);
-    expect(templateRows.slice(1).some((row) => row[5] === run.spreadsheetImei)).toBe(true);
+    expect(
+      templateRows
+        .slice(1)
+        .some(
+          (row) =>
+            row[0] === "Service/Installation issues" &&
+            row[2] === run.spreadsheetImei
+        )
+    ).toBe(true);
+    expect(
+      templateRows
+        .slice(1)
+        .some(
+          (row) =>
+            row[0] === "Service/Installation issues" &&
+            row[3] === run.spreadsheetImei
+        )
+    ).toBe(true);
+    expect(
+      templateRows
+        .slice(1)
+        .some(
+          (row) =>
+            row[0] === "Service/Installation issues" &&
+            row[6] === run.spreadsheetImei
+        )
+    ).toBe(true);
 
     const noNewReturns = await request.get("/api/returns/template-export", {
       headers: { Authorization: `Bearer ${operatorToken}` },
@@ -1266,10 +1289,11 @@ test.describe.serial("StockPro staging end-to-end", () => {
       operationWorkbook.Sheets[operationWorkbook.SheetNames[0]],
       { header: 1, defval: "", raw: false }
     );
-    expect(operationRows[1][2]).toBe(run.spreadsheetImei);
-    expect(operationRows[1][0]).toBe("");
+    expect(operationRows[1][0]).toBe("Service/Installation issues");
+    expect(operationRows[1][3]).toBe(run.spreadsheetImei);
     expect(operationRows[1][1]).toBe("");
-    expect(operationRows[1][5]).toBe("");
+    expect(operationRows[1][2]).toBe("");
+    expect(operationRows[1][6]).toBe("");
   });
 
   test("binds return state and audit to canonical item metadata", async ({ request }) => {
@@ -1294,8 +1318,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
         target_box: run.securityReturnBox,
         target_floor: "00",
         return_ref: `E2E-SECURITY-RETURN-${run.stamp}`,
-        return_type: "technical_stop",
-        return_reason: "Faulty unit",
+        return_reason: "Other",
         return_status: "available",
         courier: "EASYPOST",
         country_code: "NL",

@@ -5,6 +5,7 @@ import { getApiIdentity } from "@/lib/api-identity";
 import {
   RETURN_COUNTRY_CODES,
   RETURN_COURIER_VALUES,
+  RETURN_REASON_VALUES,
   RETURN_STATUS_VALUES,
   returnRequiresCanonicalItem,
 } from "@/lib/returns";
@@ -37,8 +38,7 @@ const returnCommandSchema = z
     target_box: z.string().trim().max(200).nullish(),
     target_floor: z.enum(["00", "1", "6", "Cabinet"]).nullish(),
     return_ref: z.string().trim().min(1).max(200),
-    return_type: z.enum(["cancellation_stop", "technical_stop"]),
-    return_reason: z.string().trim().min(1).max(1000),
+    return_reason: z.enum(RETURN_REASON_VALUES),
     return_status: z.enum(RETURN_STATUS_VALUES),
     courier: z.enum(RETURN_COURIER_VALUES),
     country_code: z.enum(RETURN_COUNTRY_CODES),
@@ -126,7 +126,7 @@ export async function POST(req: Request) {
       )
     );
     const { data, error } = await serviceClient().rpc(
-      "confirm_return_batch_v2",
+      "confirm_return_batch_v3",
       {
         p_operation_id: operationId,
         p_actor_id: identity.userId,
@@ -136,7 +136,6 @@ export async function POST(req: Request) {
         p_target_box: parsed.data.target_box || null,
         p_target_floor: parsed.data.target_floor || null,
         p_return_ref: parsed.data.return_ref,
-        p_return_type: parsed.data.return_type,
         p_return_reason: parsed.data.return_reason,
         p_return_status: parsed.data.return_status,
         p_courier: parsed.data.courier,

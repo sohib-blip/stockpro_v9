@@ -309,6 +309,10 @@ const FR: Record<string, string> = {
   "Select accessory": "Sélectionner un accessoire",
   "Add Line": "Ajouter une ligne",
   "Confirm Accessory Outbound": "Confirmer la sortie d’accessoires",
+  "From report": "Depuis le rapport",
+  "Template fill": "Complément automatique",
+  "Report quantities take priority. Automatic templates only fill missing quantities.":
+    "Les quantités du rapport sont prioritaires. Les modèles automatiques complètent uniquement les quantités manquantes.",
   "Please review the stock changes before confirming.":
     "Vérifiez les changements de stock avant de confirmer.",
   "Current Stock": "Stock actuel",
@@ -907,6 +911,10 @@ const NL: Record<string, string> = {
   "Select accessory": "Accessoire selecteren",
   "Add Line": "Regel toevoegen",
   "Confirm Accessory Outbound": "Uitgaande accessoires bevestigen",
+  "From report": "Uit rapport",
+  "Template fill": "Automatische aanvulling",
+  "Report quantities take priority. Automatic templates only fill missing quantities.":
+    "De aantallen uit het rapport hebben voorrang. Automatische sjablonen vullen alleen ontbrekende aantallen aan.",
   "Please review the stock changes before confirming.":
     "Controleer de voorraadwijzigingen voordat u bevestigt.",
   "Current Stock": "Huidige voorraad",

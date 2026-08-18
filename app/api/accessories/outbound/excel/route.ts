@@ -1,235 +1,208 @@
 import { NextResponse } from "next/server";
+import * as XLSX from "xlsx";
 import { getApiIdentity } from "@/lib/api-identity";
+import { supabaseService } from "@/lib/auth";
+import {
+  buildAccessoryEndOfDayPreview,
+  DeviceAccessoryTemplate,
+  EndOfDayStockItem,
+} from "@/lib/outbound/accessoryEndOfDay";
+import { parseEndOfDayWorkbook } from "@/lib/outbound/endOfDayParser";
+import { accessoryReportOperationId } from "@/lib/outbound/reportFingerprint";
 import {
   inventoryCommandErrorMessage,
   inventoryCommandErrorStatus,
 } from "@/lib/inventory-command-error";
-import { createClient } from "@supabase/supabase-js";
-import { z } from "zod";
-import * as XLSX from "xlsx";
+import {
+  PayloadTooLargeError,
+  readBodyWithinLimit,
+  requestWithBoundedBody,
+} from "@/lib/security/request-budget";
+import {
+  acquireWorkloadLease,
+  releaseWorkloadLease,
+  workloadRejectionResponse,
+} from "@/lib/security/workload-budget";
+import {
+  inspectXlsxZipEnvelope,
+  measureWorkbookShape,
+} from "@/lib/security/xlsx-budget";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+const MAX_FILE_BYTES = 2 * 1024 * 1024;
+const MAX_MULTIPART_BYTES = MAX_FILE_BYTES + 256 * 1024;
+const LOOKUP_BATCH_SIZE = 500;
 
-function norm(value: any) {
-  return String(value || "").trim().toLowerCase();
+class InvalidAccessoryReportError extends Error {}
+
+function chunkArray<T>(values: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    chunks.push(values.slice(index, index + size));
+  }
+  return chunks;
 }
 
-function cleanImei(value: any) {
-  return String(value || "").replace(/\D/g, "").trim();
-}
+async function readReport(req: Request) {
+  const requestBody = await readBodyWithinLimit(req, MAX_MULTIPART_BYTES);
+  const form = await requestWithBoundedBody(req, requestBody).formData();
+  const file = form.get("file");
 
-const operationIdSchema = z.string().uuid();
+  if (
+    !file ||
+    typeof file === "string" ||
+    typeof file.arrayBuffer !== "function"
+  ) {
+    throw new InvalidAccessoryReportError("No spreadsheet uploaded.");
+  }
+  if (file.size > MAX_FILE_BYTES) {
+    throw new PayloadTooLargeError("Workbook exceeds the file-size limit");
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  inspectXlsxZipEnvelope(buffer, {
+    maxCompressedBytes: MAX_FILE_BYTES,
+    maxExpandedBytes: 16 * 1024 * 1024,
+    maxEntries: 128,
+    maxEntryBytes: 8 * 1024 * 1024,
+    maxCompressionRatio: 100,
+  });
+
+  const workbook = XLSX.read(buffer, { type: "buffer" });
+  measureWorkbookShape(workbook, {
+    maxSheets: 8,
+    maxRowsPerSheet: 10_000,
+    maxCells: 50_000,
+  });
+
+  return {
+    form,
+    buffer,
+    report: parseEndOfDayWorkbook(workbook),
+  };
+}
 
 export async function POST(req: Request) {
-  try {
-    const form = await req.formData();
+  const identity = getApiIdentity(req);
+  const admission = await acquireWorkloadLease(req, "outboundPreview", {
+    principal: identity.userId,
+  });
+  if (!admission.ok) return workloadRejectionResponse(admission);
 
-    const file = form.get("file") as File;
-    const shipment_ref = String(form.get("shipment_ref") || "");
+  try {
+    const { form, buffer, report } = await readReport(req);
+    const preview = String(form.get("preview") || "") === "1";
+    const shipmentRef = String(form.get("shipment_ref") || "");
     const comment = String(form.get("comment") || "");
     const requestedOperationId = String(form.get("operation_id") || "");
-    const identity = getApiIdentity(req);
+    const operationId = accessoryReportOperationId(buffer);
+    const supabase = supabaseService();
 
-    if (!file) {
-      return NextResponse.json(
-        { ok: false, error: "No file uploaded" },
-        { status: 400 }
-      );
-    }
-
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = XLSX.read(buffer, { type: "buffer", raw: false });
-
-    const imeis = new Set<string>();
-    const itemTypes: string[] = [];
-
-    for (const sheetName of workbook.SheetNames) {
-      const sheet = workbook.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json<any[]>(sheet, {
-        header: 1,
-        raw: false,
-        defval: "",
-        blankrows: false,
-      });
-
-      let headerIndex = -1;
-      let imeiIndex = -1;
-      let itemTypeIndex = -1;
-
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i].map(norm);
-
-        imeiIndex = row.findIndex((c) =>
-          ["imei", "imei / id", "imei/id", "imei id"].includes(c)
-        );
-
-        itemTypeIndex = row.findIndex((c) =>
-          ["item type", "itemtype", "type"].includes(c)
-        );
-
-        if (imeiIndex >= 0 || itemTypeIndex >= 0) {
-          headerIndex = i;
-          break;
-        }
-      }
-
-      if (headerIndex === -1) continue;
-
-      for (let i = headerIndex + 1; i < rows.length; i++) {
-        const row = rows[i];
-
-        if (imeiIndex >= 0) {
-          const imei = cleanImei(row[imeiIndex]);
-          if (imei) imeis.add(imei);
-        }
-
-        if (itemTypeIndex >= 0) {
-          const itemType = String(row[itemTypeIndex] || "").trim();
-          if (itemType) itemTypes.push(itemType);
-        }
-      }
-    }
-
-    const { data: accessoryBins, error: accessoryError } = await supabase
-      .from("accessory_bins")
-      .select("id, name, current_stock")
-      .eq("active", true);
-
-    if (accessoryError) throw accessoryError;
-
-    const accessoryMap = new Map(
-      (accessoryBins || []).map((a: any) => [norm(a.name), a])
-    );
-
-    const accessoryQtyMap = new Map<string, number>();
-
-    for (const itemType of itemTypes) {
-      const accessory = accessoryMap.get(norm(itemType));
-      if (!accessory) continue;
-
-      accessoryQtyMap.set(
-        accessory.id,
-        (accessoryQtyMap.get(accessory.id) || 0) + 1
-      );
-    }
-
-    if (imeis.size > 0) {
-      const { data: items, error: itemsError } = await supabase
-        .from("items")
-        .select("imei, device_id")
-        .in("imei", Array.from(imeis));
-
-      if (itemsError) throw itemsError;
-
-      const deviceCountMap = new Map<string, number>();
-
-      for (const item of items || []) {
-        if (!item.device_id) continue;
-
-        deviceCountMap.set(
-          item.device_id,
-          (deviceCountMap.get(item.device_id) || 0) + 1
-        );
-      }
-
-      if (deviceCountMap.size > 0) {
-        const { data: templates, error: templateError } = await supabase
-          .from("device_accessory_templates")
-          .select("device_id, accessory_bin_id, quantity, per_devices")
-          .in("device_id", Array.from(deviceCountMap.keys()));
-
-        if (templateError) throw templateError;
-
-        for (const template of templates || []) {
-          const deviceCount = deviceCountMap.get(template.device_id) || 0;
-          const qty = Number(template.quantity || 1);
-          const perDevices = Number(template.per_devices || 1);
-
-          const needed = Math.ceil(deviceCount / perDevices) * qty;
-
-          accessoryQtyMap.set(
-            template.accessory_bin_id,
-            (accessoryQtyMap.get(template.accessory_bin_id) || 0) + needed
-          );
-        }
-      }
-    }
-
-    if (accessoryQtyMap.size === 0) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            "No accessories to remove. No matching IMEI templates or Item Type accessories found.",
-        },
-        { status: 400 }
-      );
-    }
-
-    const finalRows = Array.from(accessoryQtyMap.entries()).map(
-  ([accessory_bin_id, qty]) => {
-    const accessory = (accessoryBins || []).find(
-      (a: any) => a.id === accessory_bin_id
-    );
-
-    if (!accessory) {
-      throw new Error(`Accessory not found: ${accessory_bin_id}`);
-    }
-
-    return {
-      accessory,
-      accessory_bin_id,
-      qty,
-    };
-  }
-);
-
-const preview = String(form.get("preview") || "") === "1";
-
-if (preview) {
-  for (const row of finalRows) {
-    if (Number(row.accessory.current_stock || 0) < row.qty) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Not enough stock for ${row.accessory.name}. Stock: ${row.accessory.current_stock}, needed: ${row.qty}`,
-        },
-        { status: 400 }
-      );
-    }
-  }
-
-  return NextResponse.json({
-    ok: true,
-    preview: true,
-    rows: finalRows.map((r) => ({
-      accessory_bin_id: r.accessory_bin_id,
-      accessory: r.accessory.name,
-      qty: r.qty,
-      current_stock: Number(r.accessory.current_stock || 0),
-      after_stock: Number(r.accessory.current_stock || 0) - r.qty,
-    })),
-  });
-}
-
-    if (
-      shipment_ref.length > 500 ||
-      comment.length > 1000 ||
-      (requestedOperationId &&
-        !operationIdSchema.safeParse(requestedOperationId).success)
-    ) {
+    if (shipmentRef.length > 500 || comment.length > 1000) {
       return NextResponse.json(
         { ok: false, error: "Invalid accessory outbound request" },
         { status: 400 }
       );
     }
 
-    const operationId = requestedOperationId || crypto.randomUUID();
+    if (!preview && requestedOperationId !== operationId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "The spreadsheet changed after preview. Preview it again before confirming.",
+        },
+        { status: 409 }
+      );
+    }
+
+    const { data: existingReceipts, error: receiptError } = await supabase
+      .from("inventory_command_receipts")
+      .select("operation_id")
+      .eq("operation_id", operationId)
+      .limit(1);
+    if (receiptError) throw receiptError;
+
+    if ((existingReceipts || []).length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          duplicate_report: true,
+          error:
+            "This End-of-Day report has already been confirmed in Accessory Outbound. No stock was removed again.",
+        },
+        { status: 409 }
+      );
+    }
+
+    const { data: accessoryBins, error: accessoryError } = await supabase
+      .from("accessory_bins")
+      .select("id, name, current_stock")
+      .eq("active", true);
+    if (accessoryError) throw accessoryError;
+
+    const imeis = Array.from(new Set(report.devices.map((device) => device.imei)));
+    const stockItems: EndOfDayStockItem[] = [];
+    for (const chunk of chunkArray(imeis, LOOKUP_BATCH_SIZE)) {
+      const { data, error } = await supabase
+        .from("items")
+        .select("imei, device_id")
+        .in("imei", chunk);
+      if (error) throw error;
+      stockItems.push(...((data || []) as EndOfDayStockItem[]));
+    }
+
+    const deviceIds = Array.from(
+      new Set(
+        stockItems
+          .map((item) => item.device_id)
+          .filter((deviceId): deviceId is string => Boolean(deviceId))
+      )
+    );
+    const templates: DeviceAccessoryTemplate[] = [];
+    for (const chunk of chunkArray(deviceIds, LOOKUP_BATCH_SIZE)) {
+      const { data, error } = await supabase
+        .from("device_accessory_templates")
+        .select("device_id, accessory_bin_id, quantity, per_devices")
+        .in("device_id", chunk);
+      if (error) throw error;
+      templates.push(...((data || []) as DeviceAccessoryTemplate[]));
+    }
+
+    const calculation = buildAccessoryEndOfDayPreview({
+      report,
+      accessoryBins: accessoryBins || [],
+      stockItems,
+      templates,
+    });
+
+    if (calculation.issues.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: calculation.issues[0].message,
+          issues: calculation.issues.slice(0, 100),
+          rows: calculation.rows,
+          parsed_sheets: report.parsedSheets,
+        },
+        { status: 400 }
+      );
+    }
+
+    if (preview) {
+      return NextResponse.json({
+        ok: true,
+        preview: true,
+        operation_id: operationId,
+        rows: calculation.rows,
+        parsed_sheets: report.parsedSheets,
+        device_rows: report.deviceRows,
+        accessory_rows: report.accessories.length,
+      });
+    }
+
     const { data, error: commandError } = await supabase.rpc(
       "confirm_accessory_outbound",
       {
@@ -237,9 +210,9 @@ if (preview) {
         p_actor_id: identity.userId,
         p_actor: identity.email,
         p_source: "excel",
-        p_shipment_ref: shipment_ref || null,
+        p_shipment_ref: shipmentRef || null,
         p_note: comment || null,
-        p_lines: finalRows.map((row) => ({
+        p_lines: calculation.rows.map((row) => ({
           accessory_bin_id: row.accessory_bin_id,
           qty: row.qty,
         })),
@@ -262,10 +235,21 @@ if (preview) {
 
     return NextResponse.json(data);
   } catch (error) {
+    const tooLarge = error instanceof PayloadTooLargeError;
+    const invalid =
+      error instanceof InvalidAccessoryReportError || error instanceof SyntaxError;
     console.error("EXCEL ACCESSORY OUTBOUND ERROR", error);
     return NextResponse.json(
-      { ok: false, error: "Excel outbound failed" },
-      { status: 500 }
+      {
+        ok: false,
+        error:
+          error instanceof Error && (tooLarge || invalid)
+            ? error.message
+            : "Spreadsheet outbound failed",
+      },
+      { status: tooLarge ? 413 : invalid ? 400 : 500 }
     );
+  } finally {
+    await releaseWorkloadLease(admission.leaseId);
   }
 }

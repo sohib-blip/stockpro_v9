@@ -102,12 +102,13 @@ setPreview(null);
     if (!json.unknown_imeis) json.unknown_imeis = [];
 if (!json.already_out) json.already_out = [];
 if (!json.duplicates) json.duplicates = [];
+if (!json.parse_errors) json.parse_errors = [];
 if (!json.summary) json.summary = [];
 
 if (!json.ok) {
   setPreview(json);
   setPreviewSource("manual");
-  setErrorMsg("Confirmation blocked. Resolve duplicate, unknown, or previously outbound IMEIs.");
+  setErrorMsg(json.error || "Confirmation blocked. Resolve the reported errors.");
   setBusy(false);
   return;
 }
@@ -138,12 +139,13 @@ setBusy(false);
     if (!json.unknown_imeis) json.unknown_imeis = [];
 if (!json.already_out) json.already_out = [];
 if (!json.duplicates) json.duplicates = [];
+if (!json.parse_errors) json.parse_errors = [];
 if (!json.summary) json.summary = [];
 
 if (!json.ok) {
   setPreview(json);
   setPreviewSource("excel");
-  setErrorMsg("Confirmation blocked. Resolve duplicate, unknown, or previously outbound IMEIs.");
+  setErrorMsg(json.error || "Confirmation blocked. Resolve the reported errors.");
   setBusy(false);
   return;
 }
@@ -210,6 +212,7 @@ if (!actorId) {
 
   const hasPreviewErrors =
   preview?.duplicates?.length > 0 ||
+  preview?.parse_errors?.length > 0 ||
   preview?.already_out?.length > 0 ||
   preview?.unknown_imeis?.length > 0;
 
@@ -324,9 +327,38 @@ if (!actorId) {
         Preview ({previewSource})
       </div>
       <div>
-        {preview.totalDetected ?? 0} IMEIs
+        {preview.totalDetected ?? 0} device IMEIs
+        {preview.ignored_rows > 0 && (
+          <span> · {preview.ignored_rows} accessory/service rows ignored</span>
+        )}
       </div>
     </div>
+
+    {preview.parse_errors?.length > 0 && (
+      <div>
+        <div className="font-semibold text-red-300 mb-2">
+          Spreadsheet parsing errors
+        </div>
+        <table className="w-full text-sm border border-slate-800 rounded-xl overflow-hidden">
+          <thead className="bg-slate-950/50">
+            <tr>
+              <th className="p-2 text-left">Worksheet</th>
+              <th className="p-2 text-right">Row</th>
+              <th className="p-2 text-left">Problem</th>
+            </tr>
+          </thead>
+          <tbody>
+            {preview.parse_errors.map((issue: any, index: number) => (
+              <tr key={`${issue.sheet}-${issue.row}-${index}`}>
+                <td className="p-2">{issue.sheet}</td>
+                <td className="p-2 text-right">{issue.row}</td>
+                <td className="p-2">{issue.message}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
 
     {preview.duplicates?.length > 0 && (
       <div>

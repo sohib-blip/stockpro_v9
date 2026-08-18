@@ -3,6 +3,10 @@ import * as XLSX from "xlsx";
 import { getApiIdentity } from "@/lib/api-identity";
 import { supabaseService } from "@/lib/auth";
 import {
+  EndOfDayParseResult,
+  parseEndOfDayWorkbook,
+} from "@/lib/outbound/endOfDayParser";
+import {
   PayloadTooLargeError,
   readBodyWithinLimit,
   readJsonBodyWithinLimit,
@@ -83,31 +87,14 @@ async function extractWorkbookValues(req: Request) {
     maxCompressionRatio: 100,
   });
 
-  const workbook = XLSX.read(buffer, { type: "buffer", raw: false });
+  const workbook = XLSX.read(buffer, { type: "buffer" });
   measureWorkbookShape(workbook, {
     maxSheets: 8,
     maxRowsPerSheet: 10_000,
     maxCells: 50_000,
   });
 
-  const values: unknown[] = [];
-  for (const sheetName of workbook.SheetNames) {
-    const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(
-      workbook.Sheets[sheetName],
-      {
-        raw: false,
-        defval: "",
-      }
-    );
-
-    for (const row of rows) {
-      for (const value of Object.values(row)) {
-        if (value !== "") values.push(value);
-      }
-    }
-  }
-
-  return values;
+  return parseEndOfDayWorkbook(workbook);
 }
 
 async function extractJsonValues(req: Request) {
@@ -131,20 +118,43 @@ export async function POST(req: Request) {
     const isMultipart = req.headers
       .get("content-type")
       ?.includes("multipart/form-data");
-    const rawValues = isMultipart
-      ? await extractWorkbookValues(req)
-      : await extractJsonValues(req);
-    const cleaned = collectImeisWithinLimit(rawValues);
+    let workbookResult: EndOfDayParseResult | null = null;
+    let rawValues: unknown[] = [];
+    let cleaned: string[] = [];
+
+    if (isMultipart) {
+      workbookResult = await extractWorkbookValues(req);
+      cleaned = workbookResult.imeis;
+      if (cleaned.length > MAX_PREVIEW_IMEIS) {
+        throw new PayloadTooLargeError(
+          `A preview supports at most ${MAX_PREVIEW_IMEIS} IMEIs`
+        );
+      }
+    } else {
+      rawValues = await extractJsonValues(req);
+      cleaned = collectImeisWithinLimit(rawValues);
+    }
+
+    const parseErrors = workbookResult?.errors || [];
 
     if (cleaned.length === 0) {
       return NextResponse.json(
         {
           ok: false,
-          error: "No valid 15-digit IMEI detected.",
+          error:
+            parseErrors[0]?.message || "No valid 15-digit IMEI detected.",
           imeis: [],
-          unknown_imeis: rawValues.slice(0, 100).map(String),
+          unknown_imeis: isMultipart
+            ? []
+            : rawValues.slice(0, 100).map(String),
           already_out: [],
-          duplicates: [],
+          duplicates: workbookResult?.duplicates || [],
+          parse_errors: parseErrors.slice(0, 100),
+          unknown_item_types:
+            workbookResult?.unknownItemTypes.slice(0, 100) || [],
+          ignored_rows: workbookResult?.ignoredRows || 0,
+          parsed_sheets: workbookResult?.parsedSheets || [],
+          skipped_sheets: workbookResult?.skippedSheets || [],
           totalDetected: 0,
           summary: [],
         },
@@ -167,9 +177,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const duplicates = Array.from(counter.entries())
-      .filter(([, count]) => count > 1)
-      .map(([imei, count]) => ({ imei, count }));
+    const duplicates = workbookResult
+      ? workbookResult.duplicates
+      : Array.from(counter.entries())
+          .filter(([, count]) => count > 1)
+          .map(([imei, count]) => ({ imei, count }));
     const supabase = supabaseService();
     const stockRows: any[] = [];
 
@@ -281,6 +293,7 @@ export async function POST(req: Request) {
     }
 
     const hasErrors =
+      parseErrors.length > 0 ||
       duplicates.length > 0 ||
       already_out.length > 0 ||
       unknown_imeis.length > 0;
@@ -289,12 +302,22 @@ export async function POST(req: Request) {
       {
         ok: !hasErrors,
         error: hasErrors
-          ? "Confirm blocked. Please correct duplicate, unknown or already outbound IMEIs."
+          ? parseErrors[0]?.message ||
+            "Confirm blocked. Please correct duplicate, unknown or already outbound IMEIs."
           : null,
         imeis: valid.map((item) => item.imei),
         unknown_imeis,
         already_out,
         duplicates,
+        parse_errors: parseErrors.slice(0, 100),
+        unknown_item_types:
+          workbookResult?.unknownItemTypes.slice(0, 100) || [],
+        ignored_rows: workbookResult?.ignoredRows || 0,
+        ignored_item_types:
+          workbookResult?.ignoredItemTypes.slice(0, 100) || [],
+        parsed_sheets: workbookResult?.parsedSheets || [],
+        skipped_sheets: workbookResult?.skippedSheets || [],
+        device_rows: workbookResult?.deviceRows ?? cleaned.length,
         totalDetected: cleaned.length,
         summary,
       },

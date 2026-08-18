@@ -18,6 +18,9 @@ type ManualLine = {
 type PreviewRow = {
   accessory_bin_id: string;
   accessory: string;
+  report_qty?: number;
+  template_expected_qty?: number;
+  template_qty?: number;
   qty: number;
   current_stock: number;
   after_stock: number;
@@ -241,14 +244,34 @@ export default function AccessoriesPage() {
     setBusy(false);
 
     if (!json.ok) {
-      setErrorMsg(json.error || "Spreadsheet preview failed");
+      const issueDetails = Array.isArray(json.issues)
+        ? json.issues
+            .slice(0, 5)
+            .map((issue: any) =>
+              issue.sheet && issue.row
+                ? `${issue.sheet}, row ${issue.row}: ${issue.message}`
+                : issue.message
+            )
+            .filter(Boolean)
+        : [];
+      setErrorMsg(
+        issueDetails.length > 0
+          ? issueDetails.join(" ")
+          : json.error || "Spreadsheet preview failed"
+      );
+      if (Array.isArray(json.rows) && json.rows.length > 0) {
+        setPreviewRows(json.rows);
+        setPreviewType("excel");
+        setPreviewCommand(null);
+        setPreviewOpen(true);
+      }
       return;
     }
 
     setPreviewRows(json.rows || []);
     setPreviewType("excel");
     setPreviewCommand({
-      operationId: crypto.randomUUID(),
+      operationId: json.operation_id,
       shipmentRef,
       comment,
       file,
@@ -495,7 +518,9 @@ export default function AccessoriesPage() {
             </div>
 
             <p className="accessory-preview-description">
-              Review every stock change before confirming the outbound.
+              {previewType === "excel"
+                ? "Report quantities take priority. Automatic templates only fill missing quantities."
+                : "Review every stock change before confirming the outbound."}
             </p>
 
             <div className="prototype-preview-table-scroll">
@@ -503,7 +528,15 @@ export default function AccessoriesPage() {
                 <thead>
                   <tr>
                     <th>Accessory</th>
-                    <th className="text-right">Quantity</th>
+                    {previewType === "excel" ? (
+                      <>
+                        <th className="text-right">From report</th>
+                        <th className="text-right">Template fill</th>
+                        <th className="text-right">Total</th>
+                      </>
+                    ) : (
+                      <th className="text-right">Quantity</th>
+                    )}
                     <th className="text-right">Current Stock</th>
                     <th className="text-right">Stock After</th>
                   </tr>
@@ -514,7 +547,15 @@ export default function AccessoriesPage() {
                       <td>
                         <strong>{row.accessory}</strong>
                       </td>
-                      <td className="text-right">{row.qty}</td>
+                      {previewType === "excel" ? (
+                        <>
+                          <td className="text-right">{row.report_qty || 0}</td>
+                          <td className="text-right">{row.template_qty || 0}</td>
+                          <td className="text-right"><strong>{row.qty}</strong></td>
+                        </>
+                      ) : (
+                        <td className="text-right">{row.qty}</td>
+                      )}
                       <td className="text-right">{row.current_stock}</td>
                       <td className="text-right">{row.after_stock}</td>
                     </tr>
@@ -528,7 +569,7 @@ export default function AccessoriesPage() {
             <button
               type="button"
               onClick={confirmPreview}
-              disabled={busy || previewRows.length === 0}
+              disabled={busy || previewRows.length === 0 || !previewCommand}
               className="prototype-button confirm disabled:opacity-40 disabled:cursor-not-allowed"
             >
               {busy ? "Processing…" : "Confirm Outbound"}

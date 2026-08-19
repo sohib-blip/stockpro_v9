@@ -173,6 +173,7 @@ export default function DispatchPlanningPage() {
   const [historyBusy, setHistoryBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [undoTarget, setUndoTarget] = useState<HistoryRow | null>(null);
+  const [orderSearch, setOrderSearch] = useState("");
   const operationId = useRef<string | null>(null);
 
   const previewTotals = useMemo(() => {
@@ -183,6 +184,21 @@ export default function DispatchPlanningPage() {
       volume: orders.reduce((total, order) => total + order.totalVolumeCm3, 0),
     };
   }, [preview]);
+
+  const filteredPreviewOrders = useMemo(() => {
+    const orders = preview?.plan?.orders || [];
+    const query = orderSearch.trim().toLocaleLowerCase();
+    if (!query) return orders;
+    return orders.filter((order) =>
+      [
+        order.orderId,
+        order.destinationCountry,
+        order.companyName,
+        ...order.items.flatMap((item) => [item.name, item.sourceItem]),
+        ...order.packages.flatMap((packaging) => [packaging.name, packaging.code]),
+      ].some((value) => String(value || "").toLocaleLowerCase().includes(query))
+    );
+  }, [orderSearch, preview]);
 
   async function loadHistory() {
     setHistoryBusy(true);
@@ -215,6 +231,7 @@ export default function DispatchPlanningPage() {
     setBusy(true);
     setFeedback(null);
     setPreview(null);
+    setOrderSearch("");
     operationId.current = null;
     try {
       const form = new FormData();
@@ -428,7 +445,7 @@ export default function DispatchPlanningPage() {
         </div>
       </div>
 
-      <section className="prototype-process-grid dispatch-process-grid">
+      <section className={`prototype-process-grid dispatch-process-grid ${preview?.plan ? "has-preview" : ""}`}>
         <div className="prototype-process-input-column prototype-input-card">
           <span className="prototype-eyebrow">Daily order workbook</span>
           <h2>Import today&apos;s orders</h2>
@@ -444,6 +461,7 @@ export default function DispatchPlanningPage() {
               onChange={(event) => {
                 setFile(event.target.files?.[0] || null);
                 setPreview(null);
+                setOrderSearch("");
                 operationId.current = null;
               }}
             />
@@ -485,28 +503,39 @@ export default function DispatchPlanningPage() {
               </div>
 
               {preview.plan.blockers.length > 0 ? (
-                <div className="dispatch-blockers" role="alert">
-                  {preview.plan.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
-                </div>
+                <details className="dispatch-blockers" role="alert">
+                  <summary>
+                    {preview.plan.blockers.length} packaging issue{preview.plan.blockers.length === 1 ? "" : "s"} block confirmation
+                  </summary>
+                  <div className="dispatch-blocker-list">
+                    {preview.plan.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+                  </div>
+                </details>
               ) : null}
 
-              <div className="dispatch-package-summary">
-                <h3>Packaging deduction</h3>
-                {preview.plan.packageUsage.map((usage) => (
-                  <div key={usage.packagingTypeId}>
-                    <span><strong>{usage.quantity} × {usage.name}</strong><small>{usage.code}</small></span>
-                    <span className={usage.stockAfter < 0 ? "is-danger" : ""}>
-                      {usage.onHandStock} → {usage.stockAfter}
-                    </span>
-                  </div>
-                ))}
+              <div className="dispatch-orders-heading">
+                <div>
+                  <h3>Orders</h3>
+                  <p>
+                    {filteredPreviewOrders.length === preview.plan.orders.length
+                      ? `${preview.plan.orders.length} orders · ${previewTotals.lines} lines`
+                      : `${filteredPreviewOrders.length} of ${preview.plan.orders.length} orders`}
+                  </p>
+                </div>
+                <input
+                  type="search"
+                  aria-label="Search dispatch orders"
+                  placeholder="Search order, customer, country or item…"
+                  value={orderSearch}
+                  onChange={(event) => setOrderSearch(event.target.value)}
+                />
               </div>
 
               <div className="dispatch-orders-scroll">
                 <table>
                   <thead><tr><th>Order ID</th><th>Country</th><th>Customer</th><th>Items</th><th>Volume</th><th>Packaging — editable</th></tr></thead>
                   <tbody>
-                    {preview.plan.orders.map((order) => {
+                    {filteredPreviewOrders.map((order) => {
                       const allocation = order.packages[0];
                       const eligibleIds = new Set(order.eligiblePackagingTypeIds || []);
                       const options = (preview.packaging_options || []).filter(
@@ -563,15 +592,41 @@ export default function DispatchPlanningPage() {
                         </td>
                       </tr>;
                     })}
+                    {filteredPreviewOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="dispatch-orders-empty">
+                          No orders match this search.
+                        </td>
+                      </tr>
+                    ) : null}
                   </tbody>
                 </table>
               </div>
+
+              <details className="dispatch-package-summary">
+                <summary>
+                  <span>Packaging deduction</span>
+                  <strong>
+                    {preview.plan.totalPackages} packages · {preview.plan.packageUsage.length} format{preview.plan.packageUsage.length === 1 ? "" : "s"}
+                  </strong>
+                </summary>
+                <div className="dispatch-package-summary-list">
+                  {preview.plan.packageUsage.map((usage) => (
+                    <div key={usage.packagingTypeId}>
+                      <span><strong>{usage.quantity} × {usage.name}</strong><small>{usage.code}</small></span>
+                      <span className={usage.stockAfter < 0 ? "is-danger" : ""}>
+                        {usage.onHandStock} → {usage.stockAfter}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </details>
 
               <div className="prototype-preview-actions">
                 <button
                   type="button"
                   className="prototype-button secondary"
-                  onClick={() => { setPreview(null); operationId.current = null; }}
+                  onClick={() => { setPreview(null); setOrderSearch(""); operationId.current = null; }}
                   disabled={busy}
                 >
                   Clear Preview

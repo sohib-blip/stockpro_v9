@@ -1713,8 +1713,18 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.locator('input[type="file"]').setInputFiles(path);
     await page.getByRole("button", { name: "Preview Packaging" }).click();
     await expect(page.getByText("Preview ready — stock unchanged")).toBeVisible();
-    await expect(page.getByText(run.dispatchPackaging.name).first()).toBeVisible();
+    await expect(
+      page.getByLabel(`Package for order E2E-${run.stamp}`)
+    ).toHaveValue(run.dispatchPackaging.id);
     await expect(page.getByText(`E2E-${run.stamp}`).first()).toBeVisible();
+    const orderSearch = page.getByLabel("Search dispatch orders");
+    await orderSearch.fill("definitely-not-a-dispatch-order");
+    await expect(page.getByText("No orders match this search.")).toBeVisible();
+    await orderSearch.fill(`E2E-${run.stamp}`);
+    await expect(
+      page.getByLabel(`Package for order E2E-${run.stamp}`)
+    ).toBeVisible();
+    await orderSearch.fill("");
     expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
 
     await page
@@ -1725,8 +1735,8 @@ test.describe.serial("StockPro staging end-to-end", () => {
       page.getByText("Adjusted — learned after confirmation")
     ).toBeVisible();
     await expect(
-      page.getByText(run.dispatchAlternatePackaging.name).first()
-    ).toBeVisible();
+      page.getByLabel(`Package for order E2E-${run.stamp}`)
+    ).toHaveValue(run.dispatchAlternatePackaging.id);
 
     await page
       .getByRole("button", { name: "Confirm & Deduct Packaging" })

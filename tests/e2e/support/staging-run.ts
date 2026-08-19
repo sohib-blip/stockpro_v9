@@ -17,6 +17,7 @@ export type StagingRun = {
   bin: { id: string; name: string };
   alternateBin: { id: string; name: string };
   accessory: { id: string; name: string };
+  packaging: { id: string; code: string; name: string };
   manualImei: string;
   spreadsheetImei: string;
   manualBox: string;
@@ -56,6 +57,11 @@ export async function createStagingRun(): Promise<StagingRun> {
     bin: { id: "", name: `TESTDEVICE${shortNumber}` },
     alternateBin: { id: "", name: `TESTALTERNATE${shortNumber}` },
     accessory: { id: "", name: `E2E Cable ${stamp}` },
+    packaging: {
+      id: "",
+      code: `E2E-PKG-${shortNumber}`,
+      name: `E2E Packaging ${stamp}`,
+    },
     manualImei: makeImei(numericStamp),
     spreadsheetImei: makeImei(numericStamp + 1),
     manualBox: `E2E-MANUAL-${stamp}`,
@@ -263,6 +269,19 @@ export async function cleanupStagingRun(
     await supabase.from("accessory_bins").delete().eq("id", run.accessory.id);
   }
 
+  const { data: packagingTypes } = await supabase
+    .from("packaging_types")
+    .select("id")
+    .eq("code", run.packaging.code);
+  const packagingTypeIds = (packagingTypes || []).map((row) => row.id);
+  if (packagingTypeIds.length) {
+    await supabase
+      .from("packaging_stock_movements")
+      .delete()
+      .in("packaging_type_id", packagingTypeIds);
+    await supabase.from("packaging_types").delete().in("id", packagingTypeIds);
+  }
+
   if (userIds.length) {
     await deleteSuppliesForUsers(supabase, userIds);
     await supabase.from("nrd_time_logs").delete().in("user_id", userIds);
@@ -361,6 +380,14 @@ export async function assertStagingRunClean(run: StagingRun) {
     rowCount(
       supabase.from("device_accessory_templates").select("*", { count: "exact", head: true }).eq("device_id", run.bin.id),
       "automatic accessory rules"
+    ),
+    rowCount(
+      supabase.from("packaging_types").select("*", { count: "exact", head: true }).eq("code", run.packaging.code),
+      "packaging types"
+    ),
+    rowCount(
+      supabase.from("packaging_stock_movements").select("*", { count: "exact", head: true }).in("actor_id", userIds),
+      "packaging stock movements"
     ),
     rowCount(
       supabase

@@ -1797,6 +1797,364 @@ body {
   min-width: 760px;
 }
 
+/* Packaging inventory */
+.packaging-inventory {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.packaging-kpi-grid {
+  margin-bottom: 0;
+}
+
+.packaging-table-card {
+  min-width: 0;
+}
+
+.packaging-toolbar {
+  align-items: center;
+}
+
+.packaging-filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 24px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.packaging-filters label:first-child {
+  flex: 1 1 300px;
+}
+
+.packaging-filters input,
+.packaging-filters select,
+.packaging-dialog input,
+.packaging-dialog select,
+.packaging-dialog textarea {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 8px 11px;
+  background: var(--surface);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 13px;
+}
+
+.packaging-filters label:not(:first-child) {
+  flex: 0 1 180px;
+}
+
+.packaging-table-scroll {
+  max-height: 620px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.packaging-table {
+  min-width: 1330px;
+  table-layout: auto;
+}
+
+.packaging-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.packaging-table th:nth-child(1) { min-width: 210px; }
+.packaging-table th:nth-child(2) { min-width: 145px; }
+.packaging-table th:nth-child(3) { min-width: 150px; }
+.packaging-table th:nth-child(4),
+.packaging-table th:nth-child(5),
+.packaging-table th:nth-child(6),
+.packaging-table th:nth-child(7) { min-width: 88px; }
+.packaging-table th:nth-child(8) { min-width: 90px; }
+.packaging-table th:nth-child(9) { min-width: 270px; }
+
+.packaging-table td:first-child strong,
+.packaging-table td:first-child small {
+  display: block;
+}
+
+.packaging-table td:first-child strong {
+  color: var(--foreground);
+  line-height: 1.25;
+}
+
+.packaging-table td:first-child small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 650;
+  letter-spacing: 0.045em;
+}
+
+.packaging-number {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.status-badge.inactive {
+  background: var(--surface-muted);
+  color: var(--muted-strong);
+}
+
+.packaging-row-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.packaging-row-actions button {
+  border: 0;
+  padding: 2px 0;
+  background: transparent;
+  color: var(--brand);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.packaging-row-actions button:last-child {
+  color: var(--muted-strong);
+}
+
+.packaging-row-actions button:hover:not(:disabled) {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.packaging-row-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.packaging-empty {
+  height: 120px !important;
+  color: var(--muted) !important;
+  text-align: center !important;
+}
+
+.packaging-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 110;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: var(--overlay);
+  backdrop-filter: blur(4px);
+}
+
+.packaging-dialog {
+  width: min(100%, 680px);
+  max-height: min(90vh, 820px);
+  display: flex;
+  overflow: hidden;
+  flex-direction: column;
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-popover);
+}
+
+.packaging-dialog-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px 22px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.packaging-dialog-header span {
+  color: var(--brand);
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.packaging-dialog-header h2 {
+  margin: 3px 0 4px;
+  color: var(--foreground);
+  font-size: 21px;
+  line-height: 1.2;
+}
+
+.packaging-dialog-header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.packaging-dialog-header > button {
+  width: 36px;
+  height: 36px;
+  flex: none;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.packaging-dialog-form {
+  display: grid;
+  overflow-y: auto;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  padding: 22px;
+}
+
+.packaging-field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.packaging-field-wide {
+  grid-column: 1 / -1;
+}
+
+.packaging-field > span,
+.packaging-dimensions legend,
+.packaging-dimensions label > span {
+  color: var(--foreground-soft);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.packaging-field small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.packaging-dialog textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.packaging-dimensions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: end;
+  gap: 10px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+
+.packaging-dimensions legend {
+  grid-column: 1 / -1;
+  margin-bottom: 6px;
+}
+
+.packaging-dimensions label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.packaging-dimensions > span {
+  padding-bottom: 9px;
+  color: var(--muted);
+}
+
+.packaging-dialog-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin: 4px -22px -22px;
+  padding: 16px 22px;
+  border-top: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.packaging-adjust-dialog {
+  width: min(100%, 600px);
+}
+
+.packaging-history-dialog {
+  width: min(100%, 1120px);
+}
+
+.packaging-history-scroll {
+  min-height: 240px;
+  max-height: 62vh;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.packaging-history-scroll table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+}
+
+.packaging-history-scroll th,
+.packaging-history-scroll td {
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border);
+  color: var(--foreground-soft);
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.packaging-history-scroll th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  color: var(--muted-strong);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.packaging-history-scroll td:last-child {
+  min-width: 260px;
+  white-space: normal;
+}
+
+.packaging-delta {
+  font-weight: 700;
+}
+
+.packaging-delta.is-positive {
+  color: var(--success);
+}
+
+.packaging-delta.is-negative {
+  color: var(--danger);
+}
+
+.packaging-history-state {
+  display: grid;
+  min-height: 240px;
+  place-items: center;
+  padding: 24px;
+  color: var(--muted);
+}
+
+.packaging-history-state.is-error {
+  color: var(--danger);
+}
+
 .prototype-input-section-title {
   margin-bottom: 12px;
   color: var(--foreground);
@@ -4000,6 +4358,14 @@ main.min-h-screen {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .packaging-filters {
+    flex-wrap: wrap;
+  }
+
+  .packaging-filters label:first-child {
+    flex-basis: 100%;
+  }
+
   .dashboard-insights-grid,
   .dashboard-detail-grid {
     grid-template-columns: 1fr;
@@ -4201,6 +4567,42 @@ main.min-h-screen {
 
   .prototype-kpi-card {
     min-height: 94px;
+  }
+
+  .packaging-toolbar,
+  .packaging-filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .packaging-toolbar .prototype-button,
+  .packaging-filters label,
+  .packaging-filters .prototype-button {
+    width: 100%;
+    flex-basis: auto;
+  }
+
+  .packaging-dialog-backdrop {
+    padding: 12px;
+  }
+
+  .packaging-dialog-form {
+    grid-template-columns: 1fr;
+    padding: 18px;
+  }
+
+  .packaging-field-wide,
+  .packaging-dialog-actions {
+    grid-column: auto;
+  }
+
+  .packaging-dialog-actions {
+    margin: 2px -18px -18px;
+    padding: 14px 18px;
+  }
+
+  .packaging-dialog-actions .prototype-button {
+    flex: 1;
   }
 
   .dashboard-chart-card,

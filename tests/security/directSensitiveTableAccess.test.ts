@@ -11,7 +11,7 @@ function sourceFiles(directory: string): string[] {
 }
 
 describe("direct sensitive table access", () => {
-  it("keeps items and movements out of browser-side Supabase queries", () => {
+  it("keeps sensitive inventory tables out of browser-side Supabase queries", () => {
     const roots = [
       join(process.cwd(), "app", "(app)"),
       join(process.cwd(), "components"),
@@ -20,7 +20,7 @@ describe("direct sensitive table access", () => {
 
     const violations = roots.flatMap(sourceFiles).flatMap((file) => {
       const source = readFileSync(file, "utf8");
-      return /\.from\(["'](items|movements)["']\)/.test(source)
+      return /\.from\(["'](items|movements|packaging_types|packaging_stock_movements)["']\)/.test(source)
         ? [relative(process.cwd(), file)]
         : [];
     });

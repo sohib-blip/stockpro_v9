@@ -5,6 +5,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import PackagingInventoryPanel from "@/components/PackagingInventoryPanel";
 
 type AccessoryCategory =
   | "Packages"
@@ -27,6 +28,7 @@ export default function BinsPage() {
 
   const [bins, setBins] = useState<Bin[]>([]);
   const [accessoryBins, setAccessoryBins] = useState<Bin[]>([]);
+  const [packagingCount, setPackagingCount] = useState(0);
 
   const [newBin, setNewBin] = useState("");
   const [newAccessoryBin, setNewAccessoryBin] = useState("");
@@ -64,7 +66,9 @@ export default function BinsPage() {
     id: string;
     name: string;
   } | null>(null);
-  const [activeSetupTab, setActiveSetupTab] = useState<"bins" | "rules" | "accessories">("bins");
+  const [activeSetupTab, setActiveSetupTab] = useState<
+    "bins" | "rules" | "accessories" | "packaging"
+  >("bins");
 
   function showSetupError(message: string) {
     setFeedback({ kind: "error", title: "Inventory setup action failed", message });
@@ -91,6 +95,15 @@ export default function BinsPage() {
 
     const json = await res.json();
     if (json.ok) setAccessoryBins(json.rows || []);
+  }
+
+  async function loadPackagingCount() {
+    const response = await apiFetch(
+      `/api/packaging/list?include_hidden=1&t=${Date.now()}`,
+      { cache: "no-store" }
+    );
+    const json = await response.json().catch(() => null);
+    if (response.ok && json?.ok) setPackagingCount((json.rows || []).length);
   }
 
   async function addBin() {
@@ -370,6 +383,7 @@ export default function BinsPage() {
   useEffect(() => {
     loadBins();
     loadAccessoryBins();
+    loadPackagingCount();
   }, []);
 
   const filteredAccessoryBins = accessoryBins.filter((bin) => {
@@ -384,7 +398,7 @@ export default function BinsPage() {
         <div>
         <h1>Inventory Setup</h1>
         <p>
-          Configure device bins, automatic accessory rules and the accessory catalogue.
+          Configure device bins, automatic accessory rules, accessories and packaging stock.
         </p>
         </div>
       </div>
@@ -400,6 +414,7 @@ export default function BinsPage() {
         <button type="button" role="tab" aria-selected={activeSetupTab === "bins"} className={activeSetupTab === "bins" ? "is-active" : ""} onClick={() => setActiveSetupTab("bins")}>Device Bins <span>{bins.length}</span></button>
         <button type="button" role="tab" aria-selected={activeSetupTab === "rules"} className={activeSetupTab === "rules" ? "is-active" : ""} onClick={() => { setActiveSetupTab("rules"); if (!selectedDevice && bins[0]) openTemplate(bins[0]); }}>Automatic Accessory Rules <span>{templates.length}</span></button>
         <button type="button" role="tab" aria-selected={activeSetupTab === "accessories"} className={activeSetupTab === "accessories" ? "is-active" : ""} onClick={() => setActiveSetupTab("accessories")}>Accessory Inventory <span>{accessoryBins.length}</span></button>
+        <button type="button" role="tab" aria-selected={activeSetupTab === "packaging"} className={activeSetupTab === "packaging" ? "is-active" : ""} onClick={() => setActiveSetupTab("packaging")}>Packaging Inventory <span>{packagingCount}</span></button>
       </div>
 
       {activeSetupTab === "bins" && (
@@ -895,6 +910,13 @@ export default function BinsPage() {
           </table>
         </div>
       </div>
+      )}
+
+      {activeSetupTab === "packaging" && (
+        <PackagingInventoryPanel
+          onCountChange={setPackagingCount}
+          onFeedback={setFeedback}
+        />
       )}
 
       <ConfirmDialog

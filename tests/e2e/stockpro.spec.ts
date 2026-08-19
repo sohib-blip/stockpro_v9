@@ -426,6 +426,16 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(operatorRuleUpdate.status()).toBe(200);
     expect((await operatorRuleUpdate.json()).ok).toBe(true);
 
+    const viewerPackaging = await request.get("/api/packaging/list", {
+      headers: { Authorization: `Bearer ${viewerToken}` },
+    });
+    expect(viewerPackaging.status()).toBe(403);
+
+    const operatorPackaging = await request.get("/api/packaging/list", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+    });
+    expect(operatorPackaging.status()).toBe(200);
+
     const minStockUpdate = await request.post("/api/bins/update-min-stock", {
       headers: { Authorization: `Bearer ${operatorToken}` },
       data: { device_id: run.bin.id, min_stock: 2 },
@@ -491,6 +501,8 @@ test.describe.serial("StockPro staging end-to-end", () => {
         ["items", `select=item_id,imei&imei=eq.${run.manualImei}`],
         ["movements", `select=item_id,imei&imei=eq.${run.manualImei}`],
         ["return_records", `select=item_id,imei&imei=eq.${run.manualImei}`],
+        ["packaging_types", "select=id,code&limit=1"],
+        ["packaging_stock_movements", "select=id,reason&limit=1"],
       ]) {
         const response = await directResponse(
           token,
@@ -529,6 +541,10 @@ test.describe.serial("StockPro staging end-to-end", () => {
       { method: "POST", pathname: "/api/accessory-bins/update" },
       { method: "POST", pathname: "/api/accessory-bins/delete" },
       { method: "POST", pathname: "/api/accessory-bins/toggle-active" },
+      { method: "POST", pathname: "/api/packaging/create" },
+      { method: "POST", pathname: "/api/packaging/update" },
+      { method: "POST", pathname: "/api/packaging/toggle-active" },
+      { method: "POST", pathname: "/api/packaging/adjust" },
       { method: "POST", pathname: "/api/bins/templates/save" },
       { method: "POST", pathname: "/api/bins/templates/delete" },
       { method: "POST", pathname: "/api/bins/update-min-stock" },
@@ -1602,6 +1618,54 @@ test.describe.serial("StockPro staging end-to-end", () => {
       .getByRole("button", { name: "Delete" })
       .click();
     await expect(binRow).toHaveCount(0);
+
+    await page.getByRole("tab", { name: /Packaging Inventory/ }).click();
+    await expect(page.getByRole("heading", { name: "Packaging Inventory" })).toBeVisible();
+    await page.getByRole("button", { name: "+ New Packaging Format" }).click();
+    const packagingDialog = page.getByRole("dialog", {
+      name: "New Packaging Format",
+    });
+    await packagingDialog.getByLabel("Name").fill(run.packaging.name);
+    await packagingDialog.getByLabel("Code").fill(run.packaging.code);
+    await packagingDialog.getByLabel("Type").selectOption("BOX");
+    await packagingDialog.getByLabel("Length").fill("20");
+    await packagingDialog.getByLabel("Width").fill("10");
+    await packagingDialog.getByLabel("Height").fill("5");
+    await packagingDialog.getByLabel("Minimum stock alert").fill("4");
+    await packagingDialog
+      .getByRole("button", { name: "Save Packaging Format" })
+      .click();
+    await expect(page.getByText("Packaging format created")).toBeVisible();
+
+    const packagingRow = page.locator(".packaging-table tbody tr").filter({
+      hasText: run.packaging.code,
+    });
+    await expect(packagingRow).toContainText(run.packaging.name);
+    await expect(packagingRow).toContainText("20 × 10 × 5 cm");
+    await packagingRow.getByRole("button", { name: "Adjust" }).click();
+    const adjustmentDialog = page.getByRole("dialog", {
+      name: `Adjust ${run.packaging.name}`,
+    });
+    await adjustmentDialog.getByLabel("Adjustment").selectOption("receive");
+    await adjustmentDialog.getByLabel("Quantity").fill("12");
+    await adjustmentDialog
+      .getByLabel("Reason")
+      .fill(`E2E packaging delivery ${run.stamp}`);
+    await adjustmentDialog
+      .getByRole("button", { name: "Confirm Stock Adjustment" })
+      .click();
+    await expect(page.getByText("Packaging stock updated")).toBeVisible();
+    await expect(packagingRow).toContainText("12");
+
+    await packagingRow.getByRole("button", { name: "History" }).click();
+    const packagingHistory = page.getByRole("dialog", {
+      name: `${run.packaging.name} History`,
+    });
+    await expect(packagingHistory).toContainText(
+      `E2E packaging delivery ${run.stamp}`
+    );
+    await expect(packagingHistory).toContainText("RECEIVE +12");
+    await packagingHistory.getByRole("button", { name: "Close" }).click();
 
     await page.goto("/supply");
     const supplySearch = page.getByPlaceholder("Search order or tracking…");

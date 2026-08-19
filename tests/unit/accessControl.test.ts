@@ -52,6 +52,15 @@ describe("access control", () => {
     expect(permissionsForApi("/api/new-unmapped-route", "POST")).toEqual([]);
   });
 
+  it("protects packaging inventory with the Inventory Setup permission", () => {
+    expect(permissionsForApi("/api/packaging/list", "GET")).toEqual([
+      "can_bins",
+    ]);
+    expect(permissionsForApi("/api/packaging/adjust", "POST")).toEqual([
+      "can_bins",
+    ]);
+  });
+
   it("keeps the access denied page reachable without a business permission", () => {
     expect(permissionForPage("/denied")).toBeNull();
   });

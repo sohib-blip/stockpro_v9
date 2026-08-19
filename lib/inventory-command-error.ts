@@ -58,6 +58,21 @@ export function inventoryCommandErrorMessage(
   if (message.includes("SUPPLY_STATUS_TRANSITION_INVALID")) {
     return "This supply status transition is not allowed.";
   }
+  if (message.includes("PACKAGING_NOT_FOUND")) {
+    return "Packaging format not found. Refresh and try again.";
+  }
+  if (message.includes("PACKAGING_INACTIVE")) {
+    return "This packaging format is inactive and its stock cannot be changed.";
+  }
+  if (message.includes("PACKAGING_NO_STOCK_CHANGE")) {
+    return "The requested count is already the current packaging stock.";
+  }
+  const packagingBelowReserved = message.match(
+    /PACKAGING_STOCK_BELOW_RESERVED:(.*):(-?\d+):(\d+)/i
+  );
+  if (packagingBelowReserved) {
+    return `Stock cannot be reduced to ${packagingBelowReserved[2]} for ${packagingBelowReserved[1]} because ${packagingBelowReserved[3]} units are reserved.`;
+  }
   if (
     message.includes("OPERATION_ID_CONFLICT") ||
     message.includes("OPERATION_RESULT_UNAVAILABLE") ||

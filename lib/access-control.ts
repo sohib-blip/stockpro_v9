@@ -161,6 +161,7 @@ export function permissionsForApi(
 
   if (pathname.startsWith("/api/accessories")) return ["can_accessories"];
   if (pathname.startsWith("/api/bins")) return ["can_bins"];
+  if (pathname.startsWith("/api/packaging")) return ["can_bins"];
   if (pathname.startsWith("/api/inbound/labels")) {
     return ["can_inbound", "can_labels"];
   }

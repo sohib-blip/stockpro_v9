@@ -67,6 +67,24 @@ export function inventoryCommandErrorMessage(
   if (message.includes("PACKAGING_NO_STOCK_CHANGE")) {
     return "The requested count is already the current packaging stock.";
   }
+  const dispatchPackagingInsufficient = message.match(
+    /DISPATCH_PACKAGING_INSUFFICIENT:(.*):(\d+):(\d+)/i
+  );
+  if (dispatchPackagingInsufficient) {
+    return `Not enough ${dispatchPackagingInsufficient[1]} packaging. Available: ${dispatchPackagingInsufficient[2]}, required: ${dispatchPackagingInsufficient[3]}.`;
+  }
+  if (message.includes("DISPATCH_SOURCE_ALREADY_CONFIRMED")) {
+    return "This daily workbook has already been confirmed. No packaging was deducted again.";
+  }
+  if (message.includes("DISPATCH_ORDERS_ALREADY_CONFIRMED")) {
+    return "One or more Order IDs were already confirmed in another dispatch batch.";
+  }
+  if (message.includes("DISPATCH_BATCH_ALREADY_UNDONE")) {
+    return "This dispatch batch has already been undone.";
+  }
+  if (message.includes("DISPATCH_BATCH_NOT_FOUND")) {
+    return "Dispatch batch not found.";
+  }
   const packagingBelowReserved = message.match(
     /PACKAGING_STOCK_BELOW_RESERVED:(.*):(-?\d+):(\d+)/i
   );

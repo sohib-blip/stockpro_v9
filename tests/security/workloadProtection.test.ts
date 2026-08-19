@@ -35,6 +35,10 @@ describe("workload protection boundaries", () => {
       'from("stock_export_view")',
     ],
     ["app/api/outbound/eod-preview/route.ts", "await extractWorkbookValues(req)"],
+    [
+      "app/api/dispatch-planning/preview/route.ts",
+      "inspectXlsxZipEnvelope(buffer",
+    ],
     ["app/api/outbound/shipment-pdf/route.ts", "new PDFDocument"],
     ["app/api/returns/history/route.ts", ".rpc("],
     ["app/api/dashboard/imei-search/route.ts", '.from("items")'],
@@ -61,6 +65,9 @@ describe("workload protection boundaries", () => {
     const countSheet = read(
       "app/api/dashboard/export-count-sheet/route.ts"
     );
+    const dispatchPlanning = read(
+      "app/api/dispatch-planning/preview/route.ts"
+    );
 
     expect(outbound).toContain("inspectXlsxZipEnvelope");
     expect(outbound).toContain("measureWorkbookShape");
@@ -76,6 +83,11 @@ describe("workload protection boundaries", () => {
     expect(stockExport).toContain("MAX_EXPORT_ROWS + 1");
     expect(countSheet).toContain("MAX_COUNT_SHEET_ROWS");
     expect(countSheet).toContain("MAX_FORMULA_CELLS");
+    expect(dispatchPlanning).toContain("MAX_FILE_BYTES");
+    expect(dispatchPlanning).toContain("MAX_ORDERS");
+    expect(dispatchPlanning).toContain("MAX_LINES");
+    expect(dispatchPlanning).toContain("inspectXlsxZipEnvelope");
+    expect(dispatchPlanning).toContain("measureWorkbookShape");
 
     const imeiSearch = read("app/api/dashboard/imei-search/route.ts");
     expect(imeiSearch).toContain("MAX_SEARCH_IMEIS");

@@ -15,6 +15,7 @@ describe("grouped application navigation", () => {
       "/inbound",
       "/outbound",
       "/accessories",
+      "/dispatch-planning",
       "/bins",
       "/labels",
       "/returns",

@@ -18,6 +18,7 @@ export type StagingRun = {
   alternateBin: { id: string; name: string };
   accessory: { id: string; name: string };
   packaging: { id: string; code: string; name: string };
+  dispatchPackaging: { id: string; code: string; name: string };
   manualImei: string;
   spreadsheetImei: string;
   manualBox: string;
@@ -61,6 +62,11 @@ export async function createStagingRun(): Promise<StagingRun> {
       id: "",
       code: `E2E-PKG-${shortNumber}`,
       name: `E2E Packaging ${stamp}`,
+    },
+    dispatchPackaging: {
+      id: "",
+      code: `E2E-DSP-${shortNumber}`,
+      name: `E2E Dispatch Box ${stamp}`,
     },
     manualImei: makeImei(numericStamp),
     spreadsheetImei: makeImei(numericStamp + 1),
@@ -157,6 +163,34 @@ export async function createStagingRun(): Promise<StagingRun> {
         per_devices: 1,
       });
     throwOnError(templateError, "Create E2E automatic accessory rule");
+
+    const { data: dispatchPackaging, error: dispatchPackagingError } = await supabase
+      .from("packaging_types")
+      .insert({
+        code: run.dispatchPackaging.code,
+        name: run.dispatchPackaging.name,
+        category: "BOX",
+        length_cm: 10,
+        width_cm: 9,
+        height_cm: 2,
+        on_hand_stock: 5,
+        reserved_stock: 0,
+        minimum_stock: 0,
+        active: true,
+        sort_order: 1,
+        source_name: "StockPro E2E dispatch planning",
+      })
+      .select("id,code,name")
+      .single();
+    throwOnError(dispatchPackagingError, "Create E2E dispatch packaging");
+    if (!dispatchPackaging) {
+      throw new Error("Create E2E dispatch packaging: no row returned");
+    }
+    run.dispatchPackaging = {
+      id: String(dispatchPackaging.id),
+      code: String(dispatchPackaging.code),
+      name: String(dispatchPackaging.name),
+    };
 
     return run;
   } catch (error) {
@@ -257,6 +291,10 @@ export async function cleanupStagingRun(
     await supabase.from("inbound_batches").delete().in("actor", userEmails);
   }
 
+  if (userIds.length) {
+    await supabase.from("dispatch_batches").delete().in("actor_id", userIds);
+  }
+
   if (run.accessory.id) {
     await supabase
       .from("device_accessory_templates")
@@ -272,7 +310,7 @@ export async function cleanupStagingRun(
   const { data: packagingTypes } = await supabase
     .from("packaging_types")
     .select("id")
-    .eq("code", run.packaging.code);
+    .in("code", [run.packaging.code, run.dispatchPackaging.code]);
   const packagingTypeIds = (packagingTypes || []).map((row) => row.id);
   if (packagingTypeIds.length) {
     await supabase
@@ -384,6 +422,14 @@ export async function assertStagingRunClean(run: StagingRun) {
     rowCount(
       supabase.from("packaging_types").select("*", { count: "exact", head: true }).eq("code", run.packaging.code),
       "packaging types"
+    ),
+    rowCount(
+      supabase.from("packaging_types").select("*", { count: "exact", head: true }).eq("code", run.dispatchPackaging.code),
+      "dispatch packaging type"
+    ),
+    rowCount(
+      supabase.from("dispatch_batches").select("*", { count: "exact", head: true }).in("actor_id", userIds),
+      "dispatch batches"
     ),
     rowCount(
       supabase.from("packaging_stock_movements").select("*", { count: "exact", head: true }).in("actor_id", userIds),
@@ -554,6 +600,17 @@ export async function readAccessoryStock(id: string) {
     .single();
   throwOnError(error, `Read E2E accessory ${id}`);
   return Number(data?.current_stock || 0);
+}
+
+export async function readPackagingStock(id: string) {
+  const supabase = serviceClient();
+  const { data, error } = await supabase
+    .from("packaging_types")
+    .select("on_hand_stock")
+    .eq("id", id)
+    .single();
+  throwOnError(error, `Read E2E packaging ${id}`);
+  return Number(data?.on_hand_stock || 0);
 }
 
 export async function countAccessoryMovements(operationIds: string[]) {

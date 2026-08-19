@@ -14,6 +14,7 @@ describe("professional English interface", () => {
       "Inbound Processing",
       "Device Outbound",
       "Accessory Outbound",
+      "Dispatch Planning",
       "Inventory Setup",
       "Label Printing",
       "Customer Returns",

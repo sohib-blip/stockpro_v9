@@ -11,6 +11,7 @@ import {
   countInboundBatchesByReference,
   createStagingRun,
   readAccessoryStock,
+  readPackagingStock,
   readItem,
   readReturnMovement,
   readReturnRecord,
@@ -156,6 +157,36 @@ function createAutomaticAccessorySpreadsheet(path: string) {
   ]);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, sheet, "Automatic Accessories");
+  XLSX.writeFile(workbook, path);
+}
+
+function createDispatchPlanningSpreadsheet(path: string) {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ["Kinesis Vehicle Sheet"],
+    [`Generated Date: ${new Date().toISOString()}`],
+    [],
+    [],
+    [
+      "Vehicle Registration",
+      "Hardware Type",
+      "Device Type",
+      "Order ID",
+      "Order Line ID",
+      "Destination Country",
+      "Company Name",
+    ],
+    [
+      "E2E-VEHICLE",
+      "ATOM",
+      "Teltonika - Atom-E 4G - FMC880",
+      `E2E-${run.stamp}`,
+      `LINE-${run.stamp}`,
+      "BE",
+      "StockPro E2E Customer",
+    ],
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Vehicles");
   XLSX.writeFile(workbook, path);
 }
 
@@ -503,6 +534,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
         ["return_records", `select=item_id,imei&imei=eq.${run.manualImei}`],
         ["packaging_types", "select=id,code&limit=1"],
         ["packaging_stock_movements", "select=id,reason&limit=1"],
+        ["dispatch_batches", "select=id,source_filename&limit=1"],
       ]) {
         const response = await directResponse(
           token,
@@ -545,6 +577,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
       { method: "POST", pathname: "/api/packaging/update" },
       { method: "POST", pathname: "/api/packaging/toggle-active" },
       { method: "POST", pathname: "/api/packaging/adjust" },
+      { method: "POST", pathname: "/api/dispatch-planning/preview" },
+      { method: "POST", pathname: "/api/dispatch-planning/confirm" },
+      { method: "POST", pathname: "/api/dispatch-planning/undo" },
       { method: "POST", pathname: "/api/bins/templates/save" },
       { method: "POST", pathname: "/api/bins/templates/delete" },
       { method: "POST", pathname: "/api/bins/update-min-stock" },
@@ -595,6 +630,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
       ["/inbound", "Inbound Processing"],
       ["/outbound", "Device Outbound"],
       ["/accessories", "Accessory Outbound"],
+      ["/dispatch-planning", "Dispatch Planning"],
       ["/bins", "Inventory Setup"],
       ["/labels", "Label Printing"],
       ["/returns", "Customer Returns"],
@@ -1618,6 +1654,64 @@ test.describe.serial("StockPro staging end-to-end", () => {
       hasText: run.accessory.name,
     });
     await expect(accessoryRow).toContainText("▼ LOW");
+    await signOut(page);
+  });
+
+  test("previews, confirms, exports, blocks duplicates and undoes daily dispatch packaging", async ({
+    page,
+  }) => {
+    const path = spreadsheetPath(`daily-dispatch-${run.stamp}.xlsx`);
+    createDispatchPlanningSpreadsheet(path);
+
+    await login(page, "operator");
+    await page.goto("/dispatch-planning");
+    await expect(
+      page.getByRole("heading", { name: "Dispatch Planning" })
+    ).toBeVisible();
+    expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
+
+    await page.locator('input[type="file"]').setInputFiles(path);
+    await page.getByRole("button", { name: "Preview Packaging" }).click();
+    await expect(page.getByText("Preview ready — stock unchanged")).toBeVisible();
+    await expect(page.getByText(run.dispatchPackaging.name).first()).toBeVisible();
+    await expect(page.getByText(`E2E-${run.stamp}`).first()).toBeVisible();
+    expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
+
+    await page
+      .getByRole("button", { name: "Confirm & Deduct Packaging" })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Confirm daily dispatch?" })
+      .getByRole("button", { name: "Confirm & Deduct" })
+      .click();
+    await expect(page.getByText("Daily dispatch confirmed")).toBeVisible();
+    expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(4);
+
+    const historyRow = page
+      .locator(".dispatch-history-scroll tbody tr")
+      .filter({ hasText: `daily-dispatch-${run.stamp}.xlsx` });
+    await expect(historyRow).toContainText("CONFIRMED");
+    await expectDownload(
+      page,
+      historyRow.getByRole("button", { name: "Download" }),
+      /dispatch-daily-dispatch-/i
+    );
+
+    await page.locator('input[type="file"]').setInputFiles(path);
+    await page.getByRole("button", { name: "Preview Packaging" }).click();
+    await expect(
+      page.getByText("This workbook has already been confirmed. Packaging stock was not changed.")
+    ).toBeVisible();
+    expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(4);
+
+    await historyRow.getByRole("button", { name: "Undo" }).click();
+    await page
+      .getByRole("dialog", { name: "Undo this dispatch batch?" })
+      .getByRole("button", { name: "Undo & Restore Stock" })
+      .click();
+    await expect(page.getByText("Dispatch batch undone")).toBeVisible();
+    expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
+    await expect(historyRow).toContainText("UNDONE");
     await signOut(page);
   });
 

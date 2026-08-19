@@ -59,6 +59,11 @@ const NAVIGATION: PrimaryNav[] = [
         label: "Accessory Outbound",
         permission: "can_accessories",
       },
+      {
+        href: "/dispatch-planning",
+        label: "Dispatch Planning",
+        permission: "can_outbound",
+      },
     ],
   },
   {

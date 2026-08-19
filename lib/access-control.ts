@@ -101,6 +101,7 @@ export function permissionForPage(pathname: string): PermissionKey | null {
     ["/admin", "can_admin"],
     ["/dashboard", "can_dashboard"],
     ["/inbound", "can_inbound"],
+    ["/dispatch-planning", "can_outbound"],
     ["/outbound", "can_outbound"],
     ["/returns", "can_returns"],
     ["/transfer", "can_transfer"],
@@ -168,6 +169,7 @@ export function permissionsForApi(
   if (pathname.startsWith("/api/inbound")) return ["can_inbound"];
   if (pathname.startsWith("/api/labels")) return ["can_labels"];
   if (pathname.startsWith("/api/outbound")) return ["can_outbound"];
+  if (pathname.startsWith("/api/dispatch-planning")) return ["can_outbound"];
   if (pathname.startsWith("/api/returns")) return ["can_returns"];
   if (pathname.startsWith("/api/transfer")) return ["can_transfer"];
   if (pathname.startsWith("/api/supply")) return ["can_supply"];

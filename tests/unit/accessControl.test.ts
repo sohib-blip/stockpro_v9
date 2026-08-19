@@ -61,6 +61,13 @@ describe("access control", () => {
     ]);
   });
 
+  it("protects dispatch planning with Device Outbound authority", () => {
+    expect(permissionForPage("/dispatch-planning")).toBe("can_outbound");
+    expect(
+      permissionsForApi("/api/dispatch-planning/confirm", "POST")
+    ).toEqual(["can_outbound"]);
+  });
+
   it("keeps the access denied page reachable without a business permission", () => {
     expect(permissionForPage("/denied")).toBeNull();
   });

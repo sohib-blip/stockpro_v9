@@ -1515,7 +1515,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(await countAccessoryMovements(operationIds)).toBe(1);
   });
 
-  test("exports valid workbooks and reports low device and accessory stock", async ({
+  test("exports valid workbooks and reports low device, accessory and packaging stock", async ({
     page,
     request,
   }) => {
@@ -1584,6 +1584,23 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByPlaceholder("Search device…").fill(run.bin.name);
     const deviceRow = page.locator(".device-table tbody tr").filter({ hasText: run.bin.name });
     await expect(deviceRow).toContainText("▼ LOW");
+
+    const attentionCard = page.locator(".dashboard-alerts-card");
+    await expect(attentionCard).toContainText(run.bin.name);
+    await expect(attentionCard).toContainText(run.accessory.name);
+    await expect(attentionCard).toContainText("Radius Box Medium");
+
+    await page.getByRole("button", { name: "Packages", exact: true }).click();
+    await page.getByPlaceholder("Search accessory…").fill("Radius Box Medium");
+    const packageRow = page.locator(".accessory-table tbody tr").filter({
+      hasText: "Radius Box Medium",
+    });
+    await expect(packageRow).toContainText("TBD008");
+    await expect(packageRow).toContainText("20 × 13 × 5 cm");
+    await expect(packageRow).toContainText("✕ EMPTY");
+
+    await page.getByPlaceholder("Search accessory…").fill("");
+    await page.getByRole("button", { name: "All", exact: true }).click();
 
     await page.getByPlaceholder("Search accessory…").fill(run.accessory.name);
     const accessoryRow = page.locator(".accessory-table tbody tr").filter({

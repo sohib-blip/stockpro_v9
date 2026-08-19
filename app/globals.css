@@ -1385,6 +1385,136 @@ body {
   gap: 12px;
 }
 
+.dashboard-alerts-card {
+  overflow: hidden;
+  border-color: var(--border-strong);
+}
+
+.dashboard-alerts-card.has-alerts {
+  border-color: color-mix(in srgb, var(--warning) 48%, var(--border));
+}
+
+.dashboard-alerts-toolbar {
+  min-height: 70px;
+}
+
+.dashboard-alerts-toolbar > div:first-child {
+  min-width: 0;
+}
+
+.dashboard-alerts-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--warning);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.dashboard-alerts-counts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dashboard-alerts-counts span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 30px;
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.dashboard-alerts-counts strong {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-alerts-counts .is-low {
+  background: var(--warning-soft);
+  color: var(--warning);
+}
+
+.dashboard-alerts-counts .is-empty {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.dashboard-alerts-scroll {
+  max-height: 250px;
+  overflow: auto;
+  scrollbar-gutter: stable;
+}
+
+.dashboard-alerts-table {
+  min-width: 680px;
+}
+
+.dashboard-alerts-table thead {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.dashboard-alerts-table th:nth-child(1),
+.dashboard-alerts-table td:nth-child(1) { width: 18%; }
+.dashboard-alerts-table th:nth-child(2),
+.dashboard-alerts-table td:nth-child(2) { width: 38%; }
+.dashboard-alerts-table th:nth-child(3),
+.dashboard-alerts-table td:nth-child(3),
+.dashboard-alerts-table th:nth-child(4),
+.dashboard-alerts-table td:nth-child(4),
+.dashboard-alerts-table th:nth-child(5),
+.dashboard-alerts-table td:nth-child(5) { width: 14.66%; }
+
+.dashboard-alert-type {
+  display: inline-flex;
+  min-height: 23px;
+  align-items: center;
+  border-radius: 6px;
+  padding: 3px 9px;
+  background: var(--surface-muted);
+  color: var(--muted-strong);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.dashboard-alerts-clear {
+  min-height: 96px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  color: var(--success);
+}
+
+.dashboard-alerts-clear > span {
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: var(--success-soft);
+  font-weight: 800;
+}
+
+.dashboard-alerts-clear strong,
+.dashboard-alerts-clear small {
+  display: block;
+}
+
+.dashboard-alerts-clear small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 .dashboard-view-all-button {
   padding: 5px 12px;
 }
@@ -1430,6 +1560,17 @@ body {
 .accessory-table th:nth-child(3), .accessory-table td:nth-child(3) { width: 16%; }
 .accessory-table th:nth-child(4), .accessory-table td:nth-child(4) { width: 16%; }
 .accessory-table th:nth-child(5), .accessory-table td:nth-child(5) { width: 16%; }
+
+.accessory-item-detail {
+  display: block;
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .drilldown-card .prototype-table-toolbar input {
   width: 200px;

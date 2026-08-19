@@ -406,6 +406,16 @@ const FR: Record<string, string> = {
   Change: "Modification",
   "No stock movements have been recorded for this format.":
     "Aucun mouvement de stock n’a été enregistré pour ce format.",
+  "Low & empty inventory": "Stock faible et vide",
+  "Stock attention needed": "Stock nécessitant une attention",
+  "One consolidated view of device, accessory and packaging alerts.":
+    "Une vue unique des alertes d’appareils, d’accessoires et d’emballages.",
+  "Stock alert totals": "Totaux des alertes de stock",
+  "Inventory Type": "Type de stock",
+  Packaging: "Emballage",
+  "All stock levels are healthy": "Tous les niveaux de stock sont corrects",
+  "No active device, accessory or packaging alerts.":
+    "Aucune alerte active pour les appareils, accessoires ou emballages.",
 
   "Label Dimensions": "Dimensions des étiquettes",
   "Width (mm)": "Largeur (mm)",
@@ -1099,6 +1109,16 @@ const NL: Record<string, string> = {
   Change: "Wijziging",
   "No stock movements have been recorded for this format.":
     "Voor dit formaat zijn nog geen voorraadbewegingen geregistreerd.",
+  "Low & empty inventory": "Lage en lege voorraad",
+  "Stock attention needed": "Voorraad vereist aandacht",
+  "One consolidated view of device, accessory and packaging alerts.":
+    "Eén overzicht van meldingen voor apparaten, accessoires en verpakkingen.",
+  "Stock alert totals": "Totalen van voorraadmeldingen",
+  "Inventory Type": "Voorraadtype",
+  Packaging: "Verpakking",
+  "All stock levels are healthy": "Alle voorraadniveaus zijn gezond",
+  "No active device, accessory or packaging alerts.":
+    "Geen actieve meldingen voor apparaten, accessoires of verpakkingen.",
 
   "Label Dimensions": "Labelafmetingen",
   "Width (mm)": "Breedte (mm)",
@@ -1417,6 +1437,7 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(\d+) device bins · click a row for box and floor detail$/, "$1 emplacements · cliquez sur une ligne pour les détails"],
           [/^\+ (\d+) more accessories$/, "+ $1 autres accessoires"],
           [/^(\d+) accessories$/, "$1 accessoires"],
+          [/^Showing (\d+) of (\d+) inventory items$/, "$1 éléments affichés sur $2"],
           [/^Download all labels — PDF \((\d+)\)$/, "Télécharger toutes les étiquettes — PDF ($1)"],
           [/^All (\d+) IMEIs? from this spreadsheet already exists? in stock\. Nothing will be imported and no history entry will be created\.$/, "Les $1 IMEI de ce fichier sont déjà en stock. Aucun élément ne sera importé et aucune entrée d’historique ne sera créée."],
           [/^(\d+) existing IMEIs will be skipped and (\d+) new IMEIs will be imported\.$/, "$1 IMEI existants seront ignorés et $2 nouveaux IMEI seront importés."],
@@ -1449,6 +1470,7 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(\d+) device bins · click a row for box and floor detail$/, "$1 apparaatvakken · klik op een rij voor details"],
           [/^\+ (\d+) more accessories$/, "+ $1 andere accessoires"],
           [/^(\d+) accessories$/, "$1 accessoires"],
+          [/^Showing (\d+) of (\d+) inventory items$/, "$1 van $2 voorraaditems weergegeven"],
           [/^Download all labels — PDF \((\d+)\)$/, "Alle labels downloaden — PDF ($1)"],
           [/^All (\d+) IMEIs? from this spreadsheet already exists? in stock\. Nothing will be imported and no history entry will be created\.$/, "Alle $1 IMEI's uit dit bestand staan al op voorraad. Er wordt niets geïmporteerd en er wordt geen geschiedenisitem aangemaakt."],
           [/^(\d+) existing IMEIs will be skipped and (\d+) new IMEIs will be imported\.$/, "$1 bestaande IMEI's worden overgeslagen en $2 nieuwe IMEI's worden geïmporteerd."],

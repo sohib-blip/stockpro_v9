@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { mergeDashboardInventoryRows } from "@/lib/dashboard-inventory-rows";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,12 +12,23 @@ const supabase = createClient(
 );
 
 export async function GET() {
-  const { data, error } = await supabase
-    .from("accessory_bins")
-    .select("id, name, category, current_stock, minimum_stock, active")
-    .eq("active", true)
-    .order("name");
+  const [
+    { data: accessories, error: accessoriesError },
+    { data: packaging, error: packagingError },
+  ] = await Promise.all([
+    supabase
+      .from("accessory_bins")
+      .select("id,name,category,current_stock,minimum_stock,active")
+      .eq("active", true),
+    supabase
+      .from("packaging_types")
+      .select(
+        "id,code,name,length_cm,width_cm,height_cm,on_hand_stock,reserved_stock,minimum_stock,active"
+      )
+      .eq("active", true),
+  ]);
 
+  const error = accessoriesError || packagingError;
   if (error) {
     return NextResponse.json(
       { ok: false, error: error.message },
@@ -24,28 +36,7 @@ export async function GET() {
     );
   }
 
-  const rows = (data || []).map((row: any) => {
-    const stock = Number(row.current_stock || 0);
-    const min = Number(row.minimum_stock || 0);
-
-    let status = "OK";
-
-    if (stock <= 0) {
-      status = "EMPTY";
-    } else if (min > 0 && stock <= min) {
-      status = "LOW";
-    }
-
-    return {
-      id: row.id,
-      name: row.name,
-      bin: row.name,
-      category: row.category || "Consumables",
-      current_stock: stock,
-      minimum_stock: min,
-      status,
-    };
-  });
+  const rows = mergeDashboardInventoryRows(accessories || [], packaging || []);
 
   return NextResponse.json({
     ok: true,

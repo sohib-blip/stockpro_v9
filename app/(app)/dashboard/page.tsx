@@ -14,6 +14,7 @@ import {
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import { useAccess } from "@/components/AccessProvider";
 import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
+import { buildDashboardStockAlerts } from "@/lib/dashboard-inventory-rows";
 
 type KPI = {
   total_bins: number;
@@ -188,8 +189,12 @@ export default function DashboardPage() {
     (total, row) => total + Number(row.total_out || 0),
     0
   );
-  const lowAlerts = bins.filter((row) => stockLevel(row) === "low").length;
-  const emptyAlerts = bins.filter((row) => stockLevel(row) === "critical").length;
+  const stockAlerts = useMemo(
+    () => buildDashboardStockAlerts(bins, accessories),
+    [accessories, bins]
+  );
+  const lowAlerts = stockAlerts.filter((row) => row.status === "LOW").length;
+  const emptyAlerts = stockAlerts.filter((row) => row.status === "EMPTY").length;
   const alertCount = lowAlerts + emptyAlerts;
   const visibleBins = filteredBins;
   const visibleAccessories = showAllAccessories
@@ -541,6 +546,64 @@ export default function DashboardPage() {
             {`${lowAlerts} low · ${emptyAlerts} empty — see tables below`}
           </div>
         </article>
+      </section>
+
+      <section
+        id="dashboard-stock-attention"
+        className={`prototype-card prototype-table-card dashboard-alerts-card${
+          stockAlerts.length ? " has-alerts" : ""
+        }`}
+        aria-live="polite"
+      >
+        <div className="prototype-table-toolbar dashboard-alerts-toolbar">
+          <div>
+            <span className="dashboard-alerts-eyebrow">Low &amp; empty inventory</span>
+            <h2>Stock attention needed</h2>
+            <p>One consolidated view of device, accessory and packaging alerts.</p>
+          </div>
+          <div className="dashboard-alerts-counts" aria-label="Stock alert totals">
+            <span className="is-low"><strong>{lowAlerts}</strong> Low</span>
+            <span className="is-empty"><strong>{emptyAlerts}</strong> Empty</span>
+          </div>
+        </div>
+        {stockAlerts.length ? (
+          <div className="dashboard-alerts-scroll">
+            <table className="prototype-table dashboard-alerts-table">
+              <thead>
+                <tr>
+                  <th>Inventory Type</th>
+                  <th>Item</th>
+                  <th>Available</th>
+                  <th>Minimum</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {stockAlerts.map((row) => {
+                  const level = row.status === "EMPTY" ? "critical" : "low";
+                  return (
+                    <tr key={row.id} className={`stock-row ${level}`}>
+                      <td><span className="dashboard-alert-type">{row.inventory_type}</span></td>
+                      <td><strong>{row.name}</strong></td>
+                      <td>{row.current_stock.toLocaleString("en-GB")}</td>
+                      <td>{row.minimum_stock.toLocaleString("en-GB")}</td>
+                      <td>
+                        <span className={`status-badge ${level}`}>
+                          {row.status === "LOW" ? "▼ LOW" : "✕ EMPTY"}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="dashboard-alerts-clear">
+            <span aria-hidden="true">✓</span>
+            <div><strong>All stock levels are healthy</strong><small>No active device, accessory or packaging alerts.</small></div>
+          </div>
+        )}
       </section>
 
       <section className="dashboard-insights-grid">
@@ -1025,7 +1088,7 @@ export default function DashboardPage() {
           <table className="prototype-table accessory-table">
             <thead>
               <tr>
-                <th>Accessory</th>
+                <th>Item</th>
                 <th>Category</th>
                 <th>Stock</th>
                 <th>Minimum</th>
@@ -1042,7 +1105,10 @@ export default function DashboardPage() {
                       : "ok";
                 return (
                   <tr key={row.id} className={`stock-row ${level}`}>
-                    <td><strong>{row.name}</strong></td>
+                    <td>
+                      <strong>{row.name}</strong>
+                      {row.details ? <small className="accessory-item-detail">{row.details}</small> : null}
+                    </td>
                     <td>{row.category}</td>
                     <td>{Number(row.current_stock || 0).toLocaleString("en-GB")}</td>
                     <td>{Number(row.minimum_stock || 0).toLocaleString("en-GB")}</td>
@@ -1061,7 +1127,7 @@ export default function DashboardPage() {
         </div>
         <div className="prototype-table-footer dashboard-accessory-footer">
           <span>
-            Showing {visibleAccessories.length} of {filteredAccessories.length} accessories
+            Showing {visibleAccessories.length} of {filteredAccessories.length} inventory items
           </span>
           {filteredAccessories.length > ACCESSORY_PREVIEW_SIZE && (
             <button

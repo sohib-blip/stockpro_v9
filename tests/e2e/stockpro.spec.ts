@@ -316,6 +316,38 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await signOut(page);
   });
 
+  test("preserves an unfinished form when the tab returns to the foreground", async ({
+    page,
+  }) => {
+    await login(page, "operator");
+    await page.goto("/inbound");
+    await expect(
+      page.getByRole("heading", { name: "Inbound Processing" })
+    ).toBeVisible();
+
+    const reference = `E2E unfinished draft ${run.stamp}`;
+    await page.getByLabel("Inbound reference").fill(reference);
+    await page.getByLabel("Manual inbound IMEIs").fill(run.manualImei);
+
+    await page.evaluate(async () => {
+      let visibility: DocumentVisibilityState = "hidden";
+      Object.defineProperty(document, "visibilityState", {
+        configurable: true,
+        get: () => visibility,
+      });
+      document.dispatchEvent(new Event("visibilitychange"));
+      visibility = "visible";
+      document.dispatchEvent(new Event("visibilitychange"));
+      await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+    });
+
+    await expect(page.getByLabel("Inbound reference")).toHaveValue(reference);
+    await expect(page.getByLabel("Manual inbound IMEIs")).toHaveValue(
+      run.manualImei
+    );
+    await signOut(page);
+  });
+
   test("rejects an older token immediately after a secure takeover", async ({
     browser,
     request,

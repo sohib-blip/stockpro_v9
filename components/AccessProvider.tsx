@@ -17,6 +17,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -40,9 +41,13 @@ export default function AccessProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState<User | null>(null);
   const [access, setAccess] = useState<AccessProfile>(EMPTY_ACCESS);
+  const initialLoadResolved = useRef(false);
 
   const refreshAccess = useCallback(async () => {
-    setLoading(true);
+    // Supabase can emit SIGNED_IN/TOKEN_REFRESHED again when a background tab
+    // becomes active. Only block the route during the first access lookup;
+    // blocking every silent refresh unmounts the page and erases form state.
+    if (!initialLoadResolved.current) setLoading(true);
     const {
       data: { user: currentUser },
     } = await supabase.auth.getUser();
@@ -50,6 +55,7 @@ export default function AccessProvider({ children }: { children: ReactNode }) {
     setUser(currentUser ?? null);
     if (!currentUser) {
       setAccess(EMPTY_ACCESS);
+      initialLoadResolved.current = true;
       setLoading(false);
       return;
     }
@@ -73,6 +79,7 @@ export default function AccessProvider({ children }: { children: ReactNode }) {
         ? normalizePermissions(permissionRow)
         : { ...EMPTY_PERMISSIONS },
     });
+    initialLoadResolved.current = true;
     setLoading(false);
   }, [supabase]);
 

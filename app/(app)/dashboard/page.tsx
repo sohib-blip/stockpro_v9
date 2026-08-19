@@ -118,7 +118,7 @@ export default function DashboardPage() {
     useState<AccessoryCategoryFilter>("All");
   const [chartPage, setChartPage] = useState(0);
   const [showAllAccessories, setShowAllAccessories] = useState(false);
-  const [showStockAlerts, setShowStockAlerts] = useState(false);
+  const [showStockAlertOverview, setShowStockAlertOverview] = useState(false);
   const [showShippedRanking, setShowShippedRanking] = useState(false);
   const [showImeiSearch, setShowImeiSearch] = useState(false);
   const [imeiSearchText, setImeiSearchText] = useState("");
@@ -196,6 +196,10 @@ export default function DashboardPage() {
   );
   const lowAlerts = stockAlerts.filter((row) => row.status === "LOW").length;
   const emptyAlerts = stockAlerts.filter((row) => row.status === "EMPTY").length;
+  const deviceAlertCount = stockAlerts.filter(
+    (row) => row.inventory_type === "Device"
+  ).length;
+  const accessoryAlertCount = stockAlerts.length - deviceAlertCount;
   const alertCount = lowAlerts + emptyAlerts;
   const visibleBins = filteredBins;
   const visibleAccessories = showAllAccessories
@@ -320,13 +324,14 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    if (!showShippedRanking && !showImeiSearch) return;
+    if (!showShippedRanking && !showImeiSearch && !showStockAlertOverview) return;
 
     const previousOverflow = document.body.style.overflow;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setShowShippedRanking(false);
         setShowImeiSearch(false);
+        setShowStockAlertOverview(false);
       }
     };
 
@@ -336,7 +341,7 @@ export default function DashboardPage() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [showImeiSearch, showShippedRanking]);
+  }, [showImeiSearch, showShippedRanking, showStockAlertOverview]);
 
   return (
     <div className="prototype-page prototype-dashboard">
@@ -540,80 +545,109 @@ export default function DashboardPage() {
           </div>
           <div className="prototype-kpi-caption">devices in stock</div>
         </article>
-        <article className="prototype-kpi-card is-alert">
+        <article
+          className="prototype-kpi-card is-alert stock-alert-kpi is-interactive"
+          role="button"
+          tabIndex={0}
+          aria-haspopup="dialog"
+          aria-label="View stock alert overview"
+          onClick={() => setShowStockAlertOverview(true)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              setShowStockAlertOverview(true);
+            }
+          }}
+        >
           <div className="prototype-eyebrow">⚠ Stock alerts</div>
           <div className="prototype-kpi-value">{kpi?.alerts ?? alertCount}</div>
-          <div className="prototype-kpi-caption">
-            {`${lowAlerts} low · ${emptyAlerts} empty — see tables below`}
+          <div className="stock-alert-kpi-breakdown">
+            <span><strong>{deviceAlertCount}</strong> Devices</span>
+            <span><strong>{accessoryAlertCount}</strong> Accessories</span>
+            <span className="stock-alert-kpi-hint">View overview <span aria-hidden="true">↗</span></span>
           </div>
         </article>
       </section>
 
-      <section
-        id="dashboard-stock-attention"
-        className={`prototype-card prototype-table-card dashboard-alerts-card${
-          stockAlerts.length ? " has-alerts" : ""
-        }`}
-        aria-live="polite"
-      >
-        <button
-          type="button"
-          className="dashboard-alerts-toggle"
-          aria-expanded={showStockAlerts}
-          aria-controls="dashboard-stock-alert-details"
-          onClick={() => setShowStockAlerts((current) => !current)}
+      {showStockAlertOverview && (
+        <div
+          className="dashboard-ranking-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowStockAlertOverview(false);
+            }
+          }}
         >
-          <div>
-            <span className="dashboard-alerts-eyebrow">Low &amp; empty inventory</span>
-            <h2>Stock attention needed</h2>
-          </div>
-          <div className="dashboard-alerts-toggle-summary">
-            <div className="dashboard-alerts-counts" aria-label="Stock alert totals">
-              <span className="is-low"><strong>{lowAlerts}</strong> Low</span>
-              <span className="is-empty"><strong>{emptyAlerts}</strong> Empty</span>
+          <section
+            className="dashboard-alerts-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="stock-alert-overview-title"
+          >
+            <header className="dashboard-ranking-header">
+              <div>
+                <span>Inventory control</span>
+                <h2 id="stock-alert-overview-title">Stock alert overview</h2>
+                <p>All active device, accessory and packaging items that are low or empty.</p>
+              </div>
+              <button
+                type="button"
+                className="dashboard-ranking-close"
+                aria-label="Close"
+                autoFocus
+                onClick={() => setShowStockAlertOverview(false)}
+              >
+                ×
+              </button>
+            </header>
+            <div className="dashboard-alerts-modal-summary">
+              <div><span>Total</span><strong>{alertCount}</strong></div>
+              <div><span>Devices</span><strong>{deviceAlertCount}</strong></div>
+              <div><span>Accessories</span><strong>{accessoryAlertCount}</strong></div>
+              <div><span>Low</span><strong>{lowAlerts}</strong></div>
+              <div><span>Empty</span><strong>{emptyAlerts}</strong></div>
             </div>
-            <span className={`dashboard-alerts-chevron${showStockAlerts ? " is-open" : ""}`} aria-hidden="true">⌄</span>
-          </div>
-        </button>
-        {showStockAlerts && stockAlerts.length ? (
-          <div id="dashboard-stock-alert-details" className="dashboard-alerts-scroll">
-            <table className="prototype-table dashboard-alerts-table">
-              <thead>
-                <tr>
-                  <th>Inventory Type</th>
-                  <th>Item</th>
-                  <th>Available</th>
-                  <th>Minimum</th>
-                  <th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {stockAlerts.map((row) => {
-                  const level = row.status === "EMPTY" ? "critical" : "low";
-                  return (
-                    <tr key={row.id} className={`stock-row ${level}`}>
-                      <td><span className="dashboard-alert-type">{row.inventory_type}</span></td>
-                      <td><strong>{row.name}</strong></td>
-                      <td>{row.current_stock.toLocaleString("en-GB")}</td>
-                      <td>{row.minimum_stock.toLocaleString("en-GB")}</td>
-                      <td>
-                        <span className={`status-badge ${level}`}>
-                          {row.status === "LOW" ? "▼ LOW" : "✕ EMPTY"}
-                        </span>
-                      </td>
+            {stockAlerts.length ? (
+              <div className="dashboard-alerts-modal-scroll">
+                <table className="prototype-table dashboard-alerts-table">
+                  <thead>
+                    <tr>
+                      <th>Inventory Type</th>
+                      <th>Item</th>
+                      <th>Available</th>
+                      <th>Minimum</th>
+                      <th>Status</th>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        ) : showStockAlerts ? (
-          <div id="dashboard-stock-alert-details" className="dashboard-alerts-clear">
-            <span aria-hidden="true">✓</span>
-            <div><strong>All stock levels are healthy</strong><small>No active device, accessory or packaging alerts.</small></div>
-          </div>
-        ) : null}
-      </section>
+                  </thead>
+                  <tbody>
+                    {stockAlerts.map((row) => {
+                      const level = row.status === "EMPTY" ? "critical" : "low";
+                      return (
+                        <tr key={row.id} className={`stock-row ${level}`}>
+                          <td><span className="dashboard-alert-type">{row.inventory_type}</span></td>
+                          <td><strong>{row.name}</strong></td>
+                          <td>{row.current_stock.toLocaleString("en-GB")}</td>
+                          <td>{row.minimum_stock.toLocaleString("en-GB")}</td>
+                          <td>
+                            <span className={`status-badge ${level}`}>
+                              {row.status === "LOW" ? "▼ LOW" : "✕ EMPTY"}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="dashboard-alerts-clear">
+                <span aria-hidden="true">✓</span>
+                <div><strong>All stock levels are healthy</strong><small>No active device, accessory or packaging alerts.</small></div>
+              </div>
+            )}
+          </section>
+        </div>
+      )}
 
       <section className="dashboard-insights-grid">
         <article className="prototype-card dashboard-chart-card">

@@ -426,6 +426,12 @@ const FR: Record<string, string> = {
     "Définissez l’identité de l’emballage et ses dimensions extérieures en centimètres.",
   Active: "Actif",
   Inactive: "Inactif",
+  "View stock alert overview": "Voir l’aperçu des alertes de stock",
+  "View overview": "Voir l’aperçu",
+  "Inventory control": "Contrôle du stock",
+  "Stock alert overview": "Aperçu des alertes de stock",
+  "All active device, accessory and packaging items that are low or empty.":
+    "Tous les appareils, accessoires et emballages actifs dont le stock est faible ou vide.",
 
   "Label Dimensions": "Dimensions des étiquettes",
   "Width (mm)": "Largeur (mm)",
@@ -1139,6 +1145,12 @@ const NL: Record<string, string> = {
     "Definieer de verpakking en de buitenafmetingen in centimeters.",
   Active: "Actief",
   Inactive: "Inactief",
+  "View stock alert overview": "Overzicht van voorraadmeldingen bekijken",
+  "View overview": "Overzicht bekijken",
+  "Inventory control": "Voorraadcontrole",
+  "Stock alert overview": "Overzicht voorraadmeldingen",
+  "All active device, accessory and packaging items that are low or empty.":
+    "Alle actieve apparaten, accessoires en verpakkingen met een lage of lege voorraad.",
 
   "Label Dimensions": "Labelafmetingen",
   "Width (mm)": "Breedte (mm)",

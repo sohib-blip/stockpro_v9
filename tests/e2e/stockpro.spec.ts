@@ -1585,17 +1585,21 @@ test.describe.serial("StockPro staging end-to-end", () => {
     const deviceRow = page.locator(".device-table tbody tr").filter({ hasText: run.bin.name });
     await expect(deviceRow).toContainText("▼ LOW");
 
-    const attentionCard = page.locator(".dashboard-alerts-card");
-    const attentionToggle = attentionCard.getByRole("button", {
-      name: /Stock attention needed/,
+    await expect(page.locator("#dashboard-stock-attention")).toHaveCount(0);
+    const stockAlertTrigger = page.getByRole("button", {
+      name: "View stock alert overview",
     });
-    await expect(attentionToggle).toHaveAttribute("aria-expanded", "false");
-    await expect(attentionCard.locator(".dashboard-alerts-table")).toHaveCount(0);
-    await attentionToggle.click();
-    await expect(attentionToggle).toHaveAttribute("aria-expanded", "true");
-    await expect(attentionCard).toContainText(run.bin.name);
-    await expect(attentionCard).toContainText(run.accessory.name);
-    await expect(attentionCard).toContainText("Radius Box Medium");
+    await expect(stockAlertTrigger).toContainText("Devices");
+    await expect(stockAlertTrigger).toContainText("Accessories");
+    await stockAlertTrigger.click();
+    const stockAlertDialog = page.getByRole("dialog", {
+      name: "Stock alert overview",
+    });
+    await expect(stockAlertDialog).toContainText(run.bin.name);
+    await expect(stockAlertDialog).toContainText(run.accessory.name);
+    await expect(stockAlertDialog).toContainText("Radius Box Medium");
+    await stockAlertDialog.getByRole("button", { name: "Close" }).click();
+    await expect(stockAlertDialog).toBeHidden();
 
     await page.getByRole("button", { name: "Packages", exact: true }).click();
     await page.getByPlaceholder("Search accessory…").fill("Radius Box Medium");

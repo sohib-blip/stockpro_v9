@@ -100,13 +100,17 @@ describe("packaging inventory", () => {
     expect(permissionsForApi("/api/packaging/adjust", "POST")).toEqual(["can_bins"]);
   });
 
-  it("exposes audited packaging management in Inventory Setup", () => {
+  it("keeps packaging format management compact in Inventory Setup", () => {
     expect(binsPage).toContain('"packaging"');
     expect(binsPage).toContain("<PackagingInventoryPanel");
-    expect(binsPage).toContain("Packaging Inventory");
-    expect(panel).toContain("/api/packaging/adjust");
-    expect(panel).toContain("/api/packaging/history");
-    expect(panel).toContain("Required for the stock audit history.");
+    expect(panel).toContain("Packaging Formats");
+    expect(panel).toContain("+ New Packaging Format");
+    expect(panel).toContain("<th>Name</th><th>Dimensions</th><th>Actions</th>");
+    expect(panel).toContain("/api/packaging/update");
+    expect(panel).toContain("/api/packaging/toggle-active");
+    expect(panel).not.toContain("/api/packaging/adjust");
+    expect(panel).not.toContain("/api/packaging/history");
+    expect(panel).not.toContain("Minimum stock alert");
     expect(panel).not.toContain("maximum weight");
   });
 });

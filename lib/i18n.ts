@@ -416,6 +416,16 @@ const FR: Record<string, string> = {
   "All stock levels are healthy": "Tous les niveaux de stock sont corrects",
   "No active device, accessory or packaging alerts.":
     "Aucune alerte active pour les appareils, accessoires ou emballages.",
+  "Packaging Formats": "Formats d’emballage",
+  "Create formats and maintain their names, dimensions and availability.":
+    "Créez des formats et gérez leurs noms, dimensions et disponibilité.",
+  "Packaging formats could not be loaded":
+    "Impossible de charger les formats d’emballage",
+  "Loading packaging formats…": "Chargement des formats d’emballage…",
+  "Define the package identity and its outer dimensions in centimetres.":
+    "Définissez l’identité de l’emballage et ses dimensions extérieures en centimètres.",
+  Active: "Actif",
+  Inactive: "Inactif",
 
   "Label Dimensions": "Dimensions des étiquettes",
   "Width (mm)": "Largeur (mm)",
@@ -1119,6 +1129,16 @@ const NL: Record<string, string> = {
   "All stock levels are healthy": "Alle voorraadniveaus zijn gezond",
   "No active device, accessory or packaging alerts.":
     "Geen actieve meldingen voor apparaten, accessoires of verpakkingen.",
+  "Packaging Formats": "Verpakkingsformaten",
+  "Create formats and maintain their names, dimensions and availability.":
+    "Maak formaten en beheer hun namen, afmetingen en beschikbaarheid.",
+  "Packaging formats could not be loaded":
+    "Verpakkingsformaten konden niet worden geladen",
+  "Loading packaging formats…": "Verpakkingsformaten laden…",
+  "Define the package identity and its outer dimensions in centimetres.":
+    "Definieer de verpakking en de buitenafmetingen in centimeters.",
+  Active: "Actief",
+  Inactive: "Inactief",
 
   "Label Dimensions": "Labelafmetingen",
   "Width (mm)": "Breedte (mm)",

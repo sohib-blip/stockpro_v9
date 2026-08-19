@@ -118,6 +118,7 @@ export default function DashboardPage() {
     useState<AccessoryCategoryFilter>("All");
   const [chartPage, setChartPage] = useState(0);
   const [showAllAccessories, setShowAllAccessories] = useState(false);
+  const [showStockAlerts, setShowStockAlerts] = useState(false);
   const [showShippedRanking, setShowShippedRanking] = useState(false);
   const [showImeiSearch, setShowImeiSearch] = useState(false);
   const [imeiSearchText, setImeiSearchText] = useState("");
@@ -555,19 +556,27 @@ export default function DashboardPage() {
         }`}
         aria-live="polite"
       >
-        <div className="prototype-table-toolbar dashboard-alerts-toolbar">
+        <button
+          type="button"
+          className="dashboard-alerts-toggle"
+          aria-expanded={showStockAlerts}
+          aria-controls="dashboard-stock-alert-details"
+          onClick={() => setShowStockAlerts((current) => !current)}
+        >
           <div>
             <span className="dashboard-alerts-eyebrow">Low &amp; empty inventory</span>
             <h2>Stock attention needed</h2>
-            <p>One consolidated view of device, accessory and packaging alerts.</p>
           </div>
-          <div className="dashboard-alerts-counts" aria-label="Stock alert totals">
-            <span className="is-low"><strong>{lowAlerts}</strong> Low</span>
-            <span className="is-empty"><strong>{emptyAlerts}</strong> Empty</span>
+          <div className="dashboard-alerts-toggle-summary">
+            <div className="dashboard-alerts-counts" aria-label="Stock alert totals">
+              <span className="is-low"><strong>{lowAlerts}</strong> Low</span>
+              <span className="is-empty"><strong>{emptyAlerts}</strong> Empty</span>
+            </div>
+            <span className={`dashboard-alerts-chevron${showStockAlerts ? " is-open" : ""}`} aria-hidden="true">⌄</span>
           </div>
-        </div>
-        {stockAlerts.length ? (
-          <div className="dashboard-alerts-scroll">
+        </button>
+        {showStockAlerts && stockAlerts.length ? (
+          <div id="dashboard-stock-alert-details" className="dashboard-alerts-scroll">
             <table className="prototype-table dashboard-alerts-table">
               <thead>
                 <tr>
@@ -598,12 +607,12 @@ export default function DashboardPage() {
               </tbody>
             </table>
           </div>
-        ) : (
-          <div className="dashboard-alerts-clear">
+        ) : showStockAlerts ? (
+          <div id="dashboard-stock-alert-details" className="dashboard-alerts-clear">
             <span aria-hidden="true">✓</span>
             <div><strong>All stock levels are healthy</strong><small>No active device, accessory or packaging alerts.</small></div>
           </div>
-        )}
+        ) : null}
       </section>
 
       <section className="dashboard-insights-grid">

@@ -1586,6 +1586,13 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(deviceRow).toContainText("▼ LOW");
 
     const attentionCard = page.locator(".dashboard-alerts-card");
+    const attentionToggle = attentionCard.getByRole("button", {
+      name: /Stock attention needed/,
+    });
+    await expect(attentionToggle).toHaveAttribute("aria-expanded", "false");
+    await expect(attentionCard.locator(".dashboard-alerts-table")).toHaveCount(0);
+    await attentionToggle.click();
+    await expect(attentionToggle).toHaveAttribute("aria-expanded", "true");
     await expect(attentionCard).toContainText(run.bin.name);
     await expect(attentionCard).toContainText(run.accessory.name);
     await expect(attentionCard).toContainText("Radius Box Medium");
@@ -1637,7 +1644,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(binRow).toHaveCount(0);
 
     await page.getByRole("tab", { name: /Packaging Inventory/ }).click();
-    await expect(page.getByRole("heading", { name: "Packaging Inventory" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Packaging Formats" })).toBeVisible();
     await page.getByRole("button", { name: "+ New Packaging Format" }).click();
     const packagingDialog = page.getByRole("dialog", {
       name: "New Packaging Format",
@@ -1648,7 +1655,6 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await packagingDialog.getByLabel("Length").fill("20");
     await packagingDialog.getByLabel("Width").fill("10");
     await packagingDialog.getByLabel("Height").fill("5");
-    await packagingDialog.getByLabel("Minimum stock alert").fill("4");
     await packagingDialog
       .getByRole("button", { name: "Save Packaging Format" })
       .click();
@@ -1659,30 +1665,24 @@ test.describe.serial("StockPro staging end-to-end", () => {
     });
     await expect(packagingRow).toContainText(run.packaging.name);
     await expect(packagingRow).toContainText("20 × 10 × 5 cm");
-    await packagingRow.getByRole("button", { name: "Adjust" }).click();
-    const adjustmentDialog = page.getByRole("dialog", {
-      name: `Adjust ${run.packaging.name}`,
-    });
-    await adjustmentDialog.getByLabel("Adjustment").selectOption("receive");
-    await adjustmentDialog.getByLabel("Quantity").fill("12");
-    await adjustmentDialog
-      .getByLabel("Reason")
-      .fill(`E2E packaging delivery ${run.stamp}`);
-    await adjustmentDialog
-      .getByRole("button", { name: "Confirm Stock Adjustment" })
-      .click();
-    await expect(page.getByText("Packaging stock updated")).toBeVisible();
-    await expect(packagingRow).toContainText("12");
+    await expect(packagingRow).not.toContainText("On Hand");
+    await expect(packagingRow.getByRole("button")).toHaveCount(2);
 
-    await packagingRow.getByRole("button", { name: "History" }).click();
-    const packagingHistory = page.getByRole("dialog", {
-      name: `${run.packaging.name} History`,
+    await packagingRow.getByRole("button", { name: "Edit" }).click();
+    const editPackagingDialog = page.getByRole("dialog", {
+      name: "Edit Packaging Format",
     });
-    await expect(packagingHistory).toContainText(
-      `E2E packaging delivery ${run.stamp}`
-    );
-    await expect(packagingHistory).toContainText("RECEIVE +12");
-    await packagingHistory.getByRole("button", { name: "Close" }).click();
+    await editPackagingDialog.getByLabel("Height").fill("6");
+    await editPackagingDialog
+      .getByRole("button", { name: "Save Packaging Format" })
+      .click();
+    await expect(page.getByText("Packaging format updated")).toBeVisible();
+    await expect(packagingRow).toContainText("20 × 10 × 6 cm");
+
+    await packagingRow.getByRole("button", { name: "Deactivate" }).click();
+    await expect(packagingRow).toContainText("Inactive");
+    await packagingRow.getByRole("button", { name: "Activate" }).click();
+    await expect(packagingRow).toContainText("Active");
 
     await page.goto("/supply");
     const supplySearch = page.getByPlaceholder("Search order or tracking…");

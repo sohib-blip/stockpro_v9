@@ -160,7 +160,7 @@ function createAutomaticAccessorySpreadsheet(path: string) {
   XLSX.writeFile(workbook, path);
 }
 
-function createDispatchPlanningSpreadsheet(path: string) {
+function createDispatchPlanningSpreadsheet(path: string, orderId = `E2E-${run.stamp}`) {
   const sheet = XLSX.utils.aoa_to_sheet([
     ["Kinesis Vehicle Sheet"],
     [`Generated Date: ${new Date().toISOString()}`],
@@ -179,7 +179,7 @@ function createDispatchPlanningSpreadsheet(path: string) {
       "E2E-VEHICLE",
       "ATOM",
       "Teltonika - Atom-E 4G - FMC880",
-      `E2E-${run.stamp}`,
+      orderId,
       `LINE-${run.stamp}`,
       "BE",
       "StockPro E2E Customer",
@@ -1661,7 +1661,14 @@ test.describe.serial("StockPro staging end-to-end", () => {
     page,
   }) => {
     const path = spreadsheetPath(`daily-dispatch-${run.stamp}.xlsx`);
+    const learnedPath = spreadsheetPath(
+      `daily-dispatch-learned-${run.stamp}.xlsx`
+    );
     createDispatchPlanningSpreadsheet(path);
+    createDispatchPlanningSpreadsheet(
+      learnedPath,
+      `E2E-LEARNED-${run.stamp}`
+    );
 
     await login(page, "operator");
     await page.goto("/dispatch-planning");
@@ -1669,6 +1676,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
       page.getByRole("heading", { name: "Dispatch Planning" })
     ).toBeVisible();
     expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
+    expect(await readPackagingStock(run.dispatchAlternatePackaging.id)).toBe(5);
 
     await page.locator('input[type="file"]').setInputFiles(path);
     await page.getByRole("button", { name: "Preview Packaging" }).click();
@@ -1678,6 +1686,17 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
 
     await page
+      .getByLabel(`Package for order E2E-${run.stamp}`)
+      .selectOption(run.dispatchAlternatePackaging.id);
+    await expect(page.getByText("Packaging adjusted")).toBeVisible();
+    await expect(
+      page.getByText("Adjusted — learned after confirmation")
+    ).toBeVisible();
+    await expect(
+      page.getByText(run.dispatchAlternatePackaging.name).first()
+    ).toBeVisible();
+
+    await page
       .getByRole("button", { name: "Confirm & Deduct Packaging" })
       .click();
     await page
@@ -1685,7 +1704,8 @@ test.describe.serial("StockPro staging end-to-end", () => {
       .getByRole("button", { name: "Confirm & Deduct" })
       .click();
     await expect(page.getByText("Daily dispatch confirmed")).toBeVisible();
-    expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(4);
+    expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
+    expect(await readPackagingStock(run.dispatchAlternatePackaging.id)).toBe(4);
 
     const historyRow = page
       .locator(".dispatch-history-scroll tbody tr")
@@ -1697,12 +1717,21 @@ test.describe.serial("StockPro staging end-to-end", () => {
       /dispatch-daily-dispatch-/i
     );
 
+    await page.locator('input[type="file"]').setInputFiles(learnedPath);
+    await page.getByRole("button", { name: "Preview Packaging" }).click();
+    await expect(page.getByText("Preview ready — stock unchanged")).toBeVisible();
+    await expect(
+      page.getByLabel(`Package for order E2E-LEARNED-${run.stamp}`)
+    ).toHaveValue(run.dispatchAlternatePackaging.id);
+    await expect(page.getByText("Learned from 1 confirmed choice")).toBeVisible();
+    await page.getByRole("button", { name: "Clear Preview" }).click();
+
     await page.locator('input[type="file"]').setInputFiles(path);
     await page.getByRole("button", { name: "Preview Packaging" }).click();
     await expect(
       page.getByText("This workbook has already been confirmed. Packaging stock was not changed.")
     ).toBeVisible();
-    expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(4);
+    expect(await readPackagingStock(run.dispatchAlternatePackaging.id)).toBe(4);
 
     await historyRow.getByRole("button", { name: "Undo" }).click();
     await page
@@ -1711,6 +1740,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
       .click();
     await expect(page.getByText("Dispatch batch undone")).toBeVisible();
     expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
+    expect(await readPackagingStock(run.dispatchAlternatePackaging.id)).toBe(5);
     await expect(historyRow).toContainText("UNDONE");
     await signOut(page);
   });

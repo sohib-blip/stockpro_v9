@@ -19,6 +19,7 @@ export type StagingRun = {
   accessory: { id: string; name: string };
   packaging: { id: string; code: string; name: string };
   dispatchPackaging: { id: string; code: string; name: string };
+  dispatchAlternatePackaging: { id: string; code: string; name: string };
   manualImei: string;
   spreadsheetImei: string;
   manualBox: string;
@@ -67,6 +68,11 @@ export async function createStagingRun(): Promise<StagingRun> {
       id: "",
       code: `E2E-DSP-${shortNumber}`,
       name: `E2E Dispatch Box ${stamp}`,
+    },
+    dispatchAlternatePackaging: {
+      id: "",
+      code: `E2E-DSP-ALT-${shortNumber}`,
+      name: `E2E Dispatch Alternate ${stamp}`,
     },
     manualImei: makeImei(numericStamp),
     spreadsheetImei: makeImei(numericStamp + 1),
@@ -192,6 +198,42 @@ export async function createStagingRun(): Promise<StagingRun> {
       name: String(dispatchPackaging.name),
     };
 
+    const {
+      data: dispatchAlternatePackaging,
+      error: dispatchAlternatePackagingError,
+    } = await supabase
+      .from("packaging_types")
+      .insert({
+        code: run.dispatchAlternatePackaging.code,
+        name: run.dispatchAlternatePackaging.name,
+        category: "BOX",
+        length_cm: 12,
+        width_cm: 10,
+        height_cm: 3,
+        on_hand_stock: 5,
+        reserved_stock: 0,
+        minimum_stock: 0,
+        active: true,
+        sort_order: 2,
+        source_name: "StockPro E2E adaptive dispatch planning",
+      })
+      .select("id,code,name")
+      .single();
+    throwOnError(
+      dispatchAlternatePackagingError,
+      "Create alternate E2E dispatch packaging"
+    );
+    if (!dispatchAlternatePackaging) {
+      throw new Error(
+        "Create alternate E2E dispatch packaging: no row returned"
+      );
+    }
+    run.dispatchAlternatePackaging = {
+      id: String(dispatchAlternatePackaging.id),
+      code: String(dispatchAlternatePackaging.code),
+      name: String(dispatchAlternatePackaging.name),
+    };
+
     return run;
   } catch (error) {
     await cleanupStagingRun(run, supabase);
@@ -310,7 +352,11 @@ export async function cleanupStagingRun(
   const { data: packagingTypes } = await supabase
     .from("packaging_types")
     .select("id")
-    .in("code", [run.packaging.code, run.dispatchPackaging.code]);
+    .in("code", [
+      run.packaging.code,
+      run.dispatchPackaging.code,
+      run.dispatchAlternatePackaging.code,
+    ]);
   const packagingTypeIds = (packagingTypes || []).map((row) => row.id);
   if (packagingTypeIds.length) {
     await supabase
@@ -426,6 +472,10 @@ export async function assertStagingRunClean(run: StagingRun) {
     rowCount(
       supabase.from("packaging_types").select("*", { count: "exact", head: true }).eq("code", run.dispatchPackaging.code),
       "dispatch packaging type"
+    ),
+    rowCount(
+      supabase.from("packaging_types").select("*", { count: "exact", head: true }).eq("code", run.dispatchAlternatePackaging.code),
+      "alternate dispatch packaging type"
     ),
     rowCount(
       supabase.from("dispatch_batches").select("*", { count: "exact", head: true }).in("actor_id", userIds),

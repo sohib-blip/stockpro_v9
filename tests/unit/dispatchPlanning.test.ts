@@ -4,12 +4,17 @@ import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import { permissionForPage, permissionsForApi } from "../../lib/access-control";
 import {
+  applyDispatchPackagingSelections,
   itemFitsPackage,
   parseDispatchWorkbook,
   planDispatchPackaging,
   resolveDispatchCatalogItem,
   type PackagingOption,
 } from "../../lib/dispatch-planning";
+import {
+  dispatchComposition,
+  dispatchCompositionKey,
+} from "../../lib/dispatch-learning";
 
 const root = process.cwd();
 const migration = readFileSync(
@@ -23,6 +28,13 @@ const page = readFileSync(
   join(root, "app/(app)/dispatch-planning/page.tsx"),
   "utf8"
 );
+const learningMigration = readFileSync(
+  join(
+    root,
+    "supabase/migrations/20260819193000_add_dispatch_packaging_learning.sql"
+  ),
+  "utf8"
+).toLowerCase();
 
 function workbookWithRows(rows: unknown[][]) {
   const workbook = XLSX.utils.book_new();
@@ -175,6 +187,90 @@ describe("daily dispatch planning", () => {
     ]);
   });
 
+  it("accepts a confirmed package override and recomputes the exact deduction", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "ATOM", "Teltonika - Atom-E 4G - FMC880", 2177001, 1, "BE", "Customer A"],
+        ["AA-02", "ATOM", "Teltonika - Atom-E 4G - FMC880", 2177001, 2, "BE", "Customer A"],
+      ])
+    );
+    const packages = [
+      packaging({ id: "small", name: "Radius Small" }),
+      packaging({
+        id: "medium",
+        name: "Radius Medium",
+        lengthCm: 20,
+        widthCm: 13,
+        heightCm: 5,
+      }),
+    ];
+    const plan = applyDispatchPackagingSelections(parsed.orders, packages, [
+      {
+        orderId: "2177001",
+        packagingTypeId: "medium",
+        quantity: 1,
+        source: "manual",
+      },
+    ]);
+
+    expect(plan.blockers).toEqual([]);
+    expect(plan.totalPackages).toBe(1);
+    expect(plan.orders[0].packages[0]).toMatchObject({
+      packagingTypeId: "medium",
+      name: "Radius Medium",
+      quantity: 1,
+      source: "manual",
+    });
+    expect(plan.packageUsage).toEqual([
+      expect.objectContaining({ packagingTypeId: "medium", quantity: 1 }),
+    ]);
+  });
+
+  it("rejects package overrides that cannot fit an individual item", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "AIO Camera", "", 2177001, 1, "BE", "Customer A"],
+      ])
+    );
+    const plan = applyDispatchPackagingSelections(
+      parsed.orders,
+      [packaging({ id: "small", name: "Radius Small" })],
+      [
+        {
+          orderId: "2177001",
+          packagingTypeId: "small",
+          quantity: 1,
+          source: "manual",
+        },
+      ]
+    );
+
+    expect(plan.totalPackages).toBe(0);
+    expect(plan.blockers[0]).toContain(
+      "Radius Small cannot fit at least one item dimension"
+    );
+  });
+
+  it("builds a stable learning key from normalized order composition", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "ATOM", "Teltonika - Atom-E 4G - FMC880", 2177001, 1, "BE", "Customer A"],
+        ["AA-02", "ATOM", "Teltonika - Atom-E 4G - FMC880", 2177001, 2, "BE", "Customer A"],
+      ])
+    );
+    expect(dispatchComposition(parsed.orders[0])).toEqual([
+      { item: "FMC880", quantity: 2 },
+    ]);
+    expect(dispatchCompositionKey(parsed.orders[0])).toMatch(/^[a-f0-9]{64}$/);
+    expect(dispatchCompositionKey(parsed.orders[0])).toBe(
+      dispatchCompositionKey({
+        ...parsed.orders[0],
+        orderId: "another-order",
+        destinationCountry: "FR",
+      })
+    );
+  });
+
   it("keeps confirmation and undo transactional, idempotent and service-only", () => {
     expect(migration.trimStart()).toMatch(/^begin;/);
     expect(migration.trimEnd()).toMatch(/commit;$/);
@@ -187,6 +283,17 @@ describe("daily dispatch planning", () => {
     expect(migration).toContain("dispatch_source_already_confirmed");
     expect(migration).toContain("dispatch_orders_already_confirmed");
     expect(migration).toContain("for update of packaging");
+    expect(learningMigration.trimStart()).toMatch(/^begin;/);
+    expect(learningMigration.trimEnd()).toMatch(/commit;$/);
+    expect(learningMigration).toContain(
+      "alter table public.dispatch_packaging_preferences enable row level security"
+    );
+    expect(learningMigration).toContain(
+      "from public, anon, authenticated"
+    );
+    expect(learningMigration).toContain(
+      "after insert or update of status on public.dispatch_batches"
+    );
     expect(migration).toContain("'undo_consume'");
     expect(migration).toContain("to service_role;");
   });

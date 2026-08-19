@@ -4,9 +4,11 @@ import * as XLSX from "xlsx";
 import { supabaseService } from "@/lib/auth";
 import { getApiIdentity } from "@/lib/api-identity";
 import {
+  applyDispatchPackagingSelections,
+  eligibleDispatchPackagingIds,
   parseDispatchWorkbook,
-  planDispatchPackaging,
 } from "@/lib/dispatch-planning";
+import { dispatchCompositionKey } from "@/lib/dispatch-learning";
 import { createDispatchPreviewToken } from "@/lib/dispatch-preview-token";
 import { loadDispatchPackagingOptions } from "@/app/api/dispatch-planning/_server";
 import {
@@ -135,7 +137,51 @@ export async function POST(req: Request) {
     }
 
     const packages = await loadDispatchPackagingOptions();
-    const plan = planDispatchPackaging(parsed.orders, packages);
+    const compositionKeys = new Map(
+      parsed.orders.map((order) => [order.orderId, dispatchCompositionKey(order)])
+    );
+    const { data: learnedRows, error: learnedError } = await service
+      .from("dispatch_packaging_preferences")
+      .select(
+        "composition_key,packaging_type_id,package_quantity,confirmation_count"
+      )
+      .in("composition_key", Array.from(compositionKeys.values()));
+    if (learnedError) throw learnedError;
+
+    const activePackageIds = new Set(packages.map((packaging) => packaging.id));
+    const learnedByComposition = new Map(
+      (learnedRows || [])
+        .filter((row) => activePackageIds.has(String(row.packaging_type_id)))
+        .map((row) => [String(row.composition_key), row])
+    );
+    const learnedSelections = parsed.orders.flatMap((order) => {
+      const learned = learnedByComposition.get(compositionKeys.get(order.orderId)!);
+      const eligibleIds = new Set(eligibleDispatchPackagingIds(order, packages));
+      return learned && eligibleIds.has(String(learned.packaging_type_id))
+        ? [
+            {
+              orderId: order.orderId,
+              packagingTypeId: String(learned.packaging_type_id),
+              quantity: Number(learned.package_quantity),
+              source: "learned" as const,
+              learningCount: Number(learned.confirmation_count || 1),
+            },
+          ]
+        : [];
+    });
+    const calculatedPlan = applyDispatchPackagingSelections(
+      parsed.orders,
+      packages,
+      learnedSelections
+    );
+    const plan = {
+      ...calculatedPlan,
+      orders: calculatedPlan.orders.map((order) => ({
+        ...order,
+        compositionKey: compositionKeys.get(order.orderId),
+        eligiblePackagingTypeIds: eligibleDispatchPackagingIds(order, packages),
+      })),
+    };
     const previewToken = createDispatchPreviewToken({
       sourceHash,
       sourceFilename: file.name || "daily-dispatch.xlsx",
@@ -157,6 +203,14 @@ export async function POST(req: Request) {
         parsed_sheets: parsed.parsedSheets,
         skipped_sheets: parsed.skippedSheets,
       },
+      packaging_options: packages.map((packaging) => ({
+        id: packaging.id,
+        code: packaging.code,
+        name: packaging.name,
+        onHandStock: packaging.onHandStock,
+        reservedStock: packaging.reservedStock,
+        availableStock: packaging.onHandStock - packaging.reservedStock,
+      })),
       plan,
     }, { status: plan.blockers.length > 0 ? 422 : 200 });
   } catch (error) {

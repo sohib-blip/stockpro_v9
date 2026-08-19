@@ -433,7 +433,62 @@ body {
 }
 
 .dispatch-orders-scroll table {
-  min-width: 980px;
+  min-width: 1120px;
+}
+
+.dispatch-packaging-control {
+  min-width: 250px;
+  display: grid;
+  grid-template-columns: minmax(170px, 1fr) 64px;
+  gap: 7px;
+  align-items: end;
+}
+
+.dispatch-packaging-control select,
+.dispatch-packaging-control input {
+  width: 100%;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 11.5px;
+}
+
+.dispatch-packaging-control select {
+  padding: 0 30px 0 9px;
+}
+
+.dispatch-packaging-control input {
+  padding: 0 7px;
+}
+
+.dispatch-package-quantity {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dispatch-learning-note {
+  grid-column: 1 / -1;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.dispatch-learning-note.is-learned {
+  color: var(--success);
+  font-weight: 700;
+}
+
+.dispatch-learning-note.is-manual {
+  color: var(--brand);
+  font-weight: 700;
 }
 
 .dispatch-history-scroll {

@@ -33,7 +33,25 @@ type DispatchOrder = {
   totalVolumeCm3: number;
   adjustedVolumeCm3: number;
   items: DispatchItem[];
-  packages: Array<{ name: string; code: string; quantity: number }>;
+  compositionKey?: string;
+  eligiblePackagingTypeIds?: string[];
+  packages: Array<{
+    packagingTypeId: string;
+    name: string;
+    code: string;
+    quantity: number;
+    source?: "calculated" | "learned" | "manual";
+    learningCount?: number;
+  }>;
+};
+
+type PackagingOption = {
+  id: string;
+  code: string;
+  name: string;
+  onHandStock: number;
+  reservedStock: number;
+  availableStock: number;
 };
 
 type Preview = {
@@ -57,6 +75,7 @@ type Preview = {
     hardwareType?: string;
     deviceType?: string;
   }>;
+  packaging_options?: PackagingOption[];
 };
 
 type HistoryRow = {
@@ -89,6 +108,58 @@ function formatDate(value: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function rebuildClientPlan(
+  orders: DispatchOrder[],
+  options: PackagingOption[]
+) {
+  const optionsById = new Map(options.map((option) => [option.id, option]));
+  const usageById = new Map<string, PackageUsage>();
+  const blockers: string[] = [];
+
+  for (const order of orders) {
+    const allocation = order.packages[0];
+    const option = allocation
+      ? optionsById.get(allocation.packagingTypeId)
+      : undefined;
+    if (!allocation || !option) {
+      blockers.push(`Order ${order.orderId}: select an available package.`);
+      continue;
+    }
+    const previous = usageById.get(option.id);
+    const quantity = (previous?.quantity || 0) + allocation.quantity;
+    usageById.set(option.id, {
+      packagingTypeId: option.id,
+      code: option.code,
+      name: option.name,
+      quantity,
+      onHandStock: option.onHandStock,
+      availableStock: option.availableStock,
+      stockAfter: option.onHandStock - quantity,
+    });
+  }
+
+  const packageUsage = Array.from(usageById.values()).sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+  for (const usage of packageUsage) {
+    if (usage.quantity > usage.availableStock) {
+      blockers.push(
+        `${usage.name}: ${usage.quantity} required, but only ${usage.availableStock} available.`
+      );
+    }
+  }
+
+  return {
+    orders,
+    packageUsage,
+    blockers,
+    totalPackages: packageUsage.reduce(
+      (total, usage) => total + usage.quantity,
+      0
+    ),
+  };
 }
 
 export default function DispatchPlanningPage() {
@@ -188,6 +259,20 @@ export default function DispatchPlanningPage() {
             operationId.current ||
             (operationId.current = crypto.randomUUID()),
           preview_token: preview.preview_token,
+          selections: (preview.plan?.orders || []).flatMap((order) => {
+            const allocation = order.packages[0];
+            return allocation
+              ? [
+                  {
+                    orderId: order.orderId,
+                    packagingTypeId: allocation.packagingTypeId,
+                    quantity: allocation.quantity,
+                    source: allocation.source,
+                    learningCount: allocation.learningCount,
+                  },
+                ]
+              : [];
+          }),
         }),
       });
       const json = await response.json().catch(() => null);
@@ -213,6 +298,53 @@ export default function DispatchPlanningPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  function updateOrderPackaging(
+    orderId: string,
+    update: { packagingTypeId?: string; quantity?: number }
+  ) {
+    setPreview((current) => {
+      if (!current?.plan) return current;
+      const options = current.packaging_options || [];
+      const optionById = new Map(options.map((option) => [option.id, option]));
+      const orders = current.plan.orders.map((order) => {
+        if (order.orderId !== orderId) return order;
+        const currentAllocation = order.packages[0];
+        const packagingTypeId =
+          update.packagingTypeId || currentAllocation?.packagingTypeId;
+        const option = packagingTypeId
+          ? optionById.get(packagingTypeId)
+          : undefined;
+        if (!option) return order;
+        return {
+          ...order,
+          packages: [
+            {
+              packagingTypeId: option.id,
+              code: option.code,
+              name: option.name,
+              quantity: Math.max(
+                1,
+                Math.min(
+                  1_000_000,
+                  update.quantity ?? currentAllocation?.quantity ?? 1
+                )
+              ),
+              source: "manual" as const,
+            },
+          ],
+        };
+      });
+      const plan = rebuildClientPlan(orders, options);
+      return { ...current, ok: plan.blockers.length === 0, plan };
+    });
+    setFeedback({
+      kind: "info",
+      title: "Packaging adjusted",
+      message:
+        "Confirm the dispatch after the order is physically packed. StockPro will remember this choice for the same order composition.",
+    });
   }
 
   async function undoDispatch() {
@@ -372,18 +504,65 @@ export default function DispatchPlanningPage() {
 
               <div className="dispatch-orders-scroll">
                 <table>
-                  <thead><tr><th>Order ID</th><th>Country</th><th>Customer</th><th>Items</th><th>Volume</th><th>Recommended packaging</th></tr></thead>
+                  <thead><tr><th>Order ID</th><th>Country</th><th>Customer</th><th>Items</th><th>Volume</th><th>Packaging — editable</th></tr></thead>
                   <tbody>
-                    {preview.plan.orders.map((order) => (
-                      <tr key={order.orderId}>
+                    {preview.plan.orders.map((order) => {
+                      const allocation = order.packages[0];
+                      const eligibleIds = new Set(order.eligiblePackagingTypeIds || []);
+                      const options = (preview.packaging_options || []).filter(
+                        (option) => eligibleIds.has(option.id)
+                      );
+                      return <tr key={order.orderId}>
                         <td><strong>{order.orderId}</strong></td>
                         <td>{order.destinationCountry || "—"}</td>
                         <td>{order.companyName || "—"}</td>
                         <td>{order.items.map((item) => `${item.quantity} × ${item.name}`).join(", ")}</td>
                         <td>{formatNumber(order.totalVolumeCm3, 1)} cm³</td>
-                        <td>{order.packages.map((item) => `${item.quantity} × ${item.name}`).join(", ") || "Blocked"}</td>
-                      </tr>
-                    ))}
+                        <td>
+                          {allocation ? <div className="dispatch-packaging-control">
+                            <label>
+                              <select
+                                aria-label={`Package for order ${order.orderId}`}
+                                value={allocation.packagingTypeId}
+                                onChange={(event) =>
+                                  updateOrderPackaging(order.orderId, {
+                                    packagingTypeId: event.target.value,
+                                  })
+                                }
+                              >
+                                {options.map((option) => (
+                                  <option key={option.id} value={option.id}>
+                                    {option.name} · {option.availableStock} available
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="dispatch-package-quantity">
+                              <span>Qty</span>
+                              <input
+                                aria-label={`Package quantity for order ${order.orderId}`}
+                                type="number"
+                                min={1}
+                                max={1_000_000}
+                                value={allocation.quantity}
+                                onChange={(event) =>
+                                  updateOrderPackaging(order.orderId, {
+                                    quantity: Number(event.target.value) || 1,
+                                  })
+                                }
+                              />
+                            </label>
+                            <small className={`dispatch-learning-note is-${allocation.source || "calculated"}`}>
+                              {allocation.source === "learned"
+                                ? `Learned from ${allocation.learningCount || 1} confirmed choice${(allocation.learningCount || 1) === 1 ? "" : "s"}`
+                                : allocation.source === "manual"
+                                  ? "Adjusted — learned after confirmation"
+                                  : "Calculated suggestion"}
+                            </small>
+                          </div> : "Blocked"}
+                        </td>
+                      </tr>;
+                    })}
                   </tbody>
                 </table>
               </div>

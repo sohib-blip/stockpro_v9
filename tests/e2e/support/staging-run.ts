@@ -62,7 +62,7 @@ export async function createStagingRun(): Promise<StagingRun> {
     alternateBin: { id: "", name: `TESTALTERNATE${shortNumber}` },
     accessory: { id: "", name: `E2E Cable ${stamp}` },
     dispatchRuleDevice: { id: "", name: "FMC880", owned: false },
-    dispatchRuleAccessory: { id: "", name: "FOB" },
+    dispatchRuleAccessory: { id: "", name: "Atom Install Guide\tTBD001" },
     packaging: {
       id: "",
       code: `E2E-PKG-${shortNumber}`,

@@ -114,11 +114,13 @@ export async function POST(req: Request) {
       automaticRules
     );
     if (enriched.issues.length > 0) {
+      const firstIssue = enriched.issues[0]?.message;
       return NextResponse.json(
         {
           ok: false,
-          error:
-            "An automatic accessory rule has missing or invalid volume data. Nothing was deducted.",
+          error: firstIssue
+            ? `${firstIssue} Nothing was deducted.`
+            : "An automatic accessory rule has missing or invalid volume data. Nothing was deducted.",
           issues: enriched.issues.slice(0, 100),
           parsed_sheets: parsed.parsedSheets,
           skipped_sheets: parsed.skippedSheets,

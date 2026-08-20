@@ -126,9 +126,21 @@ const ITEM_CATALOG: DispatchCatalogItem[] = [
   { name: "BUZZER", lengthCm: 2, widthCm: 4, heightCm: 4 },
   { name: "CV200 Bullet Camera", lengthCm: 5, widthCm: 3, heightCm: 6 },
   { name: "FMB130 connectorized harness", lengthCm: 1.5, widthCm: 7, heightCm: 7 },
+  { name: "FMB140 connectorized harness", lengthCm: 1.5, widthCm: 7, heightCm: 7 },
   { name: "FOB", lengthCm: 5, widthCm: 2, heightCm: 2 },
   { name: "HARDWIRED Cable for", lengthCm: 14, widthCm: 5, heightCm: 5 },
   { name: "READER", lengthCm: 11, widthCm: 7, heightCm: 0.5 },
+  { name: "Atom Install Guide", lengthCm: 5.5, widthCm: 8.3, heightCm: 0.1 },
+  { name: "Barra Adhesive Pad", lengthCm: 14.5, widthCm: 4.5, heightCm: 0.2 },
+  { name: "CV200 Adhesive Pad", lengthCm: 7, widthCm: 5, heightCm: 0.2 },
+  { name: "Tachograph T-Harness", lengthCm: 16, widthCm: 12, heightCm: 2 },
+  { name: "WIPE", lengthCm: 6.5, widthCm: 7.5, heightCm: 0.3 },
+  // The official volume workbook intentionally has no dimensions for these
+  // flexible consumables. They remain visible in the packing list but add no
+  // incremental box volume because they fit around the device contents.
+  { name: "Large Cable Ties", lengthCm: 0, widthCm: 0, heightCm: 0 },
+  { name: "NEON-T Adhesive Pads", lengthCm: 0, widthCm: 0, heightCm: 0 },
+  { name: "T7 Adhesive pad", lengthCm: 0, widthCm: 0, heightCm: 0 },
   { name: "CNHYCV200XEU", lengthCm: 9, widthCm: 20, heightCm: 23.5 },
   { name: "BarraGps", lengthCm: 2.5, widthCm: 5.5, heightCm: 16 },
   { name: "FMC003", lengthCm: 2.5, widthCm: 5, heightCm: 7 },
@@ -145,6 +157,22 @@ const ITEM_CATALOG: DispatchCatalogItem[] = [
   { name: "Howen4CH", lengthCm: 25, widthCm: 24, heightCm: 15 },
 ];
 
+const DISPATCH_CATALOG_ALIASES: Record<string, string[]> = {
+  "Atom Install Guide": ["Atom Install Guide TBD001"],
+  "Barra Adhesive Pad": ["Barra Adhesive Pad BAP01"],
+  "CV200 Adhesive Pad": [
+    "CV200 adhesive pad CVAP",
+    "CV200 Adhesive Pad CVAP01",
+  ],
+  "FMB130 connectorized harness": ["FMB130 connectorized harness 22"],
+  "FMB140 connectorized harness": ["FMB140 connectorized harness 23"],
+  "Large Cable Ties": ["Large Cable Ties 25"],
+  "NEON-T Adhesive Pads": ["NEON-T Adhesive Pads 24"],
+  "T7 Adhesive pad": ["T7 Adhesive pad T7Pad"],
+  "Tachograph T-Harness": ["Tachograph T-Harness Tacho-T-harness"],
+  WIPE: ["WIPE TBD011"],
+};
+
 function normalized(value: unknown) {
   return String(value ?? "")
     .replace(/^\s*\*+\s*/, "")
@@ -156,9 +184,16 @@ export function dispatchItemKey(value: unknown) {
   return normalized(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+export function isDispatchVolumeAccessoryCategory(category: unknown) {
+  return dispatchItemKey(category) !== "packages";
+}
+
 const CATALOG_BY_KEY = new Map(
   ITEM_CATALOG.flatMap((item) => {
-    const aliases = [item.name];
+    const aliases = [
+      item.name,
+      ...(DISPATCH_CATALOG_ALIASES[item.name] ?? []),
+    ];
     if (item.name === "HARDWIRED Cable for") aliases.push("HARDWIRED Cable for CV200");
     if (item.name === "CNHYCV200XEU") aliases.push("AIO Camera", "CV200XEU", "CV200XEU-256");
     if (item.name === "BarraGps") aliases.push("Barra-GPS", "Neon");

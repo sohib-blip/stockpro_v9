@@ -1714,7 +1714,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByRole("button", { name: "Preview Packaging" }).click();
     await expect(page.getByText("Preview ready — stock unchanged")).toBeVisible();
     await expect(page.getByText("Automatic rule", { exact: true })).toBeVisible();
-    await expect(page.getByText("1 × FOB", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("1 × Atom Install Guide", { exact: true })
+    ).toBeVisible();
     await expect(
       page.getByLabel(`Package for order E2E-${run.stamp}`)
     ).toHaveValue(run.dispatchPackaging.id);

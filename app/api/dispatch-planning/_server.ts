@@ -1,6 +1,7 @@
 import { supabaseService } from "@/lib/auth";
 import {
   dispatchItemKey,
+  isDispatchVolumeAccessoryCategory,
   type DispatchAutomaticAccessoryRule,
   type PackagingOption,
 } from "@/lib/dispatch-planning";
@@ -63,7 +64,7 @@ export async function loadDispatchAutomaticAccessoryRules(
   );
   const { data: accessories, error: accessoriesError } = await service
     .from("accessory_bins")
-    .select("id,name")
+    .select("id,name,category")
     .eq("active", true)
     .in("id", accessoryIds);
   if (accessoriesError) throw accessoriesError;
@@ -72,10 +73,14 @@ export async function loadDispatchAutomaticAccessoryRules(
     matchingBins.map((bin) => [String(bin.id), String(bin.name)])
   );
   const accessoryNameById = new Map(
-    (accessories || []).map((accessory) => [
-      String(accessory.id),
-      String(accessory.name),
-    ])
+    (accessories || [])
+      .filter((accessory) =>
+        isDispatchVolumeAccessoryCategory(accessory.category)
+      )
+      .map((accessory) => [
+        String(accessory.id),
+        String(accessory.name),
+      ])
   );
 
   return templates.flatMap((template) => {

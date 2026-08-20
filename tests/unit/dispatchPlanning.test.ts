@@ -6,6 +6,7 @@ import { permissionForPage, permissionsForApi } from "../../lib/access-control";
 import {
   applyDispatchAutomaticAccessoryRules,
   applyDispatchPackagingSelections,
+  isDispatchVolumeAccessoryCategory,
   itemFitsPackage,
   parseDispatchWorkbook,
   planDispatchPackaging,
@@ -213,6 +214,65 @@ describe("daily dispatch planning", () => {
       ])
     );
     expect(enriched.orders[0].totalVolumeCm3).toBeCloseTo(212.8);
+  });
+
+  it("recognizes every current non-package automatic accessory rule", () => {
+    const currentRuleNames = [
+      "Barra Adhesive Pad\tBAP01",
+      "WIPE TBD011",
+      "CV200 Adhesive Pad CVAP01",
+      "FMB140 connectorized harness\t23",
+      "Large Cable Ties\t25",
+      "FMB130 connectorized harness\t22",
+      "NEON-T Adhesive Pads\t24",
+      "Tachograph T-Harness\tTacho-T-harness",
+      "Atom Install Guide\tTBD001",
+      "T7 Adhesive pad\tT7Pad",
+    ];
+
+    for (const name of currentRuleNames) {
+      expect(resolveDispatchCatalogItem(name, ""), name).not.toBeNull();
+    }
+    expect(isDispatchVolumeAccessoryCategory("Consumables")).toBe(true);
+    expect(isDispatchVolumeAccessoryCategory("Packages")).toBe(false);
+  });
+
+  it("enriches an FMC880 order with the current production rules", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "ATOM", "Teltonika - Atom-E 4G - FMC880", 2177001, 1, "BE", "Customer A"],
+      ])
+    );
+    const enriched = applyDispatchAutomaticAccessoryRules(parsed.orders, [
+      {
+        deviceModel: "FMC880",
+        accessoryName: "Atom Install Guide\tTBD001",
+        quantity: 1,
+        perDevices: 5,
+      },
+      {
+        deviceModel: "FMC880",
+        accessoryName: "Large Cable Ties\t25",
+        quantity: 1,
+        perDevices: 1,
+      },
+      {
+        deviceModel: "FMC880",
+        accessoryName: "WIPE TBD011",
+        quantity: 1,
+        perDevices: 1,
+      },
+    ]);
+
+    expect(enriched.issues).toEqual([]);
+    expect(enriched.orders[0].items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "Atom Install Guide", automaticQuantity: 1 }),
+        expect.objectContaining({ name: "Large Cable Ties", automaticQuantity: 1 }),
+        expect.objectContaining({ name: "WIPE", automaticQuantity: 1 }),
+      ])
+    );
+    expect(enriched.orders[0].totalVolumeCm3).toBeCloseTo(100.19);
   });
 
   it("does not duplicate automatic accessories already present in the workbook", () => {

@@ -4,13 +4,17 @@ import * as XLSX from "xlsx";
 import { supabaseService } from "@/lib/auth";
 import { getApiIdentity } from "@/lib/api-identity";
 import {
+  applyDispatchAutomaticAccessoryRules,
   applyDispatchPackagingSelections,
   eligibleDispatchPackagingIds,
   parseDispatchWorkbook,
 } from "@/lib/dispatch-planning";
 import { dispatchCompositionKey } from "@/lib/dispatch-learning";
 import { createDispatchPreviewToken } from "@/lib/dispatch-preview-token";
-import { loadDispatchPackagingOptions } from "@/app/api/dispatch-planning/_server";
+import {
+  loadDispatchAutomaticAccessoryRules,
+  loadDispatchPackagingOptions,
+} from "@/app/api/dispatch-planning/_server";
 import {
   PayloadTooLargeError,
   readBodyWithinLimit,
@@ -97,8 +101,35 @@ export async function POST(req: Request) {
       );
     }
 
+    const deviceModels = Array.from(
+      new Set(
+        parsed.orders.flatMap((order) => Object.keys(order.deviceCounts || {}))
+      )
+    );
+    const automaticRules = await loadDispatchAutomaticAccessoryRules(
+      deviceModels
+    );
+    const enriched = applyDispatchAutomaticAccessoryRules(
+      parsed.orders,
+      automaticRules
+    );
+    if (enriched.issues.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            "An automatic accessory rule has missing or invalid volume data. Nothing was deducted.",
+          issues: enriched.issues.slice(0, 100),
+          parsed_sheets: parsed.parsedSheets,
+          skipped_sheets: parsed.skippedSheets,
+        },
+        { status: 400 }
+      );
+    }
+    const dispatchOrders = enriched.orders;
+
     const sourceHash = createHash("sha256").update(buffer).digest("hex");
-    const orderIds = parsed.orders.map((order) => order.orderId);
+    const orderIds = dispatchOrders.map((order) => order.orderId);
     const service = supabaseService();
     const [{ data: sameSource, error: sourceError }, { data: sameOrders, error: ordersError }] =
       await Promise.all([
@@ -138,7 +169,7 @@ export async function POST(req: Request) {
 
     const packages = await loadDispatchPackagingOptions();
     const compositionKeys = new Map(
-      parsed.orders.map((order) => [order.orderId, dispatchCompositionKey(order)])
+      dispatchOrders.map((order) => [order.orderId, dispatchCompositionKey(order)])
     );
     const { data: learnedRows, error: learnedError } = await service
       .from("dispatch_packaging_preferences")
@@ -154,7 +185,7 @@ export async function POST(req: Request) {
         .filter((row) => activePackageIds.has(String(row.packaging_type_id)))
         .map((row) => [String(row.composition_key), row])
     );
-    const learnedSelections = parsed.orders.flatMap((order) => {
+    const learnedSelections = dispatchOrders.flatMap((order) => {
       const learned = learnedByComposition.get(compositionKeys.get(order.orderId)!);
       const eligibleIds = new Set(eligibleDispatchPackagingIds(order, packages));
       return learned && eligibleIds.has(String(learned.packaging_type_id))
@@ -170,7 +201,7 @@ export async function POST(req: Request) {
         : [];
     });
     const calculatedPlan = applyDispatchPackagingSelections(
-      parsed.orders,
+      dispatchOrders,
       packages,
       learnedSelections
     );
@@ -186,7 +217,7 @@ export async function POST(req: Request) {
       sourceHash,
       sourceFilename: file.name || "daily-dispatch.xlsx",
       sourceGeneratedAt: parsed.generatedAt,
-      orders: parsed.orders,
+      orders: dispatchOrders,
     });
 
     return NextResponse.json({

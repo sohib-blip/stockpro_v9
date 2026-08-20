@@ -21,6 +21,8 @@ type DispatchItem = {
   name: string;
   sourceItem: string;
   quantity: number;
+  workbookQuantity?: number;
+  automaticQuantity?: number;
   unitVolumeCm3: number;
   totalVolumeCm3: number;
 };
@@ -181,6 +183,16 @@ export default function DispatchPlanningPage() {
     return {
       orders: orders.length,
       lines: orders.reduce((total, order) => total + order.lineCount, 0),
+      automaticItems: orders.reduce(
+        (total, order) =>
+          total +
+          order.items.reduce(
+            (itemTotal, item) =>
+              itemTotal + Number(item.automaticQuantity || 0),
+            0
+          ),
+        0
+      ),
       volume: orders.reduce((total, order) => total + order.totalVolumeCm3, 0),
     };
   }, [preview]);
@@ -255,7 +267,16 @@ export default function DispatchPlanningPage() {
       setFeedback({
         kind: "info",
         title: "Preview ready — stock unchanged",
-        message: `${json.plan.orders.length} orders were grouped by Order ID. Review the packaging deduction before confirming.`,
+        message: `${json.plan.orders.length} orders were grouped by Order ID. ${json.plan.orders.reduce(
+          (total: number, order: DispatchOrder) =>
+            total +
+            order.items.reduce(
+              (itemTotal, item) =>
+                itemTotal + Number(item.automaticQuantity || 0),
+              0
+            ),
+          0
+        )} required accessories were added to the volume calculation. Review the packaging deduction before confirming.`,
       });
     } finally {
       setBusy(false);
@@ -450,7 +471,9 @@ export default function DispatchPlanningPage() {
           <span className="prototype-eyebrow">Daily order workbook</span>
           <h2>Import today&apos;s orders</h2>
           <p className="dispatch-help-copy">
-            All worksheets are inspected. Rows are grouped by Order ID and matched to the trusted device-volume catalog.
+            All worksheets are inspected. Hardware Type supplies the box contents;
+            Device Type identifies each real device and adds any missing items from
+            its automatic accessory rules.
           </p>
           <label className="spreadsheet-file-input">
             Kinesis vehicle sheet (.xlsx)
@@ -518,7 +541,7 @@ export default function DispatchPlanningPage() {
                   <h3>Orders</h3>
                   <p>
                     {filteredPreviewOrders.length === preview.plan.orders.length
-                      ? `${preview.plan.orders.length} orders · ${previewTotals.lines} lines`
+                      ? `${preview.plan.orders.length} orders · ${previewTotals.lines} sheet lines · ${previewTotals.automaticItems} automatic items`
                       : `${filteredPreviewOrders.length} of ${preview.plan.orders.length} orders`}
                   </p>
                 </div>
@@ -545,7 +568,22 @@ export default function DispatchPlanningPage() {
                         <td><strong>{order.orderId}</strong></td>
                         <td>{order.destinationCountry || "—"}</td>
                         <td>{order.companyName || "—"}</td>
-                        <td>{order.items.map((item) => `${item.quantity} × ${item.name}`).join(", ")}</td>
+                        <td>
+                          <div className="dispatch-order-items">
+                            {order.items.map((item) => (
+                              <span key={`${item.name}-${item.sourceItem}`}>
+                                <strong>{item.quantity} × {item.name}</strong>
+                                {Number(item.automaticQuantity || 0) > 0 ? (
+                                  <small>
+                                    {Number(item.workbookQuantity || 0) > 0
+                                      ? `+${item.automaticQuantity} automatic`
+                                      : "Automatic rule"}
+                                  </small>
+                                ) : null}
+                              </span>
+                            ))}
+                          </div>
+                        </td>
                         <td>{formatNumber(order.totalVolumeCm3, 1)} cm³</td>
                         <td>
                           {allocation ? <div className="dispatch-packaging-control">

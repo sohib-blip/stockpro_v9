@@ -17,6 +17,8 @@ export type StagingRun = {
   bin: { id: string; name: string };
   alternateBin: { id: string; name: string };
   accessory: { id: string; name: string };
+  dispatchRuleDevice: { id: string; name: string; owned: boolean };
+  dispatchRuleAccessory: { id: string; name: string };
   packaging: { id: string; code: string; name: string };
   dispatchPackaging: { id: string; code: string; name: string };
   dispatchAlternatePackaging: { id: string; code: string; name: string };
@@ -52,13 +54,15 @@ export async function createStagingRun(): Promise<StagingRun> {
   const shortNumber = String(numericStamp).slice(-6);
   const password = `${randomBytes(18).toString("base64url")}Aa1!`;
   const users = {} as Record<AppRole, TestUser>;
-  const run = {
+  const run: StagingRun = {
     stamp,
     users,
     inviteEmail: `stockpro.e2e.invited.${stamp}@gmail.com`,
     bin: { id: "", name: `TESTDEVICE${shortNumber}` },
     alternateBin: { id: "", name: `TESTALTERNATE${shortNumber}` },
     accessory: { id: "", name: `E2E Cable ${stamp}` },
+    dispatchRuleDevice: { id: "", name: "FMC880", owned: false },
+    dispatchRuleAccessory: { id: "", name: "FOB" },
     packaging: {
       id: "",
       code: `E2E-PKG-${shortNumber}`,
@@ -82,7 +86,7 @@ export async function createStagingRun(): Promise<StagingRun> {
     securityReturnBox: `E2E-SECURITY-RETURN-${stamp}`,
     spreadsheetBox: "00001",
     uiBinName: `UITESTDEVICE${shortNumber}`,
-  } satisfies StagingRun;
+  };
 
   try {
     for (const role of ["admin", "operator", "viewer"] as const) {
@@ -169,6 +173,76 @@ export async function createStagingRun(): Promise<StagingRun> {
         per_devices: 1,
       });
     throwOnError(templateError, "Create E2E automatic accessory rule");
+
+    const { data: existingDispatchDevices, error: existingDispatchDeviceError } =
+      await supabase
+        .from("bins")
+        .select("id,name")
+        .eq("name", run.dispatchRuleDevice.name)
+        .eq("active", true)
+        .limit(1);
+    throwOnError(
+      existingDispatchDeviceError,
+      "Read E2E dispatch rule device"
+    );
+    const existingDispatchDevice = existingDispatchDevices?.[0];
+    if (existingDispatchDevice) {
+      run.dispatchRuleDevice = {
+        id: String(existingDispatchDevice.id),
+        name: String(existingDispatchDevice.name),
+        owned: false,
+      };
+    } else {
+      const { data: dispatchRuleDevice, error: dispatchRuleDeviceError } =
+        await supabase
+          .from("bins")
+          .insert({ name: run.dispatchRuleDevice.name, active: true })
+          .select("id,name")
+          .single();
+      throwOnError(dispatchRuleDeviceError, "Create E2E dispatch rule device");
+      if (!dispatchRuleDevice) {
+        throw new Error("Create E2E dispatch rule device: no row returned");
+      }
+      run.dispatchRuleDevice = {
+        id: String(dispatchRuleDevice.id),
+        name: String(dispatchRuleDevice.name),
+        owned: true,
+      };
+    }
+
+    const { data: dispatchRuleAccessory, error: dispatchRuleAccessoryError } =
+      await supabase
+        .from("accessory_bins")
+        .insert({
+          name: run.dispatchRuleAccessory.name,
+          current_stock: 10,
+          minimum_stock: 0,
+          category: "Items",
+          active: true,
+        })
+        .select("id,name")
+        .single();
+    throwOnError(
+      dispatchRuleAccessoryError,
+      "Create E2E dispatch rule accessory"
+    );
+    if (!dispatchRuleAccessory) {
+      throw new Error("Create E2E dispatch rule accessory: no row returned");
+    }
+    run.dispatchRuleAccessory = {
+      id: String(dispatchRuleAccessory.id),
+      name: String(dispatchRuleAccessory.name),
+    };
+
+    const { error: dispatchRuleError } = await supabase
+      .from("device_accessory_templates")
+      .insert({
+        device_id: run.dispatchRuleDevice.id,
+        accessory_bin_id: run.dispatchRuleAccessory.id,
+        quantity: 1,
+        per_devices: 1,
+      });
+    throwOnError(dispatchRuleError, "Create E2E dispatch automatic rule");
 
     const { data: dispatchPackaging, error: dispatchPackagingError } = await supabase
       .from("packaging_types")
@@ -348,6 +422,20 @@ export async function cleanupStagingRun(
       .eq("accessory_bin_id", run.accessory.id);
     await supabase.from("accessory_bins").delete().eq("id", run.accessory.id);
   }
+  if (run.dispatchRuleAccessory.id) {
+    await supabase
+      .from("device_accessory_templates")
+      .delete()
+      .eq("accessory_bin_id", run.dispatchRuleAccessory.id);
+    await supabase
+      .from("accessory_movements")
+      .delete()
+      .eq("accessory_bin_id", run.dispatchRuleAccessory.id);
+    await supabase
+      .from("accessory_bins")
+      .delete()
+      .eq("id", run.dispatchRuleAccessory.id);
+  }
 
   const { data: packagingTypes } = await supabase
     .from("packaging_types")
@@ -385,6 +473,9 @@ export async function cleanupStagingRun(
   }
   if (run.alternateBin.id) {
     await supabase.from("bins").delete().eq("id", run.alternateBin.id);
+  }
+  if (run.dispatchRuleDevice.id && run.dispatchRuleDevice.owned) {
+    await supabase.from("bins").delete().eq("id", run.dispatchRuleDevice.id);
   }
 
   if (userIds.length) {
@@ -460,6 +551,14 @@ export async function assertStagingRunClean(run: StagingRun) {
     rowCount(
       supabase.from("accessory_movements").select("*", { count: "exact", head: true }).eq("accessory_bin_id", run.accessory.id),
       "accessory movements"
+    ),
+    rowCount(
+      supabase.from("accessory_bins").select("*", { count: "exact", head: true }).eq("id", run.dispatchRuleAccessory.id),
+      "dispatch rule accessory"
+    ),
+    rowCount(
+      supabase.from("device_accessory_templates").select("*", { count: "exact", head: true }).eq("accessory_bin_id", run.dispatchRuleAccessory.id),
+      "dispatch automatic accessory rule"
     ),
     rowCount(
       supabase.from("device_accessory_templates").select("*", { count: "exact", head: true }).eq("device_id", run.bin.id),

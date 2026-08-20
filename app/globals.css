@@ -622,6 +622,36 @@ body {
   vertical-align: top;
 }
 
+.dispatch-order-items {
+  display: grid;
+  gap: 0.28rem;
+  min-width: 15rem;
+}
+
+.dispatch-order-items > span {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.65rem;
+}
+
+.dispatch-order-items strong {
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--prototype-text);
+}
+
+.dispatch-order-items small {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--prototype-primary) 11%, transparent);
+  color: var(--prototype-primary);
+  padding: 0.12rem 0.42rem;
+  font-size: 0.68rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
 .dispatch-orders-empty {
   padding: 28px !important;
   color: var(--muted) !important;

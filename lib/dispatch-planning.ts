@@ -19,6 +19,8 @@ export type DispatchSourceLine = {
   orderLineId: string;
   hardwareType: string;
   deviceType: string;
+  deviceModel: string | null;
+  isDevice: boolean;
   mappedItem: string;
   destinationCountry: string;
   companyName: string;
@@ -27,6 +29,8 @@ export type DispatchSourceLine = {
 export type DispatchOrderItem = DispatchCatalogItem & {
   sourceItem: string;
   quantity: number;
+  workbookQuantity: number;
+  automaticQuantity: number;
   unitVolumeCm3: number;
   totalVolumeCm3: number;
 };
@@ -38,7 +42,15 @@ export type DispatchOrder = {
   lineCount: number;
   totalVolumeCm3: number;
   adjustedVolumeCm3: number;
+  deviceCounts: Record<string, number>;
   items: DispatchOrderItem[];
+};
+
+export type DispatchAutomaticAccessoryRule = {
+  deviceModel: string;
+  accessoryName: string;
+  quantity: number;
+  perDevices: number;
 };
 
 export type DispatchParseIssue = {
@@ -140,7 +152,7 @@ function normalized(value: unknown) {
     .trim();
 }
 
-function key(value: unknown) {
+export function dispatchItemKey(value: unknown) {
   return normalized(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
@@ -150,11 +162,11 @@ const CATALOG_BY_KEY = new Map(
     if (item.name === "HARDWIRED Cable for") aliases.push("HARDWIRED Cable for CV200");
     if (item.name === "CNHYCV200XEU") aliases.push("AIO Camera", "CV200XEU", "CV200XEU-256");
     if (item.name === "BarraGps") aliases.push("Barra-GPS", "Neon");
-    return aliases.map((alias) => [key(alias), item] as const);
+    return aliases.map((alias) => [dispatchItemKey(alias), item] as const);
   })
 );
 
-function modelFromDeviceType(value: string) {
+export function resolveDispatchDeviceModel(value: string) {
   const normalizedValue = value.toUpperCase();
   const patterns: Array<[RegExp, string]> = [
     [/CV200XEU|CNHYCV200/, "CNHYCV200XEU"],
@@ -180,18 +192,38 @@ export function resolveDispatchCatalogItem(
   deviceType: string
 ) {
   const cleanHardware = normalized(hardwareType);
-  const hardwareKey = key(cleanHardware);
+  const hardwareKey = dispatchItemKey(cleanHardware);
 
   if (hardwareKey === "aiocamera") {
-    return CATALOG_BY_KEY.get(key("CNHYCV200XEU")) ?? null;
+    return CATALOG_BY_KEY.get(dispatchItemKey("CNHYCV200XEU")) ?? null;
   }
 
-  if (["atom", "hardwired", "neon"].includes(hardwareKey)) {
-    const model = modelFromDeviceType(deviceType);
-    return model ? CATALOG_BY_KEY.get(key(model)) ?? null : null;
+  if (["atom", "hardwired", "neon", "obd", "trailer"].includes(hardwareKey)) {
+    const model = resolveDispatchDeviceModel(deviceType);
+    return model ? CATALOG_BY_KEY.get(dispatchItemKey(model)) ?? null : null;
   }
 
   return CATALOG_BY_KEY.get(hardwareKey) ?? null;
+}
+
+export function resolveDispatchLineDeviceModel(
+  hardwareType: string,
+  deviceType: string,
+  mappedItem?: string
+) {
+  const hardwareKey = dispatchItemKey(hardwareType);
+  if (hardwareKey === "aiocamera") return "CNHYCV200XEU";
+  if (["atom", "hardwired", "neon", "obd", "trailer"].includes(hardwareKey)) {
+    return resolveDispatchDeviceModel(deviceType);
+  }
+  if (hardwareKey.startsWith("dvr")) {
+    if (/dvr.*2channel/.test(hardwareKey)) return "Howen2CH";
+    if (/dvr.*4channel/.test(hardwareKey)) return "Howen4CH";
+    if (/dvr.*8channel/.test(hardwareKey)) return "Howen8CH";
+    const item = mappedItem || resolveDispatchCatalogItem(hardwareType, deviceType)?.name;
+    return item && /^Howen(?:2|4|8)CH$/i.test(item) ? item : null;
+  }
+  return null;
 }
 
 function cellText(value: unknown) {
@@ -203,7 +235,9 @@ function cellText(value: unknown) {
 }
 
 function headerIndex(row: unknown[]) {
-  const map = new Map(row.map((value, index) => [key(value), index]));
+  const map = new Map(
+    row.map((value, index) => [dispatchItemKey(value), index])
+  );
   if (!map.has("orderid") || !map.has("hardwaretype")) return null;
   return map;
 }
@@ -240,7 +274,7 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
     }
 
     const indexes = headerIndex(rows[headerRowIndex])!;
-    const indexOf = (name: string) => indexes.get(key(name));
+    const indexOf = (name: string) => indexes.get(dispatchItemKey(name));
     parsedSheets.push(sheetName);
     generatedAt ||= generatedAtFromRows(rows);
 
@@ -278,6 +312,12 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
         continue;
       }
 
+      const deviceModel = resolveDispatchLineDeviceModel(
+        hardwareType,
+        deviceType,
+        catalogItem.name
+      );
+
       lines.push({
         sheet: sheetName,
         row: index + 1,
@@ -285,6 +325,8 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
         orderLineId: value("Order Line ID"),
         hardwareType: normalized(hardwareType),
         deviceType: normalized(deviceType),
+        deviceModel,
+        isDevice: Boolean(deviceModel),
         mappedItem: catalogItem.name,
         destinationCountry: value("Destination Country"),
         companyName: value("Company Name"),
@@ -309,13 +351,15 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
 
       const items = Array.from(groupedItems.entries()).map(
         ([mappedItem, itemLines]) => {
-          const catalogItem = CATALOG_BY_KEY.get(key(mappedItem))!;
+          const catalogItem = CATALOG_BY_KEY.get(dispatchItemKey(mappedItem))!;
           const unitVolumeCm3 =
             catalogItem.lengthCm * catalogItem.widthCm * catalogItem.heightCm;
           return {
             ...catalogItem,
             sourceItem: itemLines[0].hardwareType,
             quantity: itemLines.length,
+            workbookQuantity: itemLines.length,
+            automaticQuantity: 0,
             unitVolumeCm3,
             totalVolumeCm3: unitVolumeCm3 * itemLines.length,
           };
@@ -324,6 +368,14 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
       const totalVolumeCm3 = items.reduce(
         (total, item) => total + item.totalVolumeCm3,
         0
+      );
+      const deviceCounts = orderLines.reduce<Record<string, number>>(
+        (counts, line) => {
+          if (!line.isDevice || !line.deviceModel) return counts;
+          counts[line.deviceModel] = (counts[line.deviceModel] || 0) + 1;
+          return counts;
+        },
+        {}
       );
 
       return {
@@ -335,6 +387,7 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
         lineCount: orderLines.length,
         totalVolumeCm3,
         adjustedVolumeCm3: totalVolumeCm3 * DISPATCH_PACKING_FACTOR,
+        deviceCounts,
         items,
       };
     }
@@ -357,6 +410,117 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
   }
 
   return { orders, lines, issues, parsedSheets, skippedSheets, generatedAt };
+}
+
+export function applyDispatchAutomaticAccessoryRules(
+  orders: DispatchOrder[],
+  rules: DispatchAutomaticAccessoryRule[]
+) {
+  const issues: DispatchParseIssue[] = [];
+  const enrichedOrders = orders.map((order) => {
+    const expectedByAccessory = new Map<
+      string,
+      { catalogItem: DispatchCatalogItem; expected: number; accessoryName: string }
+    >();
+
+    for (const rule of rules) {
+      const deviceCount = Object.entries(order.deviceCounts || {}).find(
+        ([model]) =>
+          dispatchItemKey(model) === dispatchItemKey(rule.deviceModel)
+      )?.[1];
+      if (!deviceCount) continue;
+
+      if (
+        !Number.isSafeInteger(rule.quantity) ||
+        rule.quantity <= 0 ||
+        !Number.isSafeInteger(rule.perDevices) ||
+        rule.perDevices <= 0
+      ) {
+        issues.push({
+          sheet: "Automatic accessory rules",
+          row: 1,
+          message: `The automatic accessory rule for ${rule.deviceModel} has an invalid quantity.`,
+          deviceType: rule.deviceModel,
+        });
+        continue;
+      }
+
+      const catalogItem = resolveDispatchCatalogItem(rule.accessoryName, "");
+      if (!catalogItem) {
+        issues.push({
+          sheet: "Automatic accessory rules",
+          row: 1,
+          message: `Automatic accessory ${rule.accessoryName} for ${rule.deviceModel} has no trusted dimensions.`,
+          hardwareType: rule.accessoryName,
+          deviceType: rule.deviceModel,
+        });
+        continue;
+      }
+
+      const accessoryKey = dispatchItemKey(catalogItem.name);
+      const current = expectedByAccessory.get(accessoryKey);
+      expectedByAccessory.set(accessoryKey, {
+        catalogItem,
+        accessoryName: rule.accessoryName,
+        expected:
+          (current?.expected || 0) +
+          Math.ceil(deviceCount / rule.perDevices) * rule.quantity,
+      });
+    }
+
+    const items = order.items.map((item) => ({ ...item }));
+    for (const [accessoryKey, expected] of expectedByAccessory) {
+      const existingIndex = items.findIndex(
+        (item) => dispatchItemKey(item.name) === accessoryKey
+      );
+      const existingQuantity =
+        existingIndex >= 0 ? Number(items[existingIndex].quantity || 0) : 0;
+      const automaticQuantity = Math.max(0, expected.expected - existingQuantity);
+      if (automaticQuantity === 0) continue;
+
+      if (existingIndex >= 0) {
+        const existing = items[existingIndex];
+        const quantity = existingQuantity + automaticQuantity;
+        items[existingIndex] = {
+          ...existing,
+          quantity,
+          workbookQuantity:
+            existing.workbookQuantity ?? existingQuantity,
+          automaticQuantity:
+            Number(existing.automaticQuantity || 0) + automaticQuantity,
+          totalVolumeCm3: existing.unitVolumeCm3 * quantity,
+        };
+      } else {
+        const unitVolumeCm3 =
+          expected.catalogItem.lengthCm *
+          expected.catalogItem.widthCm *
+          expected.catalogItem.heightCm;
+        items.push({
+          ...expected.catalogItem,
+          sourceItem: expected.accessoryName,
+          quantity: automaticQuantity,
+          workbookQuantity: 0,
+          automaticQuantity,
+          unitVolumeCm3,
+          totalVolumeCm3: unitVolumeCm3 * automaticQuantity,
+        });
+      }
+    }
+
+    items.sort((left, right) => left.name.localeCompare(right.name));
+    const totalVolumeCm3 = items.reduce(
+      (total, item) => total + item.totalVolumeCm3,
+      0
+    );
+    return {
+      ...order,
+      items,
+      totalVolumeCm3,
+      adjustedVolumeCm3: totalVolumeCm3 * DISPATCH_PACKING_FACTOR,
+    };
+  });
+
+  return { orders: enrichedOrders, issues };
 }
 
 function sortedDimensions(value: DispatchDimensions) {

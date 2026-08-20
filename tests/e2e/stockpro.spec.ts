@@ -1713,6 +1713,8 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.locator('input[type="file"]').setInputFiles(path);
     await page.getByRole("button", { name: "Preview Packaging" }).click();
     await expect(page.getByText("Preview ready — stock unchanged")).toBeVisible();
+    await expect(page.getByText("Automatic rule", { exact: true })).toBeVisible();
+    await expect(page.getByText("1 × FOB", { exact: true })).toBeVisible();
     await expect(
       page.getByLabel(`Package for order E2E-${run.stamp}`)
     ).toHaveValue(run.dispatchPackaging.id);
@@ -1726,6 +1728,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     ).toBeVisible();
     await orderSearch.fill("");
     expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
+    expect(await readAccessoryStock(run.dispatchRuleAccessory.id)).toBe(10);
 
     await page
       .getByLabel(`Package for order E2E-${run.stamp}`)
@@ -1748,6 +1751,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByText("Daily dispatch confirmed")).toBeVisible();
     expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
     expect(await readPackagingStock(run.dispatchAlternatePackaging.id)).toBe(4);
+    expect(await readAccessoryStock(run.dispatchRuleAccessory.id)).toBe(10);
 
     const historyRow = page
       .locator(".dispatch-history-scroll tbody tr")

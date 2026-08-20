@@ -46,6 +46,15 @@ export async function GET(req: Request) {
         "Source item": safeCell(item.sourceItem),
         "Mapped item": safeCell(item.name),
         Quantity: Number(item.quantity || 0),
+        "Workbook quantity": Number(
+          item.workbookQuantity ?? item.quantity ?? 0
+        ),
+        "Automatic rule quantity": Number(item.automaticQuantity || 0),
+        Source: Number(item.automaticQuantity || 0) > 0
+          ? Number(item.workbookQuantity || 0) > 0
+            ? "Workbook + automatic rule"
+            : "Automatic rule"
+          : "Workbook",
         "Unit volume (cm3)": Number(item.unitVolumeCm3 || 0),
         "Total volume (cm3)": Number(item.totalVolumeCm3 || 0),
         Packaging: safeCell(
@@ -70,7 +79,8 @@ export async function GET(req: Request) {
     const ordersSheet = XLSX.utils.json_to_sheet(rows);
     ordersSheet["!cols"] = [
       { wch: 16 }, { wch: 12 }, { wch: 28 }, { wch: 30 }, { wch: 28 },
-      { wch: 10 }, { wch: 20 }, { wch: 20 }, { wch: 32 }, { wch: 14 }, { wch: 22 },
+      { wch: 10 }, { wch: 18 }, { wch: 24 }, { wch: 28 }, { wch: 20 },
+      { wch: 20 }, { wch: 32 }, { wch: 14 }, { wch: 22 },
     ];
     const packagesSheet = XLSX.utils.json_to_sheet(summaryRows);
     packagesSheet["!cols"] = [

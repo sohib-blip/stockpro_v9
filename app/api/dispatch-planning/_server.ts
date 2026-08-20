@@ -1,5 +1,9 @@
 import { supabaseService } from "@/lib/auth";
-import type { PackagingOption } from "@/lib/dispatch-planning";
+import {
+  dispatchItemKey,
+  type DispatchAutomaticAccessoryRule,
+  type PackagingOption,
+} from "@/lib/dispatch-planning";
 
 export async function loadDispatchPackagingOptions(): Promise<PackagingOption[]> {
   const { data, error } = await supabaseService()
@@ -24,4 +28,70 @@ export async function loadDispatchPackagingOptions(): Promise<PackagingOption[]>
     reservedStock: Number(row.reserved_stock || 0),
     active: row.active === true,
   }));
+}
+
+export async function loadDispatchAutomaticAccessoryRules(
+  deviceModels: string[]
+): Promise<DispatchAutomaticAccessoryRule[]> {
+  const requestedModels = new Map(
+    deviceModels.map((model) => [dispatchItemKey(model), model])
+  );
+  if (requestedModels.size === 0) return [];
+
+  const service = supabaseService();
+  const { data: bins, error: binsError } = await service
+    .from("bins")
+    .select("id,name")
+    .eq("active", true);
+  if (binsError) throw binsError;
+
+  const matchingBins = (bins || []).filter((bin) =>
+    requestedModels.has(dispatchItemKey(bin.name))
+  );
+  if (matchingBins.length === 0) return [];
+
+  const binIds = matchingBins.map((bin) => String(bin.id));
+  const { data: templates, error: templatesError } = await service
+    .from("device_accessory_templates")
+    .select("device_id,accessory_bin_id,quantity,per_devices")
+    .in("device_id", binIds);
+  if (templatesError) throw templatesError;
+  if (!templates?.length) return [];
+
+  const accessoryIds = Array.from(
+    new Set(templates.map((template) => String(template.accessory_bin_id)))
+  );
+  const { data: accessories, error: accessoriesError } = await service
+    .from("accessory_bins")
+    .select("id,name")
+    .eq("active", true)
+    .in("id", accessoryIds);
+  if (accessoriesError) throw accessoriesError;
+
+  const deviceNameById = new Map(
+    matchingBins.map((bin) => [String(bin.id), String(bin.name)])
+  );
+  const accessoryNameById = new Map(
+    (accessories || []).map((accessory) => [
+      String(accessory.id),
+      String(accessory.name),
+    ])
+  );
+
+  return templates.flatMap((template) => {
+    const deviceModel = deviceNameById.get(String(template.device_id));
+    const accessoryName = accessoryNameById.get(
+      String(template.accessory_bin_id)
+    );
+    return deviceModel && accessoryName
+      ? [
+          {
+            deviceModel,
+            accessoryName,
+            quantity: Number(template.quantity),
+            perDevices: Number(template.per_devices),
+          },
+        ]
+      : [];
+  });
 }

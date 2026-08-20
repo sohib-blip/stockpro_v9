@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import { permissionForPage, permissionsForApi } from "../../lib/access-control";
 import {
+  applyDispatchAutomaticAccessoryRules,
   applyDispatchPackagingSelections,
   itemFitsPackage,
   parseDispatchWorkbook,
@@ -107,6 +108,42 @@ describe("daily dispatch planning", () => {
     expect(
       resolveDispatchCatalogItem("HARDWIRED Cable for CV200", "")?.name
     ).toBe("HARDWIRED Cable for");
+    expect(
+      resolveDispatchCatalogItem(
+        "OBD",
+        "Teltonika OBD tracker - FMC003"
+      )?.name
+    ).toBe("FMC003");
+    expect(
+      resolveDispatchCatalogItem(
+        "TRAILER",
+        "Teltonika trailer tracker - FMC234"
+      )?.name
+    ).toBe("FMC234");
+  });
+
+  it("treats the agreed hardware names as devices and every other row as packing content", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "HARDWIRED", "Teltonika - Hard-Wired-4G / Atom - FMC920", 2177001, 1, "BE", "Customer A"],
+        ["AA-01", "*DVR - 2 Channel -  (N+)", "Teltonika - Hard-Wired-4G / Atom - FMC920", 2177001, 2, "BE", "Customer A"],
+        ["AA-01", "BUZZER", "Teltonika - Hard-Wired-4G / Atom - FMC920", 2177001, 3, "BE", "Customer A"],
+        ["BB-01", "OBD", "Teltonika OBD tracker - FMC003", 2177002, 4, "BE", "Customer B"],
+        ["CC-01", "TRAILER", "Teltonika trailer tracker - FMC234", 2177003, 5, "BE", "Customer C"],
+      ])
+    );
+
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.orders[0].deviceCounts).toEqual({
+      FMC920: 1,
+      Howen2CH: 1,
+    });
+    expect(parsed.orders[1].deviceCounts).toEqual({ FMC003: 1 });
+    expect(parsed.orders[2].deviceCounts).toEqual({ FMC234: 1 });
+    expect(parsed.lines.find((line) => line.hardwareType === "BUZZER")).toMatchObject({
+      isDevice: false,
+      deviceModel: null,
+    });
   });
 
   it("groups every physical row by Order ID and calculates trusted volume", () => {
@@ -131,6 +168,94 @@ describe("daily dispatch planning", () => {
     ]);
     expect(parsed.orders[1].totalVolumeCm3).toBe(4320);
     expect(parsed.generatedAt).toBe("19/08/2026 09:15");
+  });
+
+  it("uses Device Type to add only missing automatic accessories to volume", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "HARDWIRED", "Teltonika - Hard-Wired-4G / Atom - FMC130", 2177001, 1, "BE", "Customer A"],
+        ["AA-02", "HARDWIRED", "Teltonika - Hard-Wired-4G / Atom - FMC130", 2177001, 2, "BE", "Customer A"],
+        ["AA-01", "FOB", "Teltonika - Hard-Wired-4G / Atom - FMC130", 2177001, 3, "BE", "Customer A"],
+      ])
+    );
+    const enriched = applyDispatchAutomaticAccessoryRules(parsed.orders, [
+      {
+        deviceModel: "FMC130",
+        accessoryName: "FOB",
+        quantity: 1,
+        perDevices: 1,
+      },
+      {
+        deviceModel: "FMC130",
+        accessoryName: "BUZZER",
+        quantity: 1,
+        perDevices: 2,
+      },
+    ]);
+
+    expect(parsed.orders[0].deviceCounts).toEqual({ FMC130: 2 });
+    expect(enriched.issues).toEqual([]);
+    expect(enriched.orders[0].lineCount).toBe(3);
+    expect(enriched.orders[0].items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: "FOB",
+          quantity: 2,
+          workbookQuantity: 1,
+          automaticQuantity: 1,
+        }),
+        expect.objectContaining({
+          name: "BUZZER",
+          quantity: 1,
+          workbookQuantity: 0,
+          automaticQuantity: 1,
+        }),
+      ])
+    );
+    expect(enriched.orders[0].totalVolumeCm3).toBeCloseTo(212.8);
+  });
+
+  it("does not duplicate automatic accessories already present in the workbook", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "ATOM", "Teltonika - Atom-E 4G - FMC880", 2177001, 1, "BE", "Customer A"],
+        ["AA-01", "FOB", "Teltonika - Atom-E 4G - FMC880", 2177001, 2, "BE", "Customer A"],
+      ])
+    );
+    const enriched = applyDispatchAutomaticAccessoryRules(parsed.orders, [
+      {
+        deviceModel: "FMC880",
+        accessoryName: "FOB",
+        quantity: 1,
+        perDevices: 1,
+      },
+    ]);
+
+    expect(enriched.issues).toEqual([]);
+    expect(enriched.orders[0].items.find((item) => item.name === "FOB")).toMatchObject({
+      quantity: 1,
+      workbookQuantity: 1,
+      automaticQuantity: 0,
+    });
+  });
+
+  it("blocks an applicable automatic rule without trusted dimensions", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "ATOM", "Teltonika - Atom-E 4G - FMC880", 2177001, 1, "BE", "Customer A"],
+      ])
+    );
+    const enriched = applyDispatchAutomaticAccessoryRules(parsed.orders, [
+      {
+        deviceModel: "FMC880",
+        accessoryName: "Unknown custom cable",
+        quantity: 1,
+        perDevices: 1,
+      },
+    ]);
+
+    expect(enriched.issues[0]?.message).toContain("has no trusted dimensions");
+    expect(enriched.orders[0].items).toHaveLength(1);
   });
 
   it("blocks every unknown item instead of guessing dimensions", () => {

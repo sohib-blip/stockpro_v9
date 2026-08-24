@@ -17,6 +17,7 @@ export type DispatchSourceLine = {
   row: number;
   orderId: string;
   orderLineId: string;
+  vehicleRegistration: string;
   hardwareType: string;
   deviceType: string;
   deviceModel: string | null;
@@ -358,6 +359,7 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
         row: index + 1,
         orderId,
         orderLineId: value("Order Line ID"),
+        vehicleRegistration: value("Vehicle Registration"),
         hardwareType: normalized(hardwareType),
         deviceType: normalized(deviceType),
         deviceModel,

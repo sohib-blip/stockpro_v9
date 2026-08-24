@@ -139,6 +139,7 @@ describe("daily dispatch planning", () => {
       FMC920: 1,
       Howen2CH: 1,
     });
+    expect(parsed.lines[0].vehicleRegistration).toBe("AA-01");
     expect(parsed.orders[1].deviceCounts).toEqual({ FMC003: 1 });
     expect(parsed.orders[2].deviceCounts).toEqual({ FMC234: 1 });
     expect(parsed.lines.find((line) => line.hardwareType === "BUZZER")).toMatchObject({

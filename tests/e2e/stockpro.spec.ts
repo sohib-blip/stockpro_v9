@@ -1767,6 +1767,14 @@ test.describe.serial("StockPro staging end-to-end", () => {
         })
     ).toBeVisible();
     await expect(page.getByText(`E2E-${run.stamp}`).first()).toBeVisible();
+    await expectDownload(
+      page,
+      page.getByRole("button", {
+        name: "Download Vehicle Labels — PDF (1)",
+      }),
+      /vehicle-registration-labels-L4731\.pdf$/
+    );
+    await expect(page.getByText("Vehicle labels ready")).toBeVisible();
     const orderSearch = page.getByLabel("Search dispatch orders");
     await orderSearch.fill("definitely-not-a-dispatch-order");
     await expect(page.getByText("No orders match this search.")).toBeVisible();

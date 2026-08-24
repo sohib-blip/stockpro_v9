@@ -701,6 +701,20 @@ const FR: Record<string, string> = {
   "Label generation failed": "Échec de la génération d’étiquettes",
   "Labels generated": "Étiquettes générées",
   "The PDF could not be generated.": "Le PDF n’a pas pu être généré.",
+  "Device labels": "Étiquettes d’appareils",
+  "Vehicle registration labels": "Étiquettes d’immatriculation",
+  "One label per device row. Accessory rows are ignored.":
+    "Une étiquette par ligne d’appareil. Les lignes d’accessoires sont ignorées.",
+  "Generating labels…": "Génération des étiquettes…",
+  "Vehicle label generation blocked":
+    "Génération des étiquettes d’immatriculation bloquée",
+  "Vehicle label generation failed":
+    "Échec de la génération des étiquettes d’immatriculation",
+  "Vehicle labels ready": "Étiquettes d’immatriculation prêtes",
+  "Preview a workbook containing at least one device first.":
+    "Prévisualisez d’abord un fichier contenant au moins un appareil.",
+  "The vehicle label PDF could not be generated.":
+    "Le PDF des étiquettes d’immatriculation n’a pas pu être généré.",
   "Admin action completed": "Action d’administration terminée",
   "Admin action failed": "Échec de l’action d’administration",
   "Supply order updated": "Commande d’approvisionnement mise à jour",
@@ -1420,6 +1434,20 @@ const NL: Record<string, string> = {
   "Label generation failed": "Labelgeneratie mislukt",
   "Labels generated": "Labels gegenereerd",
   "The PDF could not be generated.": "De PDF kon niet worden gegenereerd.",
+  "Device labels": "Apparaatlabels",
+  "Vehicle registration labels": "Voertuigregistratielabels",
+  "One label per device row. Accessory rows are ignored.":
+    "Eén label per apparaatregel. Accessoireregels worden genegeerd.",
+  "Generating labels…": "Labels genereren…",
+  "Vehicle label generation blocked":
+    "Genereren van voertuiglabels geblokkeerd",
+  "Vehicle label generation failed":
+    "Genereren van voertuiglabels mislukt",
+  "Vehicle labels ready": "Voertuiglabels gereed",
+  "Preview a workbook containing at least one device first.":
+    "Bekijk eerst een bestand met minstens één apparaat.",
+  "The vehicle label PDF could not be generated.":
+    "De PDF met voertuiglabels kon niet worden gegenereerd.",
   "Admin action completed": "Beheeractie voltooid",
   "Admin action failed": "Beheeractie mislukt",
   "Supply order updated": "Bevoorradingsorder bijgewerkt",
@@ -1471,6 +1499,8 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(\d+) accessories$/, "$1 accessoires"],
           [/^Showing (\d+) of (\d+) inventory items$/, "$1 éléments affichés sur $2"],
           [/^Download all labels — PDF \((\d+)\)$/, "Télécharger toutes les étiquettes — PDF ($1)"],
+          [/^Download Vehicle Labels — PDF \((\d+)\)$/, "Télécharger les étiquettes d’immatriculation — PDF ($1)"],
+          [/^(\d+) device labels were generated from Vehicle Registration\. Accessory rows were ignored\.$/, "$1 étiquettes d’appareils ont été générées depuis Vehicle Registration. Les lignes d’accessoires ont été ignorées."],
           [/^All (\d+) IMEIs? from this spreadsheet already exists? in stock\. Nothing will be imported and no history entry will be created\.$/, "Les $1 IMEI de ce fichier sont déjà en stock. Aucun élément ne sera importé et aucune entrée d’historique ne sera créée."],
           [/^(\d+) existing IMEIs will be skipped and (\d+) new IMEIs will be imported\.$/, "$1 IMEI existants seront ignorés et $2 nouveaux IMEI seront importés."],
           [/^Import blocked: all (\d+) IMEIs? from this spreadsheet (?:is|are) already in stock\. Nothing was imported and no history was created\.$/, "Import bloqué : les $1 IMEI de ce fichier sont déjà en stock. Aucun élément n’a été importé et aucun historique n’a été créé."],
@@ -1504,6 +1534,8 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(\d+) accessories$/, "$1 accessoires"],
           [/^Showing (\d+) of (\d+) inventory items$/, "$1 van $2 voorraaditems weergegeven"],
           [/^Download all labels — PDF \((\d+)\)$/, "Alle labels downloaden — PDF ($1)"],
+          [/^Download Vehicle Labels — PDF \((\d+)\)$/, "Voertuiglabels downloaden — PDF ($1)"],
+          [/^(\d+) device labels were generated from Vehicle Registration\. Accessory rows were ignored\.$/, "$1 apparaatlabels zijn gegenereerd uit Vehicle Registration. Accessoireregels zijn genegeerd."],
           [/^All (\d+) IMEIs? from this spreadsheet already exists? in stock\. Nothing will be imported and no history entry will be created\.$/, "Alle $1 IMEI's uit dit bestand staan al op voorraad. Er wordt niets geïmporteerd en er wordt geen geschiedenisitem aangemaakt."],
           [/^(\d+) existing IMEIs will be skipped and (\d+) new IMEIs will be imported\.$/, "$1 bestaande IMEI's worden overgeslagen en $2 nieuwe IMEI's worden geïmporteerd."],
           [/^Import blocked: all (\d+) IMEIs? from this spreadsheet (?:is|are) already in stock\. Nothing was imported and no history was created\.$/, "Import geblokkeerd: alle $1 IMEI's uit dit bestand staan al op voorraad. Er is niets geïmporteerd en er is geen geschiedenis aangemaakt."],

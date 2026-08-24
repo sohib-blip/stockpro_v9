@@ -9,6 +9,7 @@ import {
   eligibleDispatchPackagingIds,
   parseDispatchWorkbook,
 } from "@/lib/dispatch-planning";
+import { buildDispatchVehicleLabels } from "@/lib/dispatch-vehicle-labels";
 import { dispatchCompositionKey } from "@/lib/dispatch-learning";
 import { createDispatchPreviewToken } from "@/lib/dispatch-preview-token";
 import {
@@ -82,18 +83,20 @@ export async function POST(req: Request) {
     });
 
     const parsed = parseDispatchWorkbook(workbook);
+    const vehicleLabelResult = buildDispatchVehicleLabels(parsed.lines);
+    const parseIssues = [...parsed.issues, ...vehicleLabelResult.issues];
     if (parsed.orders.length > MAX_ORDERS || parsed.lines.length > MAX_LINES) {
       throw new PayloadTooLargeError(
         `A dispatch preview supports at most ${MAX_ORDERS} orders and ${MAX_LINES} lines.`
       );
     }
-    if (parsed.issues.length > 0 || parsed.orders.length === 0) {
+    if (parseIssues.length > 0 || parsed.orders.length === 0) {
       return NextResponse.json(
         {
           ok: false,
           error:
             "The workbook contains unknown or incomplete rows. Nothing was deducted.",
-          issues: parsed.issues.slice(0, 100),
+          issues: parseIssues.slice(0, 100),
           parsed_sheets: parsed.parsedSheets,
           skipped_sheets: parsed.skippedSheets,
         },
@@ -247,6 +250,7 @@ export async function POST(req: Request) {
         reservedStock: packaging.reservedStock,
         availableStock: packaging.onHandStock - packaging.reservedStock,
       })),
+      vehicle_label_count: vehicleLabelResult.labels.length,
       plan,
     }, { status: plan.blockers.length > 0 ? 422 : 200 });
   } catch (error) {

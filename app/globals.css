@@ -357,7 +357,7 @@ body {
 
 .dispatch-preview-kpis {
   display: grid;
-  grid-template-columns: repeat(3, minmax(72px, 1fr));
+  grid-template-columns: repeat(4, minmax(72px, 1fr));
   gap: 8px;
 }
 
@@ -473,6 +473,56 @@ body {
 .dispatch-package-summary .is-danger {
   color: var(--danger);
   font-weight: 700;
+}
+
+.dispatch-vehicle-labels-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.dispatch-vehicle-labels-action > div,
+.dispatch-vehicle-labels-action > div > span:last-child {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.dispatch-vehicle-labels-action > div {
+  gap: 10px;
+}
+
+.dispatch-vehicle-labels-action > div > span:last-child {
+  align-items: flex-start;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dispatch-vehicle-labels-action strong {
+  color: var(--foreground);
+  font-size: 12.5px;
+}
+
+.dispatch-vehicle-labels-action small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.dispatch-vehicle-labels-format {
+  min-width: 48px;
+  padding: 6px 8px;
+  border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--border));
+  border-radius: 7px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-align: center;
 }
 
 .dispatch-orders-scroll,
@@ -753,6 +803,15 @@ body {
   .dispatch-orders-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .dispatch-vehicle-labels-action {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dispatch-vehicle-labels-action .prototype-button {
+    width: 100%;
   }
 }
 

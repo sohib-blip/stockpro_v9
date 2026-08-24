@@ -62,6 +62,7 @@ type PackagingOption = {
 type Preview = {
   ok: boolean;
   preview_token?: string;
+  vehicle_label_count?: number;
   source?: {
     filename: string;
     generated_at: string | null;
@@ -184,6 +185,7 @@ export default function DispatchPlanningPage() {
   const [detail, setDetail] = useState<HistoryDetail | null>(null);
   const [feedback, setFeedback] = useState<ProcessFeedbackValue | null>(null);
   const [busy, setBusy] = useState(false);
+  const [labelsBusy, setLabelsBusy] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [undoTarget, setUndoTarget] = useState<HistoryRow | null>(null);
@@ -347,6 +349,54 @@ export default function DispatchPlanningPage() {
       await loadHistory();
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function downloadVehicleLabels() {
+    if (!file || !preview?.vehicle_label_count) {
+      setFeedback({
+        kind: "error",
+        title: "Vehicle label generation blocked",
+        message: "Preview a workbook containing at least one device first.",
+      });
+      return;
+    }
+
+    setLabelsBusy(true);
+    setFeedback(null);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await apiFetch(
+        "/api/dispatch-planning/vehicle-labels",
+        { method: "POST", body: form }
+      );
+      if (!response.ok) {
+        const json = await response.json().catch(() => null);
+        setFeedback({
+          kind: "error",
+          title: "Vehicle label generation failed",
+          message: json?.error || "The vehicle label PDF could not be generated.",
+        });
+        return;
+      }
+
+      const blob = await response.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = "vehicle-registration-labels-L4731.pdf";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+      setFeedback({
+        kind: "success",
+        title: "Vehicle labels ready",
+        message: `${preview.vehicle_label_count} device labels were generated from Vehicle Registration. Accessory rows were ignored.`,
+      });
+    } finally {
+      setLabelsBusy(false);
     }
   }
 
@@ -534,6 +584,7 @@ export default function DispatchPlanningPage() {
                   <div><span>Orders</span><strong>{previewTotals.orders}</strong></div>
                   <div><span>Lines</span><strong>{previewTotals.lines}</strong></div>
                   <div><span>Packages</span><strong>{preview.plan.totalPackages}</strong></div>
+                  <div><span>Device labels</span><strong>{preview.vehicle_label_count || 0}</strong></div>
                 </div>
               </div>
 
@@ -694,6 +745,28 @@ export default function DispatchPlanningPage() {
                   })}
                 </div>
               </details>
+
+              <div className="dispatch-vehicle-labels-action">
+                <div>
+                  <span className="dispatch-vehicle-labels-format">L4731</span>
+                  <span>
+                    <strong>Vehicle registration labels</strong>
+                    <small>
+                      One label per device row. Accessory rows are ignored.
+                    </small>
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="prototype-button secondary"
+                  onClick={downloadVehicleLabels}
+                  disabled={labelsBusy || !preview.vehicle_label_count}
+                >
+                  {labelsBusy
+                    ? "Generating labels…"
+                    : `Download Vehicle Labels — PDF (${preview.vehicle_label_count || 0})`}
+                </button>
+              </div>
 
               <div className="prototype-preview-actions">
                 <button

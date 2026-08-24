@@ -71,6 +71,17 @@ export const WORKLOAD_POLICIES = {
     globalConcurrency: 8,
     leaseSeconds: 60,
   },
+  dispatchLabels: {
+    routeClass: "dispatch.vehicle-labels",
+    windowSeconds: 60,
+    principalLimit: 10,
+    sourceLimit: 20,
+    globalLimit: 50,
+    principalConcurrency: 1,
+    routeConcurrency: 2,
+    globalConcurrency: 8,
+    leaseSeconds: 60,
+  },
   returnsHistory: {
     routeClass: "returns.history",
     windowSeconds: 60,

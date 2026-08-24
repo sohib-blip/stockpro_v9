@@ -40,6 +40,10 @@ describe("workload protection boundaries", () => {
       "inspectXlsxZipEnvelope(buffer",
     ],
     ["app/api/outbound/shipment-pdf/route.ts", "new PDFDocument"],
+    [
+      "app/api/dispatch-planning/vehicle-labels/route.ts",
+      "const pdf = await createDispatchVehicleLabelsPdf",
+    ],
     ["app/api/returns/history/route.ts", ".rpc("],
     ["app/api/dashboard/imei-search/route.ts", '.from("items")'],
     ["app/api/transfer/preview/route.ts", ".rpc("],

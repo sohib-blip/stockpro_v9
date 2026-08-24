@@ -1792,7 +1792,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("button", {
-        name: "Download Vehicle Labels — PDF (1)",
+        name: "Download Vehicle Labels — Word (1)",
       })
     ).toBeVisible();
     await page.getByRole("button", { name: "Clear Preview" }).click();
@@ -1818,9 +1818,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expectDownload(
       page,
       page.getByRole("button", {
-        name: "Download Vehicle Labels — PDF (1)",
+        name: "Download Vehicle Labels — Word (1)",
       }),
-      /vehicle-registration-labels-L4731\.pdf$/
+      /vehicle-registration-labels-L4731\.docx$/
     );
     await expect(page.getByText("Vehicle labels ready")).toBeVisible();
     const orderSearch = page.getByLabel("Search dispatch orders");

@@ -376,7 +376,9 @@ export default function DispatchPlanningPage() {
         setFeedback({
           kind: "error",
           title: "Vehicle label generation failed",
-          message: json?.error || "The vehicle label PDF could not be generated.",
+          message:
+            json?.error ||
+            "The vehicle label Word document could not be generated.",
         });
         return;
       }
@@ -385,7 +387,7 @@ export default function DispatchPlanningPage() {
       const objectUrl = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = objectUrl;
-      anchor.download = "vehicle-registration-labels-L4731.pdf";
+      anchor.download = "vehicle-registration-labels-L4731.docx";
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -748,7 +750,9 @@ export default function DispatchPlanningPage() {
 
               <div className="dispatch-vehicle-labels-action">
                 <div>
-                  <span className="dispatch-vehicle-labels-format">L4731</span>
+                  <span className="dispatch-vehicle-labels-format">
+                    L4731 · Word
+                  </span>
                   <span>
                     <strong>Vehicle registration labels</strong>
                     <small>
@@ -764,7 +768,7 @@ export default function DispatchPlanningPage() {
                 >
                   {labelsBusy
                     ? "Generating labels…"
-                    : `Download Vehicle Labels — PDF (${preview.vehicle_label_count || 0})`}
+                    : `Download Vehicle Labels — Word (${preview.vehicle_label_count || 0})`}
                 </button>
               </div>
 

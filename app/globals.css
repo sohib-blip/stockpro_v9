@@ -523,6 +523,7 @@ body {
   font-weight: 800;
   letter-spacing: 0.05em;
   text-align: center;
+  white-space: nowrap;
 }
 
 .dispatch-orders-scroll,

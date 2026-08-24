@@ -4,7 +4,7 @@ import { getApiIdentity } from "@/lib/api-identity";
 import { parseDispatchWorkbook } from "@/lib/dispatch-planning";
 import {
   buildDispatchVehicleLabels,
-  createDispatchVehicleLabelsPdf,
+  createDispatchVehicleLabelsDocx,
 } from "@/lib/dispatch-vehicle-labels";
 import {
   PayloadTooLargeError,
@@ -29,7 +29,7 @@ const MAX_FILE_BYTES = 3 * 1024 * 1024;
 const MAX_MULTIPART_BYTES = MAX_FILE_BYTES + 256 * 1024;
 const MAX_LINES = 10_000;
 const MAX_LABELS = 10_000;
-const MAX_PDF_BYTES = 8 * 1024 * 1024;
+const MAX_DOCX_BYTES = 8 * 1024 * 1024;
 
 export async function POST(req: Request) {
   const identity = getApiIdentity(req);
@@ -100,16 +100,17 @@ export async function POST(req: Request) {
       );
     }
 
-    const pdf = await createDispatchVehicleLabelsPdf(labelResult.labels);
-    if (pdf.length > MAX_PDF_BYTES) {
-      throw new PayloadTooLargeError("Generated label PDF is too large.");
+    const docx = await createDispatchVehicleLabelsDocx(labelResult.labels);
+    if (docx.length > MAX_DOCX_BYTES) {
+      throw new PayloadTooLargeError("Generated label Word document is too large.");
     }
 
-    return new NextResponse(pdf, {
+    return new NextResponse(new Uint8Array(docx), {
       headers: {
-        "Content-Type": "application/pdf",
+        "Content-Type":
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         "Content-Disposition":
-          'attachment; filename="vehicle-registration-labels-L4731.pdf"',
+          'attachment; filename="vehicle-registration-labels-L4731.docx"',
         "Cache-Control": "no-store",
         "X-StockPro-Label-Count": String(labelResult.labels.length),
       },

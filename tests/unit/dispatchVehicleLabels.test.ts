@@ -1,9 +1,9 @@
-import { PDFDocument } from "pdf-lib";
+import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 import * as XLSX from "xlsx";
 import {
   buildDispatchVehicleLabels,
-  createDispatchVehicleLabelsPdf,
+  createDispatchVehicleLabelsDocx,
   L4731_LABELS_PER_PAGE,
 } from "../../lib/dispatch-vehicle-labels";
 import { parseDispatchWorkbook } from "../../lib/dispatch-planning";
@@ -92,12 +92,34 @@ describe("dispatch vehicle registration labels", () => {
       })
     );
 
-    const bytes = await createDispatchVehicleLabelsPdf(labels);
-    const document = await PDFDocument.load(bytes);
+    const bytes = await createDispatchVehicleLabelsDocx(labels);
+    const archive = await JSZip.loadAsync(bytes);
+    const documentXml = await archive.file("word/document.xml")!.async("string");
 
     expect(L4731_LABELS_PER_PAGE).toBe(189);
-    expect(document.getPageCount()).toBe(2);
-    expect(document.getPage(0).getWidth()).toBeCloseTo(595.28, 1);
-    expect(document.getPage(0).getHeight()).toBeCloseTo(841.89, 1);
+    expect(documentXml.match(/<w:tbl(?:\s[^>]*)?>/g)).toHaveLength(2);
+    expect(documentXml).not.toContain('<w:br w:type="page"/>');
+    expect(documentXml).toContain(">TEST-1</w:t>");
+    expect(documentXml).toContain(">TEST-190</w:t>");
+    expect(documentXml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');
+  });
+
+  it("keeps the supplied Word template and safely escapes registration text", async () => {
+    const bytes = await createDispatchVehicleLabelsDocx([
+      {
+        registration: "A&B<12>",
+        deviceModel: "FMC880",
+        orderId: "1001",
+        sheet: "Vehicles",
+        row: 6,
+      },
+    ]);
+    const archive = await JSZip.loadAsync(bytes);
+    const documentXml = await archive.file("word/document.xml")!.async("string");
+
+    expect(documentXml).toContain(">A&amp;B&lt;12&gt;</w:t>");
+    expect(documentXml.match(/<w:tr(?:\s[^>]*)?>/g)).toHaveLength(27);
+    expect(documentXml.match(/<w:tc(?:\s[^>]*)?>/g)).toHaveLength(351);
+    expect(documentXml).toContain('<w:pStyle w:val="AveryStyle1"/>');
   });
 });

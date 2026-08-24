@@ -42,7 +42,7 @@ describe("workload protection boundaries", () => {
     ["app/api/outbound/shipment-pdf/route.ts", "new PDFDocument"],
     [
       "app/api/dispatch-planning/vehicle-labels/route.ts",
-      "const pdf = await createDispatchVehicleLabelsPdf",
+      "const docx = await createDispatchVehicleLabelsDocx",
     ],
     ["app/api/returns/history/route.ts", ".rpc("],
     ["app/api/dashboard/imei-search/route.ts", '.from("items")'],

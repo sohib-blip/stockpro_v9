@@ -713,8 +713,8 @@ const FR: Record<string, string> = {
   "Vehicle labels ready": "Étiquettes d’immatriculation prêtes",
   "Preview a workbook containing at least one device first.":
     "Prévisualisez d’abord un fichier contenant au moins un appareil.",
-  "The vehicle label PDF could not be generated.":
-    "Le PDF des étiquettes d’immatriculation n’a pas pu être généré.",
+  "The vehicle label Word document could not be generated.":
+    "Le document Word des étiquettes d’immatriculation n’a pas pu être généré.",
   "Admin action completed": "Action d’administration terminée",
   "Admin action failed": "Échec de l’action d’administration",
   "Supply order updated": "Commande d’approvisionnement mise à jour",
@@ -1446,8 +1446,8 @@ const NL: Record<string, string> = {
   "Vehicle labels ready": "Voertuiglabels gereed",
   "Preview a workbook containing at least one device first.":
     "Bekijk eerst een bestand met minstens één apparaat.",
-  "The vehicle label PDF could not be generated.":
-    "De PDF met voertuiglabels kon niet worden gegenereerd.",
+  "The vehicle label Word document could not be generated.":
+    "Het Word-document met voertuiglabels kon niet worden gegenereerd.",
   "Admin action completed": "Beheeractie voltooid",
   "Admin action failed": "Beheeractie mislukt",
   "Supply order updated": "Bevoorradingsorder bijgewerkt",
@@ -1499,7 +1499,7 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(\d+) accessories$/, "$1 accessoires"],
           [/^Showing (\d+) of (\d+) inventory items$/, "$1 éléments affichés sur $2"],
           [/^Download all labels — PDF \((\d+)\)$/, "Télécharger toutes les étiquettes — PDF ($1)"],
-          [/^Download Vehicle Labels — PDF \((\d+)\)$/, "Télécharger les étiquettes d’immatriculation — PDF ($1)"],
+          [/^Download Vehicle Labels — Word \((\d+)\)$/, "Télécharger les étiquettes d’immatriculation — Word ($1)"],
           [/^(\d+) device labels were generated from Vehicle Registration\. Accessory rows were ignored\.$/, "$1 étiquettes d’appareils ont été générées depuis Vehicle Registration. Les lignes d’accessoires ont été ignorées."],
           [/^All (\d+) IMEIs? from this spreadsheet already exists? in stock\. Nothing will be imported and no history entry will be created\.$/, "Les $1 IMEI de ce fichier sont déjà en stock. Aucun élément ne sera importé et aucune entrée d’historique ne sera créée."],
           [/^(\d+) existing IMEIs will be skipped and (\d+) new IMEIs will be imported\.$/, "$1 IMEI existants seront ignorés et $2 nouveaux IMEI seront importés."],
@@ -1534,7 +1534,7 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(\d+) accessories$/, "$1 accessoires"],
           [/^Showing (\d+) of (\d+) inventory items$/, "$1 van $2 voorraaditems weergegeven"],
           [/^Download all labels — PDF \((\d+)\)$/, "Alle labels downloaden — PDF ($1)"],
-          [/^Download Vehicle Labels — PDF \((\d+)\)$/, "Voertuiglabels downloaden — PDF ($1)"],
+          [/^Download Vehicle Labels — Word \((\d+)\)$/, "Voertuiglabels downloaden — Word ($1)"],
           [/^(\d+) device labels were generated from Vehicle Registration\. Accessory rows were ignored\.$/, "$1 apparaatlabels zijn gegenereerd uit Vehicle Registration. Accessoireregels zijn genegeerd."],
           [/^All (\d+) IMEIs? from this spreadsheet already exists? in stock\. Nothing will be imported and no history entry will be created\.$/, "Alle $1 IMEI's uit dit bestand staan al op voorraad. Er wordt niets geïmporteerd en er wordt geen geschiedenisitem aangemaakt."],
           [/^(\d+) existing IMEIs will be skipped and (\d+) new IMEIs will be imported\.$/, "$1 bestaande IMEI's worden overgeslagen en $2 nieuwe IMEI's worden geïmporteerd."],

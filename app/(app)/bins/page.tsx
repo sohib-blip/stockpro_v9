@@ -8,7 +8,6 @@ import ConfirmDialog from "@/components/ConfirmDialog";
 import PackagingInventoryPanel from "@/components/PackagingInventoryPanel";
 
 type AccessoryCategory =
-  | "Packages"
   | "Consumables"
   | "Harness"
   | "Vision"
@@ -744,7 +743,6 @@ export default function BinsPage() {
   }
   className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
 >
-  <option value="Packages">Packages</option>
   <option value="Consumables">Consumables</option>
   <option value="Harness">Harness</option>
   <option value="Vision">Vision</option>
@@ -833,7 +831,6 @@ export default function BinsPage() {
       }
       className="bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
     >
-      <option value="Packages">Packages</option>
       <option value="Consumables">Consumables</option>
       <option value="Harness">Harness</option>
       <option value="Vision">Vision</option>

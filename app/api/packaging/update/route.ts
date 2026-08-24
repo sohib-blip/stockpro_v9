@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { getApiIdentity } from "@/lib/api-identity";
 import { supabaseService } from "@/lib/auth";
+import {
+  inventoryCommandErrorMessage,
+  inventoryCommandErrorStatus,
+} from "@/lib/inventory-command-error";
 import { packagingUpdateSchema } from "@/lib/packaging-validation";
 
 export const runtime = "nodejs";
@@ -19,18 +23,24 @@ export async function POST(req: Request) {
     }
 
     const identity = getApiIdentity(req);
-    const { id, ...changes } = parsed.data;
-    const { data, error } = await supabaseService()
-      .from("packaging_types")
-      .update({
-        ...changes,
-        updated_at: new Date().toISOString(),
-        updated_by_id: identity.userId,
-        updated_by_email: identity.email,
-      })
-      .eq("id", id)
-      .select("id,code,name")
-      .maybeSingle();
+    const { id, operation_id, ...details } = parsed.data;
+    const { data, error } = await supabaseService().rpc(
+      "save_packaging_inventory",
+      {
+        p_operation_id: operation_id || crypto.randomUUID(),
+        p_actor_id: identity.userId,
+        p_actor: identity.email,
+        p_packaging_type_id: id,
+        p_code: details.code,
+        p_name: details.name,
+        p_category: details.category,
+        p_length_cm: details.length_cm,
+        p_width_cm: details.width_cm,
+        p_height_cm: details.height_cm,
+        p_on_hand_stock: details.on_hand_stock,
+        p_minimum_stock: details.minimum_stock,
+      }
+    );
 
     if (error) {
       if (error.code === "23505") {
@@ -39,16 +49,19 @@ export async function POST(req: Request) {
           { status: 409 }
         );
       }
-      throw error;
-    }
-    if (!data) {
       return NextResponse.json(
-        { ok: false, error: "Packaging format not found" },
-        { status: 404 }
+        {
+          ok: false,
+          error: inventoryCommandErrorMessage(
+            error,
+            "Packaging format could not be updated"
+          ),
+        },
+        { status: inventoryCommandErrorStatus(error) }
       );
     }
 
-    return NextResponse.json({ ok: true, row: data });
+    return NextResponse.json(data);
   } catch (error) {
     console.error("PACKAGING UPDATE ERROR", error);
     return NextResponse.json(

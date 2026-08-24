@@ -67,6 +67,9 @@ export function inventoryCommandErrorMessage(
   if (message.includes("PACKAGING_NO_STOCK_CHANGE")) {
     return "The requested count is already the current packaging stock.";
   }
+  if (message.includes("PACKAGING_INVENTORY_INVALID")) {
+    return "Please check the packaging identity, dimensions and stock values.";
+  }
   const dispatchPackagingInsufficient = message.match(
     /DISPATCH_PACKAGING_INSUFFICIENT:(.*):(\d+):(\d+)/i
   );

@@ -1968,6 +1968,11 @@ body {
   color: var(--warning);
 }
 
+.status-badge.empty {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
 .status-badge.critical {
   background: var(--danger-soft);
   color: var(--danger);
@@ -2616,7 +2621,7 @@ body {
 }
 
 .packaging-table {
-  min-width: 680px;
+  min-width: 1120px;
   table-layout: fixed;
 }
 
@@ -2626,9 +2631,19 @@ body {
   z-index: 2;
 }
 
-.packaging-table th:nth-child(1) { width: 42%; }
-.packaging-table th:nth-child(2) { width: 28%; }
-.packaging-table th:nth-child(3) { width: 30%; text-align: right; }
+.packaging-table th:nth-child(1) { width: 23%; }
+.packaging-table th:nth-child(2) { width: 15%; }
+.packaging-table th:nth-child(3),
+.packaging-table th:nth-child(4),
+.packaging-table th:nth-child(5),
+.packaging-table th:nth-child(6) { width: 9%; text-align: right; }
+.packaging-table th:nth-child(7) { width: 8%; }
+.packaging-table th:nth-child(8) { width: 18%; text-align: right; }
+
+.packaging-number {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
 
 .packaging-table tr.is-inactive td {
   opacity: 0.58;

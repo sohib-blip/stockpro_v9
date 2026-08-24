@@ -14,6 +14,7 @@ export async function GET() {
     .from("accessory_bins")
     .select("*")
     .eq("active", true)
+    .or("category.is.null,category.neq.Packages")
     .order("name");
 
   if (error) {

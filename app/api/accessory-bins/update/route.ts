@@ -26,6 +26,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "name required" }, { status: 400 });
     }
 
+    if (category === "Packages") {
+      return NextResponse.json(
+        { ok: false, error: "Manage packaging in Packaging Inventory" },
+        { status: 400 }
+      );
+    }
+
     const { error } = await supabase
       .from("accessory_bins")
       .update({

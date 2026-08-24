@@ -15,6 +15,10 @@ const migration = readFileSync(
   join(root, "supabase/migrations/20260819090000_add_packaging_inventory.sql"),
   "utf8"
 ).toLowerCase();
+const stockUnificationMigration = readFileSync(
+  join(root, "supabase/migrations/20260824103000_unify_packaging_stock.sql"),
+  "utf8"
+).toLowerCase();
 const binsPage = readFileSync(
   join(root, "app/(app)/bins/page.tsx"),
   "utf8"
@@ -98,6 +102,29 @@ describe("packaging inventory", () => {
     expect(migration).toContain("to service_role;");
     expect(permissionsForApi("/api/packaging/list", "GET")).toEqual(["can_bins"]);
     expect(permissionsForApi("/api/packaging/adjust", "POST")).toEqual(["can_bins"]);
+  });
+
+  it("links legacy Packages stock to dispatch packaging without matching sleeves", () => {
+    expect(stockUnificationMigration).toContain(
+      "add column if not exists legacy_accessory_bin_id"
+    );
+    expect(stockUnificationMigration).toContain(
+      "position(upper(packaging.code) in upper(accessory.name)) > 0"
+    );
+    expect(stockUnificationMigration).toContain(
+      "set on_hand_stock = greatest("
+    );
+    expect(stockUnificationMigration).toContain(
+      "accessory_bins_sync_packaging_stock"
+    );
+    expect(stockUnificationMigration).toContain(
+      "packaging_types_sync_legacy_stock"
+    );
+    expect(stockUnificationMigration).toContain(
+      "stock changes are synchronized both ways"
+    );
+    expect(stockUnificationMigration.trimStart()).toMatch(/^begin;/);
+    expect(stockUnificationMigration.trimEnd()).toMatch(/commit;$/);
   });
 
   it("keeps packaging format management compact in Inventory Setup", () => {

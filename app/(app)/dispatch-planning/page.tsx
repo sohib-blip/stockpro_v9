@@ -51,6 +51,9 @@ type PackagingOption = {
   id: string;
   code: string;
   name: string;
+  lengthCm: number;
+  widthCm: number;
+  heightCm: number;
   onHandStock: number;
   reservedStock: number;
   availableStock: number;
@@ -110,6 +113,15 @@ function formatDate(value: string | null) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(new Date(value));
+}
+
+function formatPackageDimensions(
+  packaging: Pick<PackagingOption, "lengthCm" | "widthCm" | "heightCm">
+) {
+  return `${formatNumber(packaging.lengthCm, 2)} × ${formatNumber(
+    packaging.widthCm,
+    2
+  )} × ${formatNumber(packaging.heightCm, 2)} cm`;
 }
 
 function rebuildClientPlan(
@@ -564,6 +576,9 @@ export default function DispatchPlanningPage() {
                       const options = (preview.packaging_options || []).filter(
                         (option) => eligibleIds.has(option.id)
                       );
+                      const selectedOption = options.find(
+                        (option) => option.id === allocation?.packagingTypeId
+                      );
                       return <tr key={order.orderId}>
                         <td><strong>{order.orderId}</strong></td>
                         <td>{order.destinationCountry || "—"}</td>
@@ -599,10 +614,15 @@ export default function DispatchPlanningPage() {
                               >
                                 {options.map((option) => (
                                   <option key={option.id} value={option.id}>
-                                    {option.name} · {option.availableStock} available
+                                    {option.name} · {formatPackageDimensions(option)} · {option.availableStock} available
                                   </option>
                                 ))}
                               </select>
+                              {selectedOption ? (
+                                <small className="dispatch-package-dimensions">
+                                  {selectedOption.code} · {formatPackageDimensions(selectedOption)}
+                                </small>
+                              ) : null}
                             </label>
                             <label className="dispatch-package-quantity">
                               <span>Qty</span>
@@ -649,14 +669,29 @@ export default function DispatchPlanningPage() {
                   </strong>
                 </summary>
                 <div className="dispatch-package-summary-list">
-                  {preview.plan.packageUsage.map((usage) => (
-                    <div key={usage.packagingTypeId}>
-                      <span><strong>{usage.quantity} × {usage.name}</strong><small>{usage.code}</small></span>
-                      <span className={usage.stockAfter < 0 ? "is-danger" : ""}>
-                        {usage.onHandStock} → {usage.stockAfter}
-                      </span>
-                    </div>
-                  ))}
+                  {preview.plan.packageUsage.map((usage) => {
+                    const packaging = preview.packaging_options?.find(
+                      (option) => option.id === usage.packagingTypeId
+                    );
+                    return (
+                      <div key={usage.packagingTypeId}>
+                        <span>
+                          <strong>{usage.quantity} × {usage.name}</strong>
+                          <small>
+                            {usage.code}
+                            {packaging
+                              ? ` · ${formatPackageDimensions(packaging)}`
+                              : ""}
+                          </small>
+                        </span>
+                        <span
+                          className={usage.stockAfter < 0 ? "is-danger" : ""}
+                        >
+                          {usage.onHandStock} → {usage.stockAfter}
+                        </span>
+                      </div>
+                    );
+                  })}
                 </div>
               </details>
 

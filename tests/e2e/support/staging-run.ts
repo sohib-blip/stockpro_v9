@@ -19,11 +19,13 @@ export type StagingRun = {
   accessory: { id: string; name: string };
   dispatchRuleDevice: { id: string; name: string; owned: boolean };
   dispatchRuleAccessory: { id: string; name: string };
+  dispatchPackagingLegacyAccessory: { id: string; name: string };
   packaging: { id: string; code: string; name: string };
   dispatchPackaging: { id: string; code: string; name: string };
   dispatchAlternatePackaging: { id: string; code: string; name: string };
   manualImei: string;
   spreadsheetImei: string;
+  multiDeviceReturnImeis: [string, string];
   manualBox: string;
   emptyBox: string;
   returnBox: string;
@@ -63,6 +65,10 @@ export async function createStagingRun(): Promise<StagingRun> {
     accessory: { id: "", name: `E2E Cable ${stamp}` },
     dispatchRuleDevice: { id: "", name: "FMC880", owned: false },
     dispatchRuleAccessory: { id: "", name: "Atom Install Guide\tTBD001" },
+    dispatchPackagingLegacyAccessory: {
+      id: "",
+      name: `E2E Dispatch Package Legacy ${stamp}`,
+    },
     packaging: {
       id: "",
       code: `E2E-PKG-${shortNumber}`,
@@ -80,6 +86,10 @@ export async function createStagingRun(): Promise<StagingRun> {
     },
     manualImei: makeImei(numericStamp),
     spreadsheetImei: makeImei(numericStamp + 1),
+    multiDeviceReturnImeis: [
+      makeImei(numericStamp + 2),
+      makeImei(numericStamp + 3),
+    ],
     manualBox: `E2E-MANUAL-${stamp}`,
     emptyBox: `E2E-EMPTY-${stamp}`,
     returnBox: `E2E-RETURN-${stamp}`,
@@ -244,6 +254,32 @@ export async function createStagingRun(): Promise<StagingRun> {
       });
     throwOnError(dispatchRuleError, "Create E2E dispatch automatic rule");
 
+    const {
+      data: dispatchPackagingLegacyAccessory,
+      error: dispatchPackagingLegacyAccessoryError,
+    } = await supabase
+      .from("accessory_bins")
+      .insert({
+        name: `${run.dispatchPackagingLegacyAccessory.name} ${run.dispatchAlternatePackaging.code}`,
+        current_stock: 5,
+        minimum_stock: 0,
+        category: "Packages",
+        active: true,
+      })
+      .select("id,name")
+      .single();
+    throwOnError(
+      dispatchPackagingLegacyAccessoryError,
+      "Create legacy E2E dispatch packaging stock"
+    );
+    if (!dispatchPackagingLegacyAccessory) {
+      throw new Error("Create legacy E2E dispatch packaging stock: no row returned");
+    }
+    run.dispatchPackagingLegacyAccessory = {
+      id: String(dispatchPackagingLegacyAccessory.id),
+      name: String(dispatchPackagingLegacyAccessory.name),
+    };
+
     const { data: dispatchPackaging, error: dispatchPackagingError } = await supabase
       .from("packaging_types")
       .insert({
@@ -290,6 +326,7 @@ export async function createStagingRun(): Promise<StagingRun> {
         active: true,
         sort_order: 2,
         source_name: "StockPro E2E adaptive dispatch planning",
+        legacy_accessory_bin_id: run.dispatchPackagingLegacyAccessory.id,
       })
       .select("id,code,name")
       .single();
@@ -353,7 +390,11 @@ export async function cleanupStagingRun(
       userIds.push(user.id);
     }
   }
-  const imeis = [run.manualImei, run.spreadsheetImei];
+  const imeis = [
+    run.manualImei,
+    run.spreadsheetImei,
+    ...run.multiDeviceReturnImeis,
+  ];
 
   const { data: items } = await supabase
     .from("items")
@@ -453,6 +494,12 @@ export async function cleanupStagingRun(
       .in("packaging_type_id", packagingTypeIds);
     await supabase.from("packaging_types").delete().in("id", packagingTypeIds);
   }
+  if (run.dispatchPackagingLegacyAccessory.id) {
+    await supabase
+      .from("accessory_bins")
+      .delete()
+      .eq("id", run.dispatchPackagingLegacyAccessory.id);
+  }
 
   if (userIds.length) {
     await deleteSuppliesForUsers(supabase, userIds);
@@ -511,7 +558,7 @@ export async function assertStagingRunClean(run: StagingRun) {
 
   const checks = await Promise.all([
     rowCount(
-      supabase.from("items").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei]),
+      supabase.from("items").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei, ...run.multiDeviceReturnImeis]),
       "items"
     ),
     rowCount(
@@ -529,11 +576,11 @@ export async function assertStagingRunClean(run: StagingRun) {
       "boxes"
     ),
     rowCount(
-      supabase.from("movements").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei]),
+      supabase.from("movements").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei, ...run.multiDeviceReturnImeis]),
       "device movements"
     ),
     rowCount(
-      supabase.from("return_records").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei]),
+      supabase.from("return_records").select("*", { count: "exact", head: true }).in("imei", [run.manualImei, run.spreadsheetImei, ...run.multiDeviceReturnImeis]),
       "return records"
     ),
     rowCount(
@@ -555,6 +602,10 @@ export async function assertStagingRunClean(run: StagingRun) {
     rowCount(
       supabase.from("accessory_bins").select("*", { count: "exact", head: true }).eq("id", run.dispatchRuleAccessory.id),
       "dispatch rule accessory"
+    ),
+    rowCount(
+      supabase.from("accessory_bins").select("*", { count: "exact", head: true }).eq("id", run.dispatchPackagingLegacyAccessory.id),
+      "legacy dispatch packaging stock"
     ),
     rowCount(
       supabase.from("device_accessory_templates").select("*", { count: "exact", head: true }).eq("accessory_bin_id", run.dispatchRuleAccessory.id),
@@ -738,6 +789,34 @@ export async function readReturnRecord(operationId: string) {
     target_floor: string | null;
     stock_action: string;
   };
+}
+
+export async function readReturnRecords(operationId: string) {
+  const supabase = serviceClient();
+  const { data, error } = await supabase
+    .from("return_records")
+    .select(
+      "operation_id,item_id,imei,device_id,reported_device,return_ref,customer,sur_id,courier,country_code,return_status,target_box,target_floor,stock_action"
+    )
+    .eq("operation_id", operationId)
+    .order("imei", { ascending: true });
+  throwOnError(error, "Read E2E return records");
+  return (data || []) as Array<{
+    operation_id: string;
+    item_id: string | null;
+    imei: string;
+    device_id: string | null;
+    reported_device: string;
+    return_ref: string;
+    customer: string;
+    sur_id: string;
+    courier: string;
+    country_code: string;
+    return_status: string;
+    target_box: string | null;
+    target_floor: string | null;
+    stock_action: string;
+  }>;
 }
 
 export async function readAccessoryStock(id: string) {

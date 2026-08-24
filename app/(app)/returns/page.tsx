@@ -10,6 +10,7 @@ import {
   RETURN_FALLBACK_DEVICE_MODELS,
   RETURN_REASONS,
   RETURN_STATUSES,
+  extractReturnImeis,
   matchReturnDeviceOption,
   mergeReturnDeviceOptions,
   returnCountryLabel,
@@ -28,6 +29,19 @@ type PreviewItem = {
   return_status: ReturnStatus;
   stock_action: "added_to_stock" | "no_stock_change";
   inventory_match: "known" | "unknown";
+  reported_device: string | null;
+};
+
+type ReturnDeviceGroup = {
+  id: string;
+  reportedDevice: string;
+  imeisText: string;
+};
+
+const INITIAL_RETURN_DEVICE_GROUP: ReturnDeviceGroup = {
+  id: "return-device-group-1",
+  reportedDevice: "",
+  imeisText: "",
 };
 
 type ReturnPreview = {
@@ -91,11 +105,12 @@ export default function ReturnsPage() {
   const [surId, setSurId] = useState("");
   const [returnStatus, setReturnStatus] =
     useState<ReturnStatus>("available");
-  const [reportedDevice, setReportedDevice] = useState("");
+  const [returnDeviceGroups, setReturnDeviceGroups] = useState<
+    ReturnDeviceGroup[]
+  >([{ ...INITIAL_RETURN_DEVICE_GROUP }]);
   const [deviceOptions, setDeviceOptions] = useState<string[]>(() =>
     mergeReturnDeviceOptions([...RETURN_FALLBACK_DEVICE_MODELS])
   );
-  const [deviceMenuOpen, setDeviceMenuOpen] = useState(false);
   const [returnReason, setReturnReason] = useState("");
   const [targetBox, setTargetBox] = useState("");
   const [targetFloor, setTargetFloor] = useState("00");
@@ -144,7 +159,6 @@ export default function ReturnsPage() {
   const [loadingHistoryDetails, setLoadingHistoryDetails] = useState(false);
   const [historyDetailsError, setHistoryDetailsError] = useState("");
   const returnOperationIdRef = useRef<string | null>(null);
-  const deviceComboboxRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -190,20 +204,6 @@ export default function ReturnsPage() {
   }, []);
 
   useEffect(() => {
-    function closeDeviceMenu(event: MouseEvent) {
-      if (
-        deviceComboboxRef.current &&
-        !deviceComboboxRef.current.contains(event.target as Node)
-      ) {
-        setDeviceMenuOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", closeDeviceMenu);
-    return () => document.removeEventListener("mousedown", closeDeviceMenu);
-  }, []);
-
-  useEffect(() => {
     if (!selectedHistoryBatch) return;
 
     function closeHistoryDialog(event: KeyboardEvent) {
@@ -230,6 +230,50 @@ export default function ReturnsPage() {
     historyCountry,
   ]);
 
+  function returnLines() {
+    return returnDeviceGroups.flatMap((group) =>
+      extractReturnImeis(group.imeisText).map((imei) => ({
+        imei,
+        reported_device: group.reportedDevice.trim(),
+      }))
+    );
+  }
+
+  function updateReturnDeviceGroup(
+    id: string,
+    patch: Partial<Pick<ReturnDeviceGroup, "reportedDevice" | "imeisText">>
+  ) {
+    setReturnDeviceGroups((groups) =>
+      groups.map((group) =>
+        group.id === id ? { ...group, ...patch } : group
+      )
+    );
+    setPreview(null);
+    setReviewedFingerprint("");
+  }
+
+  function addReturnDeviceGroup() {
+    setReturnDeviceGroups((groups) => [
+      ...groups,
+      {
+        id: crypto.randomUUID(),
+        reportedDevice: "",
+        imeisText: "",
+      },
+    ]);
+    setPreview(null);
+    setReviewedFingerprint("");
+  }
+
+  function removeReturnDeviceGroup(id: string) {
+    setReturnDeviceGroups((groups) => {
+      const next = groups.filter((group) => group.id !== id);
+      return next.length > 0 ? next : [{ ...INITIAL_RETURN_DEVICE_GROUP }];
+    });
+    setPreview(null);
+    setReviewedFingerprint("");
+  }
+
   function formFingerprint() {
     return JSON.stringify({
       returnRef: returnRef.trim(),
@@ -238,8 +282,13 @@ export default function ReturnsPage() {
       customer: customer.trim(),
       surId: surId.trim(),
       returnStatus,
-      reportedDevice:
-        returnStatus === "available" ? null : reportedDevice.trim(),
+      deviceGroups:
+        returnStatus === "available"
+          ? null
+          : returnDeviceGroups.map((group) => ({
+              reportedDevice: group.reportedDevice.trim(),
+              imeis: extractReturnImeis(group.imeisText),
+            })),
       returnReason,
       targetBox: returnStatus === "available" ? targetBox.trim() : null,
       targetFloor: returnStatus === "available" ? targetFloor : null,
@@ -254,17 +303,36 @@ export default function ReturnsPage() {
     if (!customer.trim()) return "Enter the customer name.";
     if (!surId.trim()) return "Enter the SUR ID.";
     if (!returnStatus) return "Select a return status.";
-    if (returnStatus !== "available" && !reportedDevice.trim()) {
-      return "Select the returned device.";
-    }
-    if (
-      returnStatus !== "available" &&
-      !matchReturnDeviceOption(reportedDevice, deviceOptions)
-    ) {
-      return "Select a valid device from the list.";
-    }
     if (!returnReason) return "Select a return reason.";
-    if (!imeisText.trim()) return "Scan or paste at least one returned IMEI.";
+    if (returnStatus === "available" && !imeisText.trim()) {
+      return "Scan or paste at least one returned IMEI.";
+    }
+    if (returnStatus !== "available") {
+      const populatedGroups = returnDeviceGroups.filter(
+        (group) => group.reportedDevice.trim() || group.imeisText.trim()
+      );
+      if (populatedGroups.length === 0) {
+        return "Add at least one returned device and IMEI.";
+      }
+      for (const [index, group] of populatedGroups.entries()) {
+        if (!group.reportedDevice.trim()) {
+          return `Select the device for group ${index + 1}.`;
+        }
+        if (!matchReturnDeviceOption(group.reportedDevice, deviceOptions)) {
+          return `Select a valid device for group ${index + 1}.`;
+        }
+        if (extractReturnImeis(group.imeisText).length === 0) {
+          return `Scan or paste at least one valid IMEI for group ${index + 1}.`;
+        }
+      }
+      const lines = returnLines();
+      if (new Set(lines.map((line) => line.imei)).size !== lines.length) {
+        return "The same IMEI cannot appear in more than one device group.";
+      }
+      if (lines.length > 500) {
+        return "A maximum of 500 IMEIs can be returned at once.";
+      }
+    }
     if (returnStatus === "available" && !targetBox.trim()) {
       return "Enter a destination box for Available returns.";
     }
@@ -418,10 +486,9 @@ export default function ReturnsPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          imeisText,
+          imeisText: returnStatus === "available" ? imeisText : "",
+          lines: returnStatus === "available" ? undefined : returnLines(),
           return_status: returnStatus,
-          reported_device:
-            returnStatus === "available" ? null : reportedDevice.trim(),
         }),
       });
       const json = await response.json();
@@ -469,8 +536,6 @@ export default function ReturnsPage() {
           country_code: countryCode,
           customer: customer.trim(),
           sur_id: surId.trim(),
-          reported_device:
-            returnStatus === "available" ? null : reportedDevice.trim(),
           actor,
           actor_id: actorId,
         }),
@@ -493,7 +558,7 @@ export default function ReturnsPage() {
       setCustomer("");
       setSurId("");
       setReturnReason("");
-      setReportedDevice("");
+      setReturnDeviceGroups([{ ...INITIAL_RETURN_DEVICE_GROUP }]);
       setTargetBox("");
       returnOperationIdRef.current = null;
       setHistoryCursorStack([]);
@@ -508,19 +573,6 @@ export default function ReturnsPage() {
 
   const statusLabel = returnStatusLabel(returnStatus);
   const addsToStock = returnStatus === "available";
-  const filteredDeviceOptions = useMemo(() => {
-    const query = reportedDevice.trim().toLocaleLowerCase("en");
-    if (!query) return deviceOptions;
-
-    return deviceOptions
-      .filter((option) => option.toLocaleLowerCase("en").includes(query))
-      .sort((a, b) => {
-        const aStarts = a.toLocaleLowerCase("en").startsWith(query);
-        const bStarts = b.toLocaleLowerCase("en").startsWith(query);
-        if (aStarts !== bStarts) return aStarts ? -1 : 1;
-        return a.localeCompare(b, undefined, { sensitivity: "base" });
-      });
-  }, [deviceOptions, reportedDevice]);
 
   return (
     <div className="prototype-page prototype-module-page returns-prototype-page">
@@ -789,10 +841,6 @@ export default function ReturnsPage() {
                   value={returnStatus}
                   onChange={(event) => {
                     setReturnStatus(event.target.value as ReturnStatus);
-                    if (event.target.value === "available") {
-                      setReportedDevice("");
-                      setDeviceMenuOpen(false);
-                    }
                     setPreview(null);
                     setReviewedFingerprint("");
                   }}
@@ -804,85 +852,6 @@ export default function ReturnsPage() {
                   ))}
                 </select>
               </label>
-
-              {!addsToStock && (
-                <div className="returns-device-field">
-                  <label htmlFor="return-reported-device">
-                    Device <b>*</b>
-                  </label>
-                  <div
-                    ref={deviceComboboxRef}
-                    className={`returns-device-combobox ${
-                      deviceMenuOpen ? "is-open" : ""
-                    }`}
-                  >
-                    <input
-                      id="return-reported-device"
-                      aria-label="Return device"
-                      role="combobox"
-                      aria-autocomplete="list"
-                      aria-expanded={deviceMenuOpen}
-                      aria-controls="return-device-options"
-                      autoComplete="off"
-                      value={reportedDevice}
-                      onFocus={() => setDeviceMenuOpen(true)}
-                      onChange={(event) => {
-                        setReportedDevice(event.target.value);
-                        setDeviceMenuOpen(true);
-                        setPreview(null);
-                        setReviewedFingerprint("");
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Escape") {
-                          setDeviceMenuOpen(false);
-                        }
-                      }}
-                      placeholder="Search or select a device…"
-                    />
-                    <button
-                      type="button"
-                      className="returns-device-toggle"
-                      aria-label="Open return device list"
-                      onClick={() => setDeviceMenuOpen((open) => !open)}
-                    >
-                      ▾
-                    </button>
-                    {deviceMenuOpen && (
-                      <div
-                        id="return-device-options"
-                        role="listbox"
-                        className="returns-device-options"
-                      >
-                        {filteredDeviceOptions.length > 0 ? (
-                          filteredDeviceOptions.map((option) => (
-                            <button
-                              type="button"
-                              role="option"
-                              aria-selected={reportedDevice === option}
-                              key={option}
-                              onClick={() => {
-                                setReportedDevice(option);
-                                setDeviceMenuOpen(false);
-                                setPreview(null);
-                                setReviewedFingerprint("");
-                              }}
-                            >
-                              {option}
-                            </button>
-                          ))
-                        ) : (
-                          <div className="returns-device-empty">
-                            No matching device
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                  <span className="returns-device-hint">
-                    Type to filter all database bins and supported models.
-                  </span>
-                </div>
-              )}
 
               <label>
                 Return reason <b>*</b>
@@ -901,16 +870,111 @@ export default function ReturnsPage() {
               </label>
             </div>
 
-            <label className="returns-imei-field">
-              Returned IMEIs <b>*</b>
-              <span>one per line or paste a bulk list</span>
-              <textarea
-                aria-label="Returned IMEIs"
-                value={imeisText}
-                onChange={(event) => setImeisText(event.target.value)}
-                placeholder="Scan or paste returned IMEIs here"
-              />
-            </label>
+            {addsToStock ? (
+              <label className="returns-imei-field">
+                Returned IMEIs <b>*</b>
+                <span>
+                  scan or paste a bulk list — devices are detected automatically
+                </span>
+                <textarea
+                  aria-label="Returned IMEIs"
+                  value={imeisText}
+                  onChange={(event) => setImeisText(event.target.value)}
+                  placeholder="Scan or paste returned IMEIs here"
+                />
+              </label>
+            ) : (
+              <section
+                className="returns-device-groups"
+                aria-labelledby="returns-device-groups-title"
+              >
+                <div className="returns-device-groups-heading">
+                  <div>
+                    <strong id="returns-device-groups-title">
+                      Returned devices <b>*</b>
+                    </strong>
+                    <span>
+                      Create one group per model, then scan or paste all matching
+                      IMEIs.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="prototype-button secondary"
+                    onClick={addReturnDeviceGroup}
+                  >
+                    + Add another device
+                  </button>
+                </div>
+
+                <datalist id="return-device-model-options">
+                  {deviceOptions.map((option) => (
+                    <option key={option} value={option} />
+                  ))}
+                </datalist>
+
+                <div className="returns-device-group-list">
+                  {returnDeviceGroups.map((group, index) => {
+                    const scanned = extractReturnImeis(group.imeisText).length;
+                    return (
+                      <div className="returns-device-group" key={group.id}>
+                        <div className="returns-device-group-header">
+                          <strong>Device group {index + 1}</strong>
+                          {returnDeviceGroups.length > 1 ? (
+                            <button
+                              type="button"
+                              onClick={() => removeReturnDeviceGroup(group.id)}
+                              aria-label={`Remove device group ${index + 1}`}
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                        </div>
+                        <div className="returns-device-group-fields">
+                          <label>
+                            Device model <b>*</b>
+                            <input
+                              aria-label={
+                                index === 0
+                                  ? "Return device"
+                                  : `Return device ${index + 1}`
+                              }
+                              list="return-device-model-options"
+                              autoComplete="off"
+                              value={group.reportedDevice}
+                              onChange={(event) =>
+                                updateReturnDeviceGroup(group.id, {
+                                  reportedDevice: event.target.value,
+                                })
+                              }
+                              placeholder="Search or select a device…"
+                            />
+                          </label>
+                          <label className="returns-imei-field">
+                            Returned IMEIs <b>*</b>
+                            <span>{scanned} scanned</span>
+                            <textarea
+                              aria-label={
+                                index === 0
+                                  ? "Returned IMEIs"
+                                  : `Returned IMEIs ${index + 1}`
+                              }
+                              value={group.imeisText}
+                              onChange={(event) =>
+                                updateReturnDeviceGroup(group.id, {
+                                  imeisText: event.target.value,
+                                })
+                              }
+                              placeholder="Scan one IMEI per line or paste a bulk list"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
 
             {addsToStock && (
               <div className="returns-destination-panel">

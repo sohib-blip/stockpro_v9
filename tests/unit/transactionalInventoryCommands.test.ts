@@ -58,9 +58,9 @@ describe("transactional returns and inbound commands", () => {
     expect(migration).toContain("for update of i");
     expect(migration).toContain("v_item.device_id");
     expect(migration).toContain("v_item.imei");
-    expect(returnsRoute).toMatch(/\.rpc\(\s*"confirm_return_batch_v3"/);
-    expect(returnsRoute).toContain("item_ids:");
-    expect(returnsRoute).toContain("p_unknown_imeis:");
+    expect(returnsRoute).toMatch(/\.rpc\(\s*"confirm_return_batch_v4"/);
+    expect(returnsRoute).toContain("p_items: items");
+    expect(returnsRoute).toContain("reported_device:");
     expect(returnsRoute).not.toContain(".from(\"items\")");
     expect(returnsRoute).not.toContain("item.device_id");
   });

@@ -15,6 +15,7 @@ import {
   readItem,
   readReturnMovement,
   readReturnRecord,
+  readReturnRecords,
   readSupplyForProduct,
   type StagingRun,
 } from "./support/staging-run";
@@ -1034,7 +1035,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByLabel("Return reason").selectOption("Other");
     await page.getByLabel("Return target box").fill(run.returnBox);
     await page.getByLabel("Return target floor").selectOption("00");
-    await page.getByLabel("Returned IMEIs").fill(run.manualImei);
+    await page
+      .getByLabel("Returned IMEIs", { exact: true })
+      .fill(run.manualImei);
     await page.getByRole("button", { name: "Preview Return" }).click();
     await expect(page.getByText("Return Preview")).toBeVisible();
     await expect(
@@ -1201,33 +1204,64 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await login(page, "operator");
     await page.goto("/returns");
     await page.getByLabel("Return status").selectOption("damaged");
-    const deviceSearch = page.getByRole("combobox", {
-      name: "Return device",
-      exact: true,
-    });
+    const deviceSearch = page.getByLabel("Return device", { exact: true });
     await expect(deviceSearch).toBeVisible();
-    await deviceSearch.click();
-    await expect(
-      page.getByRole("option", { name: run.bin.name, exact: true })
-    ).toBeVisible();
     await deviceSearch.fill("FMB64");
-    await expect(
-      page.getByRole("option", { name: "FMB640", exact: true })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("option", { name: "FMB641", exact: true })
-    ).toBeVisible();
-    await expect(
-      page.getByRole("option", { name: "LMU2640", exact: true })
-    ).toHaveCount(0);
-    await page.getByRole("option", { name: "FMB641", exact: true }).click();
+    await deviceSearch.fill("FMB641");
     await expect(deviceSearch).toHaveValue("FMB641");
+    await page.getByRole("button", { name: "+ Add another device" }).click();
+    await page.getByLabel("Return device 2").fill("LMU2640");
+    await page
+      .getByLabel("Returned IMEIs", { exact: true })
+      .fill(run.manualImei);
+    await page.getByLabel("Returned IMEIs 2").fill(run.spreadsheetImei);
+    await expect(page.getByText("1 scanned")).toHaveCount(2);
     await page.getByLabel("Return status").selectOption("available");
-    await expect(
-      page.getByRole("combobox", { name: "Return device", exact: true })
-    ).toHaveCount(0);
+    await expect(page.getByLabel("Return device", { exact: true })).toHaveCount(0);
     await signOut(page);
     const operatorToken = await accessTokenFor(run.users.operator);
+
+    const multiDeviceOperationId = randomUUID();
+    const multiDeviceResponse = await request.post("/api/returns/confirm", {
+      headers: { Authorization: `Bearer ${operatorToken}` },
+      data: {
+        operation_id: multiDeviceOperationId,
+        items: [
+          {
+            imei: run.multiDeviceReturnImeis[0],
+            reported_device: "FMB641",
+          },
+          {
+            imei: run.multiDeviceReturnImeis[1],
+            reported_device: "LMU2640",
+          },
+        ],
+        target_box: null,
+        target_floor: null,
+        return_ref: `E2E-MULTI-DEVICE-${run.stamp}`,
+        return_reason: "Returned device",
+        return_status: "damaged",
+        courier: "DHL",
+        country_code: "BE",
+        customer: "E2E Multi Device Customer",
+        sur_id: `SUR-MULTI-${run.stamp}`,
+      },
+    });
+    expect(multiDeviceResponse.status()).toBe(200);
+    expect(await multiDeviceResponse.json()).toMatchObject({
+      recorded: 2,
+      logged_only: 2,
+      device_count: 2,
+      reported_device: null,
+    });
+    const multiDeviceRecords = await readReturnRecords(multiDeviceOperationId);
+    expect(multiDeviceRecords).toHaveLength(2);
+    expect(
+      multiDeviceRecords.map((record) => record.reported_device).sort()
+    ).toEqual(["FMB641", "LMU2640"]);
+    expect(
+      multiDeviceRecords.map((record) => record.imei).sort()
+    ).toEqual([...run.multiDeviceReturnImeis].sort());
 
     for (const [index, returnStatus] of [
       "damaged",
@@ -1665,7 +1699,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     });
     await expect(stockAlertDialog).toContainText(run.bin.name);
     await expect(stockAlertDialog).toContainText(run.accessory.name);
-    await expect(stockAlertDialog).toContainText("Radius Box Medium");
+    await expect(stockAlertDialog).toContainText("Large Plastic Envelope");
     await stockAlertDialog.getByRole("button", { name: "Close" }).click();
     await expect(stockAlertDialog).toBeHidden();
 
@@ -1676,7 +1710,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     });
     await expect(packageRow).toContainText("TBD008");
     await expect(packageRow).toContainText("20 × 13 × 5 cm");
-    await expect(packageRow).toContainText("✕ EMPTY");
+    await expect(packageRow).toContainText("500");
+    await expect(packageRow).toContainText("200");
+    await expect(packageRow).toContainText("OK");
 
     await page.getByPlaceholder("Search accessory…").fill("");
     await page.getByRole("button", { name: "All", exact: true }).click();
@@ -1709,6 +1745,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     ).toBeVisible();
     expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
     expect(await readPackagingStock(run.dispatchAlternatePackaging.id)).toBe(5);
+    expect(
+      await readAccessoryStock(run.dispatchPackagingLegacyAccessory.id)
+    ).toBe(5);
 
     await page.locator('input[type="file"]').setInputFiles(path);
     await page.getByRole("button", { name: "Preview Packaging" }).click();
@@ -1720,6 +1759,13 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(
       page.getByLabel(`Package for order E2E-${run.stamp}`)
     ).toHaveValue(run.dispatchPackaging.id);
+    await expect(
+      page
+        .locator(".dispatch-package-dimensions")
+        .getByText(`${run.dispatchPackaging.code} · 10 × 9 × 2 cm`, {
+          exact: true,
+        })
+    ).toBeVisible();
     await expect(page.getByText(`E2E-${run.stamp}`).first()).toBeVisible();
     const orderSearch = page.getByLabel("Search dispatch orders");
     await orderSearch.fill("definitely-not-a-dispatch-order");
@@ -1742,6 +1788,14 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(
       page.getByLabel(`Package for order E2E-${run.stamp}`)
     ).toHaveValue(run.dispatchAlternatePackaging.id);
+    await expect(
+      page
+        .locator(".dispatch-package-dimensions")
+        .getByText(
+          `${run.dispatchAlternatePackaging.code} · 12 × 10 × 3 cm`,
+          { exact: true }
+        )
+    ).toBeVisible();
 
     await page
       .getByRole("button", { name: "Confirm & Deduct Packaging" })
@@ -1753,6 +1807,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByText("Daily dispatch confirmed")).toBeVisible();
     expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
     expect(await readPackagingStock(run.dispatchAlternatePackaging.id)).toBe(4);
+    expect(
+      await readAccessoryStock(run.dispatchPackagingLegacyAccessory.id)
+    ).toBe(4);
     expect(await readAccessoryStock(run.dispatchRuleAccessory.id)).toBe(10);
 
     const historyRow = page
@@ -1789,6 +1846,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByText("Dispatch batch undone")).toBeVisible();
     expect(await readPackagingStock(run.dispatchPackaging.id)).toBe(5);
     expect(await readPackagingStock(run.dispatchAlternatePackaging.id)).toBe(5);
+    expect(
+      await readAccessoryStock(run.dispatchPackagingLegacyAccessory.id)
+    ).toBe(5);
     await expect(historyRow).toContainText("UNDONE");
     await signOut(page);
   });

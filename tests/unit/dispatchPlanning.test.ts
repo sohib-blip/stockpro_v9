@@ -494,5 +494,8 @@ describe("daily dispatch planning", () => {
     expect(page).toContain("Preview is read-only.");
     expect(page).toContain("Confirm &amp; Deduct Packaging");
     expect(page).toContain("Undo & Restore Stock");
+    expect(page).toContain("formatPackageDimensions");
+    expect(page).toContain("dispatch-package-dimensions");
+    expect(page).toContain("availableStock} available");
   });
 });

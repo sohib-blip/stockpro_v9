@@ -23,6 +23,7 @@ const returnCommandSchema = z
           .object({
             item_id: z.string().uuid().nullish(),
             imei: z.string().regex(/^\d{15}$/).nullish(),
+            reported_device: z.string().trim().max(200).nullish(),
           })
           .superRefine((item, context) => {
             if (!item.item_id && !item.imei) {
@@ -72,13 +73,15 @@ const returnCommandSchema = z
       return;
     }
 
-    if (!command.reported_device?.trim()) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["reported_device"],
-        message: "A device is required for non-stock returns",
-      });
-    }
+    command.items.forEach((item, index) => {
+      if (!item.reported_device?.trim() && !command.reported_device?.trim()) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["items", index, "reported_device"],
+          message: "A device is required for every non-stock return",
+        });
+      }
+    });
   });
 
 function serviceClient() {
@@ -110,29 +113,23 @@ export async function POST(req: Request) {
 
     const identity = getApiIdentity(req);
     const operationId = parsed.data.operation_id || crypto.randomUUID();
-    const itemIds = Array.from(
-      new Set(
-        parsed.data.items
-          .map((item) => item.item_id)
-          .filter((itemId): itemId is string => Boolean(itemId))
-      )
-    );
-    const unknownImeis = Array.from(
-      new Set(
-        parsed.data.items
-          .filter((item) => !item.item_id)
-          .map((item) => item.imei)
-          .filter((imei): imei is string => Boolean(imei))
-      )
-    );
+    const items = parsed.data.items.map((item) => ({
+      item_id: item.item_id || null,
+      imei: item.imei || null,
+      reported_device:
+        parsed.data.return_status === "available"
+          ? null
+          : item.reported_device?.trim() ||
+            parsed.data.reported_device?.trim() ||
+            null,
+    }));
     const { data, error } = await serviceClient().rpc(
-      "confirm_return_batch_v3",
+      "confirm_return_batch_v4",
       {
         p_operation_id: operationId,
         p_actor_id: identity.userId,
         p_actor: identity.email,
-        p_item_ids: itemIds,
-        p_unknown_imeis: unknownImeis,
+        p_items: items,
         p_target_box: parsed.data.target_box || null,
         p_target_floor: parsed.data.target_floor || null,
         p_return_ref: parsed.data.return_ref,
@@ -142,10 +139,6 @@ export async function POST(req: Request) {
         p_country_code: parsed.data.country_code,
         p_customer: parsed.data.customer,
         p_sur_id: parsed.data.sur_id,
-        p_reported_device:
-          parsed.data.return_status === "available"
-            ? null
-            : parsed.data.reported_device,
       }
     );
 

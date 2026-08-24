@@ -9,6 +9,7 @@ import {
 import {
   RETURN_REASONS,
   RETURN_STATUS_VALUES,
+  extractReturnImeis,
   normalizeReturnReasonForTemplate,
   returnRequiresCanonicalItem,
 } from "../../lib/returns";
@@ -32,6 +33,9 @@ const unknownNonStockMigration = read(
 ).toLowerCase();
 const returnReasonMigration = read(
   "supabase/migrations/20260818143000_return_reason_catalog_and_lmu30g600.sql"
+).toLowerCase();
+const multiDeviceMigration = read(
+  "supabase/migrations/20260824100000_multi_device_returns.sql"
 ).toLowerCase();
 const confirmRoute = read("app/api/returns/confirm/route.ts");
 const previewRoute = read("app/api/returns/preview/route.ts");
@@ -96,8 +100,8 @@ describe("complete customer return workflow", () => {
     );
     expect(previewRoute).toContain("returnRequiresCanonicalItem");
     expect(previewRoute).toContain('inventory_match: "unknown"');
-    expect(confirmRoute).toContain('"confirm_return_batch_v3"');
-    expect(confirmRoute).toContain("p_unknown_imeis: unknownImeis");
+    expect(confirmRoute).toContain('"confirm_return_batch_v4"');
+    expect(confirmRoute).toContain("p_items: items");
     expect(confirmRoute).toContain(
       "Available returns must already exist in inventory"
     );
@@ -111,8 +115,36 @@ describe("complete customer return workflow", () => {
     );
     expect(deviceMigration).toContain("else v_reported_device");
     expect(deviceMigration).toContain("return_device_invalid");
-    expect(confirmRoute).toContain("p_reported_device");
+    expect(confirmRoute).toContain("item.reported_device");
     expect(previewRoute).toContain("matchReturnDeviceOption");
+  });
+
+  it("groups several device models in one scanned customer return operation", () => {
+    expect(extractReturnImeis("865031064765315\n865031064766602")).toEqual([
+      "865031064765315",
+      "865031064766602",
+    ]);
+    expect(extractReturnImeis("865031064765315 865031064765315")).toEqual([
+      "865031064765315",
+    ]);
+    expect(page).toContain("returnDeviceGroups");
+    expect(page).toContain("+ Add another device");
+    expect(page).toContain("one group per model");
+    expect(page).toContain("return-device-model-options");
+    expect(previewRoute).toContain("reportedDeviceByImei");
+    expect(previewRoute).toContain("Each IMEI can appear only once");
+    expect(confirmRoute).toContain("reported_device:");
+    expect(confirmRoute).toContain('"confirm_return_batch_v4"');
+    expect(multiDeviceMigration).toContain(
+      "create or replace function public.confirm_return_batch_v4("
+    );
+    expect(multiDeviceMigration).toContain(
+      "public.resolve_return_device_name("
+    );
+    expect(multiDeviceMigration).toContain(
+      "set reported_device = requested.reported_device"
+    );
+    expect(multiDeviceMigration).toContain("to service_role;");
   });
 
   it("requires complete business metadata and the official reason catalogue", () => {
@@ -131,7 +163,7 @@ describe("complete customer return workflow", () => {
     }
     expect(confirmRoute).not.toContain("return_type:");
     expect(confirmRoute).toContain("RETURN_REASON_VALUES");
-    expect(confirmRoute).toContain('"confirm_return_batch_v3"');
+    expect(confirmRoute).toContain('"confirm_return_batch_v4"');
     expect(returnReasonMigration).toContain("return_reason_invalid");
     expect(returnReasonMigration).toContain("'returned device'");
     expect(page).not.toContain("Return type");
@@ -162,8 +194,8 @@ describe("complete customer return workflow", () => {
       "'available', 'damaged', 'disposed', 'returned_unprocessed'"
     );
     expect(page).toContain("stock remains unchanged");
-    expect(page).toContain('aria-label="Return device"');
-    expect(page).toContain("filteredDeviceOptions");
+    expect(page).toContain('"Return device"');
+    expect(page).toContain("returnDeviceGroups");
     expect(page).toContain("RETURN_FALLBACK_DEVICE_MODELS");
     expect(page).toContain("mergeReturnDeviceOptions");
     expect(devicesRoute).toContain('.from("bins")');

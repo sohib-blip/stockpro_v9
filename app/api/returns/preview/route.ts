@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import {
   RETURN_STATUS_VALUES,
+  extractReturnImeis,
   matchReturnDeviceOption,
   mergeReturnDeviceOptions,
   returnRequiresCanonicalItem,
@@ -19,33 +20,28 @@ const supabase = createClient(
 
 const returnPreviewSchema = z
   .object({
-    imeisText: z.string().max(25_000),
+    imeisText: z.string().max(25_000).optional().default(""),
+    lines: z
+      .array(
+        z.object({
+          imei: z.string().regex(/^\d{15}$/),
+          reported_device: z.string().trim().max(200).nullish(),
+        })
+      )
+      .max(500)
+      .optional(),
     return_status: z.enum(RETURN_STATUS_VALUES),
     reported_device: z.string().trim().max(200).nullish(),
   })
   .superRefine((command, context) => {
-    if (
-      command.return_status !== "available" &&
-      !command.reported_device?.trim()
-    ) {
+    if (!command.imeisText.trim() && !command.lines?.length) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
-        path: ["reported_device"],
-        message: "A device is required for non-stock returns",
+        path: ["lines"],
+        message: "At least one returned IMEI is required",
       });
     }
   });
-
-function extractImeis(text: string) {
-  return Array.from(
-    new Set(
-      String(text || "")
-        .split(/\s+/)
-        .map((x) => x.replace(/\D/g, ""))
-        .filter((x) => x.length === 15)
-    )
-  );
-}
 
 export async function POST(req: Request) {
   try {
@@ -59,7 +55,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const imeis = extractImeis(parsed.data.imeisText);
+    const submittedLines = parsed.data.lines?.length
+      ? parsed.data.lines.map((line) => ({
+          imei: line.imei,
+          reported_device: line.reported_device?.trim() || null,
+        }))
+      : extractReturnImeis(parsed.data.imeisText).map((imei) => ({
+          imei,
+          reported_device: parsed.data.reported_device?.trim() || null,
+        }));
+    const imeis = submittedLines.map((line) => line.imei);
 
     if (imeis.length === 0) {
       return NextResponse.json({ ok: false, error: "No valid IMEIs found" }, { status: 400 });
@@ -72,7 +77,17 @@ export async function POST(req: Request) {
       );
     }
 
-    let reportedDevice: string | null = null;
+    if (new Set(imeis).size !== imeis.length) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Each IMEI can appear only once in the same return",
+        },
+        { status: 400 }
+      );
+    }
+
+    const reportedDeviceByImei = new Map<string, string>();
     if (parsed.data.return_status !== "available") {
       const { data: bins, error: binsError } = await supabase
         .from("bins")
@@ -83,14 +98,21 @@ export async function POST(req: Request) {
       const options = mergeReturnDeviceOptions(
         (bins || []).map((bin) => String(bin.name || ""))
       );
-      reportedDevice =
-        matchReturnDeviceOption(parsed.data.reported_device || "", options) ||
-        null;
-      if (!reportedDevice) {
-        return NextResponse.json(
-          { ok: false, error: "Select a valid device from the list" },
-          { status: 400 }
+      for (const line of submittedLines) {
+        const reportedDevice = matchReturnDeviceOption(
+          line.reported_device || parsed.data.reported_device || "",
+          options
         );
+        if (!reportedDevice) {
+          return NextResponse.json(
+            {
+              ok: false,
+              error: `Select a valid device for IMEI ${line.imei}`,
+            },
+            { status: 400 }
+          );
+        }
+        reportedDeviceByImei.set(line.imei, reportedDevice);
       }
     }
 
@@ -132,7 +154,8 @@ export async function POST(req: Request) {
         valid_returns.push({
           item_id: null,
           imei,
-          device: reportedDevice,
+          device: reportedDeviceByImei.get(imei),
+          reported_device: reportedDeviceByImei.get(imei),
           previous_box: "",
           previous_floor: "",
           return_status: parsed.data.return_status,
@@ -153,7 +176,10 @@ export async function POST(req: Request) {
           imei: item.imei,
           device_id: item.device_id,
           device:
-            reportedDevice || item.boxes?.bins?.name || item.device_id,
+            reportedDeviceByImei.get(imei) ||
+            item.boxes?.bins?.name ||
+            item.device_id,
+          reported_device: reportedDeviceByImei.get(imei) || null,
           previous_box: item.boxes?.box_code || "",
           previous_floor: item.boxes?.floor || "",
           return_status: parsed.data.return_status,
@@ -171,6 +197,10 @@ export async function POST(req: Request) {
       breakdown[item.device] = (breakdown[item.device] || 0) + 1;
     }
 
+    const reportedDevices = Array.from(
+      new Set(reportedDeviceByImei.values())
+    );
+
     return NextResponse.json({
       ok: true,
       total_scanned: imeis.length,
@@ -178,7 +208,9 @@ export async function POST(req: Request) {
       already_in_stock,
       unknown_imeis,
       return_status: parsed.data.return_status,
-      reported_device: reportedDevice,
+      reported_device:
+        reportedDevices.length === 1 ? reportedDevices[0] : null,
+      device_count: Object.keys(breakdown).length,
       stock_action:
         parsed.data.return_status === "available"
           ? "added_to_stock"

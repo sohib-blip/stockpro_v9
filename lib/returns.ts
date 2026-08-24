@@ -151,3 +151,14 @@ export function matchReturnDeviceOption(
     (option) => option.toLocaleLowerCase("en") === normalized
   );
 }
+
+export function extractReturnImeis(value: string) {
+  return Array.from(
+    new Set(
+      String(value || "")
+        .split(/\s+/)
+        .map((entry) => entry.replace(/\D/g, ""))
+        .filter((entry) => entry.length === 15)
+    )
+  );
+}

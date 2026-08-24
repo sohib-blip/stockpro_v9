@@ -23,6 +23,7 @@ export type DispatchSourceLine = {
   deviceModel: string | null;
   isDevice: boolean;
   mappedItem: string;
+  additionalMappedItems: string[];
   destinationCountry: string;
   companyName: string;
 };
@@ -128,6 +129,7 @@ const ITEM_CATALOG: DispatchCatalogItem[] = [
   { name: "CV200 Bullet Camera", lengthCm: 5, widthCm: 3, heightCm: 6 },
   { name: "FMB130 connectorized harness", lengthCm: 1.5, widthCm: 7, heightCm: 7 },
   { name: "FMB140 connectorized harness", lengthCm: 1.5, widthCm: 7, heightCm: 7 },
+  { name: "Teltonika Contactless CAN - ECAN02", lengthCm: 2, widthCm: 9, heightCm: 2 },
   { name: "FOB", lengthCm: 5, widthCm: 2, heightCm: 2 },
   { name: "HARDWIRED Cable for", lengthCm: 14, widthCm: 5, heightCm: 5 },
   { name: "READER", lengthCm: 11, widthCm: 7, heightCm: 0.5 },
@@ -167,6 +169,7 @@ const DISPATCH_CATALOG_ALIASES: Record<string, string[]> = {
   ],
   "FMB130 connectorized harness": ["FMB130 connectorized harness 22"],
   "FMB140 connectorized harness": ["FMB140 connectorized harness 23"],
+  "Teltonika Contactless CAN - ECAN02": ["ECAN02"],
   "Large Cable Ties": ["Large Cable Ties 25"],
   "NEON-T Adhesive Pads": ["NEON-T Adhesive Pads 24"],
   "T7 Adhesive pad": ["T7 Adhesive pad T7Pad"],
@@ -183,6 +186,11 @@ function normalized(value: unknown) {
 
 export function dispatchItemKey(value: unknown) {
   return normalized(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+function isEcan02DeviceBundle(value: unknown) {
+  const key = dispatchItemKey(value);
+  return key.includes("contactlesscan") && key.includes("ecan02");
 }
 
 export function isDispatchVolumeAccessoryCategory(category: unknown) {
@@ -234,6 +242,13 @@ export function resolveDispatchCatalogItem(
     return CATALOG_BY_KEY.get(dispatchItemKey("CNHYCV200XEU")) ?? null;
   }
 
+  if (isEcan02DeviceBundle(cleanHardware)) {
+    const model = resolveDispatchDeviceModel(deviceType);
+    return model === "FMB140"
+      ? CATALOG_BY_KEY.get(dispatchItemKey(model)) ?? null
+      : null;
+  }
+
   if (["atom", "hardwired", "neon", "obd", "trailer"].includes(hardwareKey)) {
     const model = resolveDispatchDeviceModel(deviceType);
     return model ? CATALOG_BY_KEY.get(dispatchItemKey(model)) ?? null : null;
@@ -249,6 +264,11 @@ export function resolveDispatchLineDeviceModel(
 ) {
   const hardwareKey = dispatchItemKey(hardwareType);
   if (hardwareKey === "aiocamera") return "CNHYCV200XEU";
+  if (isEcan02DeviceBundle(hardwareType)) {
+    return resolveDispatchDeviceModel(deviceType) === "FMB140"
+      ? "FMB140"
+      : null;
+  }
   if (["atom", "hardwired", "neon", "obd", "trailer"].includes(hardwareKey)) {
     return resolveDispatchDeviceModel(deviceType);
   }
@@ -365,6 +385,9 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
         deviceModel,
         isDevice: Boolean(deviceModel),
         mappedItem: catalogItem.name,
+        additionalMappedItems: isEcan02DeviceBundle(hardwareType)
+          ? ["Teltonika Contactless CAN - ECAN02"]
+          : [],
         destinationCountry: value("Destination Country"),
         companyName: value("Company Name"),
       });
@@ -380,10 +403,15 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
     ([orderId, orderLines]) => {
       const groupedItems = new Map<string, DispatchSourceLine[]>();
       for (const line of orderLines) {
-        groupedItems.set(line.mappedItem, [
-          ...(groupedItems.get(line.mappedItem) ?? []),
-          line,
-        ]);
+        for (const mappedItem of [
+          line.mappedItem,
+          ...line.additionalMappedItems,
+        ]) {
+          groupedItems.set(mappedItem, [
+            ...(groupedItems.get(mappedItem) ?? []),
+            line,
+          ]);
+        }
       }
 
       const items = Array.from(groupedItems.entries()).map(

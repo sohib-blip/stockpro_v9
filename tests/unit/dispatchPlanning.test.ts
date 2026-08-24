@@ -100,6 +100,15 @@ describe("daily dispatch planning", () => {
         "Digital Matter - Barra-GPS Neon Battery replaceable - Barra-GPS"
       )?.name
     ).toBe("BarraGps");
+    expect(
+      resolveDispatchCatalogItem(
+        "Teltonika Contactless CAN - ECAN02",
+        "Teltonika - Hard-Wired+CAN - FMB140"
+      )?.name
+    ).toBe("FMB140");
+    expect(resolveDispatchCatalogItem("ECAN02", "")?.name).toBe(
+      "Teltonika Contactless CAN - ECAN02"
+    );
     expect(resolveDispatchCatalogItem("AIO Camera", "")?.name).toBe(
       "CNHYCV200XEU"
     );
@@ -121,6 +130,67 @@ describe("daily dispatch planning", () => {
         "Teltonika trailer tracker - FMC234"
       )?.name
     ).toBe("FMC234");
+  });
+
+  it("counts an ECAN02 FMB140 row as one device plus one CAN accessory", () => {
+    const workbook = workbookWithRows([
+      [
+        "AA-ECAN-01",
+        "Teltonika Contactless CAN - ECAN02",
+        "Teltonika - Hard-Wired+CAN - FMB140",
+        "ECAN-ORDER",
+        "ECAN-LINE",
+        "BE",
+        "ECAN Customer",
+      ],
+    ]);
+
+    const parsed = parseDispatchWorkbook(workbook);
+
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.lines).toHaveLength(1);
+    expect(parsed.lines[0]).toMatchObject({
+      deviceModel: "FMB140",
+      isDevice: true,
+      mappedItem: "FMB140",
+      additionalMappedItems: ["Teltonika Contactless CAN - ECAN02"],
+    });
+    expect(parsed.orders[0].deviceCounts).toEqual({ FMB140: 1 });
+    expect(parsed.orders[0].items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "FMB140", quantity: 1 }),
+        expect.objectContaining({
+          name: "Teltonika Contactless CAN - ECAN02",
+          quantity: 1,
+          unitVolumeCm3: 36,
+        }),
+      ])
+    );
+    expect(parsed.orders[0].totalVolumeCm3).toBeCloseTo(106.4);
+  });
+
+  it("keeps blocking ECAN02 when its FMB140 Device Type is missing", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        [
+          "AA-ECAN-02",
+          "Teltonika Contactless CAN - ECAN02",
+          "",
+          "ECAN-BLOCKED",
+          "ECAN-LINE-2",
+          "BE",
+          "ECAN Customer",
+        ],
+      ])
+    );
+
+    expect(parsed.orders).toEqual([]);
+    expect(parsed.issues).toEqual([
+      expect.objectContaining({
+        hardwareType: "Teltonika Contactless CAN - ECAN02",
+        message: "No trusted dimensions match this hardware/device combination.",
+      }),
+    ]);
   });
 
   it("treats the agreed hardware names as devices and every other row as packing content", () => {

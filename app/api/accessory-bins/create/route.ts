@@ -24,6 +24,16 @@ export async function POST(req: Request) {
       );
     }
 
+    if (category === "Packages") {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "Create packaging in Packaging Inventory",
+        },
+        { status: 400 }
+      );
+    }
+
     const { error } = await supabase.from("accessory_bins").insert({
       name: name.trim(),
       current_stock: Number(current_stock || 0),

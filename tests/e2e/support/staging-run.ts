@@ -264,7 +264,7 @@ export async function createStagingRun(): Promise<StagingRun> {
         current_stock: 5,
         minimum_stock: 0,
         category: "Packages",
-        active: true,
+        active: false,
       })
       .select("id,name")
       .single();

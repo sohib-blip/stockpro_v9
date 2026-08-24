@@ -7,6 +7,7 @@ import {
   PACKAGING_CATEGORIES,
   formatPackagingDimensions,
   packagingCategoryLabel,
+  packagingStockStatus,
   type PackagingCategory,
   type PackagingStockRow,
 } from "@/lib/packaging";
@@ -18,6 +19,8 @@ type PackagingForm = {
   length_cm: string;
   width_cm: string;
   height_cm: string;
+  on_hand_stock: string;
+  minimum_stock: string;
 };
 
 const EMPTY_FORM: PackagingForm = {
@@ -27,6 +30,8 @@ const EMPTY_FORM: PackagingForm = {
   length_cm: "",
   width_cm: "",
   height_cm: "",
+  on_hand_stock: "0",
+  minimum_stock: "0",
 };
 
 function messageFromResponse(body: unknown, fallback: string) {
@@ -125,6 +130,8 @@ export default function PackagingInventoryPanel({
       length_cm: String(row.length_cm),
       width_cm: String(row.width_cm),
       height_cm: String(row.height_cm),
+      on_hand_stock: String(row.on_hand_stock),
+      minimum_stock: String(row.minimum_stock),
     });
     setFormMode("edit");
   }
@@ -142,7 +149,8 @@ export default function PackagingInventoryPanel({
         length_cm: Number(form.length_cm),
         width_cm: Number(form.width_cm),
         height_cm: Number(form.height_cm),
-        minimum_stock: editingRow?.minimum_stock ?? 0,
+        on_hand_stock: Number(form.on_hand_stock),
+        minimum_stock: Number(form.minimum_stock),
       };
       const response = await apiFetch(
         formMode === "edit" ? "/api/packaging/update" : "/api/packaging/create",
@@ -210,7 +218,7 @@ export default function PackagingInventoryPanel({
         <div className="prototype-table-toolbar packaging-toolbar">
           <div>
             <h2 id="packaging-inventory-title">Packaging Formats</h2>
-            <p>Create formats and maintain their names, dimensions and availability.</p>
+            <p>Create formats and maintain dimensions, stock and minimum alerts in one place.</p>
           </div>
           <button type="button" className="prototype-button primary" onClick={openCreate}>
             + New Packaging Format
@@ -242,17 +250,25 @@ export default function PackagingInventoryPanel({
 
         <div className="prototype-table-scroll packaging-table-scroll">
           <table className="prototype-table packaging-table">
-            <thead><tr><th>Name</th><th>Dimensions</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Name</th><th>Dimensions</th><th>On Hand</th><th>Reserved</th><th>Available</th><th>Minimum</th><th>Status</th><th>Actions</th></tr></thead>
             <tbody>
-              {filteredRows.map((row) => (
-                <tr key={row.id} className={!row.active ? "is-inactive" : ""}>
-                  <td><strong>{row.name}</strong><small>{row.code} · {packagingCategoryLabel(row.category)} · {row.active ? "Active" : "Inactive"}</small></td>
-                  <td>{formatPackagingDimensions(row)}</td>
-                  <td><div className="packaging-row-actions"><button type="button" onClick={() => openEdit(row)} disabled={busy}>Edit</button><button type="button" onClick={() => void toggleVisibility(row)} disabled={busy}>{row.active ? "Deactivate" : "Activate"}</button></div></td>
-                </tr>
-              ))}
-              {!loading && filteredRows.length === 0 && <tr><td colSpan={3} className="packaging-empty">No packaging formats match these filters.</td></tr>}
-              {loading && <tr><td colSpan={3} className="packaging-empty">Loading packaging formats…</td></tr>}
+              {filteredRows.map((row) => {
+                const status = packagingStockStatus(row);
+                return (
+                  <tr key={row.id} className={!row.active ? "is-inactive" : ""}>
+                    <td><strong>{row.name}</strong><small>{row.code} · {packagingCategoryLabel(row.category)} · {row.active ? "Active" : "Inactive"}</small></td>
+                    <td>{formatPackagingDimensions(row)}</td>
+                    <td className="packaging-number">{row.on_hand_stock.toLocaleString("en-GB")}</td>
+                    <td className="packaging-number">{row.reserved_stock.toLocaleString("en-GB")}</td>
+                    <td className="packaging-number"><strong>{row.available_stock.toLocaleString("en-GB")}</strong></td>
+                    <td className="packaging-number">{row.minimum_stock.toLocaleString("en-GB")}</td>
+                    <td><span className={`status-badge ${status.toLowerCase()}`}>{status}</span></td>
+                    <td><div className="packaging-row-actions"><button type="button" onClick={() => openEdit(row)} disabled={busy}>Edit</button><button type="button" onClick={() => void toggleVisibility(row)} disabled={busy}>{row.active ? "Deactivate" : "Activate"}</button></div></td>
+                  </tr>
+                );
+              })}
+              {!loading && filteredRows.length === 0 && <tr><td colSpan={8} className="packaging-empty">No packaging formats match these filters.</td></tr>}
+              {loading && <tr><td colSpan={8} className="packaging-empty">Loading packaging formats…</td></tr>}
             </tbody>
           </table>
         </div>
@@ -263,7 +279,7 @@ export default function PackagingInventoryPanel({
         <div className="packaging-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setFormMode(null); }}>
           <section className="packaging-dialog" role="dialog" aria-modal="true" aria-labelledby="packaging-format-dialog-title">
             <header className="packaging-dialog-header">
-              <div><span>Inventory setup</span><h2 id="packaging-format-dialog-title">{formMode === "edit" ? "Edit Packaging Format" : "New Packaging Format"}</h2><p>Define the package identity and its outer dimensions in centimetres.</p></div>
+              <div><span>Inventory setup</span><h2 id="packaging-format-dialog-title">{formMode === "edit" ? "Edit Packaging Format" : "New Packaging Format"}</h2><p>Define the format, dimensions and live inventory values.</p></div>
               <button type="button" aria-label="Close" onClick={() => setFormMode(null)} disabled={busy}>×</button>
             </header>
             <form className="packaging-dialog-form" onSubmit={submitFormat}>
@@ -271,6 +287,8 @@ export default function PackagingInventoryPanel({
               <label className="packaging-field"><span>Code</span><input required maxLength={50} value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} placeholder="e.g. RADIUS-M" /></label>
               <label className="packaging-field"><span>Type</span><select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as PackagingCategory })}>{PACKAGING_CATEGORIES.map((value) => <option key={value} value={value}>{packagingCategoryLabel(value)}</option>)}</select></label>
               <fieldset className="packaging-dimensions packaging-field-wide"><legend>Outer dimensions (cm)</legend><label><span>Length</span><input required type="number" min="0.01" max="1000" step="0.01" value={form.length_cm} onChange={(event) => setForm({ ...form, length_cm: event.target.value })} /></label><span aria-hidden="true">×</span><label><span>Width</span><input required type="number" min="0.01" max="1000" step="0.01" value={form.width_cm} onChange={(event) => setForm({ ...form, width_cm: event.target.value })} /></label><span aria-hidden="true">×</span><label><span>Height</span><input required type="number" min="0.01" max="1000" step="0.01" value={form.height_cm} onChange={(event) => setForm({ ...form, height_cm: event.target.value })} /></label></fieldset>
+              <label className="packaging-field"><span>{formMode === "edit" ? "On-hand stock" : "Initial stock"}</span><input required type="number" min={editingRow?.reserved_stock ?? 0} max="10000000" step="1" value={form.on_hand_stock} onChange={(event) => setForm({ ...form, on_hand_stock: event.target.value })} /><small>{editingRow?.reserved_stock ? `Cannot be below ${editingRow.reserved_stock} reserved units.` : "Physical quantity currently available in the warehouse."}</small></label>
+              <label className="packaging-field"><span>Minimum stock alert</span><input required type="number" min="0" max="10000000" step="1" value={form.minimum_stock} onChange={(event) => setForm({ ...form, minimum_stock: event.target.value })} /><small>Dashboard alerts when available stock reaches this value.</small></label>
               <footer className="packaging-dialog-actions"><button type="button" className="prototype-button secondary" onClick={() => setFormMode(null)} disabled={busy}>Cancel</button><button type="submit" className="prototype-button primary" disabled={busy}>{busy ? "Saving…" : "Save Packaging Format"}</button></footer>
             </form>
           </section>

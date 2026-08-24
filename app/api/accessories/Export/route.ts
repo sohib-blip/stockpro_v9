@@ -15,6 +15,7 @@ export async function GET() {
     const { data, error } = await supabase
       .from("accessory_bins")
       .select("name, current_stock, minimum_stock, active")
+      .or("category.is.null,category.neq.Packages")
       .order("name");
 
     if (error) throw error;

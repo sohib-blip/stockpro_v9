@@ -19,6 +19,10 @@ const stockUnificationMigration = readFileSync(
   join(root, "supabase/migrations/20260824103000_unify_packaging_stock.sql"),
   "utf8"
 ).toLowerCase();
+const centralizedInventoryMigration = readFileSync(
+  join(root, "supabase/migrations/20260824130000_centralize_packaging_inventory.sql"),
+  "utf8"
+).toLowerCase();
 const binsPage = readFileSync(
   join(root, "app/(app)/bins/page.tsx"),
   "utf8"
@@ -132,12 +136,36 @@ describe("packaging inventory", () => {
     expect(binsPage).toContain("<PackagingInventoryPanel");
     expect(panel).toContain("Packaging Formats");
     expect(panel).toContain("+ New Packaging Format");
-    expect(panel).toContain("<th>Name</th><th>Dimensions</th><th>Actions</th>");
+    expect(panel).toContain("<th>On Hand</th>");
+    expect(panel).toContain("<th>Available</th>");
+    expect(panel).toContain("<th>Minimum</th>");
     expect(panel).toContain("/api/packaging/update");
     expect(panel).toContain("/api/packaging/toggle-active");
     expect(panel).not.toContain("/api/packaging/adjust");
     expect(panel).not.toContain("/api/packaging/history");
-    expect(panel).not.toContain("Minimum stock alert");
+    expect(panel).toContain("Minimum stock alert");
+    expect(panel).toContain("On-hand stock");
     expect(panel).not.toContain("maximum weight");
+  });
+
+  it("makes Packaging Inventory canonical and retires editable package accessories", () => {
+    expect(centralizedInventoryMigration).toContain(
+      "drop trigger if exists accessory_bins_sync_packaging_stock"
+    );
+    expect(centralizedInventoryMigration).toContain(
+      "category is distinct from 'packages' or active = false"
+    );
+    expect(centralizedInventoryMigration).toContain(
+      "function public.save_packaging_inventory("
+    );
+    expect(centralizedInventoryMigration).toContain(
+      "'plastic-l-50x38'"
+    );
+    expect(centralizedInventoryMigration).toContain(
+      "on_hand_stock = greatest(300"
+    );
+    expect(centralizedInventoryMigration).toContain("minimum_stock = 100");
+    expect(centralizedInventoryMigration.trimStart()).toMatch(/^begin;/);
+    expect(centralizedInventoryMigration.trimEnd()).toMatch(/commit;$/);
   });
 });

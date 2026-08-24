@@ -1947,6 +1947,8 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await packagingDialog.getByLabel("Length").fill("20");
     await packagingDialog.getByLabel("Width").fill("10");
     await packagingDialog.getByLabel("Height").fill("5");
+    await packagingDialog.getByLabel("Initial stock").fill("7");
+    await packagingDialog.getByLabel("Minimum stock alert").fill("2");
     await packagingDialog
       .getByRole("button", { name: "Save Packaging Format" })
       .click();
@@ -1957,7 +1959,8 @@ test.describe.serial("StockPro staging end-to-end", () => {
     });
     await expect(packagingRow).toContainText(run.packaging.name);
     await expect(packagingRow).toContainText("20 × 10 × 5 cm");
-    await expect(packagingRow).not.toContainText("On Hand");
+    await expect(packagingRow).toContainText("7");
+    await expect(packagingRow).toContainText("2");
     await expect(packagingRow.getByRole("button")).toHaveCount(2);
 
     await packagingRow.getByRole("button", { name: "Edit" }).click();
@@ -1965,11 +1968,15 @@ test.describe.serial("StockPro staging end-to-end", () => {
       name: "Edit Packaging Format",
     });
     await editPackagingDialog.getByLabel("Height").fill("6");
+    await editPackagingDialog.getByLabel("On-hand stock").fill("9");
+    await editPackagingDialog.getByLabel("Minimum stock alert").fill("3");
     await editPackagingDialog
       .getByRole("button", { name: "Save Packaging Format" })
       .click();
     await expect(page.getByText("Packaging format updated")).toBeVisible();
     await expect(packagingRow).toContainText("20 × 10 × 6 cm");
+    await expect(packagingRow).toContainText("9");
+    await expect(packagingRow).toContainText("3");
 
     await packagingRow.getByRole("button", { name: "Deactivate" }).click();
     await expect(packagingRow).toContainText("Inactive");

@@ -194,6 +194,35 @@ describe("End-of-Day accessory calculation", () => {
     });
   });
 
+  it("maps an FMB130 connectorized harness row to its active accessory bin", () => {
+    const report = parse([
+      ["A-1", "FMB130 connectorized harness", "860848080680417", "N/A"],
+    ]);
+
+    const result = buildAccessoryEndOfDayPreview({
+      report,
+      accessoryBins: [
+        {
+          id: "fmb130-harness",
+          name: "FMB130 connectorized harness 22",
+          current_stock: 8,
+        },
+      ],
+      stockItems: [],
+      templates: [],
+    });
+
+    expect(report.errors).toEqual([]);
+    expect(result.rows).toEqual([
+      expect.objectContaining({
+        accessory: "FMB130 connectorized harness 22",
+        report_qty: 1,
+        qty: 1,
+        after_stock: 7,
+      }),
+    ]);
+  });
+
   it("blocks unmapped accessory names and device IMEIs missing from StockPro", () => {
     const report = parse([
       ["A-1", "ATOM", "862129085814980", "N/A"],

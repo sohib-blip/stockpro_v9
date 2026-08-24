@@ -110,7 +110,9 @@ function classifyDevice(itemType: string): EndOfDayDeviceKind | null {
   if (normalized === "TRAILER") return "TRAILER";
 
   if (/\bDVR\b/.test(normalized)) {
-    const channel = normalized.match(/\b([248])(?:\s*CHANNEL)?\b/)?.[1];
+    const channel = normalized.match(
+      /\b([248])(?:\s*(?:CHANNEL|CH))?\b/
+    )?.[1];
     if (channel === "2") return "DVR_2";
     if (channel === "4") return "DVR_4";
     if (channel === "8") return "DVR_8";
@@ -125,6 +127,7 @@ function classifyNonDevice(itemType: string): "accessory" | "service" | null {
   if (!normalized) return null;
   if (normalized === "KINESIS INSIGHTS") return "service";
   if (/\bCABLE\b/.test(normalized)) return "accessory";
+  if (/\bHARNESS\b/.test(normalized)) return "accessory";
   if (/\bANTENNA\b/.test(normalized)) return "accessory";
   if (/\bCAMERA\b/.test(normalized)) return "accessory";
   if (/\b(?:FOB|READER|BUZZER|STORAGE)\b/.test(normalized)) return "accessory";

@@ -34,6 +34,7 @@ describe("End-of-Day outbound parser", () => {
       RADIUS: [
         ["A-1", "AIO Camera", 861778063561681, "N/A"],
         ["A-1", "HARDWIRED Cable for CV200", 861778063561681, "N/A"],
+        ["A-1", "FMB130 connectorized harness", 861778063561681, "N/A"],
         ["A-2", "Neon", "865031064765315", "N/A"],
       ],
       "WEX France": [
@@ -53,12 +54,18 @@ describe("End-of-Day outbound parser", () => {
       "862129085814980",
       "867105075485700",
     ]);
-    expect(result.ignoredRows).toBe(2);
+    expect(result.ignoredRows).toBe(3);
     expect(result.accessories).toEqual([
       expect.objectContaining({
         sheet: "RADIUS",
         row: 7,
         itemType: "HARDWIRED Cable for CV200",
+        linkedImei: "861778063561681",
+      }),
+      expect.objectContaining({
+        sheet: "RADIUS",
+        row: 8,
+        itemType: "FMB130 connectorized harness",
         linkedImei: "861778063561681",
       }),
       expect.objectContaining({
@@ -77,7 +84,7 @@ describe("End-of-Day outbound parser", () => {
         ["A-1", "BUZZER", "860848080680417", "N/A"],
         [
           "A-1",
-          "*DVR - 2 Channel -  (N+)",
+          "DVR-2CH",
           "860848080680417",
           "867105075485721",
         ],
@@ -105,6 +112,9 @@ describe("End-of-Day outbound parser", () => {
     "DVR 2 Channel",
     "DVR - 4 Channel - (N+)",
     "*DVR 8",
+    "DVR-2CH",
+    "DVR-4CH",
+    "DVR-8CH",
   ])("recognizes DVR spelling variant %s and uses its own primary IMEI when unlinked", (itemType) => {
     const workbook = workbookWithSheets({
       Report: [["A-1", itemType, "867105075485722", "N/A"]],

@@ -191,6 +191,36 @@ function createDispatchPlanningSpreadsheet(path: string, orderId = `E2E-${run.st
   XLSX.writeFile(workbook, path);
 }
 
+function createEcan02DispatchPlanningSpreadsheet(path: string) {
+  const sheet = XLSX.utils.aoa_to_sheet([
+    ["Kinesis Vehicle Sheet"],
+    [`Generated Date: ${new Date().toISOString()}`],
+    [],
+    [],
+    [
+      "Vehicle Registration",
+      "Hardware Type",
+      "Device Type",
+      "Order ID",
+      "Order Line ID",
+      "Destination Country",
+      "Company Name",
+    ],
+    [
+      "E2E-ECAN-VEHICLE",
+      "Teltonika Contactless CAN - ECAN02",
+      "Teltonika - Hard-Wired+CAN - FMB140",
+      `E2E-ECAN-${run.stamp}`,
+      `ECAN-LINE-${run.stamp}`,
+      "BE",
+      "StockPro ECAN Customer",
+    ],
+  ]);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, sheet, "Vehicles");
+  XLSX.writeFile(workbook, path);
+}
+
 async function expectDownload(
   page: Page,
   trigger: Locator,
@@ -1729,10 +1759,12 @@ test.describe.serial("StockPro staging end-to-end", () => {
     page,
   }) => {
     const path = spreadsheetPath(`daily-dispatch-${run.stamp}.xlsx`);
+    const ecan02Path = spreadsheetPath(`daily-dispatch-ecan02-${run.stamp}.xlsx`);
     const learnedPath = spreadsheetPath(
       `daily-dispatch-learned-${run.stamp}.xlsx`
     );
     createDispatchPlanningSpreadsheet(path);
+    createEcan02DispatchPlanningSpreadsheet(ecan02Path);
     createDispatchPlanningSpreadsheet(
       learnedPath,
       `E2E-LEARNED-${run.stamp}`
@@ -1748,6 +1780,22 @@ test.describe.serial("StockPro staging end-to-end", () => {
     expect(
       await readAccessoryStock(run.dispatchPackagingLegacyAccessory.id)
     ).toBe(5);
+
+    await page.locator('input[type="file"]').setInputFiles(ecan02Path);
+    await page.getByRole("button", { name: "Preview Packaging" }).click();
+    await expect(page.getByText("Preview ready — stock unchanged")).toBeVisible();
+    await expect(page.getByText("1 × FMB140", { exact: true })).toBeVisible();
+    await expect(
+      page.getByText("1 × Teltonika Contactless CAN - ECAN02", {
+        exact: true,
+      })
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", {
+        name: "Download Vehicle Labels — PDF (1)",
+      })
+    ).toBeVisible();
+    await page.getByRole("button", { name: "Clear Preview" }).click();
 
     await page.locator('input[type="file"]').setInputFiles(path);
     await page.getByRole("button", { name: "Preview Packaging" }).click();

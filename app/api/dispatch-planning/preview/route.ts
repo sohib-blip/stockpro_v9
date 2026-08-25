@@ -192,8 +192,7 @@ export async function POST(req: Request) {
     );
     const learnedSelections = dispatchOrders.flatMap((order) => {
       const learned = learnedByComposition.get(compositionKeys.get(order.orderId)!);
-      const eligibleIds = new Set(eligibleDispatchPackagingIds(order, packages));
-      return learned && eligibleIds.has(String(learned.packaging_type_id))
+      return learned
         ? [
             {
               orderId: order.orderId,

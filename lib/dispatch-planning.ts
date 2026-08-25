@@ -795,7 +795,11 @@ export function applyDispatchPackagingSelections(
       blockers.push(`Order ${order.orderId}: the package quantity is invalid.`);
       return { ...order, packages: [] };
     }
-    if (!order.items.every((item) => itemFitsPackage(item, packaging))) {
+    const selectionSource = selection.source ?? "manual";
+    if (
+      selectionSource === "calculated" &&
+      !order.items.every((item) => itemFitsPackage(item, packaging))
+    ) {
       blockers.push(
         `Order ${order.orderId}: ${packaging.name} cannot fit at least one item dimension.`
       );
@@ -812,7 +816,7 @@ export function applyDispatchPackagingSelections(
           quantity: selection.quantity,
           unitVolumeCm3:
             packaging.lengthCm * packaging.widthCm * packaging.heightCm,
-          source: selection.source ?? "manual",
+          source: selectionSource,
           learningCount: selection.learningCount,
         },
       ],

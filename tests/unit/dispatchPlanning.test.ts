@@ -269,6 +269,40 @@ describe("daily dispatch planning", () => {
     expect(parsed.orders[0].totalVolumeCm3).toBeCloseTo(605.475);
   });
 
+  it("maps the FMC880 Atom adhesive pad as packing content with trusted dimensions", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        [
+          "AA-01",
+          "Atom Adhesive Pad",
+          "Teltonika - Atom-E 4G - FMC880",
+          2177001,
+          1,
+          "BE",
+          "Customer A",
+        ],
+      ])
+    );
+
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.lines[0]).toMatchObject({
+      mappedItem: "Atom Adhesive Pad",
+      isDevice: false,
+      deviceModel: null,
+    });
+    expect(parsed.orders[0].deviceCounts).toEqual({});
+    expect(parsed.orders[0].items).toEqual([
+      expect.objectContaining({
+        name: "Atom Adhesive Pad",
+        lengthCm: 5,
+        widthCm: 8,
+        heightCm: 0.2,
+        unitVolumeCm3: 8,
+      }),
+    ]);
+    expect(parsed.orders[0].totalVolumeCm3).toBe(8);
+  });
+
   it("accepts a FOB-only order when Device Type is empty", () => {
     const parsed = parseDispatchWorkbook(
       workbookWithRows([
@@ -360,6 +394,7 @@ describe("daily dispatch planning", () => {
       "NEON-T Adhesive Pads\t24",
       "Tachograph T-Harness\tTacho-T-harness",
       "Atom Install Guide\tTBD001",
+      "Atom Adhesive Pad FMC880",
       "T7 Adhesive pad\tT7Pad",
     ];
 

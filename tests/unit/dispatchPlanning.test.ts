@@ -242,6 +242,68 @@ describe("daily dispatch planning", () => {
     expect(parsed.generatedAt).toBe("19/08/2026 09:15");
   });
 
+  it("maps the current Vehicle Sheet accessory labels to trusted dimensions", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "OBD Cable FMC003", "Teltonika - OBD-4G FMC003 - FMC003", 2177001, 1, "BE", "Customer A"],
+        ["AA-01", "HARNESS", "Teltonika - Tacho Supported 4G Complex - FMC650", 2177001, 2, "BE", "Customer A"],
+        ["AA-01", "3 amp Fuse mini blade", "Teltonika - Plant/Trailer Tracker 4G - FMC234", 2177001, 3, "BE", "Customer A"],
+        ["AA-01", "Fuse Holder - mini blade in-line", "Teltonika - Plant/Trailer Tracker 4G - FMC234", 2177001, 4, "BE", "Customer A"],
+      ])
+    );
+
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.orders).toHaveLength(1);
+    expect(parsed.lines.every((line) => !line.isDevice)).toBe(true);
+    expect(parsed.orders[0].items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ name: "OBD Cable", unitVolumeCm3: 214.5 }),
+        expect.objectContaining({ name: "Tachograph T-Harness", unitVolumeCm3: 384 }),
+        expect.objectContaining({
+          name: "3 amp Fuse mini blade",
+          unitVolumeCm3: expect.closeTo(0.675),
+        }),
+        expect.objectContaining({ name: "Fuse Holder - mini blade in-line", unitVolumeCm3: 6.3 }),
+      ])
+    );
+    expect(parsed.orders[0].totalVolumeCm3).toBeCloseTo(605.475);
+  });
+
+  it("accepts a FOB-only order when Device Type is empty", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["FOB-ONLY", "FOB", "", 2177002, 1, "BE", "Customer B"],
+      ])
+    );
+
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.orders).toHaveLength(1);
+    expect(parsed.orders[0].deviceCounts).toEqual({});
+    expect(parsed.orders[0].items).toEqual([
+      expect.objectContaining({
+        name: "FOB",
+        quantity: 1,
+        unitVolumeCm3: 20,
+      }),
+    ]);
+  });
+
+  it("keeps a generic HARNESS blocked without the FMC650 context", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "HARNESS", "", 2177003, 1, "BE", "Customer C"],
+      ])
+    );
+
+    expect(parsed.orders).toEqual([]);
+    expect(parsed.issues).toEqual([
+      expect.objectContaining({
+        hardwareType: "HARNESS",
+        message: "No trusted dimensions match this hardware/device combination.",
+      }),
+    ]);
+  });
+
   it("uses Device Type to add only missing automatic accessories to volume", () => {
     const parsed = parseDispatchWorkbook(
       workbookWithRows([

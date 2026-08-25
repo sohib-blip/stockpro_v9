@@ -129,8 +129,11 @@ const ITEM_CATALOG: DispatchCatalogItem[] = [
   { name: "CV200 Bullet Camera", lengthCm: 5, widthCm: 3, heightCm: 6 },
   { name: "FMB130 connectorized harness", lengthCm: 1.5, widthCm: 7, heightCm: 7 },
   { name: "FMB140 connectorized harness", lengthCm: 1.5, widthCm: 7, heightCm: 7 },
+  { name: "3 amp Fuse mini blade", lengthCm: 1.5, widthCm: 1.5, heightCm: 0.3 },
+  { name: "Fuse Holder - mini blade in-line", lengthCm: 10.5, widthCm: 2, heightCm: 0.3 },
   { name: "Teltonika Contactless CAN - ECAN02", lengthCm: 2, widthCm: 9, heightCm: 2 },
   { name: "FOB", lengthCm: 5, widthCm: 2, heightCm: 2 },
+  { name: "OBD Cable", lengthCm: 1.5, widthCm: 13, heightCm: 11 },
   { name: "HARDWIRED Cable for", lengthCm: 14, widthCm: 5, heightCm: 5 },
   { name: "READER", lengthCm: 11, widthCm: 7, heightCm: 0.5 },
   { name: "Atom Install Guide", lengthCm: 5.5, widthCm: 8.3, heightCm: 0.1 },
@@ -169,7 +172,10 @@ const DISPATCH_CATALOG_ALIASES: Record<string, string[]> = {
   ],
   "FMB130 connectorized harness": ["FMB130 connectorized harness 22"],
   "FMB140 connectorized harness": ["FMB140 connectorized harness 23"],
+  "3 amp Fuse mini blade": ["3 amp Fuse mini blade 11"],
+  "Fuse Holder - mini blade in-line": ["Fuse Holder - mini blade in-line 10"],
   "Teltonika Contactless CAN - ECAN02": ["ECAN02"],
+  "OBD Cable": ["OBD Cable FMC003"],
   "Large Cable Ties": ["Large Cable Ties 25"],
   "NEON-T Adhesive Pads": ["NEON-T Adhesive Pads 24"],
   "T7 Adhesive pad": ["T7 Adhesive pad T7Pad"],
@@ -247,6 +253,16 @@ export function resolveDispatchCatalogItem(
     return model === "FMB140"
       ? CATALOG_BY_KEY.get(dispatchItemKey(model)) ?? null
       : null;
+  }
+
+  // Kinesis exports the FMC650 tachograph harness under the generic label
+  // "HARNESS". Keep this contextual so unrelated generic harness rows do not
+  // inherit dimensions that may not match their physical item.
+  if (
+    hardwareKey === "harness" &&
+    resolveDispatchDeviceModel(deviceType) === "FMC650"
+  ) {
+    return CATALOG_BY_KEY.get(dispatchItemKey("Tachograph T-Harness")) ?? null;
   }
 
   if (["atom", "hardwired", "neon", "obd", "trailer"].includes(hardwareKey)) {

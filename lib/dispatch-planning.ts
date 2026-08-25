@@ -137,6 +137,7 @@ const ITEM_CATALOG: DispatchCatalogItem[] = [
   { name: "HARDWIRED Cable for", lengthCm: 14, widthCm: 5, heightCm: 5 },
   { name: "READER", lengthCm: 11, widthCm: 7, heightCm: 0.5 },
   { name: "Atom Install Guide", lengthCm: 5.5, widthCm: 8.3, heightCm: 0.1 },
+  { name: "Atom Adhesive Pad", lengthCm: 5, widthCm: 8, heightCm: 0.2 },
   { name: "Barra Adhesive Pad", lengthCm: 14.5, widthCm: 4.5, heightCm: 0.2 },
   { name: "CV200 Adhesive Pad", lengthCm: 7, widthCm: 5, heightCm: 0.2 },
   { name: "Tachograph T-Harness", lengthCm: 16, widthCm: 12, heightCm: 2 },
@@ -165,6 +166,7 @@ const ITEM_CATALOG: DispatchCatalogItem[] = [
 
 const DISPATCH_CATALOG_ALIASES: Record<string, string[]> = {
   "Atom Install Guide": ["Atom Install Guide TBD001"],
+  "Atom Adhesive Pad": ["Atom Adhesive Pad FMC880"],
   "Barra Adhesive Pad": ["Barra Adhesive Pad BAP01"],
   "CV200 Adhesive Pad": [
     "CV200 adhesive pad CVAP",

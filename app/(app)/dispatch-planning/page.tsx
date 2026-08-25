@@ -626,9 +626,7 @@ export default function DispatchPlanningPage() {
                     {filteredPreviewOrders.map((order) => {
                       const allocation = order.packages[0];
                       const eligibleIds = new Set(order.eligiblePackagingTypeIds || []);
-                      const options = (preview.packaging_options || []).filter(
-                        (option) => eligibleIds.has(option.id)
-                      );
+                      const options = preview.packaging_options || [];
                       const selectedOption = options.find(
                         (option) => option.id === allocation?.packagingTypeId
                       );
@@ -654,20 +652,25 @@ export default function DispatchPlanningPage() {
                         </td>
                         <td>{formatNumber(order.totalVolumeCm3, 1)} cm³</td>
                         <td>
-                          {allocation ? <div className="dispatch-packaging-control">
+                          <div className="dispatch-packaging-control">
                             <label>
                               <select
                                 aria-label={`Package for order ${order.orderId}`}
-                                value={allocation.packagingTypeId}
+                                value={allocation?.packagingTypeId || ""}
                                 onChange={(event) =>
                                   updateOrderPackaging(order.orderId, {
                                     packagingTypeId: event.target.value,
                                   })
                                 }
                               >
+                                {!allocation ? (
+                                  <option value="" disabled>Select a package…</option>
+                                ) : null}
                                 {options.map((option) => (
                                   <option key={option.id} value={option.id}>
-                                    {option.name} · {formatPackageDimensions(option)} · {option.availableStock} available
+                                    {option.name} · {formatPackageDimensions(option)} · {option.availableStock} available · {eligibleIds.has(option.id)
+                                      ? "calculated fit"
+                                      : "manual override"}
                                   </option>
                                 ))}
                               </select>
@@ -684,7 +687,8 @@ export default function DispatchPlanningPage() {
                                 type="number"
                                 min={1}
                                 max={1_000_000}
-                                value={allocation.quantity}
+                                value={allocation?.quantity ?? 1}
+                                disabled={!allocation}
                                 onChange={(event) =>
                                   updateOrderPackaging(order.orderId, {
                                     quantity: Number(event.target.value) || 1,
@@ -692,14 +696,20 @@ export default function DispatchPlanningPage() {
                                 }
                               />
                             </label>
-                            <small className={`dispatch-learning-note is-${allocation.source || "calculated"}`}>
-                              {allocation.source === "learned"
-                                ? `Learned from ${allocation.learningCount || 1} confirmed choice${(allocation.learningCount || 1) === 1 ? "" : "s"}`
-                                : allocation.source === "manual"
-                                  ? "Adjusted — learned after confirmation"
-                                  : "Calculated suggestion"}
-                            </small>
-                          </div> : "Blocked"}
+                            {allocation ? (
+                              <small className={`dispatch-learning-note is-${allocation.source || "calculated"}`}>
+                                {allocation.source === "learned"
+                                  ? `Learned from ${allocation.learningCount || 1} confirmed choice${(allocation.learningCount || 1) === 1 ? "" : "s"}`
+                                  : allocation.source === "manual"
+                                    ? "Adjusted — learned after confirmation"
+                                    : "Calculated suggestion"}
+                              </small>
+                            ) : (
+                              <small className="dispatch-learning-note is-manual">
+                                Choose any active package to override the calculation.
+                              </small>
+                            )}
+                          </div>
                         </td>
                       </tr>;
                     })}

@@ -579,7 +579,7 @@ describe("daily dispatch planning", () => {
     ]);
   });
 
-  it("rejects package overrides that cannot fit an individual item", () => {
+  it("accepts a confirmed manual package even when calculated dimensions disagree", () => {
     const parsed = parseDispatchWorkbook(
       workbookWithRows([
         ["AA-01", "AIO Camera", "", 2177001, 1, "BE", "Customer A"],
@@ -594,6 +594,61 @@ describe("daily dispatch planning", () => {
           packagingTypeId: "small",
           quantity: 1,
           source: "manual",
+        },
+      ]
+    );
+
+    expect(plan.blockers).toEqual([]);
+    expect(plan.totalPackages).toBe(1);
+    expect(plan.orders[0].packages[0]).toMatchObject({
+      packagingTypeId: "small",
+      source: "manual",
+    });
+  });
+
+  it("reuses a learned manual package even when calculated dimensions disagree", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "AIO Camera", "", 2177001, 1, "BE", "Customer A"],
+      ])
+    );
+    const plan = applyDispatchPackagingSelections(
+      parsed.orders,
+      [packaging({ id: "small", name: "Radius Small" })],
+      [
+        {
+          orderId: "2177001",
+          packagingTypeId: "small",
+          quantity: 1,
+          source: "learned",
+          learningCount: 2,
+        },
+      ]
+    );
+
+    expect(plan.blockers).toEqual([]);
+    expect(plan.orders[0].packages[0]).toMatchObject({
+      packagingTypeId: "small",
+      source: "learned",
+      learningCount: 2,
+    });
+  });
+
+  it("still rejects an invalid calculated package recommendation", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        ["AA-01", "AIO Camera", "", 2177001, 1, "BE", "Customer A"],
+      ])
+    );
+    const plan = applyDispatchPackagingSelections(
+      parsed.orders,
+      [packaging({ id: "small", name: "Radius Small" })],
+      [
+        {
+          orderId: "2177001",
+          packagingTypeId: "small",
+          quantity: 1,
+          source: "calculated",
         },
       ]
     );
@@ -665,5 +720,7 @@ describe("daily dispatch planning", () => {
     expect(page).toContain("formatPackageDimensions");
     expect(page).toContain("dispatch-package-dimensions");
     expect(page).toContain("availableStock} available");
+    expect(page).toContain('"manual override"');
+    expect(page).toContain("Choose any active package to override the calculation.");
   });
 });

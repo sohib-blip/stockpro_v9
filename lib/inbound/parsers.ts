@@ -155,15 +155,22 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
 
     const parts = s.split("-").map((x) => String(x).trim()).filter(Boolean);
 
+    let boxNo: string | null = null;
+
     if (parts.length >= 3 && hasLetters(parts[0])) {
-      return `${parts[1]}-${parts[2]}`;
+      boxNo = `${parts[1]}-${parts[2]}`;
+    } else if (parts.length === 2 && !hasLetters(parts[0])) {
+      boxNo = `${parts[0]}-${parts[1]}`;
+    } else {
+      boxNo = parts[0] || null;
     }
 
-    if (parts.length === 2 && !hasLetters(parts[0])) {
-      return `${parts[0]}-${parts[1]}`;
+    const numericBox = boxNo?.match(/^(\d{1,3})-(\d{1,3})$/);
+    if (numericBox) {
+      return `${numericBox[1].padStart(3, "0")}-${numericBox[2].padStart(3, "0")}`;
     }
 
-    return parts[0] || null;
+    return boxNo;
   }
 
   function pickDeviceCell(a: any, b: any): any | null {
@@ -216,7 +223,13 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
         }
       }
 
-      const bxCell = pickBoxCell(boxCell1, boxCell2);
+      const secondHeader = header[b.boxCol2] || "";
+      const hasDedicatedSecondBoxColumn =
+        secondHeader === "box no." ||
+        (secondHeader.includes("box") && secondHeader.includes("no"));
+      const bxCell = hasDedicatedSecondBoxColumn
+        ? pickBoxCell(boxCell2, boxCell1)
+        : pickBoxCell(boxCell1, boxCell2);
       if (bxCell !== null) {
         const boxNo = extractBoxNoFromCell(bxCell);
         if (boxNo) currentBoxNo = boxNo;

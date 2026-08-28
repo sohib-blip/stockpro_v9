@@ -29,6 +29,12 @@ const devices = toDeviceMatchList([
     units_per_imei: 2,
   },
   {
+    canonical_name: "FMC003",
+    device: "FMC003",
+    active: true,
+    units_per_imei: 1,
+  },
+  {
     canonical_name: "CNHYCV200XEU",
     device: "CV200",
     active: true,
@@ -87,6 +93,30 @@ describe("inbound spreadsheet parser integration", () => {
       }),
     ]);
     expect(result.counts).toEqual({ devices: 1, boxes: 2, items: 6 });
+  });
+
+  it("prefers Teltonika's dedicated second Box No. column when the repeated first column is stale", () => {
+    const bytes = workbookBytes([
+      ["FMC003X5HVWU"],
+      ["FL", "Box No.", "Box No.", "S/N", "IMEI", "ParentBoxGuid"],
+      ["LT", "FMC003X5HVWU-050-001", "050-1", "1", "860848082320202", "box-1"],
+      ["LT", "FMC003X5HVWU-050-002", "050-2", "2", "860848082078644", "box-2"],
+      ["LT", "FMC003X5HVWU-050-001", "050-2", "3", "860848082073215", "box-2"],
+      ["LT", "FMC003X5HVWU-050-001", "050-2", "4", "860848082073223", "box-2"],
+    ]);
+
+    const result = parseTeltonikaExcel(bytes, devices);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.labels.map(({ box_no, imeis }) => ({ box_no, imeis }))).toEqual([
+      { box_no: "050-001", imeis: ["860848082320202"] },
+      {
+        box_no: "050-002",
+        imeis: ["860848082078644", "860848082073215", "860848082073223"],
+      },
+    ]);
+    expect(result.counts).toEqual({ devices: 1, boxes: 2, items: 4 });
   });
 
   it("parses Quicklink cartons into stable five-digit box numbers", () => {

@@ -9,6 +9,12 @@ export const L4731_COLUMNS = 7;
 export const L4731_ROWS = 27;
 export const L4731_LABELS_PER_PAGE = L4731_COLUMNS * L4731_ROWS;
 
+// L4731 sheets are single-sided. Keeping one empty Word page between label
+// grids prevents a duplex printer from placing the next grid on the back of
+// the previous physical sheet.
+const L4731_DUPLEX_SAFE_PAGE_SEPARATOR =
+  '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
+
 export type DispatchVehicleLabel = {
   registration: string;
   deviceModel: string;
@@ -177,7 +183,10 @@ export async function createDispatchVehicleLabelsDocx(
 
   archive.file(
     "word/document.xml",
-    documentXml.replace(tableMatch[0], pageTables.join(""))
+    documentXml.replace(
+      tableMatch[0],
+      pageTables.join(L4731_DUPLEX_SAFE_PAGE_SEPARATOR)
+    )
   );
 
   return archive.generateAsync({

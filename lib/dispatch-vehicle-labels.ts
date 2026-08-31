@@ -135,21 +135,6 @@ function populateTemplateTable(
   });
 }
 
-function startTableOnNewPage(tableXml: string) {
-  if (/<w:pPr(?:\s[^>]*)?>/.test(tableXml)) {
-    return tableXml.replace(
-      /<w:pPr(?:\s[^>]*)?>/,
-      (paragraphProperties) =>
-        `${paragraphProperties}<w:pageBreakBefore/>`
-    );
-  }
-
-  return tableXml.replace(
-    /<w:p(?:\s[^>]*)?>/,
-    (paragraph) => `${paragraph}<w:pPr><w:pageBreakBefore/></w:pPr>`
-  );
-}
-
 export async function createDispatchVehicleLabelsDocx(
   labels: DispatchVehicleLabel[]
 ) {
@@ -182,12 +167,11 @@ export async function createDispatchVehicleLabelsDocx(
     pageStart < labels.length;
     pageStart += L4731_LABELS_PER_PAGE
   ) {
-    const pageTable = populateTemplateTable(
-      templateTable,
-      labels.slice(pageStart, pageStart + L4731_LABELS_PER_PAGE)
-    );
     pageTables.push(
-      pageStart === 0 ? pageTable : startTableOnNewPage(pageTable)
+      populateTemplateTable(
+        templateTable,
+        labels.slice(pageStart, pageStart + L4731_LABELS_PER_PAGE)
+      )
     );
   }
 

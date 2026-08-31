@@ -80,7 +80,7 @@ describe("dispatch vehicle registration labels", () => {
     ]);
   });
 
-  it("uses one-sided L4731 sheets and leaves the reverse side blank", async () => {
+  it("starts each complete L4731 grid on the next Word page", async () => {
     const labels = Array.from(
       { length: L4731_LABELS_PER_PAGE + 1 },
       (_, index) => ({
@@ -98,7 +98,8 @@ describe("dispatch vehicle registration labels", () => {
 
     expect(L4731_LABELS_PER_PAGE).toBe(189);
     expect(documentXml.match(/<w:tbl(?:\s[^>]*)?>/g)).toHaveLength(2);
-    expect(documentXml.match(/<w:br w:type="page"\/>/g)).toHaveLength(1);
+    expect(documentXml).not.toContain('<w:br w:type="page"/>');
+    expect(documentXml.match(/<w:pageBreakBefore\/>/g)).toHaveLength(1);
     expect(documentXml).toContain(">TEST-1</w:t>");
     expect(documentXml).toContain(">TEST-190</w:t>");
     expect(documentXml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');

@@ -9,12 +9,6 @@ export const L4731_COLUMNS = 7;
 export const L4731_ROWS = 27;
 export const L4731_LABELS_PER_PAGE = L4731_COLUMNS * L4731_ROWS;
 
-// L4731 sheets are single-sided. Keeping one empty Word page between label
-// grids prevents a duplex printer from placing the next grid on the back of
-// the previous physical sheet.
-const L4731_DUPLEX_SAFE_PAGE_SEPARATOR =
-  '<w:p><w:r><w:br w:type="page"/></w:r></w:p>';
-
 export type DispatchVehicleLabel = {
   registration: string;
   deviceModel: string;
@@ -141,6 +135,21 @@ function populateTemplateTable(
   });
 }
 
+function startTableOnNewPage(tableXml: string) {
+  if (/<w:pPr(?:\s[^>]*)?>/.test(tableXml)) {
+    return tableXml.replace(
+      /<w:pPr(?:\s[^>]*)?>/,
+      (paragraphProperties) =>
+        `${paragraphProperties}<w:pageBreakBefore/>`
+    );
+  }
+
+  return tableXml.replace(
+    /<w:p(?:\s[^>]*)?>/,
+    (paragraph) => `${paragraph}<w:pPr><w:pageBreakBefore/></w:pPr>`
+  );
+}
+
 export async function createDispatchVehicleLabelsDocx(
   labels: DispatchVehicleLabel[]
 ) {
@@ -173,20 +182,18 @@ export async function createDispatchVehicleLabelsDocx(
     pageStart < labels.length;
     pageStart += L4731_LABELS_PER_PAGE
   ) {
+    const pageTable = populateTemplateTable(
+      templateTable,
+      labels.slice(pageStart, pageStart + L4731_LABELS_PER_PAGE)
+    );
     pageTables.push(
-      populateTemplateTable(
-        templateTable,
-        labels.slice(pageStart, pageStart + L4731_LABELS_PER_PAGE)
-      )
+      pageStart === 0 ? pageTable : startTableOnNewPage(pageTable)
     );
   }
 
   archive.file(
     "word/document.xml",
-    documentXml.replace(
-      tableMatch[0],
-      pageTables.join(L4731_DUPLEX_SAFE_PAGE_SEPARATOR)
-    )
+    documentXml.replace(tableMatch[0], pageTables.join(""))
   );
 
   return archive.generateAsync({

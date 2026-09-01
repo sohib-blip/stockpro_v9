@@ -59,6 +59,16 @@ type PackagingOption = {
   availableStock: number;
 };
 
+type PickingSummaryRow = {
+  category: "device" | "accessory" | "packaging";
+  name: string;
+  requiredQuantity: number;
+  availableStock: number | null;
+  difference: number | null;
+  status: "available" | "shortage" | "not_configured";
+  orderIds: string[];
+};
+
 type Preview = {
   ok: boolean;
   preview_token?: string;
@@ -82,6 +92,7 @@ type Preview = {
     deviceType?: string;
   }>;
   packaging_options?: PackagingOption[];
+  picking_summary?: PickingSummaryRow[];
 };
 
 type HistoryRow = {
@@ -123,6 +134,12 @@ function formatPackageDimensions(
     packaging.widthCm,
     2
   )} × ${formatNumber(packaging.heightCm, 2)} cm`;
+}
+
+function csvCell(value: unknown) {
+  const text = String(value ?? "");
+  const protectedText = /^[=+\-@]/.test(text) ? `'${text}` : text;
+  return `"${protectedText.replace(/"/g, '""')}"`;
 }
 
 function rebuildClientPlan(
@@ -190,6 +207,11 @@ export default function DispatchPlanningPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [undoTarget, setUndoTarget] = useState<HistoryRow | null>(null);
   const [orderSearch, setOrderSearch] = useState("");
+  const [pickingOpen, setPickingOpen] = useState(false);
+  const [pickingCategory, setPickingCategory] =
+    useState<PickingSummaryRow["category"]>("device");
+  const [pickingSearch, setPickingSearch] = useState("");
+  const [pickingAttentionOnly, setPickingAttentionOnly] = useState(false);
   const operationId = useRef<string | null>(null);
 
   const previewTotals = useMemo(() => {
@@ -226,6 +248,62 @@ export default function DispatchPlanningPage() {
     );
   }, [orderSearch, preview]);
 
+  const pickingRows = useMemo(() => {
+    const baseRows = (preview?.picking_summary || []).filter(
+      (row) => row.category !== "packaging"
+    );
+    const plan = preview?.plan;
+    if (!plan) return baseRows;
+    const packagingRows: PickingSummaryRow[] = plan.packageUsage.map(
+      (usage) => {
+        const difference = usage.availableStock - usage.quantity;
+        return {
+          category: "packaging",
+          name: usage.name,
+          requiredQuantity: usage.quantity,
+          availableStock: usage.availableStock,
+          difference,
+          status: difference < 0 ? "shortage" : "available",
+          orderIds: plan.orders
+            .filter((order) =>
+              order.packages.some(
+                (packaging) =>
+                  packaging.packagingTypeId === usage.packagingTypeId
+              )
+            )
+            .map((order) => order.orderId),
+        };
+      }
+    );
+    return [...baseRows, ...packagingRows];
+  }, [preview]);
+  const pickingAttentionCount = pickingRows.filter(
+    (row) => row.status !== "available"
+  ).length;
+  const pickingCategoryTotals = useMemo(() => {
+    return (["device", "accessory", "packaging"] as const).map(
+      (category) => ({
+        category,
+        rows: pickingRows.filter((row) => row.category === category).length,
+        required: pickingRows
+          .filter((row) => row.category === category)
+          .reduce((total, row) => total + row.requiredQuantity, 0),
+      })
+    );
+  }, [pickingRows]);
+  const filteredPickingRows = useMemo(() => {
+    const query = pickingSearch.trim().toLocaleLowerCase();
+    return pickingRows.filter(
+      (row) =>
+        row.category === pickingCategory &&
+        (!pickingAttentionOnly || row.status !== "available") &&
+        (!query ||
+          [row.name, ...row.orderIds].some((value) =>
+            value.toLocaleLowerCase().includes(query)
+          ))
+    );
+  }, [pickingAttentionOnly, pickingCategory, pickingRows, pickingSearch]);
+
   async function loadHistory() {
     setHistoryBusy(true);
     try {
@@ -258,6 +336,9 @@ export default function DispatchPlanningPage() {
     setFeedback(null);
     setPreview(null);
     setOrderSearch("");
+    setPickingOpen(false);
+    setPickingSearch("");
+    setPickingAttentionOnly(false);
     operationId.current = null;
     try {
       const form = new FormData();
@@ -400,6 +481,47 @@ export default function DispatchPlanningPage() {
     } finally {
       setLabelsBusy(false);
     }
+  }
+
+  function downloadPickingList() {
+    if (pickingRows.length === 0) return;
+    const lines = [
+      [
+        "Category",
+        "Item",
+        "Required today",
+        "Available stock",
+        "Difference",
+        "Status",
+        "Orders",
+      ],
+      ...pickingRows.map((row) => [
+        row.category,
+        row.name,
+        row.requiredQuantity,
+        row.availableStock ?? "Not linked",
+        row.difference ?? "",
+        row.status === "available"
+          ? "Available"
+          : row.status === "shortage"
+            ? `Short by ${Math.abs(row.difference || 0)}`
+            : "Stock not linked",
+        row.orderIds.join(", "),
+      ]),
+    ];
+    const csv = lines.map((line) => line.map(csvCell).join(",")).join("\r\n");
+    const objectUrl = URL.createObjectURL(
+      new Blob([`\uFEFF${csv}`], { type: "text/csv;charset=utf-8" })
+    );
+    const anchor = document.createElement("a");
+    anchor.href = objectUrl;
+    anchor.download = `dispatch-picking-list-${new Date()
+      .toISOString()
+      .slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(objectUrl);
   }
 
   function updateOrderPackaging(
@@ -549,6 +671,9 @@ export default function DispatchPlanningPage() {
                 setFile(event.target.files?.[0] || null);
                 setPreview(null);
                 setOrderSearch("");
+                setPickingOpen(false);
+                setPickingSearch("");
+                setPickingAttentionOnly(false);
                 operationId.current = null;
               }}
             />
@@ -770,23 +895,43 @@ export default function DispatchPlanningPage() {
                     </small>
                   </span>
                 </div>
-                <button
-                  type="button"
-                  className="prototype-button secondary"
-                  onClick={downloadVehicleLabels}
-                  disabled={labelsBusy || !preview.vehicle_label_count}
-                >
-                  {labelsBusy
-                    ? "Generating labels…"
-                    : `Download Vehicle Labels — Word (${preview.vehicle_label_count || 0})`}
-                </button>
+                <div className="dispatch-preview-tool-buttons">
+                  <button
+                    type="button"
+                    className="prototype-button secondary dispatch-picking-button"
+                    onClick={() => setPickingOpen(true)}
+                    disabled={pickingRows.length === 0}
+                  >
+                    Picking Summary · {pickingRows.length}
+                    {pickingAttentionCount > 0 ? (
+                      <span>{pickingAttentionCount} attention</span>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    className="prototype-button secondary"
+                    onClick={downloadVehicleLabels}
+                    disabled={labelsBusy || !preview.vehicle_label_count}
+                  >
+                    {labelsBusy
+                      ? "Generating labels…"
+                      : `Download Vehicle Labels — Word (${preview.vehicle_label_count || 0})`}
+                  </button>
+                </div>
               </div>
 
               <div className="prototype-preview-actions">
                 <button
                   type="button"
                   className="prototype-button secondary"
-                  onClick={() => { setPreview(null); setOrderSearch(""); operationId.current = null; }}
+                  onClick={() => {
+                    setPreview(null);
+                    setOrderSearch("");
+                    setPickingOpen(false);
+                    setPickingSearch("");
+                    setPickingAttentionOnly(false);
+                    operationId.current = null;
+                  }}
                   disabled={busy}
                 >
                   Clear Preview
@@ -842,6 +987,189 @@ export default function DispatchPlanningPage() {
           </table>
         </div>
       </section>
+
+      {pickingOpen && preview?.picking_summary ? (
+        <div
+          className="returns-history-dialog-backdrop dispatch-picking-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPickingOpen(false);
+          }}
+        >
+          <section
+            className="returns-history-dialog dispatch-picking-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="dispatch-picking-title"
+          >
+            <div className="returns-history-dialog-header">
+              <div>
+                <span>Read-only daily overview</span>
+                <h2 id="dispatch-picking-title">Daily Picking Summary</h2>
+                <p>
+                  Required physical contents across all previewed orders. No
+                  inventory is changed here.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPickingOpen(false)}
+                aria-label="Close picking summary"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="dispatch-picking-summary-cards">
+              {pickingCategoryTotals.map((total) => (
+                <div key={total.category}>
+                  <span>{total.category}</span>
+                  <strong>{formatNumber(total.required)}</strong>
+                  <small>
+                    {total.rows} item{total.rows === 1 ? "" : "s"}
+                  </small>
+                </div>
+              ))}
+              <div className={pickingAttentionCount > 0 ? "is-danger" : ""}>
+                <span>Attention needed</span>
+                <strong>{pickingAttentionCount}</strong>
+                <small>
+                  {pickingAttentionCount > 0
+                    ? "Short or not linked"
+                    : "Everything available"}
+                </small>
+              </div>
+            </div>
+
+            <div className="dispatch-picking-tabs" role="tablist">
+              {pickingCategoryTotals.map((total) => (
+                <button
+                  key={total.category}
+                  type="button"
+                  role="tab"
+                  aria-selected={pickingCategory === total.category}
+                  className={
+                    pickingCategory === total.category ? "is-active" : ""
+                  }
+                  onClick={() => setPickingCategory(total.category)}
+                >
+                  {total.category === "device"
+                    ? "Devices"
+                    : total.category === "accessory"
+                      ? "Accessories"
+                      : "Packaging"}
+                  <span>{total.rows}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="dispatch-picking-toolbar">
+              <input
+                type="search"
+                aria-label="Search picking summary"
+                placeholder="Search item or order…"
+                value={pickingSearch}
+                onChange={(event) => setPickingSearch(event.target.value)}
+              />
+              <label>
+                <input
+                  type="checkbox"
+                  checked={pickingAttentionOnly}
+                  onChange={(event) =>
+                    setPickingAttentionOnly(event.target.checked)
+                  }
+                />
+                Attention only
+              </label>
+              <button
+                type="button"
+                className="prototype-button secondary"
+                onClick={downloadPickingList}
+              >
+                Export Picking List
+              </button>
+            </div>
+
+            <div className="returns-history-dialog-table-scroll dispatch-picking-table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Item</th>
+                    <th>Required today</th>
+                    <th>In stock</th>
+                    <th>Difference</th>
+                    <th>Status</th>
+                    <th>Orders</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredPickingRows.map((row) => (
+                    <tr key={`${row.category}-${row.name}`}>
+                      <td>
+                        <strong>{row.name}</strong>
+                      </td>
+                      <td>{formatNumber(row.requiredQuantity)}</td>
+                      <td>
+                        {row.availableStock === null
+                          ? "Not linked"
+                          : formatNumber(row.availableStock)}
+                      </td>
+                      <td
+                        className={
+                          row.difference !== null && row.difference < 0
+                            ? "is-danger"
+                            : ""
+                        }
+                      >
+                        {row.difference === null
+                          ? "—"
+                          : `${row.difference >= 0 ? "+" : ""}${formatNumber(
+                              row.difference
+                            )}`}
+                      </td>
+                      <td>
+                        <span
+                          className={`dispatch-picking-status is-${row.status}`}
+                        >
+                          {row.status === "available"
+                            ? "Available"
+                            : row.status === "shortage"
+                              ? `Short by ${formatNumber(
+                                  Math.abs(row.difference || 0)
+                                )}`
+                              : "Stock not linked"}
+                        </span>
+                      </td>
+                      <td>
+                        <div className="dispatch-picking-orders">
+                          {row.orderIds.map((orderId) => (
+                            <button
+                              key={orderId}
+                              type="button"
+                              onClick={() => {
+                                setOrderSearch(orderId);
+                                setPickingOpen(false);
+                              }}
+                            >
+                              {orderId}
+                            </button>
+                          ))}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredPickingRows.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="dispatch-orders-empty">
+                        No items match these filters.
+                      </td>
+                    </tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {detail ? (
         <div className="returns-history-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDetail(null); }}>

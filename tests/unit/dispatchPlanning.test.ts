@@ -6,6 +6,7 @@ import { permissionForPage, permissionsForApi } from "../../lib/access-control";
 import {
   applyDispatchAutomaticAccessoryRules,
   applyDispatchPackagingSelections,
+  buildDispatchPickingSummary,
   isDispatchVolumeAccessoryCategory,
   itemFitsPackage,
   parseDispatchWorkbook,
@@ -756,6 +757,79 @@ describe("daily dispatch planning", () => {
     );
   });
 
+  it("builds a daily picking summary with stock, shortages and order links", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        [
+          "AA-01",
+          "ATOM",
+          "Teltonika - Atom-E 4G - FMC880",
+          2177001,
+          1,
+          "BE",
+          "Customer A",
+        ],
+        [
+          "AA-02",
+          "ATOM",
+          "Teltonika - Atom-E 4G - FMC880",
+          2177001,
+          2,
+          "BE",
+          "Customer A",
+        ],
+        ["AA-01", "FOB", "", 2177001, 3, "BE", "Customer A"],
+      ])
+    );
+    const plan = planDispatchPackaging(parsed.orders, [
+      packaging({
+        id: "medium",
+        name: "Radius Medium",
+        lengthCm: 40,
+        widthCm: 30,
+        heightCm: 20,
+        onHandStock: 5,
+      }),
+    ]);
+
+    const summary = buildDispatchPickingSummary(
+      plan.orders,
+      plan.packageUsage,
+      [{ name: "FMC880", availableStock: 1 }],
+      [{ name: "FOB", availableStock: 10 }]
+    );
+
+    expect(summary).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "device",
+          name: "FMC880",
+          requiredQuantity: 2,
+          availableStock: 1,
+          difference: -1,
+          status: "shortage",
+          orderIds: ["2177001"],
+        }),
+        expect.objectContaining({
+          category: "accessory",
+          name: "FOB",
+          requiredQuantity: 1,
+          availableStock: 10,
+          difference: 9,
+          status: "available",
+        }),
+        expect.objectContaining({
+          category: "packaging",
+          name: "Radius Medium",
+          requiredQuantity: 1,
+          availableStock: 5,
+          difference: 4,
+          status: "available",
+        }),
+      ])
+    );
+  });
+
   it("keeps confirmation and undo transactional, idempotent and service-only", () => {
     expect(migration.trimStart()).toMatch(/^begin;/);
     expect(migration.trimEnd()).toMatch(/commit;$/);
@@ -799,5 +873,8 @@ describe("daily dispatch planning", () => {
     expect(page).toContain("availableStock} available");
     expect(page).toContain('"manual override"');
     expect(page).toContain("Choose any active package to override the calculation.");
+    expect(page).toContain("Daily Picking Summary");
+    expect(page).toContain("Export Picking List");
+    expect(page).toContain("Attention only");
   });
 });

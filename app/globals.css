@@ -526,6 +526,209 @@ body {
   white-space: nowrap;
 }
 
+.dispatch-preview-tool-buttons {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px !important;
+}
+
+.dispatch-picking-button {
+  gap: 8px;
+}
+
+.dispatch-picking-button > span {
+  padding: 3px 6px;
+  border-radius: 999px;
+  background: var(--danger-soft);
+  color: var(--danger);
+  font-size: 9.5px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.dispatch-picking-dialog {
+  width: min(100%, 1180px);
+}
+
+.dispatch-picking-summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.dispatch-picking-summary-cards > div {
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-elevated);
+}
+
+.dispatch-picking-summary-cards span,
+.dispatch-picking-summary-cards strong,
+.dispatch-picking-summary-cards small {
+  display: block;
+}
+
+.dispatch-picking-summary-cards span {
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 750;
+  letter-spacing: 0.045em;
+  text-transform: uppercase;
+}
+
+.dispatch-picking-summary-cards strong {
+  margin-top: 2px;
+  color: var(--foreground);
+  font-size: 19px;
+}
+
+.dispatch-picking-summary-cards small {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.dispatch-picking-summary-cards > div.is-danger {
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: var(--danger-soft);
+}
+
+.dispatch-picking-summary-cards > div.is-danger strong,
+.dispatch-picking-summary-cards > div.is-danger small {
+  color: var(--danger);
+}
+
+.dispatch-picking-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 22px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.dispatch-picking-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 11px 9px;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.dispatch-picking-tabs button.is-active {
+  border-bottom-color: var(--brand);
+  color: var(--brand);
+}
+
+.dispatch-picking-tabs button span {
+  min-width: 20px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: var(--surface-subtle);
+  color: inherit;
+  font-size: 9.5px;
+  text-align: center;
+}
+
+.dispatch-picking-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dispatch-picking-toolbar > input {
+  width: 100%;
+  min-height: 36px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  padding: 7px 11px;
+  background: var(--surface);
+  color: var(--foreground);
+  font: inherit;
+  font-size: 12px;
+}
+
+.dispatch-picking-toolbar > label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--foreground-soft);
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
+.dispatch-picking-table-scroll {
+  flex: 1 1 auto;
+}
+
+.dispatch-picking-table-scroll table {
+  min-width: 900px;
+}
+
+.dispatch-picking-table-scroll td.is-danger {
+  color: var(--danger);
+  font-weight: 750;
+}
+
+.dispatch-picking-status {
+  display: inline-flex;
+  padding: 4px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 750;
+}
+
+.dispatch-picking-status.is-available {
+  background: var(--success-soft);
+  color: var(--success);
+}
+
+.dispatch-picking-status.is-shortage,
+.dispatch-picking-status.is-not_configured {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.dispatch-picking-orders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-width: 360px;
+}
+
+.dispatch-picking-orders button {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 3px 6px;
+  background: var(--surface);
+  color: var(--brand);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.dispatch-picking-orders button:hover {
+  border-color: var(--brand);
+  background: var(--brand-soft);
+}
+
 .dispatch-orders-scroll,
 .dispatch-history-scroll {
   max-width: 100%;
@@ -812,6 +1015,27 @@ body {
   }
 
   .dispatch-vehicle-labels-action .prototype-button {
+    width: 100%;
+  }
+
+  .dispatch-preview-tool-buttons {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dispatch-picking-summary-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dispatch-picking-tabs {
+    overflow-x: auto;
+  }
+
+  .dispatch-picking-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .dispatch-picking-toolbar .prototype-button {
     width: 100%;
   }
 }

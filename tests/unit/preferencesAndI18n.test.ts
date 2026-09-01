@@ -64,6 +64,13 @@ describe("theme and language preferences", () => {
     ).toBe(
       "12 bestaande IMEI's worden overgeslagen en 3 nieuwe IMEI's worden geïmporteerd."
     );
+    expect(translateUiText("fr", "Daily Picking Summary")).toBe(
+      "Résumé quotidien de préparation"
+    );
+    expect(translateUiText("nl", "Picking Summary · 8")).toBe(
+      "Pickoverzicht · 8"
+    );
+    expect(translateUiText("fr", "Short by 4")).toBe("Manque de 4");
   });
 
   it("persists device-local theme and locale choices", () => {

@@ -3,6 +3,7 @@ import {
   dispatchItemKey,
   isDispatchVolumeAccessoryCategory,
   type DispatchAutomaticAccessoryRule,
+  type DispatchPickingInventoryRow,
   type PackagingOption,
 } from "@/lib/dispatch-planning";
 
@@ -99,4 +100,43 @@ export async function loadDispatchAutomaticAccessoryRules(
         ]
       : [];
   });
+}
+
+export async function loadDispatchPickingInventory(): Promise<{
+  devices: DispatchPickingInventoryRow[];
+  accessories: DispatchPickingInventoryRow[];
+}> {
+  const service = supabaseService();
+  const [
+    { data: bins, error: binsError },
+    { data: deviceStock, error: deviceStockError },
+    { data: accessories, error: accessoriesError },
+  ] = await Promise.all([
+    service.from("bins").select("id,name").eq("active", true),
+    service.from("dashboard_bins_view").select("device_id,imei_count"),
+    service
+      .from("accessory_bins")
+      .select("name,current_stock")
+      .eq("active", true)
+      .or("category.is.null,category.neq.Packages"),
+  ]);
+  const error = binsError || deviceStockError || accessoriesError;
+  if (error) throw error;
+
+  const deviceStockById = new Map(
+    (deviceStock || []).map((row) => [
+      String(row.device_id),
+      Number(row.imei_count || 0),
+    ])
+  );
+  return {
+    devices: (bins || []).map((bin) => ({
+      name: String(bin.name),
+      availableStock: deviceStockById.get(String(bin.id)) || 0,
+    })),
+    accessories: (accessories || []).map((accessory) => ({
+      name: String(accessory.name),
+      availableStock: Number(accessory.current_stock || 0),
+    })),
+  };
 }

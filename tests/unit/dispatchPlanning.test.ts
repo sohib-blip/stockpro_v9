@@ -96,6 +96,12 @@ describe("daily dispatch planning", () => {
     ).toBe("FMC130");
     expect(
       resolveDispatchCatalogItem(
+        "HARDWIRED",
+        "Teltonika - Hard-Wired FMB130 - FMB130"
+      )?.name
+    ).toBe("FMC130");
+    expect(
+      resolveDispatchCatalogItem(
         "Neon",
         "Digital Matter - Barra-GPS Neon Battery replaceable - Barra-GPS"
       )?.name
@@ -320,6 +326,77 @@ describe("daily dispatch planning", () => {
         unitVolumeCm3: 20,
       }),
     ]);
+  });
+
+  it("normalizes FMB130 to FMC130 and ignores Kinesis Insights software", () => {
+    const parsed = parseDispatchWorkbook(
+      workbookWithRows([
+        [
+          "39-OU-47",
+          "HARDWIRED",
+          "Teltonika - Hard-Wired FMB130 - FMB130",
+          2178775,
+          613068,
+          "PT",
+          "Retube",
+        ],
+        [
+          "32-JR-07",
+          "HARDWIRED",
+          "Teltonika - Hard-Wired FMB130 - FMB130",
+          2178775,
+          613069,
+          "PT",
+          "Retube",
+        ],
+        [
+          "AB-62-LX",
+          "HARDWIRED",
+          "Teltonika - Hard-Wired FMB130 - FMB130",
+          2178775,
+          613070,
+          "PT",
+          "Retube",
+        ],
+        [
+          "HB GA 387",
+          "AIO Camera",
+          "Queclink - Vision - CV200XEU 256GB - CV200XEU-256",
+          2178731,
+          612405,
+          "DE",
+          "Grand Auto",
+        ],
+        [
+          "HB GA 387",
+          "Kinesis Insights",
+          "Queclink - Vision - CV200XEU 256GB - CV200XEU-256",
+          2178731,
+          612405,
+          "DE",
+          "Grand Auto",
+        ],
+      ])
+    );
+
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.lines).toHaveLength(4);
+    expect(
+      parsed.lines.some((line) => line.hardwareType === "Kinesis Insights")
+    ).toBe(false);
+    expect(parsed.orders).toHaveLength(2);
+    expect(
+      parsed.orders.find((order) => order.orderId === "2178775")
+    ).toMatchObject({
+      lineCount: 3,
+      deviceCounts: { FMC130: 3 },
+    });
+    expect(
+      parsed.orders.find((order) => order.orderId === "2178731")
+    ).toMatchObject({
+      lineCount: 1,
+      deviceCounts: { CNHYCV200XEU: 1 },
+    });
   });
 
   it("keeps a generic HARNESS blocked without the FMC650 context", () => {

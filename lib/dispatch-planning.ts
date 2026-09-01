@@ -224,7 +224,7 @@ export function resolveDispatchDeviceModel(value: string) {
     [/CV200XEU|CNHYCV200/, "CNHYCV200XEU"],
     [/BARRA[\s-]?GPS/, "BarraGps"],
     [/FMC003/, "FMC003"],
-    [/FMC130/, "FMC130"],
+    [/FM[BC]130/, "FMC130"],
     [/FMC234/, "FMC234"],
     [/FMC650/, "FMC650"],
     [/FMC920/, "FMC920"],
@@ -363,6 +363,10 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
       const deviceType = value("Device Type");
 
       if (!orderId && !hardwareType && !deviceType) continue;
+      // Kinesis Insights is a software licence exported alongside the
+      // physical order contents. It must not affect packing volume or block
+      // an otherwise valid vehicle order.
+      if (dispatchItemKey(hardwareType) === "kinesisinsights") continue;
       if (!orderId || !hardwareType) {
         issues.push({
           sheet: sheetName,

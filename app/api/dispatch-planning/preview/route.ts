@@ -6,6 +6,7 @@ import { getApiIdentity } from "@/lib/api-identity";
 import {
   applyDispatchAutomaticAccessoryRules,
   applyDispatchPackagingSelections,
+  buildDispatchPickingSummary,
   eligibleDispatchPackagingIds,
   parseDispatchWorkbook,
 } from "@/lib/dispatch-planning";
@@ -15,6 +16,7 @@ import { createDispatchPreviewToken } from "@/lib/dispatch-preview-token";
 import {
   loadDispatchAutomaticAccessoryRules,
   loadDispatchPackagingOptions,
+  loadDispatchPickingInventory,
 } from "@/app/api/dispatch-planning/_server";
 import {
   PayloadTooLargeError,
@@ -172,7 +174,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const packages = await loadDispatchPackagingOptions();
+    const [packages, pickingInventory] = await Promise.all([
+      loadDispatchPackagingOptions(),
+      loadDispatchPickingInventory(),
+    ]);
     const compositionKeys = new Map(
       dispatchOrders.map((order) => [order.orderId, dispatchCompositionKey(order)])
     );
@@ -223,6 +228,12 @@ export async function POST(req: Request) {
       sourceGeneratedAt: parsed.generatedAt,
       orders: dispatchOrders,
     });
+    const pickingSummary = buildDispatchPickingSummary(
+      plan.orders,
+      plan.packageUsage,
+      pickingInventory.devices,
+      pickingInventory.accessories
+    );
 
     return NextResponse.json({
       ok: plan.blockers.length === 0,
@@ -250,6 +261,7 @@ export async function POST(req: Request) {
         availableStock: packaging.onHandStock - packaging.reservedStock,
       })),
       vehicle_label_count: vehicleLabelResult.labels.length,
+      picking_summary: pickingSummary,
       plan,
     }, { status: plan.blockers.length > 0 ? 422 : 200 });
   } catch (error) {

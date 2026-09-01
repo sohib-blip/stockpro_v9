@@ -110,6 +110,21 @@ export type DispatchPlan = {
   totalPackages: number;
 };
 
+export type DispatchPickingInventoryRow = {
+  name: string;
+  availableStock: number;
+};
+
+export type DispatchPickingSummaryRow = {
+  category: "device" | "accessory" | "packaging";
+  name: string;
+  requiredQuantity: number;
+  availableStock: number | null;
+  difference: number | null;
+  status: "available" | "shortage" | "not_configured";
+  orderIds: string[];
+};
+
 export type DispatchPackagingSelection = {
   orderId: string;
   packagingTypeId: string;
@@ -117,6 +132,146 @@ export type DispatchPackagingSelection = {
   source?: "calculated" | "learned" | "manual";
   learningCount?: number;
 };
+
+function pickingInventoryByCatalogKey(
+  rows: DispatchPickingInventoryRow[],
+  category: "device" | "accessory"
+) {
+  const inventory = new Map<string, number>();
+  for (const row of rows) {
+    const catalogName =
+      (category === "device" ? resolveDispatchDeviceModel(row.name) : null) ||
+      resolveDispatchCatalogItem(row.name, "")?.name ||
+      row.name;
+    const key = dispatchItemKey(catalogName);
+    inventory.set(
+      key,
+      (inventory.get(key) || 0) + Math.max(0, Number(row.availableStock || 0))
+    );
+  }
+  return inventory;
+}
+
+export function buildDispatchPickingSummary(
+  orders: PlannedDispatchOrder[],
+  packageUsage: DispatchPackageUsage[],
+  deviceInventory: DispatchPickingInventoryRow[],
+  accessoryInventory: DispatchPickingInventoryRow[]
+) {
+  const deviceStock = pickingInventoryByCatalogKey(deviceInventory, "device");
+  const accessoryStock = pickingInventoryByCatalogKey(
+    accessoryInventory,
+    "accessory"
+  );
+  const packageStock = new Map(
+    packageUsage.map((usage) => [
+      String(usage.packagingTypeId),
+      Number(usage.availableStock || 0),
+    ])
+  );
+  const summary = new Map<
+    string,
+    {
+      category: DispatchPickingSummaryRow["category"];
+      name: string;
+      requiredQuantity: number;
+      availableStock: number | null;
+      orderIds: Set<string>;
+    }
+  >();
+
+  const add = (
+    category: DispatchPickingSummaryRow["category"],
+    name: string,
+    quantity: number,
+    availableStock: number | null,
+    orderId: string,
+    identity = dispatchItemKey(name)
+  ) => {
+    const key = `${category}:${identity}`;
+    const current = summary.get(key);
+    if (current) {
+      current.requiredQuantity += quantity;
+      current.orderIds.add(orderId);
+      return;
+    }
+    summary.set(key, {
+      category,
+      name,
+      requiredQuantity: quantity,
+      availableStock,
+      orderIds: new Set([orderId]),
+    });
+  };
+
+  for (const order of orders) {
+    const deviceKeys = new Set(
+      Object.keys(order.deviceCounts || {}).map(dispatchItemKey)
+    );
+    for (const [device, quantity] of Object.entries(order.deviceCounts || {})) {
+      const key = dispatchItemKey(device);
+      add(
+        "device",
+        device,
+        Number(quantity || 0),
+        deviceStock.get(key) ?? null,
+        order.orderId,
+        key
+      );
+    }
+
+    for (const item of order.items) {
+      const key = dispatchItemKey(item.name);
+      if (deviceKeys.has(key)) continue;
+      add(
+        "accessory",
+        item.name,
+        Number(item.quantity || 0),
+        accessoryStock.get(key) ?? null,
+        order.orderId,
+        key
+      );
+    }
+
+    for (const packaging of order.packages || []) {
+      add(
+        "packaging",
+        packaging.name,
+        Number(packaging.quantity || 0),
+        packageStock.get(String(packaging.packagingTypeId)) ?? null,
+        order.orderId,
+        String(packaging.packagingTypeId)
+      );
+    }
+  }
+
+  const categoryOrder = { device: 0, accessory: 1, packaging: 2 } as const;
+  return Array.from(summary.values())
+    .map<DispatchPickingSummaryRow>((row) => {
+      const difference =
+        row.availableStock === null
+          ? null
+          : row.availableStock - row.requiredQuantity;
+      return {
+        ...row,
+        difference,
+        status:
+          difference === null
+            ? "not_configured"
+            : difference < 0
+              ? "shortage"
+              : "available",
+        orderIds: Array.from(row.orderIds).sort((left, right) =>
+          left.localeCompare(right, undefined, { numeric: true })
+        ),
+      };
+    })
+    .sort(
+      (left, right) =>
+        categoryOrder[left.category] - categoryOrder[right.category] ||
+        left.name.localeCompare(right.name)
+    );
+}
 
 const ITEM_CATALOG: DispatchCatalogItem[] = [
   { name: "10M AV Extension Cable", lengthCm: 13, widthCm: 13, heightCm: 3 },

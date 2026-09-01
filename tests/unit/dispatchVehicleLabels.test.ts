@@ -80,7 +80,7 @@ describe("dispatch vehicle registration labels", () => {
     ]);
   });
 
-  it("keeps consecutive L4731 grids free of cell-level page breaks", async () => {
+  it("repeats the complete L4731 grid and outlines on every Word page", async () => {
     const labels = Array.from(
       { length: L4731_LABELS_PER_PAGE + 1 },
       (_, index) => ({
@@ -98,8 +98,20 @@ describe("dispatch vehicle registration labels", () => {
 
     expect(L4731_LABELS_PER_PAGE).toBe(189);
     expect(documentXml.match(/<w:tbl(?:\s[^>]*)?>/g)).toHaveLength(2);
+    expect(documentXml.match(/<w:drawing(?:\s[^>]*)?>/g)).toHaveLength(378);
+    expect(documentXml.match(/<v:roundrect(?:\s[^>]*)?>/g)).toHaveLength(
+      378
+    );
     expect(documentXml).not.toContain('<w:br w:type="page"/>');
     expect(documentXml).not.toContain("<w:pageBreakBefore/>");
+    const drawingIds = Array.from(
+      documentXml.matchAll(/<wp:docPr\b[^>]*\bid="(\d+)"/g),
+      (match) => Number(match[1])
+    );
+    expect(drawingIds).toHaveLength(378);
+    expect(new Set(drawingIds).size).toBe(378);
+    expect(Math.min(...drawingIds)).toBe(1);
+    expect(Math.max(...drawingIds)).toBe(378);
     expect(documentXml).toContain(">TEST-1</w:t>");
     expect(documentXml).toContain(">TEST-190</w:t>");
     expect(documentXml).toContain('<w:pgSz w:w="11906" w:h="16838"/>');

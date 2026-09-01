@@ -135,6 +135,15 @@ function populateTemplateTable(
   });
 }
 
+function renumberPageShapes(overlayParagraph: string, pageIndex: number) {
+  const pageIdOffset = pageIndex * L4731_LABELS_PER_PAGE;
+  return overlayParagraph.replace(
+    /(<wp:docPr\b[^>]*\bid=")(\d+)(")/g,
+    (_, prefix: string, id: string, suffix: string) =>
+      `${prefix}${Number(id) + pageIdOffset}${suffix}`
+  );
+}
+
 export async function createDispatchVehicleLabelsDocx(
   labels: DispatchVehicleLabel[]
 ) {
@@ -158,26 +167,52 @@ export async function createDispatchVehicleLabelsDocx(
     throw new Error("The supplied Word label template has no label table.");
   }
 
+  const tableStart = documentXml.indexOf(tableMatch[0]);
+  const tableEnd = tableStart + tableMatch[0].length;
+  const afterTable = documentXml.slice(tableEnd);
+  const overlayMatch = afterTable.match(
+    /^\s*(<w:p(?:\s[^>]*)?>[\s\S]*?<\/w:p>)/
+  );
+  const overlayParagraph = overlayMatch?.[1];
+  if (
+    !overlayParagraph ||
+    (overlayParagraph.match(/<w:drawing(?:\s[^>]*)?>/g) ?? []).length !==
+      L4731_LABELS_PER_PAGE ||
+    (overlayParagraph.match(/<v:roundrect(?:\s[^>]*)?>/g) ?? []).length !==
+      L4731_LABELS_PER_PAGE
+  ) {
+    throw new Error(
+      "The supplied Word label template is missing the L4731 label outlines."
+    );
+  }
+
+  const overlayStart =
+    tableEnd + (overlayMatch?.[0].indexOf(overlayParagraph) ?? 0);
+  const overlayEnd = overlayStart + overlayParagraph.length;
+
   const templateTable = tableMatch[0]
     .replace(/<w:bookmarkStart\b[^>]*\/>/g, "")
     .replace(/<w:bookmarkEnd\b[^>]*\/>/g, "");
-  const pageTables: string[] = [];
+  const pageContents: string[] = [];
   for (
     let pageStart = 0;
     pageStart < labels.length;
     pageStart += L4731_LABELS_PER_PAGE
   ) {
-    pageTables.push(
-      populateTemplateTable(
+    const pageIndex = pageStart / L4731_LABELS_PER_PAGE;
+    pageContents.push(
+      `${populateTemplateTable(
         templateTable,
         labels.slice(pageStart, pageStart + L4731_LABELS_PER_PAGE)
-      )
+      )}${renumberPageShapes(overlayParagraph, pageIndex)}`
     );
   }
 
   archive.file(
     "word/document.xml",
-    documentXml.replace(tableMatch[0], pageTables.join(""))
+    `${documentXml.slice(0, tableStart)}${pageContents.join("")}${documentXml.slice(
+      overlayEnd
+    )}`
   );
 
   return archive.generateAsync({

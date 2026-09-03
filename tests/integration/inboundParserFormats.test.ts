@@ -119,6 +119,36 @@ describe("inbound spreadsheet parser integration", () => {
     expect(result.counts).toEqual({ devices: 1, boxes: 2, items: 4 });
   });
 
+  it("uses Teltonika master cartons instead of their smaller inner boxes", () => {
+    const bytes = workbookBytes([
+      ["FMC003X5HVWU"],
+      ["Box No.", "Box No.", "S/N", "IMEI"],
+      ["FMC003X5HVWU-076-004", "075-1", "1", "860848082320202"],
+      ["FMC003X5HVWU-076-004", "075-2", "2", "860848082078644"],
+      ["FMC003X5HVWU-075-001", "076-17", "3", "860848082073215"],
+      ["FMC003X5HVWU-075-001", "076-18", "4", "860848082073223"],
+    ]);
+
+    const result = parseTeltonikaExcel(bytes, devices);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.labels.map(({ box_no, imeis }) => ({ box_no, imeis }))).toEqual([
+      {
+        box_no: "075-001",
+        imeis: ["860848082073215", "860848082073223"],
+      },
+      {
+        box_no: "076-004",
+        imeis: ["860848082320202", "860848082078644"],
+      },
+    ]);
+    expect(result.debug.boxColumnSelections).toEqual([
+      expect.objectContaining({ source: "master", selected: 0 }),
+    ]);
+    expect(result.counts).toEqual({ devices: 1, boxes: 2, items: 4 });
+  });
+
   it("parses Quicklink cartons into stable five-digit box numbers", () => {
     const bytes = workbookBytes([
       ["IMEI", "Carton"],

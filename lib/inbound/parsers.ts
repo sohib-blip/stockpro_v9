@@ -192,6 +192,45 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return null;
   }
 
+  function shouldUsePrimaryBoxColumn(block: {
+    boxCol1: number;
+    boxCol2: number;
+    imeiCol: number;
+  }) {
+    const secondHeader = header[block.boxCol2] || "";
+    const hasDedicatedSecondBoxColumn =
+      secondHeader === "box no." ||
+      (secondHeader.includes("box") && secondHeader.includes("no"));
+    if (!hasDedicatedSecondBoxColumn) return true;
+
+    // Recent Teltonika packing lists expose both the master carton and its
+    // smaller inner boxes under the same "Box No." heading. The first column
+    // is the master carton. Older exports can contain a stale master value,
+    // so fall back to the inner-box column only when one inner box is linked
+    // to conflicting master cartons.
+    let currentPrimary: string | null = null;
+    const primaryBoxesByInnerBox = new Map<string, Set<string>>();
+
+    for (let r = headerRowIdx + 1; r < rows.length; r++) {
+      const row = rows[r] || [];
+      if (!isImei(row[block.imeiCol])) continue;
+
+      const primary = extractBoxNoFromCell(row[block.boxCol1]);
+      if (primary) currentPrimary = primary;
+      const inner = extractBoxNoFromCell(row[block.boxCol2]);
+      if (!currentPrimary || !inner) continue;
+
+      const parents = primaryBoxesByInnerBox.get(inner) || new Set<string>();
+      parents.add(currentPrimary);
+      primaryBoxesByInnerBox.set(inner, parents);
+    }
+
+    if (primaryBoxesByInnerBox.size === 0) return false;
+    return !Array.from(primaryBoxesByInnerBox.values()).some(
+      (parents) => parents.size > 1
+    );
+  }
+
   const byKey = new Map<
     string,
     { vendor: Vendor; device: string; box_no: string; imeis: string[] }
@@ -206,6 +245,15 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     currentDeviceDisplay = aboveResolved;
 
     let currentBoxNo: string | null = null;
+    const usePrimaryBoxColumn = shouldUsePrimaryBoxColumn(b);
+    debug.boxColumnSelections = [
+      ...(debug.boxColumnSelections || []),
+      {
+        blockStart: b.start,
+        selected: usePrimaryBoxColumn ? b.boxCol1 : b.boxCol2,
+        source: usePrimaryBoxColumn ? "master" : "inner-fallback",
+      },
+    ];
 
     for (let r = headerRowIdx + 1; r < rows.length; r++) {
       const row = rows[r] || [];
@@ -223,13 +271,9 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
         }
       }
 
-      const secondHeader = header[b.boxCol2] || "";
-      const hasDedicatedSecondBoxColumn =
-        secondHeader === "box no." ||
-        (secondHeader.includes("box") && secondHeader.includes("no"));
-      const bxCell = hasDedicatedSecondBoxColumn
-        ? pickBoxCell(boxCell2, boxCell1)
-        : pickBoxCell(boxCell1, boxCell2);
+      const bxCell = usePrimaryBoxColumn
+        ? pickBoxCell(boxCell1, boxCell2)
+        : pickBoxCell(boxCell2, boxCell1);
       if (bxCell !== null) {
         const boxNo = extractBoxNoFromCell(bxCell);
         if (boxNo) currentBoxNo = boxNo;

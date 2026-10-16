@@ -15,6 +15,7 @@ import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import { useAccess } from "@/components/AccessProvider";
 import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
 import { buildDashboardStockAlerts } from "@/lib/dashboard-inventory-rows";
+import type { BoxSearchRow } from "@/lib/box-search";
 
 type KPI = {
   total_bins: number;
@@ -125,6 +126,11 @@ export default function DashboardPage() {
   const [imeiSearchRows, setImeiSearchRows] = useState<ImeiSearchRow[]>([]);
   const [imeiSearchBusy, setImeiSearchBusy] = useState(false);
   const [imeiSearchError, setImeiSearchError] = useState("");
+  const [showBoxLookup, setShowBoxLookup] = useState(false);
+  const [boxLookupText, setBoxLookupText] = useState("");
+  const [boxLookupRows, setBoxLookupRows] = useState<BoxSearchRow[]>([]);
+  const [boxLookupBusy, setBoxLookupBusy] = useState(false);
+  const [boxLookupError, setBoxLookupError] = useState("");
   const [feedback, setFeedback] = useState<ProcessFeedbackValue | null>(null);
 
   const filteredBins = useMemo(
@@ -319,18 +325,57 @@ export default function DashboardPage() {
     setImeiSearchError("");
   }
 
+  async function searchBoxes() {
+    setBoxLookupBusy(true);
+    setBoxLookupError("");
+
+    try {
+      const response = await apiFetch("/api/dashboard/box-search", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ boxCodesText: boxLookupText }),
+      });
+      const json = await response.json();
+
+      if (!response.ok || !json.ok) {
+        throw new Error(json.error || "Box search failed");
+      }
+
+      setBoxLookupRows(json.rows || []);
+    } catch (error: any) {
+      setBoxLookupRows([]);
+      setBoxLookupError(error?.message || "Box search failed");
+    } finally {
+      setBoxLookupBusy(false);
+    }
+  }
+
+  function clearBoxLookup() {
+    setBoxLookupText("");
+    setBoxLookupRows([]);
+    setBoxLookupError("");
+  }
+
   useEffect(() => {
     loadAll();
   }, []);
 
   useEffect(() => {
-    if (!showShippedRanking && !showImeiSearch && !showStockAlertOverview) return;
+    if (
+      !showShippedRanking &&
+      !showImeiSearch &&
+      !showBoxLookup &&
+      !showStockAlertOverview
+    ) {
+      return;
+    }
 
     const previousOverflow = document.body.style.overflow;
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setShowShippedRanking(false);
         setShowImeiSearch(false);
+        setShowBoxLookup(false);
         setShowStockAlertOverview(false);
       }
     };
@@ -341,7 +386,7 @@ export default function DashboardPage() {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener("keydown", closeOnEscape);
     };
-  }, [showImeiSearch, showShippedRanking, showStockAlertOverview]);
+  }, [showBoxLookup, showImeiSearch, showShippedRanking, showStockAlertOverview]);
 
   return (
     <div className="prototype-page prototype-dashboard">
@@ -358,6 +403,14 @@ export default function DashboardPage() {
             onClick={() => setShowImeiSearch(true)}
           >
             <span aria-hidden="true">⌕</span> IMEI Search
+          </button>
+          <button
+            type="button"
+            className="prototype-button secondary dashboard-imei-trigger"
+            aria-haspopup="dialog"
+            onClick={() => setShowBoxLookup(true)}
+          >
+            <span aria-hidden="true">⌕</span> Box Search
           </button>
           {hasPermission("can_inventory_export") && (
             <>
@@ -520,6 +573,135 @@ export default function DashboardPage() {
               ) : (
                 <div className="prototype-empty dashboard-imei-empty">
                   Enter one or more IMEIs to locate devices in the warehouse.
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {showBoxLookup && (
+        <div
+          className="dashboard-ranking-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) {
+              setShowBoxLookup(false);
+            }
+          }}
+        >
+          <section
+            className="dashboard-imei-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="box-search-title"
+          >
+            <header className="dashboard-ranking-header">
+              <div>
+                <span>Inventory lookup</span>
+                <h2 id="box-search-title">Box Search</h2>
+                <p>Search one box ID or paste up to 100 box IDs.</p>
+              </div>
+              <button
+                type="button"
+                className="dashboard-ranking-close"
+                aria-label="Close"
+                onClick={() => setShowBoxLookup(false)}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="dashboard-imei-form">
+              <label htmlFor="dashboard-box-input">Box IDs</label>
+              <textarea
+                id="dashboard-box-input"
+                aria-label="Box IDs to search"
+                value={boxLookupText}
+                onChange={(event) => setBoxLookupText(event.target.value)}
+                placeholder="Paste box IDs here, one per line or separated by commas."
+                autoFocus
+              />
+              <div className="dashboard-imei-form-actions">
+                <button
+                  type="button"
+                  className="prototype-button secondary"
+                  onClick={clearBoxLookup}
+                  disabled={boxLookupBusy}
+                >
+                  Clear
+                </button>
+                <button
+                  type="button"
+                  className="prototype-button primary"
+                  onClick={searchBoxes}
+                  disabled={boxLookupBusy}
+                >
+                  {boxLookupBusy ? "Searching…" : "Search"}
+                </button>
+              </div>
+              {boxLookupError && (
+                <div className="dashboard-imei-error" role="alert">
+                  {boxLookupError}
+                </div>
+              )}
+            </div>
+
+            {boxLookupRows.length > 0 && (
+              <div className="dashboard-imei-summary" aria-label="Search results">
+                <span>
+                  Found{" "}
+                  <strong>
+                    {new Set(boxLookupRows.filter((row) => row.found).map((row) => row.query)).size}
+                  </strong>
+                </span>
+                <span>
+                  Not found <strong>{boxLookupRows.filter((row) => !row.found).length}</strong>
+                </span>
+              </div>
+            )}
+
+            <div className="dashboard-imei-results">
+              {boxLookupRows.length > 0 ? (
+                <table className="prototype-table dashboard-imei-table">
+                  <thead>
+                    <tr>
+                      <th>Box ID</th>
+                      <th>Device</th>
+                      <th>Location</th>
+                      <th>IMEIs in stock</th>
+                      <th>Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {boxLookupRows.map((row, index) => (
+                      <tr
+                        key={`${row.query}-${row.device || "missing"}-${index}`}
+                        className={!row.found ? "is-missing" : ""}
+                      >
+                        <td className="dashboard-imei-value">{row.box_id || row.query}</td>
+                        <td>{row.device || "—"}</td>
+                        <td>{row.location || "—"}</td>
+                        <td>{row.found ? row.imei_count ?? 0 : "—"}</td>
+                        <td>
+                          <span
+                            className={`dashboard-imei-status ${
+                              !row.found ? "missing" : (row.imei_count ?? 0) > 0 ? "in" : ""
+                            }`}
+                          >
+                            {!row.found
+                              ? "Not found"
+                              : (row.imei_count ?? 0) > 0
+                                ? "In stock"
+                                : "Empty"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="prototype-empty dashboard-imei-empty">
+                  Enter one or more box IDs to locate boxes in the warehouse.
                 </div>
               )}
             </div>

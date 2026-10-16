@@ -162,6 +162,16 @@ const FR: Record<string, string> = {
   Location: "Emplacement",
   "Enter one or more IMEIs to locate devices in the warehouse.":
     "Saisissez un ou plusieurs IMEI pour localiser les appareils dans l’entrepôt.",
+  "Box Search": "Recherche de cartons",
+  "Search one box ID or paste up to 100 box IDs.":
+    "Recherchez un ID de carton ou collez jusqu’à 100 ID de cartons.",
+  "Box IDs": "ID des cartons",
+  "Box IDs to search": "ID des cartons à rechercher",
+  "Paste box IDs here, one per line or separated by commas.":
+    "Collez les ID de cartons ici, un par ligne ou séparés par des virgules.",
+  "IMEIs in stock": "IMEI en stock",
+  "Enter one or more box IDs to locate boxes in the warehouse.":
+    "Saisissez un ou plusieurs ID de cartons pour localiser les cartons dans l’entrepôt.",
   "Search devices": "Rechercher des appareils",
   "Total bins": "Total des emplacements",
   "Total boxes": "Total des cartons",
@@ -916,6 +926,16 @@ const NL: Record<string, string> = {
   Location: "Locatie",
   "Enter one or more IMEIs to locate devices in the warehouse.":
     "Voer één of meer IMEI's in om apparaten in het magazijn te lokaliseren.",
+  "Box Search": "Dozen zoeken",
+  "Search one box ID or paste up to 100 box IDs.":
+    "Zoek één doos-ID of plak maximaal 100 doos-ID's.",
+  "Box IDs": "Doos-ID's",
+  "Box IDs to search": "Te zoeken doos-ID's",
+  "Paste box IDs here, one per line or separated by commas.":
+    "Plak hier doos-ID's, één per regel of gescheiden door komma's.",
+  "IMEIs in stock": "IMEI's op voorraad",
+  "Enter one or more box IDs to locate boxes in the warehouse.":
+    "Voer één of meer doos-ID's in om dozen in het magazijn te lokaliseren.",
   "Search devices": "Apparaten zoeken",
   "Total bins": "Totaal locaties",
   "Total boxes": "Totaal dozen",

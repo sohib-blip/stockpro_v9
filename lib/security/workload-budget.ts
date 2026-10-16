@@ -104,6 +104,17 @@ export const WORKLOAD_POLICIES = {
     globalConcurrency: 30,
     leaseSeconds: 15,
   },
+  boxSearch: {
+    routeClass: "inventory.box-search",
+    windowSeconds: 60,
+    principalLimit: 60,
+    sourceLimit: 120,
+    globalLimit: 600,
+    principalConcurrency: 4,
+    routeConcurrency: 8,
+    globalConcurrency: 30,
+    leaseSeconds: 15,
+  },
   transferPreview: {
     routeClass: "transfer.preview",
     windowSeconds: 60,

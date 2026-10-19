@@ -169,6 +169,10 @@ export function permissionsForApi(
   if (pathname.startsWith("/api/inbound")) return ["can_inbound"];
   if (pathname.startsWith("/api/labels")) return ["can_labels"];
   if (pathname.startsWith("/api/outbound")) return ["can_outbound"];
+  // The dimension list is maintained from Dispatch Planning and Inventory Setup.
+  if (pathname.startsWith("/api/dispatch-planning/catalog")) {
+    return ["can_outbound", "can_bins"];
+  }
   if (pathname.startsWith("/api/dispatch-planning")) return ["can_outbound"];
   if (pathname.startsWith("/api/returns")) return ["can_returns"];
   if (pathname.startsWith("/api/transfer")) return ["can_transfer"];

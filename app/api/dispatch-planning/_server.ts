@@ -1,11 +1,51 @@
 import { supabaseService } from "@/lib/auth";
 import {
+  createDispatchCatalog,
+  DEFAULT_DISPATCH_CATALOG,
   dispatchItemKey,
   isDispatchVolumeAccessoryCategory,
   type DispatchAutomaticAccessoryRule,
+  type DispatchCatalog,
   type DispatchPickingInventoryRow,
   type PackagingOption,
 } from "@/lib/dispatch-planning";
+
+export function isMissingDispatchCatalogTable(error: unknown) {
+  const value = error as { code?: unknown; message?: unknown } | null;
+  return (
+    value?.code === "42P01" ||
+    value?.code === "PGRST205" ||
+    /dispatch_catalog_items/.test(String(value?.message || ""))
+  );
+}
+
+// The database list is the source of truth once its migration is applied;
+// before that the dimensions built into the application keep dispatch working.
+export async function loadDispatchCatalog(): Promise<DispatchCatalog> {
+  const { data, error } = await supabaseService()
+    .from("dispatch_catalog_items")
+    .select("name,aliases,length_cm,width_cm,height_cm")
+    .eq("active", true)
+    .order("name", { ascending: true });
+
+  if (error) {
+    if (isMissingDispatchCatalogTable(error)) {
+      console.warn("DISPATCH CATALOG TABLE MISSING: using built-in dimensions");
+      return DEFAULT_DISPATCH_CATALOG;
+    }
+    throw error;
+  }
+
+  return createDispatchCatalog(
+    (data || []).map((row) => ({
+      name: String(row.name),
+      aliases: Array.isArray(row.aliases) ? row.aliases.map(String) : [],
+      lengthCm: Number(row.length_cm),
+      widthCm: Number(row.width_cm),
+      heightCm: Number(row.height_cm),
+    }))
+  );
+}
 
 export async function loadDispatchPackagingOptions(): Promise<PackagingOption[]> {
   const { data, error } = await supabaseService()

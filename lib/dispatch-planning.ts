@@ -61,6 +61,8 @@ export type DispatchParseIssue = {
   message: string;
   hardwareType?: string;
   deviceType?: string;
+  // Name to register in the dispatch item catalog to resolve this row.
+  suggestedName?: string | null;
 };
 
 export type DispatchParseResult = {
@@ -135,13 +137,14 @@ export type DispatchPackagingSelection = {
 
 function pickingInventoryByCatalogKey(
   rows: DispatchPickingInventoryRow[],
-  category: "device" | "accessory"
+  category: "device" | "accessory",
+  catalog: DispatchCatalog
 ) {
   const inventory = new Map<string, number>();
   for (const row of rows) {
     const catalogName =
       (category === "device" ? resolveDispatchDeviceModel(row.name) : null) ||
-      resolveDispatchCatalogItem(row.name, "")?.name ||
+      resolveDispatchCatalogItem(row.name, "", catalog)?.name ||
       row.name;
     const key = dispatchItemKey(catalogName);
     inventory.set(
@@ -156,12 +159,18 @@ export function buildDispatchPickingSummary(
   orders: PlannedDispatchOrder[],
   packageUsage: DispatchPackageUsage[],
   deviceInventory: DispatchPickingInventoryRow[],
-  accessoryInventory: DispatchPickingInventoryRow[]
+  accessoryInventory: DispatchPickingInventoryRow[],
+  catalog: DispatchCatalog = DEFAULT_DISPATCH_CATALOG
 ) {
-  const deviceStock = pickingInventoryByCatalogKey(deviceInventory, "device");
+  const deviceStock = pickingInventoryByCatalogKey(
+    deviceInventory,
+    "device",
+    catalog
+  );
   const accessoryStock = pickingInventoryByCatalogKey(
     accessoryInventory,
-    "accessory"
+    "accessory",
+    catalog
   );
   const packageStock = new Map(
     packageUsage.map((usage) => [
@@ -273,72 +282,93 @@ export function buildDispatchPickingSummary(
     );
 }
 
-const ITEM_CATALOG: DispatchCatalogItem[] = [
-  { name: "10M AV Extension Cable", lengthCm: 13, widthCm: 13, heightCm: 3 },
-  { name: "3M AV Extension Cable", lengthCm: 13, widthCm: 4, heightCm: 4 },
-  { name: "Camera - Front Facing", lengthCm: 9.5, widthCm: 9.5, heightCm: 12 },
-  { name: "Camera - Rear/Bracket Mounted", lengthCm: 10, widthCm: 9, heightCm: 9 },
-  { name: "DVR - 2 Channel -  (N+)", lengthCm: 20, widthCm: 18, heightCm: 7 },
-  { name: "Storage - 256GB SD Card", lengthCm: 2.2, widthCm: 3, heightCm: 0.2 },
-  { name: "BUZZER", lengthCm: 2, widthCm: 4, heightCm: 4 },
-  { name: "CV200 Bullet Camera", lengthCm: 5, widthCm: 3, heightCm: 6 },
-  { name: "FMB130 connectorized harness", lengthCm: 1.5, widthCm: 7, heightCm: 7 },
-  { name: "FMB140 connectorized harness", lengthCm: 1.5, widthCm: 7, heightCm: 7 },
-  { name: "3 amp Fuse mini blade", lengthCm: 1.5, widthCm: 1.5, heightCm: 0.3 },
-  { name: "Fuse Holder - mini blade in-line", lengthCm: 10.5, widthCm: 2, heightCm: 0.3 },
-  { name: "Teltonika Contactless CAN - ECAN02", lengthCm: 2, widthCm: 9, heightCm: 2 },
-  { name: "FOB", lengthCm: 5, widthCm: 2, heightCm: 2 },
-  { name: "OBD Cable", lengthCm: 1.5, widthCm: 13, heightCm: 11 },
-  { name: "HARDWIRED Cable for", lengthCm: 14, widthCm: 5, heightCm: 5 },
-  { name: "READER", lengthCm: 11, widthCm: 7, heightCm: 0.5 },
-  { name: "Atom Install Guide", lengthCm: 5.5, widthCm: 8.3, heightCm: 0.1 },
-  { name: "Atom Adhesive Pad", lengthCm: 5, widthCm: 8, heightCm: 0.2 },
-  { name: "Barra Adhesive Pad", lengthCm: 14.5, widthCm: 4.5, heightCm: 0.2 },
-  { name: "CV200 Adhesive Pad", lengthCm: 7, widthCm: 5, heightCm: 0.2 },
-  { name: "Tachograph T-Harness", lengthCm: 16, widthCm: 12, heightCm: 2 },
-  { name: "WIPE", lengthCm: 6.5, widthCm: 7.5, heightCm: 0.3 },
+export type DispatchCatalogEntry = DispatchCatalogItem & {
+  aliases: string[];
+};
+
+export type DispatchCatalog = {
+  entries: DispatchCatalogEntry[];
+  byKey: Map<string, DispatchCatalogItem>;
+};
+
+// Built-in dimensions used until the dispatch_catalog_items table is
+// installed. The migration seeds the table with exactly these entries; after
+// that the database is the source of truth and can be edited in the app.
+export const BUILT_IN_DISPATCH_CATALOG: DispatchCatalogEntry[] = [
+  { name: "10M AV Extension Cable", lengthCm: 13, widthCm: 13, heightCm: 3, aliases: [] },
+  { name: "3M AV Extension Cable", lengthCm: 13, widthCm: 4, heightCm: 4, aliases: [] },
+  { name: "Camera - Front Facing", lengthCm: 9.5, widthCm: 9.5, heightCm: 12, aliases: [] },
+  { name: "Camera - Rear/Bracket Mounted", lengthCm: 10, widthCm: 9, heightCm: 9, aliases: [] },
+  { name: "DVR - 2 Channel -  (N+)", lengthCm: 20, widthCm: 18, heightCm: 7, aliases: [] },
+  { name: "Storage - 256GB SD Card", lengthCm: 2.2, widthCm: 3, heightCm: 0.2, aliases: [] },
+  { name: "BUZZER", lengthCm: 2, widthCm: 4, heightCm: 4, aliases: [] },
+  { name: "CV200 Bullet Camera", lengthCm: 5, widthCm: 3, heightCm: 6, aliases: [] },
+  { name: "FMB130 connectorized harness", lengthCm: 1.5, widthCm: 7, heightCm: 7, aliases: ["FMB130 connectorized harness 22"] },
+  { name: "FMB140 connectorized harness", lengthCm: 1.5, widthCm: 7, heightCm: 7, aliases: ["FMB140 connectorized harness 23"] },
+  { name: "3 amp Fuse mini blade", lengthCm: 1.5, widthCm: 1.5, heightCm: 0.3, aliases: ["3 amp Fuse mini blade 11"] },
+  { name: "Fuse Holder - mini blade in-line", lengthCm: 10.5, widthCm: 2, heightCm: 0.3, aliases: ["Fuse Holder - mini blade in-line 10"] },
+  { name: "Teltonika Contactless CAN - ECAN02", lengthCm: 2, widthCm: 9, heightCm: 2, aliases: ["ECAN02"] },
+  { name: "FOB", lengthCm: 5, widthCm: 2, heightCm: 2, aliases: [] },
+  { name: "OBD Cable", lengthCm: 1.5, widthCm: 13, heightCm: 11, aliases: ["OBD Cable FMC003"] },
+  { name: "HARDWIRED Cable for", lengthCm: 14, widthCm: 5, heightCm: 5, aliases: ["HARDWIRED Cable for CV200"] },
+  { name: "READER", lengthCm: 11, widthCm: 7, heightCm: 0.5, aliases: [] },
+  { name: "Atom Install Guide", lengthCm: 5.5, widthCm: 8.3, heightCm: 0.1, aliases: ["Atom Install Guide TBD001"] },
+  { name: "Atom Adhesive Pad", lengthCm: 5, widthCm: 8, heightCm: 0.2, aliases: ["Atom Adhesive Pad FMC880"] },
+  { name: "Barra Adhesive Pad", lengthCm: 14.5, widthCm: 4.5, heightCm: 0.2, aliases: ["Barra Adhesive Pad BAP01"] },
+  { name: "CV200 Adhesive Pad", lengthCm: 7, widthCm: 5, heightCm: 0.2, aliases: ["CV200 adhesive pad CVAP", "CV200 Adhesive Pad CVAP01"] },
+  { name: "Tachograph T-Harness", lengthCm: 16, widthCm: 12, heightCm: 2, aliases: ["Tachograph T-Harness Tacho-T-harness"] },
+  { name: "WIPE", lengthCm: 6.5, widthCm: 7.5, heightCm: 0.3, aliases: ["WIPE TBD011"] },
   // The official volume workbook intentionally has no dimensions for these
   // flexible consumables. They remain visible in the packing list but add no
   // incremental box volume because they fit around the device contents.
-  { name: "Large Cable Ties", lengthCm: 0, widthCm: 0, heightCm: 0 },
-  { name: "NEON-T Adhesive Pads", lengthCm: 0, widthCm: 0, heightCm: 0 },
-  { name: "T7 Adhesive pad", lengthCm: 0, widthCm: 0, heightCm: 0 },
-  { name: "CNHYCV200XEU", lengthCm: 9, widthCm: 20, heightCm: 23.5 },
-  { name: "BarraGps", lengthCm: 2.5, widthCm: 5.5, heightCm: 16 },
-  { name: "FMC003", lengthCm: 2.5, widthCm: 5, heightCm: 7 },
-  { name: "FMC130", lengthCm: 6.4, widthCm: 5.5, heightCm: 2 },
-  { name: "FMC234", lengthCm: 15, widthCm: 11, heightCm: 3 },
-  { name: "FMC650", lengthCm: 10, widthCm: 7, heightCm: 3 },
-  { name: "FMC920", lengthCm: 4, widthCm: 8, heightCm: 2 },
-  { name: "FMB140", lengthCm: 6.4, widthCm: 5.5, heightCm: 2 },
-  { name: "FMC880", lengthCm: 6, widthCm: 9, heightCm: 1.5 },
-  { name: "Howen2CH", lengthCm: 20, widthCm: 18, heightCm: 7 },
-  { name: "Neon-P", lengthCm: 8, widthCm: 7, heightCm: 3.5 },
-  { name: "Neon-R", lengthCm: 8, widthCm: 7, heightCm: 3 },
-  { name: "Howen8CH", lengthCm: 25, widthCm: 24, heightCm: 15 },
-  { name: "Howen4CH", lengthCm: 25, widthCm: 24, heightCm: 15 },
+  { name: "Large Cable Ties", lengthCm: 0, widthCm: 0, heightCm: 0, aliases: ["Large Cable Ties 25"] },
+  { name: "NEON-T Adhesive Pads", lengthCm: 0, widthCm: 0, heightCm: 0, aliases: ["NEON-T Adhesive Pads 24"] },
+  { name: "T7 Adhesive pad", lengthCm: 0, widthCm: 0, heightCm: 0, aliases: ["T7 Adhesive pad T7Pad"] },
+  { name: "CNHYCV200XEU", lengthCm: 9, widthCm: 20, heightCm: 23.5, aliases: ["AIO Camera", "CV200XEU", "CV200XEU-256"] },
+  { name: "BarraGps", lengthCm: 2.5, widthCm: 5.5, heightCm: 16, aliases: ["Barra-GPS"] },
+  { name: "FMC003", lengthCm: 2.5, widthCm: 5, heightCm: 7, aliases: [] },
+  { name: "FMC130", lengthCm: 6.4, widthCm: 5.5, heightCm: 2, aliases: [] },
+  { name: "FMC234", lengthCm: 15, widthCm: 11, heightCm: 3, aliases: [] },
+  { name: "FMC650", lengthCm: 10, widthCm: 7, heightCm: 3, aliases: [] },
+  { name: "FMC920", lengthCm: 4, widthCm: 8, heightCm: 2, aliases: [] },
+  { name: "FMB140", lengthCm: 6.4, widthCm: 5.5, heightCm: 2, aliases: [] },
+  { name: "FMC880", lengthCm: 6, widthCm: 9, heightCm: 1.5, aliases: [] },
+  { name: "Howen2CH", lengthCm: 20, widthCm: 18, heightCm: 7, aliases: ["DVR-2CH"] },
+  { name: "Neon-P", lengthCm: 8, widthCm: 7, heightCm: 3.5, aliases: [] },
+  { name: "Neon-R", lengthCm: 8, widthCm: 7, heightCm: 3, aliases: [] },
+  { name: "Howen8CH", lengthCm: 25, widthCm: 24, heightCm: 15, aliases: ["DVR-8CH"] },
+  { name: "Howen4CH", lengthCm: 25, widthCm: 24, heightCm: 15, aliases: ["DVR-4CH"] },
 ];
 
-const DISPATCH_CATALOG_ALIASES: Record<string, string[]> = {
-  "Atom Install Guide": ["Atom Install Guide TBD001"],
-  "Atom Adhesive Pad": ["Atom Adhesive Pad FMC880"],
-  "Barra Adhesive Pad": ["Barra Adhesive Pad BAP01"],
-  "CV200 Adhesive Pad": [
-    "CV200 adhesive pad CVAP",
-    "CV200 Adhesive Pad CVAP01",
-  ],
-  "FMB130 connectorized harness": ["FMB130 connectorized harness 22"],
-  "FMB140 connectorized harness": ["FMB140 connectorized harness 23"],
-  "3 amp Fuse mini blade": ["3 amp Fuse mini blade 11"],
-  "Fuse Holder - mini blade in-line": ["Fuse Holder - mini blade in-line 10"],
-  "Teltonika Contactless CAN - ECAN02": ["ECAN02"],
-  "OBD Cable": ["OBD Cable FMC003"],
-  "Large Cable Ties": ["Large Cable Ties 25"],
-  "NEON-T Adhesive Pads": ["NEON-T Adhesive Pads 24"],
-  "T7 Adhesive pad": ["T7 Adhesive pad T7Pad"],
-  "Tachograph T-Harness": ["Tachograph T-Harness Tacho-T-harness"],
-  WIPE: ["WIPE TBD011"],
-};
+// Items the resolver below refers to by name. They can get new dimensions or
+// alternative names, but must keep their name and stay active.
+export const REQUIRED_DISPATCH_ITEM_NAMES = [
+  "CNHYCV200XEU",
+  "FMB140",
+  "Teltonika Contactless CAN - ECAN02",
+  "Tachograph T-Harness",
+  "BarraGps",
+  "FMC003",
+  "FMC130",
+  "FMC234",
+  "FMC650",
+  "FMC920",
+  "FMC880",
+  "Howen2CH",
+  "Howen4CH",
+  "Howen8CH",
+  "Neon-P",
+  "Neon-R",
+] as const;
+
+// Hardware Types whose physical item is identified by the Device Type column.
+export const DEVICE_TYPE_HARDWARE_KEYS = [
+  "atom",
+  "hardwired",
+  "neon",
+  "obd",
+  "trailer",
+] as const;
 
 function normalized(value: unknown) {
   return String(value ?? "")
@@ -351,27 +381,47 @@ export function dispatchItemKey(value: unknown) {
   return normalized(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+export function createDispatchCatalog(
+  entries: DispatchCatalogEntry[]
+): DispatchCatalog {
+  const byKey = new Map<string, DispatchCatalogItem>();
+  for (const entry of entries) {
+    const item: DispatchCatalogItem = {
+      name: entry.name,
+      lengthCm: entry.lengthCm,
+      widthCm: entry.widthCm,
+      heightCm: entry.heightCm,
+    };
+    for (const label of [entry.name, ...entry.aliases]) {
+      const key = dispatchItemKey(label);
+      if (key && !byKey.has(key)) byKey.set(key, item);
+    }
+  }
+  return { entries, byKey };
+}
+
+export const DEFAULT_DISPATCH_CATALOG = createDispatchCatalog(
+  BUILT_IN_DISPATCH_CATALOG
+);
+
 function isEcan02DeviceBundle(value: unknown) {
   const key = dispatchItemKey(value);
   return key.includes("contactlesscan") && key.includes("ecan02");
 }
 
+function isDeviceTypeHardware(hardwareKey: string) {
+  return (DEVICE_TYPE_HARDWARE_KEYS as readonly string[]).includes(hardwareKey);
+}
+
+// Kinesis sometimes writes DVRs in short form, e.g. "DVR-4CH".
+function dvrShorthandModel(hardwareKey: string) {
+  const match = hardwareKey.match(/^dvr([248])(?:ch|channel)n?$/);
+  return match ? `Howen${match[1]}CH` : null;
+}
+
 export function isDispatchVolumeAccessoryCategory(category: unknown) {
   return dispatchItemKey(category) !== "packages";
 }
-
-const CATALOG_BY_KEY = new Map(
-  ITEM_CATALOG.flatMap((item) => {
-    const aliases = [
-      item.name,
-      ...(DISPATCH_CATALOG_ALIASES[item.name] ?? []),
-    ];
-    if (item.name === "HARDWIRED Cable for") aliases.push("HARDWIRED Cable for CV200");
-    if (item.name === "CNHYCV200XEU") aliases.push("AIO Camera", "CV200XEU", "CV200XEU-256");
-    if (item.name === "BarraGps") aliases.push("Barra-GPS", "Neon");
-    return aliases.map((alias) => [dispatchItemKey(alias), item] as const);
-  })
-);
 
 export function resolveDispatchDeviceModel(value: string) {
   const normalizedValue = value.toUpperCase();
@@ -394,22 +444,41 @@ export function resolveDispatchDeviceModel(value: string) {
   return patterns.find(([pattern]) => pattern.test(normalizedValue))?.[1] ?? null;
 }
 
+// Device models added in the app are found in the "Brand - Family - Model"
+// Device Type text, starting from the most specific segment.
+function catalogDeviceModel(deviceType: string, catalog: DispatchCatalog) {
+  const segments = normalized(deviceType).split(/\s+-\s+/).reverse();
+  for (const segment of segments) {
+    const item = catalog.byKey.get(dispatchItemKey(segment));
+    if (item) return item.name;
+  }
+  return null;
+}
+
+function deviceModelFromType(deviceType: string, catalog: DispatchCatalog) {
+  return (
+    resolveDispatchDeviceModel(deviceType) ??
+    catalogDeviceModel(deviceType, catalog)
+  );
+}
+
 export function resolveDispatchCatalogItem(
   hardwareType: string,
-  deviceType: string
+  deviceType: string,
+  catalog: DispatchCatalog = DEFAULT_DISPATCH_CATALOG
 ) {
   const cleanHardware = normalized(hardwareType);
   const hardwareKey = dispatchItemKey(cleanHardware);
+  const byName = (name: string) =>
+    catalog.byKey.get(dispatchItemKey(name)) ?? null;
 
   if (hardwareKey === "aiocamera") {
-    return CATALOG_BY_KEY.get(dispatchItemKey("CNHYCV200XEU")) ?? null;
+    return byName("CNHYCV200XEU");
   }
 
   if (isEcan02DeviceBundle(cleanHardware)) {
     const model = resolveDispatchDeviceModel(deviceType);
-    return model === "FMB140"
-      ? CATALOG_BY_KEY.get(dispatchItemKey(model)) ?? null
-      : null;
+    return model === "FMB140" ? byName(model) : null;
   }
 
   // Kinesis exports the FMC650 tachograph harness under the generic label
@@ -419,21 +488,26 @@ export function resolveDispatchCatalogItem(
     hardwareKey === "harness" &&
     resolveDispatchDeviceModel(deviceType) === "FMC650"
   ) {
-    return CATALOG_BY_KEY.get(dispatchItemKey("Tachograph T-Harness")) ?? null;
+    return byName("Tachograph T-Harness");
   }
 
-  if (["atom", "hardwired", "neon", "obd", "trailer"].includes(hardwareKey)) {
-    const model = resolveDispatchDeviceModel(deviceType);
-    return model ? CATALOG_BY_KEY.get(dispatchItemKey(model)) ?? null : null;
+  if (isDeviceTypeHardware(hardwareKey)) {
+    const model = deviceModelFromType(deviceType, catalog);
+    return model ? byName(model) : null;
   }
 
-  return CATALOG_BY_KEY.get(hardwareKey) ?? null;
+  const exact = catalog.byKey.get(hardwareKey);
+  if (exact) return exact;
+
+  const dvrModel = dvrShorthandModel(hardwareKey);
+  return dvrModel ? byName(dvrModel) : null;
 }
 
 export function resolveDispatchLineDeviceModel(
   hardwareType: string,
   deviceType: string,
-  mappedItem?: string
+  mappedItem?: string,
+  catalog: DispatchCatalog = DEFAULT_DISPATCH_CATALOG
 ) {
   const hardwareKey = dispatchItemKey(hardwareType);
   if (hardwareKey === "aiocamera") return "CNHYCV200XEU";
@@ -442,17 +516,38 @@ export function resolveDispatchLineDeviceModel(
       ? "FMB140"
       : null;
   }
-  if (["atom", "hardwired", "neon", "obd", "trailer"].includes(hardwareKey)) {
-    return resolveDispatchDeviceModel(deviceType);
+  if (isDeviceTypeHardware(hardwareKey)) {
+    return deviceModelFromType(deviceType, catalog);
   }
   if (hardwareKey.startsWith("dvr")) {
+    const shorthand = dvrShorthandModel(hardwareKey);
+    if (shorthand) return shorthand;
     if (/dvr.*2channel/.test(hardwareKey)) return "Howen2CH";
     if (/dvr.*4channel/.test(hardwareKey)) return "Howen4CH";
     if (/dvr.*8channel/.test(hardwareKey)) return "Howen8CH";
-    const item = mappedItem || resolveDispatchCatalogItem(hardwareType, deviceType)?.name;
+    const item =
+      mappedItem ||
+      resolveDispatchCatalogItem(hardwareType, deviceType, catalog)?.name;
     return item && /^Howen(?:2|4|8)CH$/i.test(item) ? item : null;
   }
   return null;
+}
+
+// The catalog name that would resolve an unknown row, or null when the row
+// cannot be fixed by adding dimensions (for example an incomplete bundle).
+export function dispatchCatalogSuggestion(
+  hardwareType: string,
+  deviceType: string
+) {
+  const hardwareKey = dispatchItemKey(hardwareType);
+  if (!hardwareKey || hardwareKey === "aiocamera" || isEcan02DeviceBundle(hardwareType)) {
+    return null;
+  }
+  if (isDeviceTypeHardware(hardwareKey)) {
+    const segments = normalized(deviceType).split(/\s+-\s+/).filter(Boolean);
+    return segments.length > 0 ? segments[segments.length - 1] : null;
+  }
+  return normalized(hardwareType);
 }
 
 function cellText(value: unknown) {
@@ -474,13 +569,16 @@ function headerIndex(row: unknown[]) {
 function generatedAtFromRows(rows: unknown[][]) {
   for (const row of rows.slice(0, 5)) {
     const joined = row.map(cellText).join(" ");
-    const match = joined.match(/Generated Date:\s*(.+)$/i);
+    const match = joined.match(/(?:Report Generated|Generated Date)\s*:\s*(.+)$/i);
     if (match?.[1]) return match[1].trim();
   }
   return null;
 }
 
-export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseResult {
+export function parseDispatchWorkbook(
+  workbook: XLSX.WorkBook,
+  catalog: DispatchCatalog = DEFAULT_DISPATCH_CATALOG
+): DispatchParseResult {
   const lines: DispatchSourceLine[] = [];
   const issues: DispatchParseIssue[] = [];
   const parsedSheets: string[] = [];
@@ -533,7 +631,11 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
         continue;
       }
 
-      const catalogItem = resolveDispatchCatalogItem(hardwareType, deviceType);
+      const catalogItem = resolveDispatchCatalogItem(
+        hardwareType,
+        deviceType,
+        catalog
+      );
       if (!catalogItem) {
         issues.push({
           sheet: sheetName,
@@ -541,6 +643,7 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
           message: "No trusted dimensions match this hardware/device combination.",
           hardwareType,
           deviceType,
+          suggestedName: dispatchCatalogSuggestion(hardwareType, deviceType),
         });
         continue;
       }
@@ -548,7 +651,8 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
       const deviceModel = resolveDispatchLineDeviceModel(
         hardwareType,
         deviceType,
-        catalogItem.name
+        catalogItem.name,
+        catalog
       );
 
       lines.push({
@@ -593,7 +697,7 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
 
       const items = Array.from(groupedItems.entries()).map(
         ([mappedItem, itemLines]) => {
-          const catalogItem = CATALOG_BY_KEY.get(dispatchItemKey(mappedItem))!;
+          const catalogItem = catalog.byKey.get(dispatchItemKey(mappedItem))!;
           const unitVolumeCm3 =
             catalogItem.lengthCm * catalogItem.widthCm * catalogItem.heightCm;
           return {
@@ -656,7 +760,8 @@ export function parseDispatchWorkbook(workbook: XLSX.WorkBook): DispatchParseRes
 
 export function applyDispatchAutomaticAccessoryRules(
   orders: DispatchOrder[],
-  rules: DispatchAutomaticAccessoryRule[]
+  rules: DispatchAutomaticAccessoryRule[],
+  catalog: DispatchCatalog = DEFAULT_DISPATCH_CATALOG
 ) {
   const issues: DispatchParseIssue[] = [];
   const enrichedOrders = orders.map((order) => {
@@ -687,7 +792,11 @@ export function applyDispatchAutomaticAccessoryRules(
         continue;
       }
 
-      const catalogItem = resolveDispatchCatalogItem(rule.accessoryName, "");
+      const catalogItem = resolveDispatchCatalogItem(
+        rule.accessoryName,
+        "",
+        catalog
+      );
       if (!catalogItem) {
         issues.push({
           sheet: "Automatic accessory rules",
@@ -695,6 +804,7 @@ export function applyDispatchAutomaticAccessoryRules(
           message: `Automatic accessory ${rule.accessoryName} for ${rule.deviceModel} has no trusted dimensions.`,
           hardwareType: rule.accessoryName,
           deviceType: rule.deviceModel,
+          suggestedName: rule.accessoryName,
         });
         continue;
       }

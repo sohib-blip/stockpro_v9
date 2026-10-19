@@ -6,6 +6,8 @@ import { apiFetch } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import PackagingInventoryPanel from "@/components/PackagingInventoryPanel";
+import DispatchCatalogPanel from "@/components/DispatchCatalogPanel";
+import { fetchDispatchCatalog } from "@/components/DispatchItemDialog";
 
 type AccessoryCategory =
   | "Consumables"
@@ -28,6 +30,7 @@ export default function BinsPage() {
   const [bins, setBins] = useState<Bin[]>([]);
   const [accessoryBins, setAccessoryBins] = useState<Bin[]>([]);
   const [packagingCount, setPackagingCount] = useState(0);
+  const [dispatchItemCount, setDispatchItemCount] = useState<number | null>(null);
 
   const [newBin, setNewBin] = useState("");
   const [newAccessoryBin, setNewAccessoryBin] = useState("");
@@ -67,7 +70,7 @@ export default function BinsPage() {
     name: string;
   } | null>(null);
   const [activeSetupTab, setActiveSetupTab] = useState<
-    "bins" | "rules" | "accessories" | "packaging"
+    "bins" | "rules" | "accessories" | "packaging" | "dispatch"
   >("bins");
 
   function showSetupError(message: string) {
@@ -395,6 +398,9 @@ export default function BinsPage() {
     loadAccessoryBins();
     loadPackagingCount();
     loadRuleCounts();
+    fetchDispatchCatalog()
+      .then((items) => setDispatchItemCount(items.length))
+      .catch(() => setDispatchItemCount(null));
   }, []);
 
   const totalRules = Object.values(ruleCounts).reduce(
@@ -431,6 +437,7 @@ export default function BinsPage() {
         <button type="button" role="tab" aria-selected={activeSetupTab === "rules"} className={activeSetupTab === "rules" ? "is-active" : ""} onClick={() => { setActiveSetupTab("rules"); if (!selectedDevice && bins[0]) openTemplate(bins[0]); }}>Automatic Accessory Rules <span>{totalRules}</span></button>
         <button type="button" role="tab" aria-selected={activeSetupTab === "accessories"} className={activeSetupTab === "accessories" ? "is-active" : ""} onClick={() => setActiveSetupTab("accessories")}>Accessory Inventory <span>{accessoryBins.length}</span></button>
         <button type="button" role="tab" aria-selected={activeSetupTab === "packaging"} className={activeSetupTab === "packaging" ? "is-active" : ""} onClick={() => setActiveSetupTab("packaging")}>Packaging Inventory <span>{packagingCount}</span></button>
+        <button type="button" role="tab" aria-selected={activeSetupTab === "dispatch"} className={activeSetupTab === "dispatch" ? "is-active" : ""} onClick={() => setActiveSetupTab("dispatch")}>Dispatch Items {dispatchItemCount !== null && <span>{dispatchItemCount}</span>}</button>
       </div>
 
       {activeSetupTab === "bins" && (
@@ -956,6 +963,13 @@ export default function BinsPage() {
       {activeSetupTab === "packaging" && (
         <PackagingInventoryPanel
           onCountChange={setPackagingCount}
+          onFeedback={setFeedback}
+        />
+      )}
+
+      {activeSetupTab === "dispatch" && (
+        <DispatchCatalogPanel
+          onCountChange={setDispatchItemCount}
           onFeedback={setFeedback}
         />
       )}

@@ -15,6 +15,7 @@ import { dispatchCompositionKey } from "@/lib/dispatch-learning";
 import { createDispatchPreviewToken } from "@/lib/dispatch-preview-token";
 import {
   loadDispatchAutomaticAccessoryRules,
+  loadDispatchCatalog,
   loadDispatchPackagingOptions,
   loadDispatchPickingInventory,
 } from "@/app/api/dispatch-planning/_server";
@@ -84,7 +85,8 @@ export async function POST(req: Request) {
       maxCells: 200_000,
     });
 
-    const parsed = parseDispatchWorkbook(workbook);
+    const catalog = await loadDispatchCatalog();
+    const parsed = parseDispatchWorkbook(workbook, catalog);
     const vehicleLabelResult = buildDispatchVehicleLabels(parsed.lines);
     const parseIssues = [...parsed.issues, ...vehicleLabelResult.issues];
     if (parsed.orders.length > MAX_ORDERS || parsed.lines.length > MAX_LINES) {
@@ -116,7 +118,8 @@ export async function POST(req: Request) {
     );
     const enriched = applyDispatchAutomaticAccessoryRules(
       parsed.orders,
-      automaticRules
+      automaticRules,
+      catalog
     );
     if (enriched.issues.length > 0) {
       const firstIssue = enriched.issues[0]?.message;
@@ -232,7 +235,8 @@ export async function POST(req: Request) {
       plan.orders,
       plan.packageUsage,
       pickingInventory.devices,
-      pickingInventory.accessories
+      pickingInventory.accessories,
+      catalog
     );
 
     return NextResponse.json({

@@ -315,7 +315,8 @@ export default function AccessoriesPage() {
     }
 
     const removedUnits = previewRows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
-    const reference = previewCommand.shipmentRef.trim();
+    const reference =
+      previewCommand.shipmentRef.trim() || previewCommand.file.name;
     closePreview();
     setSuccessMsg(
       `Spreadsheet outbound completed — ${removedUnits} unit${removedUnits === 1 ? "" : "s"} removed${reference ? ` · ${reference}` : ""}`

@@ -352,6 +352,10 @@ const FR: Record<string, string> = {
   Save: "Enregistrer",
   "Accessory name, e.g. QR Guide": "Nom de l’accessoire, ex. guide QR",
   "Initial stock": "Stock initial",
+  "Accessory name is required": "Le nom de l’accessoire est obligatoire",
+  "Choose a valid accessory category": "Choisissez une catégorie d’accessoire valide",
+  "Manage packaging in Packaging Inventory":
+    "Gérez les emballages dans l’inventaire des emballages",
   "Minimum stock alert": "Alerte de stock minimum",
   "Create Accessory": "Créer l’accessoire",
   Stock: "Stock",
@@ -1116,6 +1120,10 @@ const NL: Record<string, string> = {
   Save: "Opslaan",
   "Accessory name, e.g. QR Guide": "Accessoirenaam, bv. QR Guide",
   "Initial stock": "Beginvoorraad",
+  "Accessory name is required": "De naam van het accessoire is verplicht",
+  "Choose a valid accessory category": "Kies een geldige accessoirecategorie",
+  "Manage packaging in Packaging Inventory":
+    "Beheer verpakkingen in de verpakkingsvoorraad",
   "Minimum stock alert": "Minimumvoorraadwaarschuwing",
   "Create Accessory": "Accessoire aanmaken",
   Stock: "Voorraad",
@@ -1581,6 +1589,11 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^The new minimum stock is (\d+)\. Dashboard alerts are up to date\.$/, "Le nouveau stock minimum est de $1. Les alertes du tableau de bord sont à jour."],
           [/^(.+) download started\.$/, "Téléchargement de $1 démarré."],
           [/^Device (.+)$/, "Appareil $1"],
+          [/^(\d+) rules?$/, "$1 règle(s)"],
+          [/^Stock must be a whole number between 0 and (\d+)$/, "Le stock doit être un nombre entier entre 0 et $1"],
+          [/^Minimum stock must be a whole number between 0 and (\d+)$/, "Le stock minimum doit être un nombre entier entre 0 et $1"],
+          [/^Accessory name must be at most (\d+) characters$/, "Le nom de l’accessoire ne peut pas dépasser $1 caractères"],
+          [/^An accessory named "(.+)" already exists$/, "Un accessoire nommé « $1 » existe déjà"],
           [/^Floor (.+)$/, "Étage $1"],
         ]
       : [
@@ -1620,6 +1633,11 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^The new minimum stock is (\d+)\. Dashboard alerts are up to date\.$/, "De nieuwe minimumvoorraad is $1. De dashboardmeldingen zijn bijgewerkt."],
           [/^(.+) download started\.$/, "Download van $1 gestart."],
           [/^Device (.+)$/, "Apparaat $1"],
+          [/^(\d+) rules?$/, "$1 regel(s)"],
+          [/^Stock must be a whole number between 0 and (\d+)$/, "De voorraad moet een geheel getal tussen 0 en $1 zijn"],
+          [/^Minimum stock must be a whole number between 0 and (\d+)$/, "De minimumvoorraad moet een geheel getal tussen 0 en $1 zijn"],
+          [/^Accessory name must be at most (\d+) characters$/, "De naam van het accessoire mag maximaal $1 tekens bevatten"],
+          [/^An accessory named "(.+)" already exists$/, "Er bestaat al een accessoire met de naam \"$1\""],
           [/^Floor (.+)$/, "Verdieping $1"],
         ];
 

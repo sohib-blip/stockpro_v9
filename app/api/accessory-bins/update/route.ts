@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  accessoryWriteError,
+  parseAccessoryBinInput,
+} from "@/lib/accessory-bin-input";
 
 export const runtime = "nodejs";
 
@@ -9,47 +13,35 @@ const supabase = createClient(
 );
 
 export async function POST(req: Request) {
-  try {
-    const {
-  id,
-  name,
-  current_stock,
-  minimum_stock,
-  category,
-} = await req.json();
+  const body = await req.json().catch(() => null);
+  const id = (body as { id?: unknown } | null)?.id;
 
-    if (!id) {
-      return NextResponse.json({ ok: false, error: "id required" }, { status: 400 });
-    }
+  if (!id || typeof id !== "string") {
+    return NextResponse.json({ ok: false, error: "id required" }, { status: 400 });
+  }
 
-    if (!name?.trim()) {
-      return NextResponse.json({ ok: false, error: "name required" }, { status: 400 });
-    }
+  const input = parseAccessoryBinInput(body);
+  if (!input.ok) {
+    return NextResponse.json({ ok: false, error: input.error }, { status: 400 });
+  }
 
-    if (category === "Packages") {
-      return NextResponse.json(
-        { ok: false, error: "Manage packaging in Packaging Inventory" },
-        { status: 400 }
-      );
-    }
+  const { error } = await supabase
+    .from("accessory_bins")
+    .update({
+      name: input.name,
+      current_stock: input.currentStock,
+      minimum_stock: input.minimumStock,
+      category: input.category,
+    })
+    .eq("id", id);
 
-    const { error } = await supabase
-      .from("accessory_bins")
-      .update({
-  name: name.trim(),
-  current_stock: Number(current_stock || 0),
-  minimum_stock: Number(minimum_stock || 0),
-  category,
-})
-      .eq("id", id);
-
-    if (error) throw error;
-
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
+  if (error) {
+    const failure = accessoryWriteError(error, input.name);
     return NextResponse.json(
-      { ok: false, error: e?.message || "Update failed" },
-      { status: 500 }
+      { ok: false, error: failure.error },
+      { status: failure.status }
     );
   }
+
+  return NextResponse.json({ ok: true });
 }

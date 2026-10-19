@@ -1,35 +1,31 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/apiFetch";
 
-export type DispatchCatalogItemView = {
+type InventoryRecord = {
+  kind: "device" | "accessory";
   id: string;
   name: string;
-  aliases: string[];
-  lengthCm: number;
-  widthCm: number;
-  heightCm: number;
+  label: string;
   active: boolean;
-  required: boolean;
-  updatedAt: string | null;
-  updatedBy: string | null;
+  category: string | null;
+  lengthCm: number | null;
+  widthCm: number | null;
+  heightCm: number | null;
+  kinesisNames: string[];
 };
 
-type DialogMode =
-  | { kind: "create" }
-  | { kind: "edit"; item: DispatchCatalogItemView }
-  // An unknown Kinesis label from Dispatch Planning: link it to an existing
-  // item or create a new item for it.
-  | { kind: "resolve"; label: string; hardwareType?: string; deviceType?: string };
+type DimensionFields = { lengthCm: string; widthCm: string; heightCm: string };
 
-type ItemForm = {
-  name: string;
-  aliases: string;
-  lengthCm: string;
-  widthCm: string;
-  heightCm: string;
-};
+const EMPTY_DIMENSIONS: DimensionFields = { lengthCm: "", widthCm: "", heightCm: "" };
+const NEW_ACCESSORY = "new";
+
+// Same normalisation as dispatchItemKey, kept here so the dialog does not pull
+// the workbook parser into the browser bundle.
+function labelKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
 
 function messageFromResponse(body: unknown, fallback: string) {
   if (body && typeof body === "object" && "error" in body) {
@@ -49,48 +45,88 @@ export function formatDispatchDimensions(item: {
   return `${format(item.lengthCm)} × ${format(item.widthCm)} × ${format(item.heightCm)} cm`;
 }
 
-export async function fetchDispatchCatalog(): Promise<DispatchCatalogItemView[]> {
-  const response = await apiFetch(`/api/dispatch-planning/catalog?t=${Date.now()}`, {
-    cache: "no-store",
-  });
-  const body = await response.json().catch(() => null);
-  if (!response.ok || !body?.ok) {
-    throw new Error(messageFromResponse(body, "Dispatch items could not be loaded"));
-  }
-  return (body.items || []) as DispatchCatalogItemView[];
+function recordValue(record: InventoryRecord) {
+  return `${record.kind}:${record.id}`;
 }
 
+function dimensionsOf(record: InventoryRecord | undefined): DimensionFields {
+  if (!record || record.lengthCm === null) return EMPTY_DIMENSIONS;
+  return {
+    lengthCm: String(record.lengthCm),
+    widthCm: String(record.widthCm),
+    heightCm: String(record.heightCm),
+  };
+}
+
+function optionText(record: InventoryRecord) {
+  const dimensions =
+    record.lengthCm === null
+      ? "no dimensions"
+      : formatDispatchDimensions({
+          lengthCm: record.lengthCm,
+          widthCm: Number(record.widthCm),
+          heightCm: Number(record.heightCm),
+        });
+  return `${record.label}${record.active ? "" : " (hidden)"} · ${dimensions}`;
+}
+
+// Resolves an unknown Kinesis label from Dispatch Planning by storing its
+// dimensions on the matching device or accessory record.
 export default function DispatchItemDialog({
-  mode,
+  label,
+  hardwareType,
+  deviceType,
   onClose,
   onSaved,
 }: {
-  mode: DialogMode;
+  label: string;
+  hardwareType?: string;
+  deviceType?: string;
   onClose: () => void;
   onSaved: (message: string) => void;
 }) {
-  const editing = mode.kind === "edit" ? mode.item : null;
-  const [form, setForm] = useState<ItemForm>({
-    name: editing?.name ?? (mode.kind === "resolve" ? mode.label : ""),
-    aliases: editing?.aliases.join("\n") ?? "",
-    lengthCm: editing ? String(editing.lengthCm) : "",
-    widthCm: editing ? String(editing.widthCm) : "",
-    heightCm: editing ? String(editing.heightCm) : "",
-  });
-  const [resolveChoice, setResolveChoice] = useState<"link" | "create">("link");
-  const [linkItemId, setLinkItemId] = useState("");
-  const [items, setItems] = useState<DispatchCatalogItemView[]>([]);
+  const [records, setRecords] = useState<InventoryRecord[]>([]);
+  const [selection, setSelection] = useState("");
+  const [dimensions, setDimensions] = useState<DimensionFields>(EMPTY_DIMENSIONS);
+  const [category, setCategory] = useState("Items");
+  const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (mode.kind !== "resolve") return;
-    fetchDispatchCatalog()
-      .then((rows) => setItems(rows.filter((row) => row.active)))
-      .catch((loadError) =>
-        setError(loadError instanceof Error ? loadError.message : "Dispatch items could not be loaded")
-      );
-  }, [mode.kind]);
+    let cancelled = false;
+    (async () => {
+      try {
+        const response = await apiFetch(`/api/dispatch-planning/items?t=${Date.now()}`, {
+          cache: "no-store",
+        });
+        const body = await response.json().catch(() => null);
+        if (!response.ok || !body?.ok) {
+          throw new Error(messageFromResponse(body, "Device and accessory records could not be loaded"));
+        }
+        if (cancelled) return;
+        const loaded = (body.items || []) as InventoryRecord[];
+        setRecords(loaded);
+        const key = labelKey(label);
+        const match = loaded.find((record) =>
+          [record.name, record.label, ...record.kinesisNames].some((value) => labelKey(value) === key)
+        );
+        if (match) {
+          setSelection(recordValue(match));
+          setDimensions(dimensionsOf(match));
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(loadError instanceof Error ? loadError.message : "Device and accessory records could not be loaded");
+        }
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [label]);
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -105,60 +141,44 @@ export default function DispatchItemDialog({
     };
   }, [busy, onClose]);
 
-  async function send(method: "POST" | "PATCH", payload: Record<string, unknown>) {
-    const response = await apiFetch("/api/dispatch-planning/catalog", {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const body = await response.json().catch(() => null);
-    if (!response.ok || !body?.ok) {
-      throw new Error(messageFromResponse(body, "Dispatch item could not be saved"));
-    }
-    return body.item as DispatchCatalogItemView;
+  const devices = useMemo(() => records.filter((record) => record.kind === "device"), [records]);
+  const accessories = useMemo(() => records.filter((record) => record.kind === "accessory"), [records]);
+
+  function choose(value: string) {
+    setSelection(value);
+    setDimensions(dimensionsOf(records.find((record) => recordValue(record) === value)));
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!selection) {
+      setError("Choose the device or accessory this label refers to");
+      return;
+    }
     setBusy(true);
     setError("");
     try {
-      if (mode.kind === "resolve" && resolveChoice === "link") {
-        if (!linkItemId) throw new Error("Choose the item this label refers to");
-        const item = await send("PATCH", { id: linkItemId, add_alias: mode.label });
-        onSaved(`"${mode.label}" now uses the dimensions of ${item.name}.`);
-        return;
+      const [kind, id] = selection.split(":");
+      const response = await apiFetch("/api/dispatch-planning/items", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label,
+          target: selection === NEW_ACCESSORY ? { kind: "new_accessory", category } : { kind, id },
+          ...dimensions,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.ok) {
+        throw new Error(messageFromResponse(body, "The dimensions could not be saved"));
       }
-
-      const payload = {
-        name: form.name,
-        aliases: form.aliases.split("\n"),
-        lengthCm: form.lengthCm,
-        widthCm: form.widthCm,
-        heightCm: form.heightCm,
-      };
-      const item = editing
-        ? await send("PATCH", { id: editing.id, ...payload })
-        : await send("POST", payload);
-      onSaved(
-        editing
-          ? `${item.name} was updated.`
-          : `${item.name} was added with ${formatDispatchDimensions(item)}.`
-      );
+      onSaved(String(body.message || "Dimensions saved."));
     } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : "Dispatch item could not be saved");
+      setError(saveError instanceof Error ? saveError.message : "The dimensions could not be saved");
     } finally {
       setBusy(false);
     }
   }
-
-  const title =
-    mode.kind === "edit"
-      ? "Edit Dispatch Item"
-      : mode.kind === "resolve"
-        ? "Add Dimensions"
-        : "New Dispatch Item";
-  const showItemFields = mode.kind !== "resolve" || resolveChoice === "create";
 
   return (
     <div
@@ -171,96 +191,62 @@ export default function DispatchItemDialog({
         <header className="packaging-dialog-header">
           <div>
             <span>Dispatch planning</span>
-            <h2 id="dispatch-item-dialog-title">{title}</h2>
-            <p>
-              {mode.kind === "resolve"
-                ? `"${mode.label}" has no dimensions yet. Link it to a known item or create a new item.`
-                : "Dimensions are used to calculate the packing volume of each order."}
-            </p>
+            <h2 id="dispatch-item-dialog-title">Add Dimensions</h2>
+            <p>{`"${label}" has no dimensions yet. Choose the matching device or accessory and enter its dimensions.`}</p>
           </div>
           <button type="button" aria-label="Close" onClick={onClose} disabled={busy}>×</button>
         </header>
 
         <form className="packaging-dialog-form" onSubmit={submit}>
-          {mode.kind === "resolve" && (
-            <fieldset className="dispatch-resolve-options packaging-field-wide">
-              <legend className="sr-only">How should this label be resolved?</legend>
-              {(mode.hardwareType || mode.deviceType) && (
-                <small>
-                  Hardware Type: {mode.hardwareType || "—"} · Device Type: {mode.deviceType || "—"}
-                </small>
-              )}
-              <label className="dispatch-resolve-choice">
-                <input
-                  type="radio"
-                  name="dispatch-resolve-choice"
-                  checked={resolveChoice === "link"}
-                  onChange={() => setResolveChoice("link")}
-                />{" "}
-                Same item as an existing one (another name for it)
-              </label>
-              {resolveChoice === "link" && (
-                <select
-                  aria-label="Existing dispatch item"
-                  value={linkItemId}
-                  onChange={(event) => setLinkItemId(event.target.value)}
-                >
-                  <option value="">Select an item…</option>
-                  {items.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name} · {formatDispatchDimensions(item)}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <label className="dispatch-resolve-choice">
-                <input
-                  type="radio"
-                  name="dispatch-resolve-choice"
-                  checked={resolveChoice === "create"}
-                  onChange={() => setResolveChoice("create")}
-                />{" "}
-                New item with its own dimensions
-              </label>
-            </fieldset>
+          {(hardwareType || deviceType) && (
+            <small className="packaging-field-wide dispatch-resolve-context">
+              Hardware Type: {hardwareType || "—"} · Device Type: {deviceType || "—"}
+            </small>
           )}
 
-          {showItemFields && (
-            <>
-              <label className="packaging-field packaging-field-wide">
-                <span>Name</span>
-                <input
-                  required
-                  maxLength={120}
-                  value={form.name}
-                  disabled={Boolean(editing?.required)}
-                  onChange={(event) => setForm({ ...form, name: event.target.value })}
-                  autoFocus={mode.kind !== "edit"}
-                />
-                {editing?.required && <small>Used by the dispatch rules: the name cannot change.</small>}
-              </label>
-              <fieldset className="packaging-dimensions packaging-field-wide">
-                <legend>Dimensions (cm)</legend>
-                <label><span>Length</span><input required type="number" min="0" max="1000" step="0.01" value={form.lengthCm} onChange={(event) => setForm({ ...form, lengthCm: event.target.value })} /></label>
-                <span aria-hidden="true">×</span>
-                <label><span>Width</span><input required type="number" min="0" max="1000" step="0.01" value={form.widthCm} onChange={(event) => setForm({ ...form, widthCm: event.target.value })} /></label>
-                <span aria-hidden="true">×</span>
-                <label><span>Height</span><input required type="number" min="0" max="1000" step="0.01" value={form.heightCm} onChange={(event) => setForm({ ...form, heightCm: event.target.value })} /></label>
-              </fieldset>
-              {mode.kind !== "resolve" && (
-                <label className="packaging-field packaging-field-wide">
-                  <span>Other names</span>
-                  <textarea
-                    rows={3}
-                    value={form.aliases}
-                    onChange={(event) => setForm({ ...form, aliases: event.target.value })}
-                    placeholder="One Kinesis Hardware Type per line, e.g. DVR-4CH"
-                  />
-                  <small>Other Hardware Type labels Kinesis uses for this same item.</small>
-                </label>
-              )}
-            </>
+          <label className="packaging-field packaging-field-wide">
+            <span>Device or accessory</span>
+            <select
+              aria-label="Device or accessory"
+              value={selection}
+              disabled={loading}
+              onChange={(event) => choose(event.target.value)}
+            >
+              <option value="">{loading ? "Loading…" : "Select a device or accessory…"}</option>
+              <optgroup label="Device Bins">
+                {devices.map((record) => (
+                  <option key={recordValue(record)} value={recordValue(record)}>{optionText(record)}</option>
+                ))}
+              </optgroup>
+              <optgroup label="Accessory Inventory">
+                {accessories.map((record) => (
+                  <option key={recordValue(record)} value={recordValue(record)}>{optionText(record)}</option>
+                ))}
+              </optgroup>
+              <option value={NEW_ACCESSORY}>+ Create a new hidden accessory</option>
+            </select>
+            <small>The label is remembered on this record, so the next workbooks are recognised automatically.</small>
+          </label>
+
+          {selection === NEW_ACCESSORY && (
+            <label className="packaging-field packaging-field-wide">
+              <span>Category</span>
+              <select value={category} onChange={(event) => setCategory(event.target.value)}>
+                {["Items", "Consumables", "Harness", "Vision"].map((value) => (
+                  <option key={value} value={value}>{value}</option>
+                ))}
+              </select>
+            </label>
           )}
+
+          <fieldset className="packaging-dimensions packaging-field-wide">
+            <legend>Dimensions (cm)</legend>
+            <label><span>Length</span><input required type="number" min="0" max="1000" step="0.01" value={dimensions.lengthCm} onChange={(event) => setDimensions({ ...dimensions, lengthCm: event.target.value })} /></label>
+            <span aria-hidden="true">×</span>
+            <label><span>Width</span><input required type="number" min="0" max="1000" step="0.01" value={dimensions.widthCm} onChange={(event) => setDimensions({ ...dimensions, widthCm: event.target.value })} /></label>
+            <span aria-hidden="true">×</span>
+            <label><span>Height</span><input required type="number" min="0" max="1000" step="0.01" value={dimensions.heightCm} onChange={(event) => setDimensions({ ...dimensions, heightCm: event.target.value })} /></label>
+          </fieldset>
 
           {error && (
             <div className="dashboard-imei-error packaging-field-wide" role="alert">
@@ -270,7 +256,7 @@ export default function DispatchItemDialog({
 
           <footer className="packaging-dialog-actions">
             <button type="button" className="prototype-button secondary" onClick={onClose} disabled={busy}>Cancel</button>
-            <button type="submit" className="prototype-button primary" disabled={busy}>
+            <button type="submit" className="prototype-button primary" disabled={busy || loading}>
               {busy ? "Saving…" : "Save"}
             </button>
           </footer>

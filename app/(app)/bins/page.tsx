@@ -6,8 +6,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import PackagingInventoryPanel from "@/components/PackagingInventoryPanel";
-import DispatchCatalogPanel from "@/components/DispatchCatalogPanel";
-import { fetchDispatchCatalog } from "@/components/DispatchItemDialog";
+import { formatDispatchDimensions } from "@/components/DispatchItemDialog";
 
 type AccessoryCategory =
   | "Consumables"
@@ -22,7 +21,79 @@ type Bin = {
   current_stock?: number;
   minimum_stock?: number;
   category?: AccessoryCategory;
+  length_cm?: number | string | null;
+  width_cm?: number | string | null;
+  height_cm?: number | string | null;
+  kinesis_names?: string[] | null;
 };
+
+type DimensionsForm = {
+  lengthCm: string;
+  widthCm: string;
+  heightCm: string;
+  kinesisNames: string;
+};
+
+const EMPTY_DIMENSIONS_FORM: DimensionsForm = {
+  lengthCm: "",
+  widthCm: "",
+  heightCm: "",
+  kinesisNames: "",
+};
+
+function dimensionsFormFor(bin: Bin): DimensionsForm {
+  const text = (value: Bin["length_cm"]) =>
+    value === null || value === undefined || value === "" ? "" : String(Number(value));
+  return {
+    lengthCm: text(bin.length_cm),
+    widthCm: text(bin.width_cm),
+    heightCm: text(bin.height_cm),
+    kinesisNames: (bin.kinesis_names || []).join(", "),
+  };
+}
+
+function binDimensions(bin: Bin) {
+  if (bin.length_cm === null || bin.length_cm === undefined) return "—";
+  return formatDispatchDimensions({
+    lengthCm: Number(bin.length_cm),
+    widthCm: Number(bin.width_cm),
+    heightCm: Number(bin.height_cm),
+  });
+}
+
+function splitKinesisNames(value: string) {
+  return value
+    .split(/[\n,]/)
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+function DimensionInputs({
+  form,
+  onChange,
+}: {
+  form: DimensionsForm;
+  onChange: (form: DimensionsForm) => void;
+}) {
+  return (
+    <div className="flex gap-1">
+      {(["lengthCm", "widthCm", "heightCm"] as const).map((field, index) => (
+        <input
+          key={field}
+          type="number"
+          min={0}
+          max={1000}
+          step="0.01"
+          aria-label={["Length (cm)", "Width (cm)", "Height (cm)"][index]}
+          placeholder={["L", "W", "H"][index]}
+          value={form[field]}
+          onChange={(event) => onChange({ ...form, [field]: event.target.value })}
+          className="w-16 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function BinsPage() {
   const supabase = createSupabaseBrowserClient();
@@ -30,7 +101,10 @@ export default function BinsPage() {
   const [bins, setBins] = useState<Bin[]>([]);
   const [accessoryBins, setAccessoryBins] = useState<Bin[]>([]);
   const [packagingCount, setPackagingCount] = useState(0);
-  const [dispatchItemCount, setDispatchItemCount] = useState<number | null>(null);
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [deviceForm, setDeviceForm] = useState<DimensionsForm>(EMPTY_DIMENSIONS_FORM);
+  const [accessoryDimensions, setAccessoryDimensions] =
+    useState<DimensionsForm>(EMPTY_DIMENSIONS_FORM);
 
   const [newBin, setNewBin] = useState("");
   const [newAccessoryBin, setNewAccessoryBin] = useState("");
@@ -70,7 +144,7 @@ export default function BinsPage() {
     name: string;
   } | null>(null);
   const [activeSetupTab, setActiveSetupTab] = useState<
-    "bins" | "rules" | "accessories" | "packaging" | "dispatch"
+    "bins" | "rules" | "accessories" | "packaging"
   >("bins");
 
   function showSetupError(message: string) {
@@ -173,6 +247,36 @@ export default function BinsPage() {
     showSetupSuccess(`Accessory ${accessoryName} created successfully.`);
   }
 
+  function startEditDevice(bin: Bin) {
+    setEditingDeviceId(bin.id);
+    setDeviceForm(dimensionsFormFor(bin));
+  }
+
+  async function saveDeviceEdit(bin: Bin) {
+    setLoading(true);
+    setFeedback(null);
+    const response = await apiFetch("/api/bins/dispatch-details", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: bin.id,
+        lengthCm: deviceForm.lengthCm,
+        widthCm: deviceForm.widthCm,
+        heightCm: deviceForm.heightCm,
+        kinesisNames: splitKinesisNames(deviceForm.kinesisNames),
+      }),
+    });
+    const json = await response.json().catch(() => null);
+    setLoading(false);
+    if (!response.ok || !json?.ok) {
+      showSetupError(json?.error || "Device bin update failed");
+      return;
+    }
+    setEditingDeviceId(null);
+    await loadBins();
+    showSetupSuccess(`${bin.name} updated successfully.`);
+  }
+
   async function deleteBin(id: string) {
     setFeedback(null);
     const binName = bins.find((bin) => bin.id === id)?.name || "Device bin";
@@ -213,6 +317,7 @@ export default function BinsPage() {
     setEditAccessoryStock(Number(bin.current_stock || 0));
     setEditAccessoryMinStock(Number(bin.minimum_stock || 0));
     setEditAccessoryCategory(bin.category || "Consumables");
+    setAccessoryDimensions(dimensionsFormFor(bin));
   }
 
   function cancelEditAccessory() {
@@ -236,6 +341,10 @@ export default function BinsPage() {
         current_stock: editAccessoryStock,
         minimum_stock: editAccessoryMinStock,
         category: editAccessoryCategory,
+        lengthCm: accessoryDimensions.lengthCm,
+        widthCm: accessoryDimensions.widthCm,
+        heightCm: accessoryDimensions.heightCm,
+        kinesisNames: splitKinesisNames(accessoryDimensions.kinesisNames),
       }),
     });
 
@@ -398,9 +507,6 @@ export default function BinsPage() {
     loadAccessoryBins();
     loadPackagingCount();
     loadRuleCounts();
-    fetchDispatchCatalog()
-      .then((items) => setDispatchItemCount(items.length))
-      .catch(() => setDispatchItemCount(null));
   }, []);
 
   const totalRules = Object.values(ruleCounts).reduce(
@@ -437,7 +543,6 @@ export default function BinsPage() {
         <button type="button" role="tab" aria-selected={activeSetupTab === "rules"} className={activeSetupTab === "rules" ? "is-active" : ""} onClick={() => { setActiveSetupTab("rules"); if (!selectedDevice && bins[0]) openTemplate(bins[0]); }}>Automatic Accessory Rules <span>{totalRules}</span></button>
         <button type="button" role="tab" aria-selected={activeSetupTab === "accessories"} className={activeSetupTab === "accessories" ? "is-active" : ""} onClick={() => setActiveSetupTab("accessories")}>Accessory Inventory <span>{accessoryBins.length}</span></button>
         <button type="button" role="tab" aria-selected={activeSetupTab === "packaging"} className={activeSetupTab === "packaging" ? "is-active" : ""} onClick={() => setActiveSetupTab("packaging")}>Packaging Inventory <span>{packagingCount}</span></button>
-        <button type="button" role="tab" aria-selected={activeSetupTab === "dispatch"} className={activeSetupTab === "dispatch" ? "is-active" : ""} onClick={() => setActiveSetupTab("dispatch")}>Dispatch Items {dispatchItemCount !== null && <span>{dispatchItemCount}</span>}</button>
       </div>
 
       {activeSetupTab === "bins" && (
@@ -466,35 +571,87 @@ export default function BinsPage() {
             <thead className="bg-slate-900">
               <tr>
                 <th className="text-left p-3">Name</th>
+                <th className="text-left p-3">Dispatch Dimensions</th>
+                <th className="text-left p-3">Kinesis Names</th>
                 <th className="text-right p-3">Actions</th>
               </tr>
             </thead>
 
             <tbody>
-              {bins.map((bin) => (
+              {bins.map((bin) => {
+                const isEditingDevice = editingDeviceId === bin.id;
+                return (
                 <tr key={bin.id} className="border-t border-slate-800">
                   <td className="p-3">{bin.name}</td>
+                  <td className="p-3">
+                    {isEditingDevice ? (
+                      <DimensionInputs form={deviceForm} onChange={setDeviceForm} />
+                    ) : (
+                      binDimensions(bin)
+                    )}
+                  </td>
+                  <td className="p-3">
+                    {isEditingDevice ? (
+                      <input
+                        aria-label="Kinesis names"
+                        value={deviceForm.kinesisNames}
+                        onChange={(e) => setDeviceForm({ ...deviceForm, kinesisNames: e.target.value })}
+                        placeholder="Other Kinesis labels, separated by commas"
+                        className="w-full bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
+                      />
+                    ) : (
+                      (bin.kinesis_names || []).join(" · ") || "—"
+                    )}
+                  </td>
                   <td className="p-3 text-right space-x-4">
-                    <button
-                      onClick={() => openTemplate(bin)}
-                      className="text-cyan-400 hover:text-cyan-300"
-                    >
-                      Accessory Rules
-                    </button>
+                    {isEditingDevice ? (
+                      <>
+                        <button
+                          onClick={() => void saveDeviceEdit(bin)}
+                          disabled={loading}
+                          className="text-emerald-400 hover:text-emerald-300"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingDeviceId(null)}
+                          className="text-slate-400 hover:text-slate-300"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => startEditDevice(bin)}
+                          className="text-cyan-400 hover:text-cyan-300"
+                        >
+                          Edit
+                        </button>
 
-                    <button
-                      onClick={() => setDeleteTarget({ kind: "device-bin", id: bin.id, name: bin.name })}
-                      className="text-rose-400 hover:text-rose-500"
-                    >
-                      Delete
-                    </button>
+                        <button
+                          onClick={() => openTemplate(bin)}
+                          className="text-cyan-400 hover:text-cyan-300"
+                        >
+                          Accessory Rules
+                        </button>
+
+                        <button
+                          onClick={() => setDeleteTarget({ kind: "device-bin", id: bin.id, name: bin.name })}
+                          className="text-rose-400 hover:text-rose-500"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
 
               {bins.length === 0 && (
                 <tr>
-                  <td colSpan={2} className="p-4 text-center text-slate-500">
+                  <td colSpan={4} className="p-4 text-center text-slate-500">
                     No device bins have been configured.
                   </td>
                 </tr>
@@ -811,6 +968,7 @@ export default function BinsPage() {
     <th className="text-right p-3">Stock</th>
     <th className="text-right p-3">Minimum Stock</th>
     <th className="text-left p-3">Category</th>
+    <th className="text-left p-3">Dispatch Dimensions</th>
     <th className="text-right p-3">Visibility</th>
     <th className="text-right p-3">Actions</th>
   </tr>
@@ -825,15 +983,34 @@ export default function BinsPage() {
                   <tr key={bin.id} className="border-t border-slate-800">
                     <td className="p-3">
                       {isEditing ? (
-                        <input
-                          value={editAccessoryName}
-                          onChange={(e) =>
-                            setEditAccessoryName(e.target.value)
-                          }
-                          className="w-full bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
-                        />
+                        <div className="space-y-1">
+                          <input
+                            aria-label="Accessory name"
+                            value={editAccessoryName}
+                            onChange={(e) =>
+                              setEditAccessoryName(e.target.value)
+                            }
+                            className="w-full bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
+                          />
+                          <input
+                            aria-label="Kinesis names"
+                            value={accessoryDimensions.kinesisNames}
+                            onChange={(e) =>
+                              setAccessoryDimensions({ ...accessoryDimensions, kinesisNames: e.target.value })
+                            }
+                            placeholder="Kinesis names, separated by commas"
+                            className="w-full bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-xs"
+                          />
+                        </div>
                       ) : (
-                        bin.name
+                        <>
+                          {bin.name}
+                          {(bin.kinesis_names || []).length > 0 && (
+                            <div className="text-xs text-slate-500">
+                              Kinesis: {(bin.kinesis_names || []).join(" · ")}
+                            </div>
+                          )}
+                        </>
                       )}
                     </td>
 
@@ -892,6 +1069,14 @@ export default function BinsPage() {
   )}
 </td>
 
+                    <td className="p-3">
+                      {isEditing ? (
+                        <DimensionInputs form={accessoryDimensions} onChange={setAccessoryDimensions} />
+                      ) : (
+                        binDimensions(bin)
+                      )}
+                    </td>
+
                     <td className="p-3 text-right">
                       <button
                         onClick={() =>
@@ -949,7 +1134,7 @@ export default function BinsPage() {
 
               {filteredAccessoryBins.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-4 text-center text-slate-500">
+                  <td colSpan={7} className="p-4 text-center text-slate-500">
                     No accessories found.
                   </td>
                 </tr>
@@ -963,13 +1148,6 @@ export default function BinsPage() {
       {activeSetupTab === "packaging" && (
         <PackagingInventoryPanel
           onCountChange={setPackagingCount}
-          onFeedback={setFeedback}
-        />
-      )}
-
-      {activeSetupTab === "dispatch" && (
-        <DispatchCatalogPanel
-          onCountChange={setDispatchItemCount}
           onFeedback={setFeedback}
         />
       )}

@@ -169,8 +169,8 @@ export function permissionsForApi(
   if (pathname.startsWith("/api/inbound")) return ["can_inbound"];
   if (pathname.startsWith("/api/labels")) return ["can_labels"];
   if (pathname.startsWith("/api/outbound")) return ["can_outbound"];
-  // The dimension list is maintained from Dispatch Planning and Inventory Setup.
-  if (pathname.startsWith("/api/dispatch-planning/catalog")) {
+  // Missing dimensions can be added from Dispatch Planning or Inventory Setup.
+  if (pathname.startsWith("/api/dispatch-planning/items")) {
     return ["can_outbound", "can_bins"];
   }
   if (pathname.startsWith("/api/dispatch-planning")) return ["can_outbound"];

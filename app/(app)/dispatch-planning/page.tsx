@@ -982,7 +982,9 @@ export default function DispatchPlanningPage() {
 
       {resolveIssue && (
         <DispatchItemDialog
-          mode={{ kind: "resolve", ...resolveIssue }}
+          label={resolveIssue.label}
+          hardwareType={resolveIssue.hardwareType}
+          deviceType={resolveIssue.deviceType}
           onClose={() => setResolveIssue(null)}
           onSaved={() => {
             setResolveIssue(null);

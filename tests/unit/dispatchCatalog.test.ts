@@ -6,22 +6,26 @@ import { permissionsForApi } from "../../lib/access-control";
 import {
   applyDispatchAutomaticAccessoryRules,
   BUILT_IN_DISPATCH_CATALOG,
-  createDispatchCatalog,
+  buildDispatchPickingSummary,
+  createInventoryDispatchCatalog,
+  dispatchItemKey,
+  inventoryBaseName,
   parseDispatchWorkbook,
   resolveDispatchCatalogItem,
   resolveDispatchLineDeviceModel,
+  type DispatchInventoryRecord,
 } from "../../lib/dispatch-planning";
 import {
-  findDispatchCatalogConflict,
-  isRequiredDispatchItem,
-  parseDispatchCatalogItemInput,
-  requiredItemChangeError,
-} from "../../lib/dispatch-catalog-input";
+  findKinesisNameConflict,
+  parseDispatchDimensions,
+  parseKinesisNames,
+  recordAnswersToLabel,
+} from "../../lib/dispatch-dimensions-input";
 
 const migration = readFileSync(
   join(
     process.cwd(),
-    "supabase/migrations/20261019120000_add_dispatch_catalog_items.sql"
+    "supabase/migrations/20261019150000_add_dispatch_dimensions_to_inventory.sql"
   ),
   "utf8"
 );
@@ -64,7 +68,19 @@ const row = (hardware: string, device: string, line: number) => [
   "Test Company",
 ];
 
-describe("dispatch item catalog", () => {
+const record = (
+  name: string,
+  dimensions: [number, number, number] | null,
+  kinesisNames: string[] = []
+): DispatchInventoryRecord => ({
+  name,
+  lengthCm: dimensions?.[0] ?? null,
+  widthCm: dimensions?.[1] ?? null,
+  heightCm: dimensions?.[2] ?? null,
+  kinesisNames,
+});
+
+describe("dispatch dimensions", () => {
   it("recognises short DVR labels as Howen recorders", () => {
     for (const [label, model] of [
       ["DVR-4CH", "Howen4CH"],
@@ -75,9 +91,6 @@ describe("dispatch item catalog", () => {
       expect(resolveDispatchCatalogItem(label, "")?.name, label).toBe(model);
       expect(resolveDispatchLineDeviceModel(label, ""), label).toBe(model);
     }
-    expect(resolveDispatchCatalogItem("*DVR - 2 Channel -  (N+)", "")?.name).toBe(
-      "DVR - 2 Channel -  (N+)"
-    );
   });
 
   it("reads the Kinesis report date and suggests the missing item name", () => {
@@ -101,25 +114,30 @@ describe("dispatch item catalog", () => {
     ]);
   });
 
-  it("uses dimensions added in the app for unknown hardware and device models", () => {
-    const catalog = createDispatchCatalog([
-      ...BUILT_IN_DISPATCH_CATALOG,
-      { name: "1TB SSD SATA", lengthCm: 10, widthCm: 7, heightCm: 0.7, aliases: [] },
-      { name: "FMC150", lengthCm: 8, widthCm: 6, heightCm: 2, aliases: [] },
-      {
-        name: "DVR GPS Antenna",
-        lengthCm: 6,
-        widthCm: 5,
-        heightCm: 2,
-        aliases: ["DVR GPS Antenna - HW-GL-A5 - Replacement"],
-      },
-    ]);
+  it("strips the product code from accessory record names", () => {
+    expect(inventoryBaseName("BUZZER\t4")).toBe("BUZZER");
+    expect(inventoryBaseName("*Camera - Front Facing PRO895")).toBe("Camera - Front Facing");
+    expect(inventoryBaseName("WIPE TBD011")).toBe("WIPE");
+    expect(inventoryBaseName("OBD Cable FMC003")).toBe("OBD Cable FMC003");
+  });
+
+  it("uses dimensions stored on device and accessory records", () => {
+    const catalog = createInventoryDispatchCatalog(
+      [record("FMC150", [6.4, 5.5, 2])],
+      [
+        record("1TB SSD SATA\tPRO1118", [10, 7, 0.7]),
+        record("DVR GPS Antenna - HW-GL-A5 - Replacement\tPRO1147", [6, 5, 2]),
+        // No dimensions yet: the built-in list still answers.
+        record("BUZZER\t4", null),
+      ]
+    );
 
     const parsed = parseDispatchWorkbook(
       kinesisWorkbook([
         row("1TB SSD SATA", "Teltonika - Atom-H 4G - FMC920", 1),
         row("ATOM", "Teltonika - Atom-X 4G - FMC150", 2),
         row("DVR GPS Antenna - HW-GL-A5 - Replacement", "", 3),
+        row("BUZZER", "", 4),
       ]),
       catalog
     );
@@ -130,159 +148,204 @@ describe("dispatch item catalog", () => {
       parsed.orders[0].items.map((item) => [item.name, item.totalVolumeCm3])
     ).toEqual([
       ["1TB SSD SATA", 49],
-      ["FMC150", 96],
-      ["DVR GPS Antenna", 60],
+      ["FMC150", 70.4],
+      ["DVR GPS Antenna - HW-GL-A5 - Replacement", 60],
+      ["BUZZER", 32],
     ]);
   });
 
-  it("checks automatic accessories against the same catalog", () => {
-    const parsed = parseDispatchWorkbook(
-      kinesisWorkbook([row("ATOM", "Teltonika - Atom-E 4G - FMC880", 1)])
+  it("keeps Kinesis names ahead of record names and the built-in list", () => {
+    const catalog = createInventoryDispatchCatalog(
+      [record("Howen2CH", [21, 19, 8], ["DVR - 2 Channel -  (N+)"])],
+      [
+        record("*Camera - Front Facing PRO895", [9, 9, 11], ["Camera - Front Facing"]),
+        record("*Camera - Front Facing (Dash Mounted)\tPRO966", [1, 1, 1]),
+      ]
     );
-    const rule = {
-      deviceModel: "FMC880",
-      accessoryName: "Velcro Strip",
-      quantity: 1,
-      perDevices: 1,
-    };
 
+    expect(resolveDispatchCatalogItem("Camera - Front Facing", "", catalog)).toEqual({
+      name: "Camera - Front Facing",
+      lengthCm: 9,
+      widthCm: 9,
+      heightCm: 11,
+    });
+    expect(resolveDispatchCatalogItem("*DVR - 2 Channel -  (N+)", "", catalog)?.name).toBe(
+      "Howen2CH"
+    );
+    expect(resolveDispatchLineDeviceModel("DVR - 2 Channel - (N+)", "", "Howen2CH", catalog)).toBe(
+      "Howen2CH"
+    );
+  });
+
+  it("matches automatic accessories and picking stock to the same record", () => {
+    const catalog = createInventoryDispatchCatalog(
+      [],
+      [record("BUZZER\t4", [2, 4, 4], ["BUZZER"]), record("Velcro Strip\tPRO2000", [5, 2, 0.5])]
+    );
+    const parsed = parseDispatchWorkbook(
+      kinesisWorkbook([row("ATOM", "Teltonika - Atom-E 4G - FMC880", 1), row("BUZZER", "", 2)]),
+      catalog
+    );
+    const enriched = applyDispatchAutomaticAccessoryRules(
+      parsed.orders,
+      [
+        { deviceModel: "FMC880", accessoryName: "BUZZER\t4", quantity: 2, perDevices: 1 },
+        { deviceModel: "FMC880", accessoryName: "Velcro Strip\tPRO2000", quantity: 1, perDevices: 1 },
+      ],
+      catalog
+    );
+
+    expect(enriched.issues).toEqual([]);
     expect(
-      applyDispatchAutomaticAccessoryRules(parsed.orders, [rule]).issues[0]
-        .suggestedName
-    ).toBe("Velcro Strip");
-
-    const catalog = createDispatchCatalog([
-      ...BUILT_IN_DISPATCH_CATALOG,
-      { name: "Velcro Strip", lengthCm: 5, widthCm: 2, heightCm: 0.5, aliases: [] },
+      enriched.orders[0].items.map((item) => [item.name, item.quantity, item.automaticQuantity])
+    ).toEqual([
+      ["BUZZER", 2, 1],
+      ["FMC880", 1, 0],
+      ["Velcro Strip", 1, 1],
     ]);
-    expect(
-      applyDispatchAutomaticAccessoryRules(parsed.orders, [rule], catalog).issues
-    ).toEqual([]);
+
+    const summary = buildDispatchPickingSummary(
+      enriched.orders.map((order) => ({ ...order, packages: [] })),
+      [],
+      [],
+      [{ name: "BUZZER\t4", availableStock: 10 }],
+      catalog
+    );
+    expect(summary.find((line) => line.name === "BUZZER")?.availableStock).toBe(10);
   });
 });
 
-describe("dispatch item input", () => {
-  it("validates names, other names and dimensions", () => {
-    expect(
-      parseDispatchCatalogItemInput({
-        name: "  1TB   SSD SATA ",
-        aliases: ["SSD 1TB", "ssd-1tb", "", "1TB SSD SATA"],
-        lengthCm: "10",
-        widthCm: 7.004,
-        heightCm: 0.7,
-      })
-    ).toEqual({
+describe("dispatch dimension input", () => {
+  it("accepts three dimensions, none, or nothing sent", () => {
+    expect(parseDispatchDimensions({ lengthCm: "10", widthCm: 7.004, heightCm: "0.7" })).toEqual({
       ok: true,
-      value: {
-        name: "1TB SSD SATA",
-        aliases: ["SSD 1TB"],
-        lengthCm: 10,
-        widthCm: 7,
-        heightCm: 0.7,
-      },
+      dimensions: { lengthCm: 10, widthCm: 7, heightCm: 0.7 },
     });
-
-    expect(parseDispatchCatalogItemInput({ name: "" })).toEqual({
+    expect(parseDispatchDimensions({ lengthCm: "", widthCm: "", heightCm: "" })).toEqual({
+      ok: true,
+      dimensions: null,
+    });
+    expect(parseDispatchDimensions({})).toEqual({ ok: true, dimensions: undefined });
+    expect(parseDispatchDimensions({ lengthCm: "5", widthCm: "", heightCm: "1" })).toMatchObject({
       ok: false,
-      error: "Item name is required",
     });
-    expect(
-      parseDispatchCatalogItemInput({ name: "Box", lengthCm: -1, widthCm: 1, heightCm: 1 })
-    ).toEqual({
+    expect(parseDispatchDimensions({ lengthCm: -1, widthCm: 1, heightCm: 1 })).toMatchObject({
       ok: false,
-      error: "Dimensions must be numbers between 0 and 1000 cm",
     });
-    expect(
-      parseDispatchCatalogItemInput({ name: "ATOM", lengthCm: 1, widthCm: 1, heightCm: 1 })
-    ).toMatchObject({ ok: false });
-    expect(
-      parseDispatchCatalogItemInput({
-        name: "Kit",
-        aliases: ["Kinesis Insights"],
-        lengthCm: 1,
-        widthCm: 1,
-        heightCm: 1,
-      })
-    ).toMatchObject({ ok: false });
   });
 
-  it("keeps every label pointing to a single item", () => {
-    const existing = [
-      { id: "a", name: "Howen4CH", aliases: ["DVR-4CH"], active: true },
-      { id: "b", name: "FOB", aliases: [], active: false },
+  it("cleans Kinesis names and refuses Device Type labels", () => {
+    expect(parseKinesisNames([" DVR-4CH ", "dvr 4ch", "", "DVR - 4 Channel"])).toEqual({
+      ok: true,
+      names: ["DVR-4CH", "DVR - 4 Channel"],
+    });
+    expect(parseKinesisNames(undefined)).toEqual({ ok: true, names: undefined });
+    expect(parseKinesisNames(["ATOM"])).toMatchObject({ ok: false });
+    expect(parseKinesisNames(["Kinesis Insights"])).toMatchObject({ ok: false });
+  });
+
+  it("keeps every Kinesis name on a single record", () => {
+    const records = [
+      { kind: "device" as const, id: "d1", name: "Howen4CH", kinesisNames: ["DVR-4CH"] },
+      { kind: "accessory" as const, id: "a1", name: "BUZZER\t4", kinesisNames: ["BUZZER"] },
     ];
 
     expect(
-      findDispatchCatalogConflict({ name: "New DVR", aliases: ["dvr 4ch"] }, existing)
+      findKinesisNameConflict({ kind: "accessory", id: "a2", kinesisNames: ["dvr 4ch"] }, records)
     ).toBe('"dvr 4ch" is already used by Howen4CH');
-    expect(findDispatchCatalogConflict({ name: "fob", aliases: [] }, existing)).toBe(
-      'An item named "FOB" already exists'
-    );
     expect(
-      findDispatchCatalogConflict(
-        { id: "a", name: "Howen4CH", aliases: ["DVR-4CH", "DVR4"] },
-        existing
-      )
-    ).toBeNull();
-  });
-
-  it("protects the items the dispatch rules depend on", () => {
-    const howen = { id: "a", name: "Howen4CH", aliases: [], active: true };
-    expect(isRequiredDispatchItem("howen 4ch")).toBe(true);
-    expect(requiredItemChangeError(howen, { name: "Howen 4CH" })).toBeNull();
-    expect(requiredItemChangeError(howen, { name: "DVR 4" })).toBe(
-      "Howen4CH is used by the dispatch rules and cannot be renamed"
-    );
-    expect(requiredItemChangeError(howen, { active: false })).toBe(
-      "Howen4CH is used by the dispatch rules and cannot be deactivated"
-    );
+      findKinesisNameConflict({ kind: "accessory", id: "a2", kinesisNames: ["Howen 4CH"] }, records)
+    ).toBe('"Howen 4CH" is already used by Howen4CH');
     expect(
-      requiredItemChangeError({ id: "b", name: "WIPE", aliases: [], active: true }, { active: false })
+      findKinesisNameConflict({ kind: "accessory", id: "a1", kinesisNames: ["BUZZER"] }, records)
     ).toBeNull();
+    expect(recordAnswersToLabel(records[1], "Buzzer")).toBe(true);
+    expect(recordAnswersToLabel(records[1], "Buzzer 4")).toBe(true);
+    expect(recordAnswersToLabel(records[1], "Beeper")).toBe(false);
   });
 });
 
-describe("dispatch item storage", () => {
-  it("seeds the table with exactly the built-in dimensions", () => {
-    const seeded = Array.from(
-      migration.matchAll(
-        /\('((?:[^']|'')+)', (?:'\{\}'::text\[\]|array\[(.*?)\]::text\[\]), ([\d.]+), ([\d.]+), ([\d.]+)\)/g
+describe("dispatch dimension storage", () => {
+  type MigrationRow = { key: string; dimensions: [number, number, number]; kinesisNames: string[] };
+
+  function migrationRows(table: "bins" | "accessory_bins"): MigrationRow[] {
+    const start = migration.indexOf(`update public.${table} as`);
+    const block = migration.slice(start, migration.indexOf("as item(", start));
+    return Array.from(
+      block.matchAll(
+        /\('([a-z0-9]+)', ([\d.]+), ([\d.]+), ([\d.]+), (?:'\{\}'::text\[\]|array\[(.*?)\]::text\[\])\)/g
       ),
       (match) => ({
-        name: match[1].replace(/''/g, "'"),
-        aliases: match[2]
-          ? Array.from(match[2].matchAll(/'((?:[^']|'')+)'/g), (alias) => alias[1])
+        key: match[1],
+        dimensions: [Number(match[2]), Number(match[3]), Number(match[4])],
+        kinesisNames: match[5]
+          ? Array.from(match[5].matchAll(/'((?:[^']|'')+)'/g), (name) => name[1].replace(/''/g, "'"))
           : [],
-        lengthCm: Number(match[3]),
-        widthCm: Number(match[4]),
-        heightCm: Number(match[5]),
       })
     );
+  }
 
-    expect(seeded).toEqual(BUILT_IN_DISPATCH_CATALOG);
-  });
+  it("fills every built-in item with the same name and dimensions", () => {
+    const devices = migrationRows("bins");
+    const accessories = migrationRows("accessory_bins");
+    expect(devices).toHaveLength(15);
+    expect(accessories).toHaveLength(25);
 
-  it("keeps the table behind server-side routes", () => {
-    const sql = migration.toLowerCase();
-    expect(sql).toContain(
-      "alter table public.dispatch_catalog_items enable row level security;"
+    // Records named as in production; device bins carry the model name.
+    const deviceName = (key: string) =>
+      BUILT_IN_DISPATCH_CATALOG.find((item) => dispatchItemKey(item.name) === key)?.name ??
+      key.toUpperCase();
+    const catalog = createInventoryDispatchCatalog(
+      devices.map((item) => record(deviceName(item.key), item.dimensions, item.kinesisNames)),
+      accessories.map((item) => record(item.key, item.dimensions, item.kinesisNames))
     );
-    expect(sql).toContain("from public, anon, authenticated;");
-    expect(sql).not.toMatch(/grant[^;]+dispatch_catalog_items[^;]+to authenticated/);
-    expect(sql).toContain("on conflict do nothing;");
+    const inventoryOnly = createInventoryDispatchCatalog(
+      devices.map((item) => record(deviceName(item.key), item.dimensions, item.kinesisNames)),
+      accessories.map((item) => record(item.key, item.dimensions, item.kinesisNames))
+    ).entries.filter((entry) => !BUILT_IN_DISPATCH_CATALOG.includes(entry));
+
+    for (const builtIn of BUILT_IN_DISPATCH_CATALOG) {
+      const resolved = catalog.byKey.get(dispatchItemKey(builtIn.name));
+      const expectedName = builtIn.name === "DVR - 2 Channel -  (N+)" ? "Howen2CH" : builtIn.name;
+      expect(resolved, builtIn.name).toEqual({
+        name: expectedName,
+        lengthCm: builtIn.lengthCm,
+        widthCm: builtIn.widthCm,
+        heightCm: builtIn.heightCm,
+      });
+      // Answered by an inventory record, not by the safety net.
+      expect(
+        inventoryOnly.some((entry) => entry.name === expectedName),
+        builtIn.name
+      ).toBe(true);
+    }
+    expect(resolveDispatchCatalogItem("ATOM", "Teltonika - Atom-X 4G - FMC150", catalog)).toEqual({
+      name: "FMC150",
+      lengthCm: 6.4,
+      widthCm: 5.5,
+      heightCm: 2,
+    });
   });
 
-  it("lets Dispatch Planning and Inventory Setup users maintain the list", () => {
-    expect(permissionsForApi("/api/dispatch-planning/catalog", "GET")).toEqual([
+  it("adds optional columns without touching existing values", () => {
+    const sql = migration.toLowerCase();
+    expect(sql).toContain("drop table if exists public.dispatch_catalog_items;");
+    expect(sql).toContain("add column if not exists kinesis_names text[] not null default '{}'::text[]");
+    expect(sql.match(/and (bin|accessory)\.length_cm is null/g)).toHaveLength(2);
+    expect(sql).toContain("coalesce(accessory.category, '') <> 'packages'");
+    expect(sql).not.toMatch(/grant[^;]+to authenticated/);
+  });
+
+  it("lets Dispatch Planning and Inventory Setup users add dimensions", () => {
+    expect(permissionsForApi("/api/dispatch-planning/items", "GET")).toEqual([
       "can_outbound",
       "can_bins",
     ]);
-    expect(permissionsForApi("/api/dispatch-planning/catalog", "PATCH")).toEqual([
+    expect(permissionsForApi("/api/dispatch-planning/items", "POST")).toEqual([
       "can_outbound",
       "can_bins",
     ]);
-    expect(permissionsForApi("/api/dispatch-planning/confirm", "POST")).toEqual([
-      "can_outbound",
-    ]);
+    expect(permissionsForApi("/api/bins/dispatch-details", "POST")).toEqual(["can_bins"]);
+    expect(permissionsForApi("/api/dispatch-planning/confirm", "POST")).toEqual(["can_outbound"]);
   });
 });

@@ -3010,37 +3010,9 @@ body {
   padding: 22px;
 }
 
-.dispatch-resolve-options {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: 0;
-  border: 0;
-  padding: 0;
-}
-
-.dispatch-resolve-options small {
+.dispatch-resolve-context {
   color: var(--muted);
   font-size: 11px;
-}
-
-.dispatch-resolve-choice {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--foreground);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.packaging-dialog .dispatch-resolve-choice input[type="radio"] {
-  width: 16px;
-  height: 16px;
-  min-height: 0;
-  flex: 0 0 auto;
-  margin: 0;
-  padding: 0;
 }
 
 .packaging-field {

@@ -283,7 +283,10 @@ export function buildDispatchPickingSummary(
 }
 
 export type DispatchCatalogEntry = DispatchCatalogItem & {
+  // Labels that always point to this item (Kinesis names).
   aliases: string[];
+  // Labels used only when no other item claims them (inventory record names).
+  weakAliases?: string[];
 };
 
 export type DispatchCatalog = {
@@ -291,9 +294,9 @@ export type DispatchCatalog = {
   byKey: Map<string, DispatchCatalogItem>;
 };
 
-// Built-in dimensions used until the dispatch_catalog_items table is
-// installed. The migration seeds the table with exactly these entries; after
-// that the database is the source of truth and can be edited in the app.
+// Dimensions built into the application. Device Bins and Accessory Inventory
+// records with dimensions take precedence; this list is the safety net for
+// records without dimensions and for databases without the dimension columns.
 export const BUILT_IN_DISPATCH_CATALOG: DispatchCatalogEntry[] = [
   { name: "10M AV Extension Cable", lengthCm: 13, widthCm: 13, heightCm: 3, aliases: [] },
   { name: "3M AV Extension Cable", lengthCm: 13, widthCm: 4, heightCm: 4, aliases: [] },
@@ -340,27 +343,6 @@ export const BUILT_IN_DISPATCH_CATALOG: DispatchCatalogEntry[] = [
   { name: "Howen4CH", lengthCm: 25, widthCm: 24, heightCm: 15, aliases: ["DVR-4CH"] },
 ];
 
-// Items the resolver below refers to by name. They can get new dimensions or
-// alternative names, but must keep their name and stay active.
-export const REQUIRED_DISPATCH_ITEM_NAMES = [
-  "CNHYCV200XEU",
-  "FMB140",
-  "Teltonika Contactless CAN - ECAN02",
-  "Tachograph T-Harness",
-  "BarraGps",
-  "FMC003",
-  "FMC130",
-  "FMC234",
-  "FMC650",
-  "FMC920",
-  "FMC880",
-  "Howen2CH",
-  "Howen4CH",
-  "Howen8CH",
-  "Neon-P",
-  "Neon-R",
-] as const;
-
 // Hardware Types whose physical item is identified by the Device Type column.
 export const DEVICE_TYPE_HARDWARE_KEYS = [
   "atom",
@@ -381,28 +363,99 @@ export function dispatchItemKey(value: unknown) {
   return normalized(value).toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
+// Labels are claimed in priority order: inventory names and Kinesis names,
+// then inventory record names, then the built-in list.
 export function createDispatchCatalog(
-  entries: DispatchCatalogEntry[]
+  entries: DispatchCatalogEntry[],
+  fallbackEntries: DispatchCatalogEntry[] = []
 ): DispatchCatalog {
   const byKey = new Map<string, DispatchCatalogItem>();
-  for (const entry of entries) {
+  const claim = (entry: DispatchCatalogEntry, labels: string[]) => {
     const item: DispatchCatalogItem = {
       name: entry.name,
       lengthCm: entry.lengthCm,
       widthCm: entry.widthCm,
       heightCm: entry.heightCm,
     };
-    for (const label of [entry.name, ...entry.aliases]) {
+    for (const label of labels) {
       const key = dispatchItemKey(label);
       if (key && !byKey.has(key)) byKey.set(key, item);
     }
-  }
-  return { entries, byKey };
+  };
+  for (const entry of entries) claim(entry, [entry.name, ...entry.aliases]);
+  for (const entry of entries) claim(entry, entry.weakAliases ?? []);
+  for (const entry of fallbackEntries) claim(entry, [entry.name, ...entry.aliases]);
+  return { entries: [...entries, ...fallbackEntries], byKey };
 }
 
 export const DEFAULT_DISPATCH_CATALOG = createDispatchCatalog(
+  [],
   BUILT_IN_DISPATCH_CATALOG
 );
+
+// Accessory records carry a product code after the label, e.g.
+// "BUZZER<tab>4" or "*Camera - Front Facing PRO895".
+export function inventoryBaseName(rawName: string) {
+  const beforeTab = String(rawName ?? "").split("\t")[0];
+  return normalized(beforeTab).replace(/\s+(?:PRO|TBD)\d+$/i, "").trim();
+}
+
+export type DispatchInventoryRecord = {
+  name: string;
+  lengthCm: number | null;
+  widthCm: number | null;
+  heightCm: number | null;
+  kinesisNames: string[];
+};
+
+function hasDimensions(record: DispatchInventoryRecord) {
+  return [record.lengthCm, record.widthCm, record.heightCm].every(
+    (value) => value !== null && Number.isFinite(value)
+  );
+}
+
+// Device models keep their bin name, which is also the device model used in
+// device counts and automatic accessory rules.
+export function dispatchEntryFromDevice(
+  record: DispatchInventoryRecord
+): DispatchCatalogEntry | null {
+  if (!hasDimensions(record)) return null;
+  return {
+    name: normalized(record.name),
+    lengthCm: Number(record.lengthCm),
+    widthCm: Number(record.widthCm),
+    heightCm: Number(record.heightCm),
+    aliases: record.kinesisNames,
+  };
+}
+
+// Accessories are named after their first Kinesis name so packing lists and
+// learned packaging keep the labels Kinesis uses.
+export function dispatchEntryFromAccessory(
+  record: DispatchInventoryRecord
+): DispatchCatalogEntry | null {
+  if (!hasDimensions(record)) return null;
+  const baseName = inventoryBaseName(record.name);
+  return {
+    name: normalized(record.kinesisNames[0] || baseName || record.name),
+    lengthCm: Number(record.lengthCm),
+    widthCm: Number(record.widthCm),
+    heightCm: Number(record.heightCm),
+    aliases: record.kinesisNames,
+    weakAliases: [record.name, baseName],
+  };
+}
+
+export function createInventoryDispatchCatalog(
+  devices: DispatchInventoryRecord[],
+  accessories: DispatchInventoryRecord[]
+) {
+  const entries = [
+    ...devices.map(dispatchEntryFromDevice),
+    ...accessories.map(dispatchEntryFromAccessory),
+  ].filter((entry): entry is DispatchCatalogEntry => entry !== null);
+  return createDispatchCatalog(entries, BUILT_IN_DISPATCH_CATALOG);
+}
 
 function isEcan02DeviceBundle(value: unknown) {
   const key = dispatchItemKey(value);

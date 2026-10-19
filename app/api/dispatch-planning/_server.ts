@@ -1,49 +1,98 @@
 import { supabaseService } from "@/lib/auth";
 import {
-  createDispatchCatalog,
+  createInventoryDispatchCatalog,
   DEFAULT_DISPATCH_CATALOG,
   dispatchItemKey,
   isDispatchVolumeAccessoryCategory,
   type DispatchAutomaticAccessoryRule,
   type DispatchCatalog,
+  type DispatchInventoryRecord,
   type DispatchPickingInventoryRow,
   type PackagingOption,
 } from "@/lib/dispatch-planning";
 
-export function isMissingDispatchCatalogTable(error: unknown) {
+export type DispatchInventoryItem = DispatchInventoryRecord & {
+  kind: "device" | "accessory";
+  id: string;
+  active: boolean;
+  category: string | null;
+};
+
+// The dimension columns arrive with migration 20261019150000. Until it is
+// applied, dispatch keeps using the dimensions built into the application.
+export function isMissingDispatchColumns(error: unknown) {
   const value = error as { code?: unknown; message?: unknown } | null;
   return (
-    value?.code === "42P01" ||
-    value?.code === "PGRST205" ||
-    /dispatch_catalog_items/.test(String(value?.message || ""))
+    value?.code === "42703" ||
+    /length_cm|width_cm|height_cm|kinesis_names/.test(String(value?.message || ""))
   );
 }
 
-// The database list is the source of truth once its migration is applied;
-// before that the dimensions built into the application keep dispatch working.
-export async function loadDispatchCatalog(): Promise<DispatchCatalog> {
-  const { data, error } = await supabaseService()
-    .from("dispatch_catalog_items")
-    .select("name,aliases,length_cm,width_cm,height_cm")
-    .eq("active", true)
-    .order("name", { ascending: true });
+function optionalNumber(value: unknown) {
+  return value === null || value === undefined || value === "" ? null : Number(value);
+}
 
+function toInventoryItem(
+  kind: "device" | "accessory",
+  row: Record<string, unknown>
+): DispatchInventoryItem {
+  return {
+    kind,
+    id: String(row.id),
+    name: String(row.name ?? ""),
+    active: row.active !== false,
+    category: row.category === undefined || row.category === null ? null : String(row.category),
+    lengthCm: optionalNumber(row.length_cm),
+    widthCm: optionalNumber(row.width_cm),
+    heightCm: optionalNumber(row.height_cm),
+    kinesisNames: Array.isArray(row.kinesis_names) ? row.kinesis_names.map(String) : [],
+  };
+}
+
+// Device Bins and Accessory Inventory records (hidden ones included), with
+// their dispatch dimensions. Packaging is managed in Packaging Inventory.
+export async function loadDispatchInventoryItems(): Promise<{
+  available: boolean;
+  items: DispatchInventoryItem[];
+}> {
+  const service = supabaseService();
+  const [{ data: bins, error: binsError }, { data: accessories, error: accessoriesError }] =
+    await Promise.all([
+      service
+        .from("bins")
+        .select("id,name,active,length_cm,width_cm,height_cm,kinesis_names")
+        .order("name", { ascending: true }),
+      service
+        .from("accessory_bins")
+        .select("id,name,category,active,length_cm,width_cm,height_cm,kinesis_names")
+        .or("category.is.null,category.neq.Packages")
+        .order("name", { ascending: true }),
+    ]);
+
+  const error = binsError || accessoriesError;
   if (error) {
-    if (isMissingDispatchCatalogTable(error)) {
-      console.warn("DISPATCH CATALOG TABLE MISSING: using built-in dimensions");
-      return DEFAULT_DISPATCH_CATALOG;
-    }
+    if (isMissingDispatchColumns(error)) return { available: false, items: [] };
     throw error;
   }
 
-  return createDispatchCatalog(
-    (data || []).map((row) => ({
-      name: String(row.name),
-      aliases: Array.isArray(row.aliases) ? row.aliases.map(String) : [],
-      lengthCm: Number(row.length_cm),
-      widthCm: Number(row.width_cm),
-      heightCm: Number(row.height_cm),
-    }))
+  return {
+    available: true,
+    items: [
+      ...(bins || []).map((row) => toInventoryItem("device", row)),
+      ...(accessories || []).map((row) => toInventoryItem("accessory", row)),
+    ],
+  };
+}
+
+export async function loadDispatchCatalog(): Promise<DispatchCatalog> {
+  const inventory = await loadDispatchInventoryItems();
+  if (!inventory.available) {
+    console.warn("DISPATCH DIMENSION COLUMNS MISSING: using built-in dimensions");
+    return DEFAULT_DISPATCH_CATALOG;
+  }
+  return createInventoryDispatchCatalog(
+    inventory.items.filter((item) => item.kind === "device"),
+    inventory.items.filter((item) => item.kind === "accessory")
   );
 }
 

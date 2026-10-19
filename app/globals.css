@@ -5890,3 +5890,143 @@ main.min-h-screen {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Dispatch picking sheet: on-screen preview and A4 print */
+.picking-sheet-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  overflow-y: auto;
+  padding: 20px 16px 32px;
+  background: rgba(15, 23, 42, 0.6);
+}
+
+.picking-sheet-toolbar {
+  display: flex;
+  max-width: 794px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 auto 12px;
+  color: #fff;
+}
+
+.picking-sheet-toolbar > div {
+  display: flex;
+  gap: 8px;
+}
+
+.picking-sheet {
+  max-width: 794px;
+  margin: 0 auto;
+  padding: 28px 32px;
+  background: #fff;
+  color: #111;
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+}
+
+.picking-sheet h1 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.picking-sheet header p {
+  margin: 2px 0 0;
+  color: #444;
+  font-size: 11px;
+}
+
+.picking-sheet h2 {
+  margin: 16px 0 6px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #111;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.picking-sheet-ok {
+  margin: 0;
+  font-weight: 600;
+}
+
+.picking-sheet-shortages,
+.picking-sheet-orders {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.picking-sheet-shortages li {
+  padding: 2px 0;
+}
+
+.picking-sheet-shortages span {
+  margin-left: 8px;
+  color: #555;
+  font-size: 11px;
+}
+
+.picking-sheet-shortages em {
+  display: block;
+  color: #b91c1c;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.picking-sheet-orders {
+  column-count: 2;
+  column-gap: 24px;
+}
+
+.picking-sheet-orders li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 3px 0;
+  border-bottom: 1px dotted #bbb;
+  break-inside: avoid;
+}
+
+.picking-sheet-orders strong {
+  min-width: 72px;
+}
+
+.picking-sheet-box {
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin-top: 1px;
+  border: 1.5px solid #111;
+}
+
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  body > *:not(.picking-sheet-overlay) {
+    display: none !important;
+  }
+
+  .picking-sheet-overlay {
+    position: static;
+    overflow: visible;
+    padding: 0;
+    background: none;
+  }
+
+  .picking-sheet-toolbar {
+    display: none;
+  }
+
+  .picking-sheet {
+    max-width: none;
+    padding: 0;
+    box-shadow: none;
+  }
+}

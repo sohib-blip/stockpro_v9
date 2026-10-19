@@ -809,6 +809,14 @@ const FR: Record<string, string> = {
   "This device bin no longer exists": "Cet emplacement appareil n’existe plus",
   "The device bin could not be saved": "L’emplacement appareil n’a pas pu être enregistré",
   "Kinesis names must be a list": "Les noms Kinesis doivent être une liste",
+  // Picking sheet
+  "Print Picking Sheet": "Imprimer la feuille de préparation",
+  "Print preview": "Aperçu avant impression",
+  Print: "Imprimer",
+  "Picking Sheet": "Feuille de préparation",
+  "Go get from stock": "À aller chercher dans le stock",
+  "Everything is in the Cabinet.": "Tout est dans le Cabinet.",
+  "Accessories only": "Accessoires uniquement",
 };
 
 const NL: Record<string, string> = {
@@ -1610,6 +1618,14 @@ const NL: Record<string, string> = {
   "This device bin no longer exists": "Dit apparaatvak bestaat niet meer",
   "The device bin could not be saved": "Het apparaatvak kon niet worden opgeslagen",
   "Kinesis names must be a list": "Kinesis-namen moeten een lijst zijn",
+  // Picking sheet
+  "Print Picking Sheet": "Picklijst afdrukken",
+  "Print preview": "Afdrukvoorbeeld",
+  Print: "Afdrukken",
+  "Picking Sheet": "Picklijst",
+  "Go get from stock": "Uit de voorraad halen",
+  "Everything is in the Cabinet.": "Alles staat in de Cabinet.",
+  "Accessories only": "Alleen accessoires",
 };
 
 const DICTIONARIES: Record<Exclude<Locale, "en">, Record<string, string>> = {
@@ -1658,6 +1674,9 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(.+) download started\.$/, "Téléchargement de $1 démarré."],
           [/^Device (.+)$/, "Appareil $1"],
           [/^(\d+) rules?$/, "$1 règle(s)"],
+          [/^(.+?) · (\d+) orders · (\d+) devices(.*)$/, "$1 · $2 commandes · $3 appareils$4"],
+          [/^needed (\d+) · Cabinet (\d+)$/, "besoin $1 · Cabinet $2"],
+          [/^Not enough stock: (\d+) missing in the warehouse$/, "Stock insuffisant : il en manque $1 dans l’entrepôt"],
           [/^"(.+)" has no dimensions yet\. Choose the matching device or accessory and enter its dimensions\.$/, "« $1 » n’a pas encore de dimensions. Choisissez l’appareil ou l’accessoire correspondant et saisissez ses dimensions."],
           [/^(.+) now has dimensions and is recognised as "(.+)"\.$/, "$1 a maintenant des dimensions et est reconnu comme « $2 »."],
           [/^(.+) was added as a hidden accessory with its dimensions\.$/, "$1 a été ajouté comme accessoire masqué avec ses dimensions."],
@@ -1714,6 +1733,9 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(.+) download started\.$/, "Download van $1 gestart."],
           [/^Device (.+)$/, "Apparaat $1"],
           [/^(\d+) rules?$/, "$1 regel(s)"],
+          [/^(.+?) · (\d+) orders · (\d+) devices(.*)$/, "$1 · $2 orders · $3 apparaten$4"],
+          [/^needed (\d+) · Cabinet (\d+)$/, "nodig $1 · Cabinet $2"],
+          [/^Not enough stock: (\d+) missing in the warehouse$/, "Onvoldoende voorraad: er ontbreken er $1 in het magazijn"],
           [/^"(.+)" has no dimensions yet\. Choose the matching device or accessory and enter its dimensions\.$/, "\"$1\" heeft nog geen afmetingen. Kies het overeenkomstige apparaat of accessoire en voer de afmetingen in."],
           [/^(.+) now has dimensions and is recognised as "(.+)"\.$/, "$1 heeft nu afmetingen en wordt herkend als \"$2\"."],
           [/^(.+) was added as a hidden accessory with its dimensions\.$/, "$1 is toegevoegd als verborgen accessoire met de afmetingen."],

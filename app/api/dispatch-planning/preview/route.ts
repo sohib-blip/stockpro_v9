@@ -15,6 +15,7 @@ import { dispatchCompositionKey } from "@/lib/dispatch-learning";
 import { createDispatchPreviewToken } from "@/lib/dispatch-preview-token";
 import {
   loadDispatchAutomaticAccessoryRules,
+  loadDispatchCabinetStock,
   loadDispatchCatalog,
   loadDispatchPackagingOptions,
   loadDispatchPickingInventory,
@@ -177,9 +178,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const [packages, pickingInventory] = await Promise.all([
+    const [packages, pickingInventory, cabinetStock] = await Promise.all([
       loadDispatchPackagingOptions(),
       loadDispatchPickingInventory(),
+      loadDispatchCabinetStock(),
     ]);
     const compositionKeys = new Map(
       dispatchOrders.map((order) => [order.orderId, dispatchCompositionKey(order)])
@@ -266,6 +268,7 @@ export async function POST(req: Request) {
       })),
       vehicle_label_count: vehicleLabelResult.labels.length,
       picking_summary: pickingSummary,
+      cabinet_stock: cabinetStock,
       plan,
     }, { status: plan.blockers.length > 0 ? 422 : 200 });
   } catch (error) {

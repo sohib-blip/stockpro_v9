@@ -191,6 +191,23 @@ export async function loadDispatchAutomaticAccessoryRules(
   });
 }
 
+// Devices in stock on the Cabinet floor, where orders are picked from first.
+export async function loadDispatchCabinetStock(): Promise<Record<string, number>> {
+  const { data, error } = await supabaseService()
+    .from("dashboard_floors_view")
+    .select("device,imei_count")
+    .eq("floor", "Cabinet");
+  if (error) throw error;
+
+  const stock: Record<string, number> = {};
+  for (const row of data || []) {
+    const device = String(row.device ?? "");
+    if (!device) continue;
+    stock[device] = (stock[device] || 0) + Number(row.imei_count || 0);
+  }
+  return stock;
+}
+
 export async function loadDispatchPickingInventory(): Promise<{
   devices: DispatchPickingInventoryRow[];
   accessories: DispatchPickingInventoryRow[];

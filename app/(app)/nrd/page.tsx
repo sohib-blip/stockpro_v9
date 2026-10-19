@@ -17,6 +17,7 @@ const NRD_TASKS = [
   "Consumables: Stock Count and Orders",
   "Prepare DVRs and Install SIMs",
   "Order Checks",
+  "Order Preparation",
   "Mail and Case Handling",
   "Organize the Workspace",
 

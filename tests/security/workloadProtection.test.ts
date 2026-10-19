@@ -46,6 +46,7 @@ describe("workload protection boundaries", () => {
     ],
     ["app/api/returns/history/route.ts", ".rpc("],
     ["app/api/dashboard/imei-search/route.ts", '.from("items")'],
+    ["app/api/dashboard/box-search/route.ts", '.from("boxes")'],
     ["app/api/transfer/preview/route.ts", ".rpc("],
   ])(
     "admits %s before its expensive transition",
@@ -98,6 +99,12 @@ describe("workload protection boundaries", () => {
     expect(imeiSearch).toContain("readJsonBodyWithinLimit");
     expect(imeiSearch).toContain('.in("imei", imeis)');
     expect(imeiSearch).not.toContain(".ilike(");
+
+    const boxSearch = read("app/api/dashboard/box-search/route.ts");
+    expect(boxSearch).toContain("MAX_SEARCH_BOXES");
+    expect(boxSearch).toContain("readJsonBodyWithinLimit");
+    expect(boxSearch).toContain('.in("box_code", lookupCodes)');
+    expect(boxSearch).not.toContain(".ilike(");
   });
 
   it("moves grouped returns and transfer counts into bounded database queries", () => {

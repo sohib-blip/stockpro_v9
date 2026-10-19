@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  accessoryWriteError,
+  parseAccessoryBinInput,
+} from "@/lib/accessory-bin-input";
 
 export const runtime = "nodejs";
 
@@ -9,49 +13,26 @@ const supabase = createClient(
 );
 
 export async function POST(req: Request) {
-  try {
-    const {
-      name,
-      current_stock,
-      minimum_stock,
-      category,
-    } = await req.json();
+  const input = parseAccessoryBinInput(await req.json().catch(() => null));
+  if (!input.ok) {
+    return NextResponse.json({ ok: false, error: input.error }, { status: 400 });
+  }
 
-    if (!name?.trim()) {
-      return NextResponse.json(
-        { ok: false, error: "Accessory name is required" },
-        { status: 400 }
-      );
-    }
+  const { error } = await supabase.from("accessory_bins").insert({
+    name: input.name,
+    current_stock: input.currentStock,
+    minimum_stock: input.minimumStock,
+    category: input.category,
+    active: true,
+  });
 
-    if (category === "Packages") {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: "Create packaging in Packaging Inventory",
-        },
-        { status: 400 }
-      );
-    }
-
-    const { error } = await supabase.from("accessory_bins").insert({
-      name: name.trim(),
-      current_stock: Number(current_stock || 0),
-      minimum_stock: Number(minimum_stock || 0),
-      category: category || "Consumables",
-      active: true,
-    });
-
-    if (error) throw error;
-
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
+  if (error) {
+    const failure = accessoryWriteError(error, input.name);
     return NextResponse.json(
-      {
-        ok: false,
-        error: e?.message || "Create accessory failed",
-      },
-      { status: 500 }
+      { ok: false, error: failure.error },
+      { status: failure.status }
     );
   }
+
+  return NextResponse.json({ ok: true });
 }

@@ -1,11 +1,100 @@
 import { supabaseService } from "@/lib/auth";
 import {
+  createInventoryDispatchCatalog,
+  DEFAULT_DISPATCH_CATALOG,
   dispatchItemKey,
   isDispatchVolumeAccessoryCategory,
   type DispatchAutomaticAccessoryRule,
+  type DispatchCatalog,
+  type DispatchInventoryRecord,
   type DispatchPickingInventoryRow,
   type PackagingOption,
 } from "@/lib/dispatch-planning";
+
+export type DispatchInventoryItem = DispatchInventoryRecord & {
+  kind: "device" | "accessory";
+  id: string;
+  active: boolean;
+  category: string | null;
+};
+
+// The dimension columns arrive with migration 20261019150000. Until it is
+// applied, dispatch keeps using the dimensions built into the application.
+export function isMissingDispatchColumns(error: unknown) {
+  const value = error as { code?: unknown; message?: unknown } | null;
+  return (
+    value?.code === "42703" ||
+    /length_cm|width_cm|height_cm|kinesis_names/.test(String(value?.message || ""))
+  );
+}
+
+function optionalNumber(value: unknown) {
+  return value === null || value === undefined || value === "" ? null : Number(value);
+}
+
+function toInventoryItem(
+  kind: "device" | "accessory",
+  row: Record<string, unknown>
+): DispatchInventoryItem {
+  return {
+    kind,
+    id: String(row.id),
+    name: String(row.name ?? ""),
+    active: row.active !== false,
+    category: row.category === undefined || row.category === null ? null : String(row.category),
+    lengthCm: optionalNumber(row.length_cm),
+    widthCm: optionalNumber(row.width_cm),
+    heightCm: optionalNumber(row.height_cm),
+    kinesisNames: Array.isArray(row.kinesis_names) ? row.kinesis_names.map(String) : [],
+  };
+}
+
+// Device Bins and Accessory Inventory records (hidden ones included), with
+// their dispatch dimensions. Packaging is managed in Packaging Inventory.
+export async function loadDispatchInventoryItems(): Promise<{
+  available: boolean;
+  items: DispatchInventoryItem[];
+}> {
+  const service = supabaseService();
+  const [{ data: bins, error: binsError }, { data: accessories, error: accessoriesError }] =
+    await Promise.all([
+      service
+        .from("bins")
+        .select("id,name,active,length_cm,width_cm,height_cm,kinesis_names")
+        .order("name", { ascending: true }),
+      service
+        .from("accessory_bins")
+        .select("id,name,category,active,length_cm,width_cm,height_cm,kinesis_names")
+        .or("category.is.null,category.neq.Packages")
+        .order("name", { ascending: true }),
+    ]);
+
+  const error = binsError || accessoriesError;
+  if (error) {
+    if (isMissingDispatchColumns(error)) return { available: false, items: [] };
+    throw error;
+  }
+
+  return {
+    available: true,
+    items: [
+      ...(bins || []).map((row) => toInventoryItem("device", row)),
+      ...(accessories || []).map((row) => toInventoryItem("accessory", row)),
+    ],
+  };
+}
+
+export async function loadDispatchCatalog(): Promise<DispatchCatalog> {
+  const inventory = await loadDispatchInventoryItems();
+  if (!inventory.available) {
+    console.warn("DISPATCH DIMENSION COLUMNS MISSING: using built-in dimensions");
+    return DEFAULT_DISPATCH_CATALOG;
+  }
+  return createInventoryDispatchCatalog(
+    inventory.items.filter((item) => item.kind === "device"),
+    inventory.items.filter((item) => item.kind === "accessory")
+  );
+}
 
 export async function loadDispatchPackagingOptions(): Promise<PackagingOption[]> {
   const { data, error } = await supabaseService()
@@ -100,6 +189,23 @@ export async function loadDispatchAutomaticAccessoryRules(
         ]
       : [];
   });
+}
+
+// Devices in stock on the Cabinet floor, where orders are picked from first.
+export async function loadDispatchCabinetStock(): Promise<Record<string, number>> {
+  const { data, error } = await supabaseService()
+    .from("dashboard_floors_view")
+    .select("device,imei_count")
+    .eq("floor", "Cabinet");
+  if (error) throw error;
+
+  const stock: Record<string, number> = {};
+  for (const row of data || []) {
+    const device = String(row.device ?? "");
+    if (!device) continue;
+    stock[device] = (stock[device] || 0) + Number(row.imei_count || 0);
+  }
+  return stock;
 }
 
 export async function loadDispatchPickingInventory(): Promise<{

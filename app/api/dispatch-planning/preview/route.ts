@@ -15,6 +15,8 @@ import { dispatchCompositionKey } from "@/lib/dispatch-learning";
 import { createDispatchPreviewToken } from "@/lib/dispatch-preview-token";
 import {
   loadDispatchAutomaticAccessoryRules,
+  loadDispatchCabinetStock,
+  loadDispatchCatalog,
   loadDispatchPackagingOptions,
   loadDispatchPickingInventory,
 } from "@/app/api/dispatch-planning/_server";
@@ -84,7 +86,8 @@ export async function POST(req: Request) {
       maxCells: 200_000,
     });
 
-    const parsed = parseDispatchWorkbook(workbook);
+    const catalog = await loadDispatchCatalog();
+    const parsed = parseDispatchWorkbook(workbook, catalog);
     const vehicleLabelResult = buildDispatchVehicleLabels(parsed.lines);
     const parseIssues = [...parsed.issues, ...vehicleLabelResult.issues];
     if (parsed.orders.length > MAX_ORDERS || parsed.lines.length > MAX_LINES) {
@@ -116,7 +119,8 @@ export async function POST(req: Request) {
     );
     const enriched = applyDispatchAutomaticAccessoryRules(
       parsed.orders,
-      automaticRules
+      automaticRules,
+      catalog
     );
     if (enriched.issues.length > 0) {
       const firstIssue = enriched.issues[0]?.message;
@@ -174,9 +178,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const [packages, pickingInventory] = await Promise.all([
+    const [packages, pickingInventory, cabinetStock] = await Promise.all([
       loadDispatchPackagingOptions(),
       loadDispatchPickingInventory(),
+      loadDispatchCabinetStock(),
     ]);
     const compositionKeys = new Map(
       dispatchOrders.map((order) => [order.orderId, dispatchCompositionKey(order)])
@@ -232,7 +237,8 @@ export async function POST(req: Request) {
       plan.orders,
       plan.packageUsage,
       pickingInventory.devices,
-      pickingInventory.accessories
+      pickingInventory.accessories,
+      catalog
     );
 
     return NextResponse.json({
@@ -262,6 +268,7 @@ export async function POST(req: Request) {
       })),
       vehicle_label_count: vehicleLabelResult.labels.length,
       picking_summary: pickingSummary,
+      cabinet_stock: cabinetStock,
       plan,
     }, { status: plan.blockers.length > 0 ? 422 : 200 });
   } catch (error) {

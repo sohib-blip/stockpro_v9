@@ -24,6 +24,7 @@ describe("shared workload budgets", () => {
       "dispatchLabels",
       "returnsHistory",
       "imeiSearch",
+      "boxSearch",
       "transferPreview",
     ];
 

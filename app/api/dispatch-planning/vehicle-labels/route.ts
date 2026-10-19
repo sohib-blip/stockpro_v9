@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { getApiIdentity } from "@/lib/api-identity";
 import { parseDispatchWorkbook } from "@/lib/dispatch-planning";
+import { loadDispatchCatalog } from "@/app/api/dispatch-planning/_server";
 import {
   buildDispatchVehicleLabels,
   createDispatchVehicleLabelsDocx,
@@ -74,7 +75,7 @@ export async function POST(req: Request) {
       maxCells: 200_000,
     });
 
-    const parsed = parseDispatchWorkbook(workbook);
+    const parsed = parseDispatchWorkbook(workbook, await loadDispatchCatalog());
     const labelResult = buildDispatchVehicleLabels(parsed.lines);
     const issues = [...parsed.issues, ...labelResult.issues];
     if (issues.length > 0) {

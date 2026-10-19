@@ -85,6 +85,18 @@ playwright-report/
 test-results/
 .stockpro-local/
 
+# Training material (videos, slide decks and their working folders)
+/StockPro_*.mp4
+/StockPro_*.png
+/StockPro_*.pptx
+/StockPro_*.ndjson
+/StockPro_*/
+/pptx_work/
+/outputs/
+
+# macOS
+.DS_Store
+
 # parcel-bundler cache (https://parceljs.org/)
 .cache
 .parcel-cache

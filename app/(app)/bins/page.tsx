@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import PackagingInventoryPanel from "@/components/PackagingInventoryPanel";
+import { formatDispatchDimensions } from "@/components/DispatchItemDialog";
 
 type AccessoryCategory =
   | "Consumables"
@@ -20,7 +21,79 @@ type Bin = {
   current_stock?: number;
   minimum_stock?: number;
   category?: AccessoryCategory;
+  length_cm?: number | string | null;
+  width_cm?: number | string | null;
+  height_cm?: number | string | null;
+  kinesis_names?: string[] | null;
 };
+
+type DimensionsForm = {
+  lengthCm: string;
+  widthCm: string;
+  heightCm: string;
+  kinesisNames: string;
+};
+
+const EMPTY_DIMENSIONS_FORM: DimensionsForm = {
+  lengthCm: "",
+  widthCm: "",
+  heightCm: "",
+  kinesisNames: "",
+};
+
+function dimensionsFormFor(bin: Bin): DimensionsForm {
+  const text = (value: Bin["length_cm"]) =>
+    value === null || value === undefined || value === "" ? "" : String(Number(value));
+  return {
+    lengthCm: text(bin.length_cm),
+    widthCm: text(bin.width_cm),
+    heightCm: text(bin.height_cm),
+    kinesisNames: (bin.kinesis_names || []).join(", "),
+  };
+}
+
+function binDimensions(bin: Bin) {
+  if (bin.length_cm === null || bin.length_cm === undefined) return "—";
+  return formatDispatchDimensions({
+    lengthCm: Number(bin.length_cm),
+    widthCm: Number(bin.width_cm),
+    heightCm: Number(bin.height_cm),
+  });
+}
+
+function splitKinesisNames(value: string) {
+  return value
+    .split(/[\n,]/)
+    .map((name) => name.trim())
+    .filter(Boolean);
+}
+
+function DimensionInputs({
+  form,
+  onChange,
+}: {
+  form: DimensionsForm;
+  onChange: (form: DimensionsForm) => void;
+}) {
+  return (
+    <div className="flex gap-1">
+      {(["lengthCm", "widthCm", "heightCm"] as const).map((field, index) => (
+        <input
+          key={field}
+          type="number"
+          min={0}
+          max={1000}
+          step="0.01"
+          aria-label={["Length (cm)", "Width (cm)", "Height (cm)"][index]}
+          placeholder={["L", "W", "H"][index]}
+          value={form[field]}
+          onChange={(event) => onChange({ ...form, [field]: event.target.value })}
+          className="w-16 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+        />
+      ))}
+    </div>
+  );
+}
 
 export default function BinsPage() {
   const supabase = createSupabaseBrowserClient();
@@ -28,6 +101,10 @@ export default function BinsPage() {
   const [bins, setBins] = useState<Bin[]>([]);
   const [accessoryBins, setAccessoryBins] = useState<Bin[]>([]);
   const [packagingCount, setPackagingCount] = useState(0);
+  const [editingDeviceId, setEditingDeviceId] = useState<string | null>(null);
+  const [deviceForm, setDeviceForm] = useState<DimensionsForm>(EMPTY_DIMENSIONS_FORM);
+  const [accessoryDimensions, setAccessoryDimensions] =
+    useState<DimensionsForm>(EMPTY_DIMENSIONS_FORM);
 
   const [newBin, setNewBin] = useState("");
   const [newAccessoryBin, setNewAccessoryBin] = useState("");
@@ -42,6 +119,7 @@ export default function BinsPage() {
   const [templateAccessoryId, setTemplateAccessoryId] = useState("");
   const [templateQty, setTemplateQty] = useState(1);
   const [templatePerDevices, setTemplatePerDevices] = useState(1);
+  const [ruleCounts, setRuleCounts] = useState<Record<string, number>>({});
 
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editTemplateAccessoryId, setEditTemplateAccessoryId] = useState("");
@@ -94,6 +172,15 @@ export default function BinsPage() {
 
     const json = await res.json();
     if (json.ok) setAccessoryBins(json.rows || []);
+  }
+
+  async function loadRuleCounts() {
+    const response = await apiFetch(
+      `/api/bins/templates/list?t=${Date.now()}`,
+      { cache: "no-store" }
+    );
+    const json = await response.json().catch(() => null);
+    if (response.ok && json?.ok) setRuleCounts(json.rule_counts || {});
   }
 
   async function loadPackagingCount() {
@@ -160,6 +247,36 @@ export default function BinsPage() {
     showSetupSuccess(`Accessory ${accessoryName} created successfully.`);
   }
 
+  function startEditDevice(bin: Bin) {
+    setEditingDeviceId(bin.id);
+    setDeviceForm(dimensionsFormFor(bin));
+  }
+
+  async function saveDeviceEdit(bin: Bin) {
+    setLoading(true);
+    setFeedback(null);
+    const response = await apiFetch("/api/bins/dispatch-details", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: bin.id,
+        lengthCm: deviceForm.lengthCm,
+        widthCm: deviceForm.widthCm,
+        heightCm: deviceForm.heightCm,
+        kinesisNames: splitKinesisNames(deviceForm.kinesisNames),
+      }),
+    });
+    const json = await response.json().catch(() => null);
+    setLoading(false);
+    if (!response.ok || !json?.ok) {
+      showSetupError(json?.error || "Device bin update failed");
+      return;
+    }
+    setEditingDeviceId(null);
+    await loadBins();
+    showSetupSuccess(`${bin.name} updated successfully.`);
+  }
+
   async function deleteBin(id: string) {
     setFeedback(null);
     const binName = bins.find((bin) => bin.id === id)?.name || "Device bin";
@@ -200,6 +317,7 @@ export default function BinsPage() {
     setEditAccessoryStock(Number(bin.current_stock || 0));
     setEditAccessoryMinStock(Number(bin.minimum_stock || 0));
     setEditAccessoryCategory(bin.category || "Consumables");
+    setAccessoryDimensions(dimensionsFormFor(bin));
   }
 
   function cancelEditAccessory() {
@@ -223,6 +341,10 @@ export default function BinsPage() {
         current_stock: editAccessoryStock,
         minimum_stock: editAccessoryMinStock,
         category: editAccessoryCategory,
+        lengthCm: accessoryDimensions.lengthCm,
+        widthCm: accessoryDimensions.widthCm,
+        heightCm: accessoryDimensions.heightCm,
+        kinesisNames: splitKinesisNames(accessoryDimensions.kinesisNames),
       }),
     });
 
@@ -276,6 +398,7 @@ export default function BinsPage() {
     if (json.ok) {
       setTemplateAccessories(json.accessories || []);
       setTemplates(json.templates || []);
+      if (json.rule_counts) setRuleCounts(json.rule_counts);
     } else {
       showSetupError(json.error || "Automatic accessory rules could not be loaded");
     }
@@ -383,7 +506,13 @@ export default function BinsPage() {
     loadBins();
     loadAccessoryBins();
     loadPackagingCount();
+    loadRuleCounts();
   }, []);
+
+  const totalRules = Object.values(ruleCounts).reduce(
+    (sum, count) => sum + count,
+    0
+  );
 
   const filteredAccessoryBins = accessoryBins.filter((bin) => {
     if (accessoryFilter === "show") return bin.active !== false;
@@ -411,7 +540,7 @@ export default function BinsPage() {
 
       <div className="prototype-section-tabs" role="tablist" aria-label="Inventory setup sections">
         <button type="button" role="tab" aria-selected={activeSetupTab === "bins"} className={activeSetupTab === "bins" ? "is-active" : ""} onClick={() => setActiveSetupTab("bins")}>Device Bins <span>{bins.length}</span></button>
-        <button type="button" role="tab" aria-selected={activeSetupTab === "rules"} className={activeSetupTab === "rules" ? "is-active" : ""} onClick={() => { setActiveSetupTab("rules"); if (!selectedDevice && bins[0]) openTemplate(bins[0]); }}>Automatic Accessory Rules <span>{templates.length}</span></button>
+        <button type="button" role="tab" aria-selected={activeSetupTab === "rules"} className={activeSetupTab === "rules" ? "is-active" : ""} onClick={() => { setActiveSetupTab("rules"); if (!selectedDevice && bins[0]) openTemplate(bins[0]); }}>Automatic Accessory Rules <span>{totalRules}</span></button>
         <button type="button" role="tab" aria-selected={activeSetupTab === "accessories"} className={activeSetupTab === "accessories" ? "is-active" : ""} onClick={() => setActiveSetupTab("accessories")}>Accessory Inventory <span>{accessoryBins.length}</span></button>
         <button type="button" role="tab" aria-selected={activeSetupTab === "packaging"} className={activeSetupTab === "packaging" ? "is-active" : ""} onClick={() => setActiveSetupTab("packaging")}>Packaging Inventory <span>{packagingCount}</span></button>
       </div>
@@ -442,35 +571,87 @@ export default function BinsPage() {
             <thead className="bg-slate-900">
               <tr>
                 <th className="text-left p-3">Name</th>
+                <th className="text-left p-3">Dispatch Dimensions</th>
+                <th className="text-left p-3">Kinesis Names</th>
                 <th className="text-right p-3">Actions</th>
               </tr>
             </thead>
 
             <tbody>
-              {bins.map((bin) => (
+              {bins.map((bin) => {
+                const isEditingDevice = editingDeviceId === bin.id;
+                return (
                 <tr key={bin.id} className="border-t border-slate-800">
                   <td className="p-3">{bin.name}</td>
+                  <td className="p-3">
+                    {isEditingDevice ? (
+                      <DimensionInputs form={deviceForm} onChange={setDeviceForm} />
+                    ) : (
+                      binDimensions(bin)
+                    )}
+                  </td>
+                  <td className="p-3">
+                    {isEditingDevice ? (
+                      <input
+                        aria-label="Kinesis names"
+                        value={deviceForm.kinesisNames}
+                        onChange={(e) => setDeviceForm({ ...deviceForm, kinesisNames: e.target.value })}
+                        placeholder="Other Kinesis labels, separated by commas"
+                        className="w-full bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
+                      />
+                    ) : (
+                      (bin.kinesis_names || []).join(" · ") || "—"
+                    )}
+                  </td>
                   <td className="p-3 text-right space-x-4">
-                    <button
-                      onClick={() => openTemplate(bin)}
-                      className="text-cyan-400 hover:text-cyan-300"
-                    >
-                      Accessory Rules
-                    </button>
+                    {isEditingDevice ? (
+                      <>
+                        <button
+                          onClick={() => void saveDeviceEdit(bin)}
+                          disabled={loading}
+                          className="text-emerald-400 hover:text-emerald-300"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingDeviceId(null)}
+                          className="text-slate-400 hover:text-slate-300"
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => startEditDevice(bin)}
+                          className="text-cyan-400 hover:text-cyan-300"
+                        >
+                          Edit
+                        </button>
 
-                    <button
-                      onClick={() => setDeleteTarget({ kind: "device-bin", id: bin.id, name: bin.name })}
-                      className="text-rose-400 hover:text-rose-500"
-                    >
-                      Delete
-                    </button>
+                        <button
+                          onClick={() => openTemplate(bin)}
+                          className="text-cyan-400 hover:text-cyan-300"
+                        >
+                          Accessory Rules
+                        </button>
+
+                        <button
+                          onClick={() => setDeleteTarget({ kind: "device-bin", id: bin.id, name: bin.name })}
+                          className="text-rose-400 hover:text-rose-500"
+                        >
+                          Delete
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
-              ))}
+                );
+              })}
 
               {bins.length === 0 && (
                 <tr>
-                  <td colSpan={2} className="p-4 text-center text-slate-500">
+                  <td colSpan={4} className="p-4 text-center text-slate-500">
                     No device bins have been configured.
                   </td>
                 </tr>
@@ -486,7 +667,7 @@ export default function BinsPage() {
         <aside className="prototype-rule-sidebar">
           <div>Rules by device bin</div>
           {bins.map((bin) => (
-            <button type="button" key={bin.id} className={selectedDevice.id === bin.id ? "is-active" : ""} onClick={() => openTemplate(bin)}><span>{bin.name}</span><small>{selectedDevice.id === bin.id ? templates.length : ""} rules</small></button>
+            <button type="button" key={bin.id} className={selectedDevice.id === bin.id ? "is-active" : ""} onClick={() => openTemplate(bin)}><span>{bin.name}</span><small>{`${ruleCounts[bin.id] || 0} ${(ruleCounts[bin.id] || 0) === 1 ? "rule" : "rules"}`}</small></button>
           ))}
         </aside>
         <div className="prototype-card prototype-history-card space-y-4">
@@ -713,49 +894,70 @@ export default function BinsPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-          <input
-            value={newAccessoryBin}
-            onChange={(e) => setNewAccessoryBin(e.target.value)}
-            placeholder="Accessory name, e.g. QR Guide"
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
-          />
+          <div className="space-y-1">
+            <label htmlFor="new-accessory-name" className="text-xs text-slate-400">Name</label>
+            <input
+              id="new-accessory-name"
+              value={newAccessoryBin}
+              onChange={(e) => setNewAccessoryBin(e.target.value)}
+              placeholder="Accessory name, e.g. QR Guide"
+              className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+            />
+          </div>
 
-          <input
-            type="number"
-            value={newAccessoryStock}
-            onChange={(e) => setNewAccessoryStock(Number(e.target.value))}
-            placeholder="Initial stock"
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
-          />
+          <div className="space-y-1">
+            <label htmlFor="new-accessory-stock" className="text-xs text-slate-400">Initial stock</label>
+            <input
+              id="new-accessory-stock"
+              type="number"
+              min={0}
+              step={1}
+              value={newAccessoryStock}
+              onChange={(e) => setNewAccessoryStock(Number(e.target.value))}
+              className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+            />
+          </div>
 
-          <input
-            type="number"
-            value={newAccessoryMinStock}
-            onChange={(e) => setNewAccessoryMinStock(Number(e.target.value))}
-            placeholder="Minimum stock alert"
-            className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
-          />
+          <div className="space-y-1">
+            <label htmlFor="new-accessory-minimum" className="text-xs text-slate-400">Minimum stock alert</label>
+            <input
+              id="new-accessory-minimum"
+              type="number"
+              min={0}
+              step={1}
+              value={newAccessoryMinStock}
+              onChange={(e) => setNewAccessoryMinStock(Number(e.target.value))}
+              className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+            />
+          </div>
 
-          <select
-  value={newAccessoryCategory}
-  onChange={(e) =>
-    setNewAccessoryCategory(e.target.value as AccessoryCategory)
-  }
-  className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm"
->
-  <option value="Consumables">Consumables</option>
-  <option value="Harness">Harness</option>
-  <option value="Vision">Vision</option>
-  <option value="Items">Items</option>
-</select>
+          <div className="space-y-1">
+            <label htmlFor="new-accessory-category" className="text-xs text-slate-400">Category</label>
+            <select
+              id="new-accessory-category"
+              value={newAccessoryCategory}
+              onChange={(e) =>
+                setNewAccessoryCategory(e.target.value as AccessoryCategory)
+              }
+              className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+            >
+              <option value="Consumables">Consumables</option>
+              <option value="Harness">Harness</option>
+              <option value="Vision">Vision</option>
+              <option value="Items">Items</option>
+            </select>
+          </div>
 
-          <button
-            onClick={addAccessoryBin}
-            disabled={loading || !newAccessoryBin.trim()}
-            className="bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
-          >
-            Create Accessory
-          </button>
+          <div className="space-y-1">
+            <label className="text-xs text-transparent" aria-hidden="true">Action</label>
+            <button
+              onClick={addAccessoryBin}
+              disabled={loading || !newAccessoryBin.trim()}
+              className="w-full bg-indigo-600 hover:bg-indigo-700 px-4 py-2 rounded-xl text-sm font-medium disabled:opacity-40"
+            >
+              Create Accessory
+            </button>
+          </div>
         </div>
 
         <div className="border border-slate-800 rounded-xl overflow-hidden">
@@ -766,6 +968,7 @@ export default function BinsPage() {
     <th className="text-right p-3">Stock</th>
     <th className="text-right p-3">Minimum Stock</th>
     <th className="text-left p-3">Category</th>
+    <th className="text-left p-3">Dispatch Dimensions</th>
     <th className="text-right p-3">Visibility</th>
     <th className="text-right p-3">Actions</th>
   </tr>
@@ -780,15 +983,34 @@ export default function BinsPage() {
                   <tr key={bin.id} className="border-t border-slate-800">
                     <td className="p-3">
                       {isEditing ? (
-                        <input
-                          value={editAccessoryName}
-                          onChange={(e) =>
-                            setEditAccessoryName(e.target.value)
-                          }
-                          className="w-full bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
-                        />
+                        <div className="space-y-1">
+                          <input
+                            aria-label="Accessory name"
+                            value={editAccessoryName}
+                            onChange={(e) =>
+                              setEditAccessoryName(e.target.value)
+                            }
+                            className="w-full bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
+                          />
+                          <input
+                            aria-label="Kinesis names"
+                            value={accessoryDimensions.kinesisNames}
+                            onChange={(e) =>
+                              setAccessoryDimensions({ ...accessoryDimensions, kinesisNames: e.target.value })
+                            }
+                            placeholder="Kinesis names, separated by commas"
+                            className="w-full bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-xs"
+                          />
+                        </div>
                       ) : (
-                        bin.name
+                        <>
+                          {bin.name}
+                          {(bin.kinesis_names || []).length > 0 && (
+                            <div className="text-xs text-slate-500">
+                              Kinesis: {(bin.kinesis_names || []).join(" · ")}
+                            </div>
+                          )}
+                        </>
                       )}
                     </td>
 
@@ -796,6 +1018,9 @@ export default function BinsPage() {
                       {isEditing ? (
                         <input
                           type="number"
+                          min={0}
+                          step={1}
+                          aria-label="Stock"
                           value={editAccessoryStock}
                           onChange={(e) =>
                             setEditAccessoryStock(Number(e.target.value))
@@ -811,6 +1036,9 @@ export default function BinsPage() {
                       {isEditing ? (
                         <input
                           type="number"
+                          min={0}
+                          step={1}
+                          aria-label="Minimum stock"
                           value={editAccessoryMinStock}
                           onChange={(e) =>
                             setEditAccessoryMinStock(Number(e.target.value))
@@ -840,6 +1068,14 @@ export default function BinsPage() {
     bin.category || "Consumables"
   )}
 </td>
+
+                    <td className="p-3">
+                      {isEditing ? (
+                        <DimensionInputs form={accessoryDimensions} onChange={setAccessoryDimensions} />
+                      ) : (
+                        binDimensions(bin)
+                      )}
+                    </td>
 
                     <td className="p-3 text-right">
                       <button
@@ -898,7 +1134,7 @@ export default function BinsPage() {
 
               {filteredAccessoryBins.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-4 text-center text-slate-500">
+                  <td colSpan={7} className="p-4 text-center text-slate-500">
                     No accessories found.
                   </td>
                 </tr>

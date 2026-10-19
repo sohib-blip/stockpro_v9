@@ -3,6 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import DispatchItemDialog from "@/components/DispatchItemDialog";
+import DispatchPickingSheet from "@/components/DispatchPickingSheet";
+import { buildPickingSheet } from "@/lib/dispatch-picking-sheet";
 import ProcessFeedback, {
   type ProcessFeedbackValue,
 } from "@/components/ProcessFeedback";
@@ -35,6 +38,7 @@ type DispatchOrder = {
   totalVolumeCm3: number;
   adjustedVolumeCm3: number;
   items: DispatchItem[];
+  deviceCounts?: Record<string, number>;
   compositionKey?: string;
   eligiblePackagingTypeIds?: string[];
   packages: Array<{
@@ -90,9 +94,11 @@ type Preview = {
     message: string;
     hardwareType?: string;
     deviceType?: string;
+    suggestedName?: string | null;
   }>;
   packaging_options?: PackagingOption[];
   picking_summary?: PickingSummaryRow[];
+  cabinet_stock?: Record<string, number>;
 };
 
 type HistoryRow = {
@@ -212,6 +218,12 @@ export default function DispatchPlanningPage() {
     useState<PickingSummaryRow["category"]>("device");
   const [pickingSearch, setPickingSearch] = useState("");
   const [pickingAttentionOnly, setPickingAttentionOnly] = useState(false);
+  const [pickingSheetOpen, setPickingSheetOpen] = useState(false);
+  const [resolveIssue, setResolveIssue] = useState<{
+    label: string;
+    hardwareType?: string;
+    deviceType?: string;
+  } | null>(null);
   const operationId = useRef<string | null>(null);
 
   const previewTotals = useMemo(() => {
@@ -276,6 +288,19 @@ export default function DispatchPlanningPage() {
       }
     );
     return [...baseRows, ...packagingRows];
+  }, [preview]);
+  const pickingSheet = useMemo(() => {
+    if (!preview?.plan) return null;
+    const warehouseStock = Object.fromEntries(
+      (preview.picking_summary || [])
+        .filter((row) => row.category === "device")
+        .map((row) => [row.name, row.availableStock])
+    );
+    return buildPickingSheet(
+      preview.plan.orders,
+      preview.cabinet_stock || {},
+      warehouseStock
+    );
   }, [preview]);
   const pickingAttentionCount = pickingRows.filter(
     (row) => row.status !== "available"
@@ -898,6 +923,14 @@ export default function DispatchPlanningPage() {
                 <div className="dispatch-preview-tool-buttons">
                   <button
                     type="button"
+                    className="prototype-button secondary"
+                    onClick={() => setPickingSheetOpen(true)}
+                    disabled={!pickingSheet}
+                  >
+                    Print Picking Sheet
+                  </button>
+                  <button
+                    type="button"
                     className="prototype-button secondary dispatch-picking-button"
                     onClick={() => setPickingOpen(true)}
                     disabled={pickingRows.length === 0}
@@ -953,15 +986,46 @@ export default function DispatchPlanningPage() {
       {preview?.issues?.length ? (
         <section className="prototype-card prototype-history-card">
           <h2>Rows requiring correction</h2>
+          <p>Add the missing dimensions once: the workbook is checked again automatically and the item is remembered for the next days.</p>
           <div className="dispatch-orders-scroll is-issues">
-            <table><thead><tr><th>Sheet</th><th>Row</th><th>Hardware Type</th><th>Device Type</th><th>Problem</th></tr></thead>
+            <table><thead><tr><th>Sheet</th><th>Row</th><th>Hardware Type</th><th>Device Type</th><th>Problem</th><th>Action</th></tr></thead>
               <tbody>{preview.issues.map((issue, index) => (
-                <tr key={`${issue.sheet}-${issue.row}-${index}`}><td>{issue.sheet}</td><td>{issue.row}</td><td>{issue.hardwareType || "—"}</td><td>{issue.deviceType || "—"}</td><td>{issue.message}</td></tr>
+                <tr key={`${issue.sheet}-${issue.row}-${index}`}><td>{issue.sheet}</td><td>{issue.row}</td><td>{issue.hardwareType || "—"}</td><td>{issue.deviceType || "—"}</td><td>{issue.message}</td><td>{issue.suggestedName ? (
+                  <button
+                    type="button"
+                    className="prototype-button secondary"
+                    disabled={busy}
+                    onClick={() => setResolveIssue({ label: issue.suggestedName!, hardwareType: issue.hardwareType, deviceType: issue.deviceType })}
+                  >
+                    Add dimensions
+                  </button>
+                ) : "—"}</td></tr>
               ))}</tbody>
             </table>
           </div>
         </section>
       ) : null}
+
+      {pickingSheetOpen && pickingSheet && (
+        <DispatchPickingSheet
+          sheet={pickingSheet}
+          sourceName={preview?.source?.filename || ""}
+          onClose={() => setPickingSheetOpen(false)}
+        />
+      )}
+
+      {resolveIssue && (
+        <DispatchItemDialog
+          label={resolveIssue.label}
+          hardwareType={resolveIssue.hardwareType}
+          deviceType={resolveIssue.deviceType}
+          onClose={() => setResolveIssue(null)}
+          onSaved={() => {
+            setResolveIssue(null);
+            void previewWorkbook();
+          }}
+        />
+      )}
 
       <section className="prototype-card prototype-history-card dispatch-history-card">
         <div className="dispatch-history-heading">

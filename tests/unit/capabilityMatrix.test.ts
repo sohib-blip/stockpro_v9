@@ -22,6 +22,7 @@ describe("central authorization capability matrix", () => {
       [
         "bins.manage",
         "bins.read",
+        "inventory.box-locate",
         "inventory.export.raw",
         "inventory.item-locate",
         "inventory.item-match",
@@ -65,6 +66,18 @@ describe("central authorization capability matrix", () => {
     ]);
     expect(AUTHORIZATION_CAPABILITIES["inventory.item-locate"].scope).toBe(
       "1 to 200 exact requested IMEIs"
+    );
+  });
+
+  it("limits dashboard box location lookup to exact authorized requests", () => {
+    expect(
+      capabilityForApiRequest("/api/dashboard/box-search", "POST")
+    ).toBe("inventory.box-locate");
+    expect(permissionsForCapability("inventory.box-locate")).toEqual([
+      "can_dashboard",
+    ]);
+    expect(AUTHORIZATION_CAPABILITIES["inventory.box-locate"].scope).toBe(
+      "1 to 100 exact requested box IDs"
     );
   });
 

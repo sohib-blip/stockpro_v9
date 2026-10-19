@@ -68,6 +68,18 @@ export const AUTHORIZATION_CAPABILITIES = {
       { method: "POST", pathname: "/api/dashboard/imei-search" },
     ],
   },
+  "inventory.box-locate": {
+    description: "Locate only explicitly requested boxes in warehouse stock.",
+    dataClass: "box inventory location",
+    scope: "1 to 100 exact requested box IDs",
+    projection: ["box_id", "device", "location", "imei_count"],
+    roles: [],
+    permissions: ["can_dashboard"],
+    enforcement: ["api", "handler", "server-only"],
+    routes: [
+      { method: "POST", pathname: "/api/dashboard/box-search" },
+    ],
+  },
   "inventory.read": {
     description: "Read inventory data through a purpose-specific server API.",
     dataClass: "inventory",

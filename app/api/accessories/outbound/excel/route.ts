@@ -35,6 +35,7 @@ export const revalidate = 0;
 const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const MAX_MULTIPART_BYTES = MAX_FILE_BYTES + 256 * 1024;
 const LOOKUP_BATCH_SIZE = 500;
+const MAX_FILE_NAME_REFERENCE = 200;
 
 class InvalidAccessoryReportError extends Error {}
 
@@ -81,6 +82,7 @@ async function readReport(req: Request) {
   return {
     form,
     buffer,
+    fileName: String(file.name || "").trim().slice(0, MAX_FILE_NAME_REFERENCE),
     report: parseEndOfDayWorkbook(workbook),
   };
 }
@@ -93,9 +95,11 @@ export async function POST(req: Request) {
   if (!admission.ok) return workloadRejectionResponse(admission);
 
   try {
-    const { form, buffer, report } = await readReport(req);
+    const { form, buffer, fileName, report } = await readReport(req);
     const preview = String(form.get("preview") || "") === "1";
     const shipmentRef = String(form.get("shipment_ref") || "");
+    // Without a typed reference, the report's file name keeps the history traceable.
+    const historyReference = shipmentRef.trim() || fileName;
     const comment = String(form.get("comment") || "");
     const requestedOperationId = String(form.get("operation_id") || "");
     const operationId = accessoryReportOperationId(buffer);
@@ -210,7 +214,7 @@ export async function POST(req: Request) {
         p_actor_id: identity.userId,
         p_actor: identity.email,
         p_source: "excel",
-        p_shipment_ref: shipmentRef || null,
+        p_shipment_ref: historyReference || null,
         p_note: comment || null,
         p_lines: calculation.rows.map((row) => ({
           accessory_bin_id: row.accessory_bin_id,

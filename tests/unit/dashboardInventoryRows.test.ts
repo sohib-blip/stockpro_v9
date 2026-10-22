@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { DashboardBinRow } from "../../lib/dashboard-bin-rows";
 import {
   buildDashboardStockAlerts,
+  countDashboardStockAlerts,
   mergeDashboardInventoryRows,
 } from "../../lib/dashboard-inventory-rows";
 
@@ -148,5 +149,15 @@ describe("dashboard inventory rows", () => {
         status: "LOW",
       }),
     ]);
+
+    // Packaging alerts have their own counter instead of counting as accessories.
+    expect(countDashboardStockAlerts(buildDashboardStockAlerts(bins, inventory))).toEqual({
+      total: 3,
+      devices: 1,
+      accessories: 1,
+      packaging: 1,
+      low: 1,
+      empty: 2,
+    });
   });
 });

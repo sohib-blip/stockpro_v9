@@ -158,3 +158,17 @@ export function buildDashboardStockAlerts(
     return left.name.localeCompare(right.name, "en", { sensitivity: "base" });
   });
 }
+
+// Counters shown on the Stock alerts card and in its overview window.
+export function countDashboardStockAlerts(alerts: DashboardStockAlertRow[]) {
+  const count = (keep: (row: DashboardStockAlertRow) => boolean) =>
+    alerts.filter(keep).length;
+  return {
+    total: alerts.length,
+    devices: count((row) => row.inventory_type === "Device"),
+    accessories: count((row) => row.inventory_type === "Accessory"),
+    packaging: count((row) => row.inventory_type === "Packaging"),
+    low: count((row) => row.status === "LOW"),
+    empty: count((row) => row.status === "EMPTY"),
+  };
+}

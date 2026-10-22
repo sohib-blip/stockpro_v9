@@ -377,6 +377,15 @@ export default function DispatchPlanningPage() {
     );
   }, [pickingAttentionOnly, pickingCategory, pickingRows, pickingSearch]);
 
+  // Daily workbook / Manual switch, shown at the top of the left card like
+  // the Device and Accessory Outbound mode switches.
+  const modeSwitch = (
+    <div className="prototype-segmented-control dispatch-mode-switch">
+      <button type="button" className={mode === "workbook" ? "is-active" : ""} onClick={() => setMode("workbook")}>Daily workbook</button>
+      <button type="button" className={mode === "manual" ? "is-active" : ""} onClick={() => setMode("manual")}>Manual</button>
+    </div>
+  );
+
   async function loadHistory() {
     setHistoryBusy(true);
     try {
@@ -711,13 +720,12 @@ export default function DispatchPlanningPage() {
         <ProcessFeedback {...feedback} onDismiss={() => setFeedback(null)} />
       ) : null}
 
-      <div className="prototype-segmented-control dispatch-mode-switch">
-        <button type="button" className={mode === "workbook" ? "is-active" : ""} onClick={() => setMode("workbook")}>Daily workbook</button>
-        <button type="button" className={mode === "manual" ? "is-active" : ""} onClick={() => setMode("manual")}>Manual</button>
-      </div>
-
       {mode === "manual" ? (
-        <DispatchManualOutbound onFeedback={setFeedback} onConfirmed={() => void loadHistory()} />
+        <DispatchManualOutbound
+          modeSwitch={modeSwitch}
+          onFeedback={setFeedback}
+          onConfirmed={() => void loadHistory()}
+        />
       ) : (
         <>
         <div className="prototype-stepper" aria-label="Dispatch progress">
@@ -736,6 +744,7 @@ export default function DispatchPlanningPage() {
 
         <section className={`prototype-process-grid dispatch-process-grid ${preview?.plan ? "has-preview" : ""}`}>
           <div className="prototype-process-input-column prototype-input-card">
+            {modeSwitch}
             <span className="prototype-eyebrow">Daily order workbook</span>
             <h2>Import today&apos;s orders</h2>
             <p className="dispatch-help-copy">

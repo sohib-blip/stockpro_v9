@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { apiFetch } from "@/lib/apiFetch";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import type { ProcessFeedbackValue } from "@/components/ProcessFeedback";
@@ -41,9 +41,11 @@ function errorMessage(body: unknown, fallback: string) {
 // preview them with the automatic packaging rules, then deduct. The result is
 // listed in Dispatch History and can be undone like a daily dispatch.
 export default function DispatchManualOutbound({
+  modeSwitch,
   onFeedback,
   onConfirmed,
 }: {
+  modeSwitch?: ReactNode;
   onFeedback: (feedback: ProcessFeedbackValue | null) => void;
   onConfirmed: () => void;
 }) {
@@ -144,6 +146,7 @@ export default function DispatchManualOutbound({
   return (
     <section className="prototype-process-grid dispatch-process-grid">
       <div className="prototype-process-input-column prototype-input-card">
+        {modeSwitch}
         <span className="prototype-eyebrow">Manual packaging outbound</span>
         <h2>Remove packaging by hand</h2>
         <p className="dispatch-help-copy">

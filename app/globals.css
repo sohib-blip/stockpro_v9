@@ -243,6 +243,11 @@ body {
   display: none;
 }
 
+.dispatch-process-grid.has-preview .dispatch-mode-switch {
+  grid-column: 1 / -1;
+  margin-bottom: 0;
+}
+
 .dispatch-process-grid.has-preview .prototype-input-card label {
   margin-bottom: 0;
 }

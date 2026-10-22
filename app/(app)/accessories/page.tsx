@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/apiFetch";
 import ProcessFeedback from "@/components/ProcessFeedback";
+import {
+  accessoryNameParts,
+  spreadsheetSource,
+} from "@/lib/accessory-outbound-preview";
 
 type Accessory = {
   id: string;
@@ -62,6 +66,8 @@ export default function AccessoriesPage() {
     null
   );
   const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
+  // Problems that block a spreadsheet preview, listed in red above its rows.
+  const [previewIssues, setPreviewIssues] = useState<string[]>([]);
   const [previewCommand, setPreviewCommand] =
     useState<PreviewCommand | null>(null);
   const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
@@ -131,6 +137,7 @@ export default function AccessoriesPage() {
     setPreviewOpen(false);
     setPreviewType(null);
     setPreviewRows([]);
+    setPreviewIssues([]);
     setPreviewCommand(null);
   }
 
@@ -171,6 +178,7 @@ export default function AccessoriesPage() {
     }
 
     setPreviewRows(json.rows || []);
+    setPreviewIssues([]);
     setPreviewType("manual");
     setPreviewCommand({
       operationId: crypto.randomUUID(),
@@ -266,6 +274,11 @@ export default function AccessoriesPage() {
       );
       if (Array.isArray(json.rows) && json.rows.length > 0) {
         setPreviewRows(json.rows);
+        setPreviewIssues(
+          issueDetails.length > 0
+            ? issueDetails
+            : [json.error || "Spreadsheet preview failed"]
+        );
         setPreviewType("excel");
         setPreviewCommand(null);
         setPreviewOpen(true);
@@ -274,6 +287,7 @@ export default function AccessoriesPage() {
     }
 
     setPreviewRows(json.rows || []);
+    setPreviewIssues([]);
     setPreviewType("excel");
     setPreviewCommand({
       operationId: json.operation_id,
@@ -356,6 +370,8 @@ export default function AccessoriesPage() {
       h.note?.toLowerCase().includes(q)
     );
   });
+
+  const previewUnits = previewRows.reduce((sum, row) => sum + Number(row.qty || 0), 0);
 
   return (
         <div className="prototype-page prototype-module-page accessories-prototype-page">
@@ -521,83 +537,53 @@ export default function AccessoriesPage() {
 
       {previewOpen ? (
         <div className="prototype-preview-card accessory-inline-preview">
-          <div className="prototype-preview-content">
-            <div className="prototype-preview-heading">
-              <div>
-                <div className="prototype-input-section-title">Preview</div>
-                <strong>Confirm Accessory Outbound</strong>
-              </div>
-              <span>
-                {previewRows.length} stock change
-                {previewRows.length === 1 ? "" : "s"}
-              </span>
-            </div>
-
-            <p className="accessory-preview-description">
-              {previewType === "excel"
-                ? "Report quantities take priority. Automatic templates only fill missing quantities."
-                : "Review every stock change before confirming the outbound."}
-            </p>
-
-            <div className="prototype-preview-table-scroll">
-              <table>
-                <thead>
-                  <tr>
-                    <th>Accessory</th>
-                    {previewType === "excel" ? (
-                      <>
-                        <th className="text-right">From report</th>
-                        <th className="text-right">Template fill</th>
-                        <th className="text-right">Total</th>
-                      </>
-                    ) : (
-                      <th className="text-right">Quantity</th>
-                    )}
-                    <th className="text-right">Current Stock</th>
-                    <th className="text-right">Stock After</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {previewRows.map((row) => (
+          <div className="outbound-preview">
+            {previewIssues.length > 0 ? (
+              <ul className="outbound-preview-blockers">
+                {previewIssues.map((issue) => <li key={issue}>{issue}</li>)}
+              </ul>
+            ) : null}
+            <table>
+              <thead>
+                <tr><th>Accessory</th><th>Quantity</th><th>Source</th><th>Stock</th></tr>
+              </thead>
+              <tbody>
+                {previewRows.map((row) => {
+                  const [name, code] = accessoryNameParts(row.accessory);
+                  return (
                     <tr key={row.accessory_bin_id}>
-                      <td>
-                        <strong>{row.accessory}</strong>
+                      <td><strong>{name}</strong>{code ? <small>{code}</small> : null}</td>
+                      <td>{row.qty}</td>
+                      <td>{previewType === "excel" ? spreadsheetSource(row) : "Selected"}</td>
+                      <td className={row.after_stock < 0 ? "is-danger" : ""}>
+                        {row.current_stock} → {row.after_stock}
                       </td>
-                      {previewType === "excel" ? (
-                        <>
-                          <td className="text-right">{row.report_qty || 0}</td>
-                          <td className="text-right">{row.template_qty || 0}</td>
-                          <td className="text-right"><strong>{row.qty}</strong></td>
-                        </>
-                      ) : (
-                        <td className="text-right">{row.qty}</td>
-                      )}
-                      <td className="text-right">{row.current_stock}</td>
-                      <td className="text-right">{row.after_stock}</td>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="outbound-preview-actions">
+              <span>{`${previewUnits} units`}</span>
+              <div>
+                <button
+                  type="button"
+                  onClick={closePreview}
+                  disabled={busy}
+                  className="prototype-button secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmPreview}
+                  disabled={busy || previewRows.length === 0 || !previewCommand}
+                  className="prototype-button primary"
+                >
+                  {busy ? "Processing…" : "Confirm & Deduct"}
+                </button>
+              </div>
             </div>
-          </div>
-
-          <div className="prototype-preview-actions">
-            <button
-              type="button"
-              onClick={confirmPreview}
-              disabled={busy || previewRows.length === 0 || !previewCommand}
-              className="prototype-button confirm disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {busy ? "Processing…" : "Confirm Outbound"}
-            </button>
-            <button
-              type="button"
-              onClick={closePreview}
-              disabled={busy}
-              className="prototype-button secondary disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              Cancel
-            </button>
           </div>
         </div>
       ) : (

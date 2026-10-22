@@ -1,4 +1,9 @@
 import * as XLSX from "xlsx";
+import {
+  dispatchPackagingRuleExtras,
+  type DispatchPackagingRule,
+} from "./dispatch-packaging-rules";
+import { isPackagingContainer } from "./packaging";
 
 export const DISPATCH_PACKING_FACTOR = 1.15;
 
@@ -90,12 +95,14 @@ export type DispatchPackageAllocation = {
   name: string;
   quantity: number;
   unitVolumeCm3: number;
-  source?: "calculated" | "learned" | "manual";
+  source?: "calculated" | "learned" | "manual" | "rule";
   learningCount?: number;
 };
 
 export type PlannedDispatchOrder = DispatchOrder & {
   packages: DispatchPackageAllocation[];
+  // Sleeves and other packaging added by automatic packaging rules.
+  extras?: DispatchPackageAllocation[];
 };
 
 export type DispatchPackageUsage = DispatchPackageAllocation & {
@@ -242,7 +249,7 @@ export function buildDispatchPickingSummary(
       );
     }
 
-    for (const packaging of order.packages || []) {
+    for (const packaging of [...(order.packages || []), ...(order.extras || [])]) {
       add(
         "packaging",
         packaging.name,
@@ -945,9 +952,12 @@ export function itemFitsPackage(
 
 export function planDispatchPackaging(
   orders: DispatchOrder[],
-  packages: PackagingOption[]
+  packages: PackagingOption[],
+  rules: DispatchPackagingRule[] = []
 ): DispatchPlan {
-  const activePackages = packages.filter((packaging) => packaging.active);
+  const activePackages = packages.filter(
+    (packaging) => packaging.active && isPackagingContainer(packaging.category)
+  );
   const plannedOrders: PlannedDispatchOrder[] = [];
   const blockers: string[] = [];
 
@@ -996,7 +1006,46 @@ export function planDispatchPackaging(
     });
   }
 
-  return summarizeDispatchPackaging(plannedOrders, packages, blockers);
+  return summarizeDispatchPackaging(
+    withPackagingRuleExtras(plannedOrders, packages, rules, blockers),
+    packages,
+    blockers
+  );
+}
+
+function withPackagingRuleExtras(
+  orders: PlannedDispatchOrder[],
+  packages: PackagingOption[],
+  rules: DispatchPackagingRule[],
+  blockers: string[]
+): PlannedDispatchOrder[] {
+  return orders.map((order) => {
+    const extras = dispatchPackagingRuleExtras(order, rules)
+      .flatMap((extra): DispatchPackageAllocation[] => {
+        const packaging = packages.find(
+          (candidate) => candidate.id === extra.packagingTypeId
+        );
+        if (!packaging || !packaging.active) {
+          const message = `An automatic packaging rule uses ${
+            packaging?.name ?? "a packaging format"
+          } that is inactive or missing.`;
+          if (!blockers.includes(message)) blockers.push(message);
+          return [];
+        }
+        return [
+          {
+            packagingTypeId: packaging.id,
+            code: packaging.code,
+            name: packaging.name,
+            quantity: extra.quantity,
+            unitVolumeCm3: 0,
+            source: "rule",
+          },
+        ];
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return { ...order, extras: extras.length > 0 ? extras : undefined };
+  });
 }
 
 function summarizeDispatchPackaging(
@@ -1008,7 +1057,7 @@ function summarizeDispatchPackaging(
 
   const usageById = new Map<string, DispatchPackageUsage>();
   for (const order of plannedOrders) {
-    for (const allocation of order.packages) {
+    for (const allocation of [...order.packages, ...(order.extras ?? [])]) {
       const packaging = packages.find(
         (candidate) => candidate.id === allocation.packagingTypeId
       );
@@ -1058,6 +1107,7 @@ export function eligibleDispatchPackagingIds(
     .filter(
       (packaging) =>
         packaging.active &&
+        isPackagingContainer(packaging.category) &&
         order.items.every((item) => itemFitsPackage(item, packaging))
     )
     .map((packaging) => packaging.id);
@@ -1066,7 +1116,8 @@ export function eligibleDispatchPackagingIds(
 export function applyDispatchPackagingSelections(
   orders: DispatchOrder[],
   packages: PackagingOption[],
-  selections: DispatchPackagingSelection[]
+  selections: DispatchPackagingSelection[],
+  rules: DispatchPackagingRule[] = []
 ): DispatchPlan {
   const automatic = planDispatchPackaging(orders, packages);
   const automaticByOrder = new Map(
@@ -1109,6 +1160,12 @@ export function applyDispatchPackagingSelections(
       );
       return { ...order, packages: [] };
     }
+    if (!isPackagingContainer(packaging.category)) {
+      blockers.push(
+        `Order ${order.orderId}: ${packaging.name} is a sleeve and cannot hold an order.`
+      );
+      return { ...order, packages: [] };
+    }
     if (
       !Number.isInteger(selection.quantity) ||
       selection.quantity < 1 ||
@@ -1145,5 +1202,9 @@ export function applyDispatchPackagingSelections(
     };
   });
 
-  return summarizeDispatchPackaging(plannedOrders, packages, blockers);
+  return summarizeDispatchPackaging(
+    withPackagingRuleExtras(plannedOrders, packages, rules, blockers),
+    packages,
+    blockers
+  );
 }

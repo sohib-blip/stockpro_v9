@@ -817,6 +817,44 @@ const FR: Record<string, string> = {
   "Go get from stock": "À aller chercher dans le stock",
   "Everything is in the Cabinet.": "Tout est dans le Cabinet.",
   "Accessories only": "Accessoires uniquement",
+  // Packaging sleeves and rules
+  Sleeve: "Sleeve",
+  "Sleeves have no dimensions. They are wrapped around a box and are never chosen as the packaging of an order.":
+    "Les sleeves n’ont pas de dimensions. Elles entourent un carton et ne sont jamais choisies comme emballage d’une commande.",
+  "Sleeves have no dimensions": "Les sleeves n’ont pas de dimensions",
+  "Length, width and height are required": "La longueur, la largeur et la hauteur sont obligatoires",
+  "Automatic Packaging Rules": "Règles automatiques d’emballage",
+  "Packaging removed together with a box or a device when a dispatch is confirmed.":
+    "Emballages retirés avec un carton ou un appareil quand un dispatch est confirmé.",
+  When: "Quand",
+  "Also remove": "Retirer aussi",
+  "Select a packaging or a device": "Choisir un emballage ou un appareil",
+  "Each package of": "Chaque carton de",
+  "Each device of": "Chaque appareil",
+  "Select packaging": "Choisir l’emballage",
+  "Each package": "Par carton",
+  "Each device": "Par appareil",
+  "No automatic packaging rules yet.": "Aucune règle automatique d’emballage pour l’instant.",
+  "Loading packaging rules…": "Chargement des règles d’emballage…",
+  "Packaging rules could not be loaded": "Les règles d’emballage n’ont pas pu être chargées",
+  "Packaging rule created": "Règle d’emballage créée",
+  "Packaging rule updated": "Règle d’emballage mise à jour",
+  "Dispatch Planning will remove this packaging automatically.":
+    "Dispatch Planning retirera cet emballage automatiquement.",
+  "Packaging rule could not be saved": "La règle d’emballage n’a pas pu être enregistrée",
+  "Packaging rule deleted": "Règle d’emballage supprimée",
+  "Packaging rule could not be deleted": "La règle d’emballage n’a pas pu être supprimée",
+  "Invalid packaging rule": "Règle d’emballage invalide",
+  "The packaging to remove does not exist": "L’emballage à retirer n’existe pas",
+  "The packaging format does not exist": "Ce format d’emballage n’existe pas",
+  "The device bin does not exist": "Cet appareil n’existe pas",
+  "Choose a box or an envelope: a sleeve is never used on its own":
+    "Choisissez un carton ou une enveloppe : une sleeve n’est jamais utilisée seule",
+  "A packaging format cannot add itself": "Un emballage ne peut pas s’ajouter lui-même",
+  "This rule already exists": "Cette règle existe déjà",
+  "Added automatically": "Ajouté automatiquement",
+  "An automatic packaging rule uses a packaging format that is inactive or missing.":
+    "Une règle automatique utilise un emballage inactif ou supprimé.",
 };
 
 const NL: Record<string, string> = {
@@ -1626,6 +1664,44 @@ const NL: Record<string, string> = {
   "Go get from stock": "Uit de voorraad halen",
   "Everything is in the Cabinet.": "Alles staat in de Cabinet.",
   "Accessories only": "Alleen accessoires",
+  // Packaging sleeves and rules
+  Sleeve: "Sleeve",
+  "Sleeves have no dimensions. They are wrapped around a box and are never chosen as the packaging of an order.":
+    "Sleeves hebben geen afmetingen. Ze gaan rond een doos en worden nooit gekozen als verpakking van een order.",
+  "Sleeves have no dimensions": "Sleeves hebben geen afmetingen",
+  "Length, width and height are required": "Lengte, breedte en hoogte zijn verplicht",
+  "Automatic Packaging Rules": "Automatische verpakkingsregels",
+  "Packaging removed together with a box or a device when a dispatch is confirmed.":
+    "Verpakking die samen met een doos of toestel wordt afgeboekt wanneer een dispatch wordt bevestigd.",
+  When: "Wanneer",
+  "Also remove": "Ook afboeken",
+  "Select a packaging or a device": "Kies een verpakking of een toestel",
+  "Each package of": "Elke doos van",
+  "Each device of": "Elk toestel",
+  "Select packaging": "Kies verpakking",
+  "Each package": "Per doos",
+  "Each device": "Per toestel",
+  "No automatic packaging rules yet.": "Nog geen automatische verpakkingsregels.",
+  "Loading packaging rules…": "Verpakkingsregels laden…",
+  "Packaging rules could not be loaded": "Verpakkingsregels konden niet worden geladen",
+  "Packaging rule created": "Verpakkingsregel aangemaakt",
+  "Packaging rule updated": "Verpakkingsregel bijgewerkt",
+  "Dispatch Planning will remove this packaging automatically.":
+    "Dispatch Planning boekt deze verpakking automatisch af.",
+  "Packaging rule could not be saved": "Verpakkingsregel kon niet worden opgeslagen",
+  "Packaging rule deleted": "Verpakkingsregel verwijderd",
+  "Packaging rule could not be deleted": "Verpakkingsregel kon niet worden verwijderd",
+  "Invalid packaging rule": "Ongeldige verpakkingsregel",
+  "The packaging to remove does not exist": "De af te boeken verpakking bestaat niet",
+  "The packaging format does not exist": "Dit verpakkingsformaat bestaat niet",
+  "The device bin does not exist": "Dit toestel bestaat niet",
+  "Choose a box or an envelope: a sleeve is never used on its own":
+    "Kies een doos of envelop: een sleeve wordt nooit alleen gebruikt",
+  "A packaging format cannot add itself": "Een verpakking kan zichzelf niet toevoegen",
+  "This rule already exists": "Deze regel bestaat al",
+  "Added automatically": "Automatisch toegevoegd",
+  "An automatic packaging rule uses a packaging format that is inactive or missing.":
+    "Een automatische regel gebruikt een inactieve of ontbrekende verpakking.",
 };
 
 const DICTIONARIES: Record<Exclude<Locale, "en">, Record<string, string>> = {
@@ -1694,6 +1770,11 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^Accessory name must be at most (\d+) characters$/, "Le nom de l’accessoire ne peut pas dépasser $1 caractères"],
           [/^An accessory named "(.+)" already exists$/, "Un accessoire nommé « $1 » existe déjà"],
           [/^Floor (.+)$/, "Étage $1"],
+          [/^(\d+) per package$/, "$1 par carton"],
+          [/^(\d+) per device$/, "$1 par appareil"],
+          [/^(.+) is no longer added automatically\.$/, "$1 n’est plus ajouté automatiquement."],
+          [/^An automatic packaging rule uses (.+) that is inactive or missing\.$/, "Une règle automatique utilise $1, qui est inactif ou supprimé."],
+          [/^Order (.+): (.+) is a sleeve and cannot hold an order\.$/, "Commande $1 : $2 est une sleeve et ne peut pas contenir une commande."],
         ]
       : [
           [/^Page (\d+)$/, "Pagina $1"],
@@ -1753,6 +1834,11 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^Accessory name must be at most (\d+) characters$/, "De naam van het accessoire mag maximaal $1 tekens bevatten"],
           [/^An accessory named "(.+)" already exists$/, "Er bestaat al een accessoire met de naam \"$1\""],
           [/^Floor (.+)$/, "Verdieping $1"],
+          [/^(\d+) per package$/, "$1 per doos"],
+          [/^(\d+) per device$/, "$1 per toestel"],
+          [/^(.+) is no longer added automatically\.$/, "$1 wordt niet meer automatisch toegevoegd."],
+          [/^An automatic packaging rule uses (.+) that is inactive or missing\.$/, "Een automatische regel gebruikt $1, dat inactief is of ontbreekt."],
+          [/^Order (.+): (.+) is a sleeve and cannot hold an order\.$/, "Order $1: $2 is een sleeve en kan geen order bevatten."],
         ];
 
   for (const [pattern, replacement] of rules as Array<[RegExp, string]>) {

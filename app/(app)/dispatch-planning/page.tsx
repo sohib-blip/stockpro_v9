@@ -5,7 +5,12 @@ import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import DispatchItemDialog from "@/components/DispatchItemDialog";
 import DispatchPickingSheet from "@/components/DispatchPickingSheet";
+import {
+  dispatchPackagingRuleExtras,
+  type DispatchPackagingRule,
+} from "@/lib/dispatch-packaging-rules";
 import { buildPickingSheet } from "@/lib/dispatch-picking-sheet";
+import { isPackagingContainer } from "@/lib/packaging";
 import ProcessFeedback, {
   type ProcessFeedbackValue,
 } from "@/components/ProcessFeedback";
@@ -49,12 +54,21 @@ type DispatchOrder = {
     source?: "calculated" | "learned" | "manual";
     learningCount?: number;
   }>;
+  // Sleeves and other packaging added by automatic packaging rules.
+  extras?: Array<{
+    packagingTypeId: string;
+    name: string;
+    code: string;
+    quantity: number;
+    source?: "rule";
+  }>;
 };
 
 type PackagingOption = {
   id: string;
   code: string;
   name: string;
+  category?: string;
   lengthCm: number;
   widthCm: number;
   heightCm: number;
@@ -97,6 +111,7 @@ type Preview = {
     suggestedName?: string | null;
   }>;
   packaging_options?: PackagingOption[];
+  packaging_rules?: DispatchPackagingRule[];
   picking_summary?: PickingSummaryRow[];
   cabinet_stock?: Record<string, number>;
 };
@@ -150,33 +165,61 @@ function csvCell(value: unknown) {
 
 function rebuildClientPlan(
   orders: DispatchOrder[],
-  options: PackagingOption[]
+  options: PackagingOption[],
+  rules: DispatchPackagingRule[]
 ) {
   const optionsById = new Map(options.map((option) => [option.id, option]));
   const usageById = new Map<string, PackageUsage>();
   const blockers: string[] = [];
 
-  for (const order of orders) {
+  function addUsage(option: PackagingOption, quantity: number) {
+    const total = (usageById.get(option.id)?.quantity || 0) + quantity;
+    usageById.set(option.id, {
+      packagingTypeId: option.id,
+      code: option.code,
+      name: option.name,
+      quantity: total,
+      onHandStock: option.onHandStock,
+      availableStock: option.availableStock,
+      stockAfter: option.onHandStock - total,
+    });
+  }
+
+  const plannedOrders = orders.map((order) => {
+    const extras = dispatchPackagingRuleExtras(order, rules)
+      .flatMap((extra) => {
+        const option = optionsById.get(extra.packagingTypeId);
+        if (!option) {
+          const message = "An automatic packaging rule uses a packaging format that is inactive or missing.";
+          if (!blockers.includes(message)) blockers.push(message);
+          return [];
+        }
+        return [
+          {
+            packagingTypeId: option.id,
+            code: option.code,
+            name: option.name,
+            quantity: extra.quantity,
+            source: "rule" as const,
+          },
+        ];
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+
     const allocation = order.packages[0];
     const option = allocation
       ? optionsById.get(allocation.packagingTypeId)
       : undefined;
     if (!allocation || !option) {
       blockers.push(`Order ${order.orderId}: select an available package.`);
-      continue;
+    } else {
+      addUsage(option, allocation.quantity);
     }
-    const previous = usageById.get(option.id);
-    const quantity = (previous?.quantity || 0) + allocation.quantity;
-    usageById.set(option.id, {
-      packagingTypeId: option.id,
-      code: option.code,
-      name: option.name,
-      quantity,
-      onHandStock: option.onHandStock,
-      availableStock: option.availableStock,
-      stockAfter: option.onHandStock - quantity,
-    });
-  }
+    for (const extra of extras) {
+      addUsage(optionsById.get(extra.packagingTypeId)!, extra.quantity);
+    }
+    return { ...order, extras: extras.length > 0 ? extras : undefined };
+  });
 
   const packageUsage = Array.from(usageById.values()).sort((a, b) =>
     a.name.localeCompare(b.name)
@@ -190,7 +233,7 @@ function rebuildClientPlan(
   }
 
   return {
-    orders,
+    orders: plannedOrders,
     packageUsage,
     blockers,
     totalPackages: packageUsage.reduce(
@@ -255,7 +298,10 @@ export default function DispatchPlanningPage() {
         order.destinationCountry,
         order.companyName,
         ...order.items.flatMap((item) => [item.name, item.sourceItem]),
-        ...order.packages.flatMap((packaging) => [packaging.name, packaging.code]),
+        ...[...order.packages, ...(order.extras || [])].flatMap((packaging) => [
+          packaging.name,
+          packaging.code,
+        ]),
       ].some((value) => String(value || "").toLocaleLowerCase().includes(query))
     );
   }, [orderSearch, preview]);
@@ -278,7 +324,7 @@ export default function DispatchPlanningPage() {
           status: difference < 0 ? "shortage" : "available",
           orderIds: plan.orders
             .filter((order) =>
-              order.packages.some(
+              [...order.packages, ...(order.extras || [])].some(
                 (packaging) =>
                   packaging.packagingTypeId === usage.packagingTypeId
               )
@@ -585,7 +631,7 @@ export default function DispatchPlanningPage() {
           ],
         };
       });
-      const plan = rebuildClientPlan(orders, options);
+      const plan = rebuildClientPlan(orders, options, current.packaging_rules || []);
       return { ...current, ok: plan.blockers.length === 0, plan };
     });
     setFeedback({
@@ -776,7 +822,9 @@ export default function DispatchPlanningPage() {
                     {filteredPreviewOrders.map((order) => {
                       const allocation = order.packages[0];
                       const eligibleIds = new Set(order.eligiblePackagingTypeIds || []);
-                      const options = preview.packaging_options || [];
+                      const options = (preview.packaging_options || []).filter(
+                        (option) => isPackagingContainer(option.category)
+                      );
                       const selectedOption = options.find(
                         (option) => option.id === allocation?.packagingTypeId
                       );
@@ -859,6 +907,14 @@ export default function DispatchPlanningPage() {
                                 Choose any active package to override the calculation.
                               </small>
                             )}
+                            {order.extras?.length ? (
+                              <div className="dispatch-packaging-extras">
+                                <span>Added automatically</span>
+                                {order.extras.map((extra) => (
+                                  <strong key={extra.packagingTypeId}>{`+ ${extra.quantity} × ${extra.name}`}</strong>
+                                ))}
+                              </div>
+                            ) : null}
                           </div>
                         </td>
                       </tr>;
@@ -892,7 +948,7 @@ export default function DispatchPlanningPage() {
                           <strong>{usage.quantity} × {usage.name}</strong>
                           <small>
                             {usage.code}
-                            {packaging
+                            {packaging && isPackagingContainer(packaging.category)
                               ? ` · ${formatPackageDimensions(packaging)}`
                               : ""}
                           </small>
@@ -1241,7 +1297,7 @@ export default function DispatchPlanningPage() {
             <div className="returns-history-dialog-header"><div><span>Dispatch batch</span><h2>{detail.source_filename}</h2><p>{formatDate(detail.confirmed_at)} · {detail.actor_email}</p></div><button type="button" onClick={() => setDetail(null)} aria-label="Close">×</button></div>
             <div className="returns-history-dialog-summary"><div><span>Status</span><strong>{detail.status}</strong></div><div><span>Orders</span><strong>{detail.order_count}</strong></div><div><span>Lines</span><strong>{detail.line_count}</strong></div><div><span>Packages</span><strong>{detail.total_packages}</strong></div></div>
             <div className="returns-history-dialog-toolbar"><div><strong>Order and packaging detail</strong><span>Every item is linked to its recommended package.</span></div><button type="button" className="prototype-button secondary" onClick={() => downloadApiFile(`/api/dispatch-planning/export?id=${detail.id}`, "dispatch.xlsx")}>Download Excel</button></div>
-            <div className="returns-history-dialog-table-scroll"><table><thead><tr><th>Order ID</th><th>Country</th><th>Customer</th><th>Items</th><th>Volume</th><th>Packaging</th></tr></thead><tbody>{(detail.orders || []).map((order) => <tr key={order.orderId}><td><strong>{order.orderId}</strong></td><td>{order.destinationCountry || "—"}</td><td>{order.companyName || "—"}</td><td>{order.items.map((item) => `${item.quantity} × ${item.name}`).join(", ")}</td><td>{formatNumber(order.totalVolumeCm3, 1)} cm³</td><td>{order.packages.map((item) => `${item.quantity} × ${item.name}`).join(", ")}</td></tr>)}</tbody></table></div>
+            <div className="returns-history-dialog-table-scroll"><table><thead><tr><th>Order ID</th><th>Country</th><th>Customer</th><th>Items</th><th>Volume</th><th>Packaging</th></tr></thead><tbody>{(detail.orders || []).map((order) => <tr key={order.orderId}><td><strong>{order.orderId}</strong></td><td>{order.destinationCountry || "—"}</td><td>{order.companyName || "—"}</td><td>{order.items.map((item) => `${item.quantity} × ${item.name}`).join(", ")}</td><td>{formatNumber(order.totalVolumeCm3, 1)} cm³</td><td>{[...order.packages, ...(order.extras || [])].map((item) => `${item.quantity} × ${item.name}`).join(", ")}</td></tr>)}</tbody></table></div>
           </div>
         </div>
       ) : null}

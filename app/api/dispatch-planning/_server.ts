@@ -1,4 +1,5 @@
 import { supabaseService } from "@/lib/auth";
+import type { DispatchPackagingRule } from "@/lib/dispatch-packaging-rules";
 import {
   createInventoryDispatchCatalog,
   DEFAULT_DISPATCH_CATALOG,
@@ -119,6 +120,47 @@ export async function loadDispatchPackagingOptions(): Promise<PackagingOption[]>
     reservedStock: Number(row.reserved_stock || 0),
     active: row.active === true,
   }));
+}
+
+// Rules that remove extra packaging (sleeves, plastics) with a dispatch. Before
+// the packaging rules migration the table is missing: no rules apply then.
+export async function loadDispatchPackagingRules(): Promise<DispatchPackagingRule[]> {
+  const service = supabaseService();
+  const { data, error } = await service
+    .from("packaging_rules")
+    .select("trigger_packaging_type_id,trigger_device_id,packaging_type_id,quantity");
+  if (error) {
+    if (error.code === "42P01" || error.code === "PGRST205") return [];
+    throw error;
+  }
+  const deviceIds = Array.from(
+    new Set((data || []).map((rule) => rule.trigger_device_id).filter(Boolean))
+  );
+  const deviceNames = new Map<string, string>();
+  if (deviceIds.length > 0) {
+    const { data: devices, error: devicesError } = await service
+      .from("bins")
+      .select("id,name")
+      .in("id", deviceIds);
+    if (devicesError) throw devicesError;
+    for (const device of devices || []) deviceNames.set(String(device.id), String(device.name));
+  }
+  return (data || []).flatMap((rule) => {
+    const triggerDeviceModel = rule.trigger_device_id
+      ? deviceNames.get(String(rule.trigger_device_id)) ?? null
+      : null;
+    if (rule.trigger_device_id && !triggerDeviceModel) return [];
+    return [
+      {
+        triggerPackagingTypeId: rule.trigger_packaging_type_id
+          ? String(rule.trigger_packaging_type_id)
+          : null,
+        triggerDeviceModel,
+        packagingTypeId: String(rule.packaging_type_id),
+        quantity: Number(rule.quantity),
+      },
+    ];
+  });
 }
 
 export async function loadDispatchAutomaticAccessoryRules(

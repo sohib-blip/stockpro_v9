@@ -2,6 +2,7 @@ export const PACKAGING_CATEGORIES = [
   "BOX",
   "BUBBLE_ENVELOPE",
   "PLASTIC_ENVELOPE",
+  "SLEEVE",
 ] as const;
 
 export type PackagingCategory = (typeof PACKAGING_CATEGORIES)[number];
@@ -11,9 +12,10 @@ export type PackagingStockRow = {
   code: string;
   name: string;
   category: PackagingCategory;
-  length_cm: number;
-  width_cm: number;
-  height_cm: number;
+  // Null for sleeves, which have no dimensions.
+  length_cm: number | null;
+  width_cm: number | null;
+  height_cm: number | null;
   on_hand_stock: number;
   reserved_stock: number;
   available_stock: number;
@@ -29,7 +31,14 @@ export type PackagingStockStatus = "OK" | "LOW" | "EMPTY" | "INACTIVE";
 export function packagingCategoryLabel(category: PackagingCategory) {
   if (category === "BOX") return "Box";
   if (category === "BUBBLE_ENVELOPE") return "Bubble Envelope";
+  if (category === "SLEEVE") return "Sleeve";
   return "Plastic Envelope";
+}
+
+// Sleeves are wrapped around a box: the dispatch volume calculation never
+// picks them as the container of an order.
+export function isPackagingContainer(category: unknown) {
+  return category !== "SLEEVE";
 }
 
 export function packagingAvailableStock(
@@ -60,6 +69,9 @@ function formatDimension(value: number) {
 export function formatPackagingDimensions(
   row: Pick<PackagingStockRow, "length_cm" | "width_cm" | "height_cm">
 ) {
+  if (row.length_cm === null || row.width_cm === null || row.height_cm === null) {
+    return "—";
+  }
   return `${formatDimension(row.length_cm)} × ${formatDimension(
     row.width_cm
   )} × ${formatDimension(row.height_cm)} cm`;

@@ -13,9 +13,11 @@ import {
 import { buildDispatchVehicleLabels } from "@/lib/dispatch-vehicle-labels";
 import { dispatchCompositionKey } from "@/lib/dispatch-learning";
 import { createDispatchPreviewToken } from "@/lib/dispatch-preview-token";
+import { isPackagingContainer } from "@/lib/packaging";
 import {
   loadDispatchAutomaticAccessoryRules,
   loadDispatchCabinetStock,
+  loadDispatchPackagingRules,
   loadDispatchCatalog,
   loadDispatchPackagingOptions,
   loadDispatchPickingInventory,
@@ -178,10 +180,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const [packages, pickingInventory, cabinetStock] = await Promise.all([
+    const [packages, pickingInventory, cabinetStock, packagingRules] = await Promise.all([
       loadDispatchPackagingOptions(),
       loadDispatchPickingInventory(),
       loadDispatchCabinetStock(),
+      loadDispatchPackagingRules(),
     ]);
     const compositionKeys = new Map(
       dispatchOrders.map((order) => [order.orderId, dispatchCompositionKey(order)])
@@ -194,7 +197,11 @@ export async function POST(req: Request) {
       .in("composition_key", Array.from(compositionKeys.values()));
     if (learnedError) throw learnedError;
 
-    const activePackageIds = new Set(packages.map((packaging) => packaging.id));
+    const activePackageIds = new Set(
+      packages
+        .filter((packaging) => isPackagingContainer(packaging.category))
+        .map((packaging) => packaging.id)
+    );
     const learnedByComposition = new Map(
       (learnedRows || [])
         .filter((row) => activePackageIds.has(String(row.packaging_type_id)))
@@ -217,7 +224,8 @@ export async function POST(req: Request) {
     const calculatedPlan = applyDispatchPackagingSelections(
       dispatchOrders,
       packages,
-      learnedSelections
+      learnedSelections,
+      packagingRules
     );
     const plan = {
       ...calculatedPlan,
@@ -259,6 +267,7 @@ export async function POST(req: Request) {
         id: packaging.id,
         code: packaging.code,
         name: packaging.name,
+        category: packaging.category,
         lengthCm: packaging.lengthCm,
         widthCm: packaging.widthCm,
         heightCm: packaging.heightCm,
@@ -266,6 +275,7 @@ export async function POST(req: Request) {
         reservedStock: packaging.reservedStock,
         availableStock: packaging.onHandStock - packaging.reservedStock,
       })),
+      packaging_rules: packagingRules,
       vehicle_label_count: vehicleLabelResult.labels.length,
       picking_summary: pickingSummary,
       cabinet_stock: cabinetStock,

@@ -16,8 +16,9 @@ export async function POST(req: Request) {
       await req.json().catch(() => null)
     );
     if (!parsed.success) {
+      const dimensionIssue = parsed.error.issues.find((issue) => issue.code === "custom");
       return NextResponse.json(
-        { ok: false, error: "Invalid packaging details" },
+        { ok: false, error: dimensionIssue?.message || "Invalid packaging details" },
         { status: 400 }
       );
     }
@@ -34,9 +35,9 @@ export async function POST(req: Request) {
         p_code: details.code,
         p_name: details.name,
         p_category: details.category,
-        p_length_cm: details.length_cm,
-        p_width_cm: details.width_cm,
-        p_height_cm: details.height_cm,
+        p_length_cm: details.length_cm ?? null,
+        p_width_cm: details.width_cm ?? null,
+        p_height_cm: details.height_cm ?? null,
         p_on_hand_stock: details.on_hand_stock,
         p_minimum_stock: details.minimum_stock,
       }

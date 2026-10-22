@@ -27,9 +27,9 @@ export async function GET(req: Request) {
       ok: true,
       rows: (data || []).map((row) => ({
         ...row,
-        length_cm: Number(row.length_cm),
-        width_cm: Number(row.width_cm),
-        height_cm: Number(row.height_cm),
+        length_cm: row.length_cm === null ? null : Number(row.length_cm),
+        width_cm: row.width_cm === null ? null : Number(row.width_cm),
+        height_cm: row.height_cm === null ? null : Number(row.height_cm),
         on_hand_stock: Number(row.on_hand_stock || 0),
         reserved_stock: Number(row.reserved_stock || 0),
         minimum_stock: Number(row.minimum_stock || 0),

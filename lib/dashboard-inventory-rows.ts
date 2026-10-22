@@ -15,9 +15,10 @@ export type DashboardPackagingInput = {
   id: string;
   code: string;
   name: string;
-  length_cm: number;
-  width_cm: number;
-  height_cm: number;
+  // Null for sleeves, which have no dimensions.
+  length_cm: number | null;
+  width_cm: number | null;
+  height_cm: number | null;
   on_hand_stock: number;
   reserved_stock: number;
   minimum_stock: number;
@@ -99,9 +100,12 @@ export function mergeDashboardInventoryRows(
         current_stock: available,
         minimum_stock: minimum,
         status: dashboardInventoryStatus(available, minimum),
-        details: `${row.code} · ${dimension(row.length_cm)} × ${dimension(
-          row.width_cm
-        )} × ${dimension(row.height_cm)} cm`,
+        details:
+          row.length_cm === null || row.width_cm === null || row.height_cm === null
+            ? row.code
+            : `${row.code} · ${dimension(row.length_cm)} × ${dimension(
+                row.width_cm
+              )} × ${dimension(row.height_cm)} cm`,
         on_hand_stock: onHand,
         reserved_stock: reserved,
       };
@@ -153,4 +157,18 @@ export function buildDashboardStockAlerts(
     }
     return left.name.localeCompare(right.name, "en", { sensitivity: "base" });
   });
+}
+
+// Counters shown on the Stock alerts card and in its overview window.
+export function countDashboardStockAlerts(alerts: DashboardStockAlertRow[]) {
+  const count = (keep: (row: DashboardStockAlertRow) => boolean) =>
+    alerts.filter(keep).length;
+  return {
+    total: alerts.length,
+    devices: count((row) => row.inventory_type === "Device"),
+    accessories: count((row) => row.inventory_type === "Accessory"),
+    packaging: count((row) => row.inventory_type === "Packaging"),
+    low: count((row) => row.status === "LOW"),
+    empty: count((row) => row.status === "EMPTY"),
+  };
 }

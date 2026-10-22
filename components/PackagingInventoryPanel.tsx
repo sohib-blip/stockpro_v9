@@ -3,6 +3,7 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/apiFetch";
 import type { ProcessFeedbackValue } from "@/components/ProcessFeedback";
+import PackagingRulesPanel from "@/components/PackagingRulesPanel";
 import {
   PACKAGING_CATEGORIES,
   formatPackagingDimensions,
@@ -127,9 +128,9 @@ export default function PackagingInventoryPanel({
       code: row.code,
       name: row.name,
       category: row.category,
-      length_cm: String(row.length_cm),
-      width_cm: String(row.width_cm),
-      height_cm: String(row.height_cm),
+      length_cm: row.length_cm === null ? "" : String(row.length_cm),
+      width_cm: row.width_cm === null ? "" : String(row.width_cm),
+      height_cm: row.height_cm === null ? "" : String(row.height_cm),
       on_hand_stock: String(row.on_hand_stock),
       minimum_stock: String(row.minimum_stock),
     });
@@ -141,14 +142,15 @@ export default function PackagingInventoryPanel({
     setBusy(true);
     onFeedback(null);
     try {
+      const sleeve = form.category === "SLEEVE";
       const payload = {
         ...(formMode === "edit" && editingRow ? { id: editingRow.id } : {}),
         code: form.code.trim().toUpperCase(),
         name: form.name.trim(),
         category: form.category,
-        length_cm: Number(form.length_cm),
-        width_cm: Number(form.width_cm),
-        height_cm: Number(form.height_cm),
+        length_cm: sleeve ? null : Number(form.length_cm),
+        width_cm: sleeve ? null : Number(form.width_cm),
+        height_cm: sleeve ? null : Number(form.height_cm),
         on_hand_stock: Number(form.on_hand_stock),
         minimum_stock: Number(form.minimum_stock),
       };
@@ -275,6 +277,8 @@ export default function PackagingInventoryPanel({
         <div className="prototype-table-footer">{filteredRows.length} of {rows.length} packaging formats</div>
       </div>
 
+      <PackagingRulesPanel packaging={rows} onFeedback={onFeedback} />
+
       {formMode && (
         <div className="packaging-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busy) setFormMode(null); }}>
           <section className="packaging-dialog" role="dialog" aria-modal="true" aria-labelledby="packaging-format-dialog-title">
@@ -286,7 +290,11 @@ export default function PackagingInventoryPanel({
               <label className="packaging-field packaging-field-wide"><span>Name</span><input required maxLength={120} value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="e.g. Radius Box Medium" autoFocus /></label>
               <label className="packaging-field"><span>Code</span><input required maxLength={50} value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value.toUpperCase() })} placeholder="e.g. RADIUS-M" /></label>
               <label className="packaging-field"><span>Type</span><select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as PackagingCategory })}>{PACKAGING_CATEGORIES.map((value) => <option key={value} value={value}>{packagingCategoryLabel(value)}</option>)}</select></label>
-              <fieldset className="packaging-dimensions packaging-field-wide"><legend>Outer dimensions (cm)</legend><label><span>Length</span><input required type="number" min="0.01" max="1000" step="0.01" value={form.length_cm} onChange={(event) => setForm({ ...form, length_cm: event.target.value })} /></label><span aria-hidden="true">×</span><label><span>Width</span><input required type="number" min="0.01" max="1000" step="0.01" value={form.width_cm} onChange={(event) => setForm({ ...form, width_cm: event.target.value })} /></label><span aria-hidden="true">×</span><label><span>Height</span><input required type="number" min="0.01" max="1000" step="0.01" value={form.height_cm} onChange={(event) => setForm({ ...form, height_cm: event.target.value })} /></label></fieldset>
+              {form.category === "SLEEVE" ? (
+                <p className="packaging-field-wide packaging-sleeve-note">Sleeves have no dimensions. They are wrapped around a box and are never chosen as the packaging of an order.</p>
+              ) : (
+                <fieldset className="packaging-dimensions packaging-field-wide"><legend>Outer dimensions (cm)</legend><label><span>Length</span><input required type="number" min="0.01" max="1000" step="0.01" value={form.length_cm} onChange={(event) => setForm({ ...form, length_cm: event.target.value })} /></label><span aria-hidden="true">×</span><label><span>Width</span><input required type="number" min="0.01" max="1000" step="0.01" value={form.width_cm} onChange={(event) => setForm({ ...form, width_cm: event.target.value })} /></label><span aria-hidden="true">×</span><label><span>Height</span><input required type="number" min="0.01" max="1000" step="0.01" value={form.height_cm} onChange={(event) => setForm({ ...form, height_cm: event.target.value })} /></label></fieldset>
+              )}
               <label className="packaging-field"><span>{formMode === "edit" ? "On-hand stock" : "Initial stock"}</span><input required type="number" min={editingRow?.reserved_stock ?? 0} max="10000000" step="1" value={form.on_hand_stock} onChange={(event) => setForm({ ...form, on_hand_stock: event.target.value })} /><small>{editingRow?.reserved_stock ? `Cannot be below ${editingRow.reserved_stock} reserved units.` : "Physical quantity currently available in the warehouse."}</small></label>
               <label className="packaging-field"><span>Minimum stock alert</span><input required type="number" min="0" max="10000000" step="1" value={form.minimum_stock} onChange={(event) => setForm({ ...form, minimum_stock: event.target.value })} /><small>Dashboard alerts when available stock reaches this value.</small></label>
               <footer className="packaging-dialog-actions"><button type="button" className="prototype-button secondary" onClick={() => setFormMode(null)} disabled={busy}>Cancel</button><button type="submit" className="prototype-button primary" disabled={busy}>{busy ? "Saving…" : "Save Packaging Format"}</button></footer>

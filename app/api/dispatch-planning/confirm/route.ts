@@ -5,7 +5,10 @@ import { supabaseService } from "@/lib/auth";
 import { applyDispatchPackagingSelections } from "@/lib/dispatch-planning";
 import { dispatchCompositionKey } from "@/lib/dispatch-learning";
 import { verifyDispatchPreviewToken } from "@/lib/dispatch-preview-token";
-import { loadDispatchPackagingOptions } from "@/app/api/dispatch-planning/_server";
+import {
+  loadDispatchPackagingOptions,
+  loadDispatchPackagingRules,
+} from "@/app/api/dispatch-planning/_server";
 import {
   inventoryCommandErrorMessage,
   inventoryCommandErrorStatus,
@@ -54,10 +57,15 @@ export async function POST(req: Request) {
       );
     }
 
+    const [packages, packagingRules] = await Promise.all([
+      loadDispatchPackagingOptions(),
+      loadDispatchPackagingRules(),
+    ]);
     const plan = applyDispatchPackagingSelections(
       preview.orders,
-      await loadDispatchPackagingOptions(),
-      parsed.data.selections
+      packages,
+      parsed.data.selections,
+      packagingRules
     );
     if (plan.blockers.length > 0) {
       return NextResponse.json(

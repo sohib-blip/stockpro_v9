@@ -24,9 +24,9 @@ export type PackagingExportRow = {
   code: string;
   name: string;
   category: PackagingCategory;
-  length_cm: number;
-  width_cm: number;
-  height_cm: number;
+  length_cm: number | null;
+  width_cm: number | null;
+  height_cm: number | null;
   on_hand_stock: number | null;
   reserved_stock: number | null;
   minimum_stock: number | null;

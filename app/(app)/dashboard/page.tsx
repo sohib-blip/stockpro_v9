@@ -14,7 +14,10 @@ import {
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import { useAccess } from "@/components/AccessProvider";
 import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
-import { buildDashboardStockAlerts } from "@/lib/dashboard-inventory-rows";
+import {
+  buildDashboardStockAlerts,
+  countDashboardStockAlerts,
+} from "@/lib/dashboard-inventory-rows";
 import type { BoxSearchRow } from "@/lib/box-search";
 
 type KPI = {
@@ -200,13 +203,7 @@ export default function DashboardPage() {
     () => buildDashboardStockAlerts(bins, accessories),
     [accessories, bins]
   );
-  const lowAlerts = stockAlerts.filter((row) => row.status === "LOW").length;
-  const emptyAlerts = stockAlerts.filter((row) => row.status === "EMPTY").length;
-  const deviceAlertCount = stockAlerts.filter(
-    (row) => row.inventory_type === "Device"
-  ).length;
-  const accessoryAlertCount = stockAlerts.length - deviceAlertCount;
-  const alertCount = lowAlerts + emptyAlerts;
+  const alertCounts = countDashboardStockAlerts(stockAlerts);
   const visibleBins = filteredBins;
   const visibleAccessories = showAllAccessories
     ? filteredAccessories
@@ -742,10 +739,11 @@ export default function DashboardPage() {
           }}
         >
           <div className="prototype-eyebrow">⚠ Stock alerts</div>
-          <div className="prototype-kpi-value">{kpi?.alerts ?? alertCount}</div>
+          <div className="prototype-kpi-value">{kpi?.alerts ?? alertCounts.total}</div>
           <div className="stock-alert-kpi-breakdown">
-            <span><strong>{deviceAlertCount}</strong> Devices</span>
-            <span><strong>{accessoryAlertCount}</strong> Accessories</span>
+            <span><strong>{alertCounts.devices}</strong> Devices</span>
+            <span><strong>{alertCounts.accessories}</strong> Accessories</span>
+            <span><strong>{alertCounts.packaging}</strong> Packaging</span>
             <span className="stock-alert-kpi-hint">View overview <span aria-hidden="true">↗</span></span>
           </div>
         </article>
@@ -783,11 +781,12 @@ export default function DashboardPage() {
               </button>
             </header>
             <div className="dashboard-alerts-modal-summary">
-              <div><span>Total</span><strong>{alertCount}</strong></div>
-              <div><span>Devices</span><strong>{deviceAlertCount}</strong></div>
-              <div><span>Accessories</span><strong>{accessoryAlertCount}</strong></div>
-              <div><span>Low</span><strong>{lowAlerts}</strong></div>
-              <div><span>Empty</span><strong>{emptyAlerts}</strong></div>
+              <div><span>Total</span><strong>{alertCounts.total}</strong></div>
+              <div><span>Devices</span><strong>{alertCounts.devices}</strong></div>
+              <div><span>Accessories</span><strong>{alertCounts.accessories}</strong></div>
+              <div><span>Packaging</span><strong>{alertCounts.packaging}</strong></div>
+              <div><span>Low</span><strong>{alertCounts.low}</strong></div>
+              <div><span>Empty</span><strong>{alertCounts.empty}</strong></div>
             </div>
             {stockAlerts.length ? (
               <div className="dashboard-alerts-modal-scroll">

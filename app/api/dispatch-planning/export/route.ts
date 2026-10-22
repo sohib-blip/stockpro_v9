@@ -58,7 +58,7 @@ export async function GET(req: Request) {
         "Unit volume (cm3)": Number(item.unitVolumeCm3 || 0),
         "Total volume (cm3)": Number(item.totalVolumeCm3 || 0),
         Packaging: safeCell(
-          (order.packages || [])
+          [...(order.packages || []), ...(order.extras || [])]
             .map((packaging: any) => `${packaging.quantity} × ${packaging.name}`)
             .join(", ")
         ),

@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import {
+  buildAccessoryExportSheets,
+  buildAccessoryExportWorkbook,
+} from "@/lib/accessory-export";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,25 +16,30 @@ const supabase = createClient(
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from("accessory_bins")
-      .select("name, current_stock, minimum_stock, active")
-      .or("category.is.null,category.neq.Packages")
-      .order("name");
+    const [
+      { data: accessories, error: accessoriesError },
+      { data: packaging, error: packagingError },
+    ] = await Promise.all([
+      supabase
+        .from("accessory_bins")
+        .select("name, category, current_stock, minimum_stock, active")
+        .or("category.is.null,category.neq.Packages")
+        .order("name"),
+      supabase
+        .from("packaging_types")
+        .select(
+          "code, name, category, length_cm, width_cm, height_cm, on_hand_stock, reserved_stock, minimum_stock, active"
+        )
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+    ]);
 
-    if (error) throw error;
+    if (accessoriesError) throw accessoriesError;
+    if (packagingError) throw packagingError;
 
-    const rows = (data || []).map((a: any) => ({
-      Accessory: a.name,
-      Stock: Number(a.current_stock || 0),
-      "Minimum stock": Number(a.minimum_stock || 0),
-      Status: a.active === false ? "HIDE" : "SHOW",
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(rows);
-    const workbook = XLSX.utils.book_new();
-
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Accessories Stock");
+    const workbook = buildAccessoryExportWorkbook(
+      buildAccessoryExportSheets(accessories || [], packaging || [])
+    );
 
     const buffer = XLSX.write(workbook, {
       type: "buffer",

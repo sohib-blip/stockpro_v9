@@ -1099,6 +1099,88 @@ function summarizeDispatchPackaging(
   };
 }
 
+export type ManualPackagingLine = {
+  packagingTypeId: string;
+  quantity: number;
+};
+
+// Name shown in Dispatch History for a manual packaging outbound.
+export function manualOutboundName(reference: string, comment: string) {
+  return ["Manual outbound", reference, comment]
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .join(" · ")
+    .slice(0, 255);
+}
+
+// A manual packaging outbound is planned as one pseudo-order, so it is
+// deducted, listed and undone like a daily dispatch. Packaging rules apply to
+// the chosen boxes (a Radius Box brings its sleeve and plastic envelope).
+export function planManualPackagingOutbound(
+  orderId: string,
+  lines: ManualPackagingLine[],
+  packages: PackagingOption[],
+  rules: DispatchPackagingRule[] = []
+): DispatchPlan {
+  const blockers: string[] = [];
+  const block = (message: string) => {
+    if (!blockers.includes(message)) blockers.push(message);
+  };
+
+  const quantities = new Map<string, number>();
+  for (const line of lines) {
+    if (
+      !Number.isInteger(line.quantity) ||
+      line.quantity < 1 ||
+      line.quantity > 1_000_000
+    ) {
+      block("Every line needs a quantity between 1 and 1,000,000.");
+      continue;
+    }
+    quantities.set(
+      line.packagingTypeId,
+      (quantities.get(line.packagingTypeId) || 0) + line.quantity
+    );
+  }
+
+  const allocations: DispatchPackageAllocation[] = [];
+  for (const [packagingTypeId, quantity] of quantities) {
+    const packaging = packages.find((candidate) => candidate.id === packagingTypeId);
+    if (!packaging || !packaging.active) {
+      block("A selected packaging format is inactive or missing.");
+      continue;
+    }
+    allocations.push({
+      packagingTypeId,
+      code: packaging.code,
+      name: packaging.name,
+      quantity,
+      unitVolumeCm3: 0,
+      source: "manual",
+    });
+  }
+  if (allocations.length === 0 && blockers.length === 0) {
+    block("Add at least one packaging line.");
+  }
+
+  const order: PlannedDispatchOrder = {
+    orderId,
+    destinationCountry: "",
+    companyName: "",
+    lineCount: Math.max(1, quantities.size),
+    totalVolumeCm3: 0,
+    adjustedVolumeCm3: 0,
+    deviceCounts: {},
+    items: [],
+    packages: allocations.sort((a, b) => a.name.localeCompare(b.name)),
+  };
+  return summarizeDispatchPackaging(
+    withPackagingRuleExtras([order], packages, rules, blockers),
+    packages,
+    blockers
+  );
+}
+
 export function eligibleDispatchPackagingIds(
   order: DispatchOrder,
   packages: PackagingOption[]

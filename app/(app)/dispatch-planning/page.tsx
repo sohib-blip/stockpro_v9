@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import DispatchItemDialog from "@/components/DispatchItemDialog";
+import DispatchManualOutbound from "@/components/DispatchManualOutbound";
 import DispatchPickingSheet from "@/components/DispatchPickingSheet";
 import {
   dispatchPackagingRuleExtras,
@@ -250,6 +251,7 @@ export default function DispatchPlanningPage() {
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [detail, setDetail] = useState<HistoryDetail | null>(null);
   const [feedback, setFeedback] = useState<ProcessFeedbackValue | null>(null);
+  const [mode, setMode] = useState<"workbook" | "manual">("workbook");
   const [busy, setBusy] = useState(false);
   const [labelsBusy, setLabelsBusy] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
@@ -709,358 +711,369 @@ export default function DispatchPlanningPage() {
         <ProcessFeedback {...feedback} onDismiss={() => setFeedback(null)} />
       ) : null}
 
-      <div className="prototype-stepper" aria-label="Dispatch progress">
-        <div className={`prototype-step ${preview ? "is-complete" : "is-active"}`}>
-          <span>{preview ? "✓" : "1"}</span><strong>Upload</strong>
-        </div>
-        <i />
-        <div className={`prototype-step ${preview?.ok ? "is-active" : ""}`}>
-          <span>2</span><strong>Preview</strong>
-        </div>
-        <i />
-        <div className="prototype-step">
-          <span>3</span><strong>Confirm</strong>
-        </div>
+      <div className="prototype-segmented-control dispatch-mode-switch">
+        <button type="button" className={mode === "workbook" ? "is-active" : ""} onClick={() => setMode("workbook")}>Daily workbook</button>
+        <button type="button" className={mode === "manual" ? "is-active" : ""} onClick={() => setMode("manual")}>Manual</button>
       </div>
 
-      <section className={`prototype-process-grid dispatch-process-grid ${preview?.plan ? "has-preview" : ""}`}>
-        <div className="prototype-process-input-column prototype-input-card">
-          <span className="prototype-eyebrow">Daily order workbook</span>
-          <h2>Import today&apos;s orders</h2>
-          <p className="dispatch-help-copy">
-            All worksheets are inspected. Hardware Type supplies the box contents;
-            Device Type identifies each real device and adds any missing items from
-            its automatic accessory rules.
-          </p>
-          <label className="spreadsheet-file-input">
-            Kinesis vehicle sheet (.xlsx)
-            <input
-              key={fileInputKey}
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={(event) => {
-                setFile(event.target.files?.[0] || null);
-                setPreview(null);
-                setOrderSearch("");
-                setPickingOpen(false);
-                setPickingSearch("");
-                setPickingAttentionOnly(false);
-                operationId.current = null;
-              }}
-            />
-          </label>
-          <div className="dispatch-safety-note">
-            <strong>Preview is read-only.</strong>
-            <span>Packaging stock changes only when you confirm.</span>
+      {mode === "manual" ? (
+        <DispatchManualOutbound onFeedback={setFeedback} onConfirmed={() => void loadHistory()} />
+      ) : (
+        <>
+        <div className="prototype-stepper" aria-label="Dispatch progress">
+          <div className={`prototype-step ${preview ? "is-complete" : "is-active"}`}>
+            <span>{preview ? "✓" : "1"}</span><strong>Upload</strong>
           </div>
-          <button
-            type="button"
-            className="prototype-button primary dispatch-full-button"
-            onClick={previewWorkbook}
-            disabled={busy || !file}
-          >
-            {busy ? "Working…" : "Preview Packaging"}
-          </button>
+          <i />
+          <div className={`prototype-step ${preview?.ok ? "is-active" : ""}`}>
+            <span>2</span><strong>Preview</strong>
+          </div>
+          <i />
+          <div className="prototype-step">
+            <span>3</span><strong>Confirm</strong>
+          </div>
         </div>
 
-        <div className="prototype-card dispatch-preview-card">
-          {!preview?.plan ? (
-            <div className="dispatch-empty-preview">
-              <span aria-hidden="true">□</span>
-              <strong>No preview yet</strong>
-              <p>Select the daily workbook to see orders, volumes and packaging before any deduction.</p>
+        <section className={`prototype-process-grid dispatch-process-grid ${preview?.plan ? "has-preview" : ""}`}>
+          <div className="prototype-process-input-column prototype-input-card">
+            <span className="prototype-eyebrow">Daily order workbook</span>
+            <h2>Import today&apos;s orders</h2>
+            <p className="dispatch-help-copy">
+              All worksheets are inspected. Hardware Type supplies the box contents;
+              Device Type identifies each real device and adds any missing items from
+              its automatic accessory rules.
+            </p>
+            <label className="spreadsheet-file-input">
+              Kinesis vehicle sheet (.xlsx)
+              <input
+                key={fileInputKey}
+                type="file"
+                accept=".xlsx,.xls"
+                onChange={(event) => {
+                  setFile(event.target.files?.[0] || null);
+                  setPreview(null);
+                  setOrderSearch("");
+                  setPickingOpen(false);
+                  setPickingSearch("");
+                  setPickingAttentionOnly(false);
+                  operationId.current = null;
+                }}
+              />
+            </label>
+            <div className="dispatch-safety-note">
+              <strong>Preview is read-only.</strong>
+              <span>Packaging stock changes only when you confirm.</span>
             </div>
-          ) : (
-            <>
-              <div className="dispatch-preview-heading">
-                <div>
-                  <span className="prototype-eyebrow">Read-only preview</span>
-                  <h2>{preview.source?.filename}</h2>
-                  <p>{preview.source?.generated_at || "Workbook generated date not provided"}</p>
-                </div>
-                <div className="dispatch-preview-kpis">
-                  <div><span>Orders</span><strong>{previewTotals.orders}</strong></div>
-                  <div><span>Lines</span><strong>{previewTotals.lines}</strong></div>
-                  <div><span>Packages</span><strong>{preview.plan.totalPackages}</strong></div>
-                  <div><span>Device labels</span><strong>{preview.vehicle_label_count || 0}</strong></div>
-                </div>
-              </div>
+            <button
+              type="button"
+              className="prototype-button primary dispatch-full-button"
+              onClick={previewWorkbook}
+              disabled={busy || !file}
+            >
+              {busy ? "Working…" : "Preview Packaging"}
+            </button>
+          </div>
 
-              {preview.plan.blockers.length > 0 ? (
-                <details className="dispatch-blockers" role="alert">
-                  <summary>
-                    {preview.plan.blockers.length} packaging issue{preview.plan.blockers.length === 1 ? "" : "s"} block confirmation
-                  </summary>
-                  <div className="dispatch-blocker-list">
-                    {preview.plan.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+          <div className="prototype-card dispatch-preview-card">
+            {!preview?.plan ? (
+              <div className="dispatch-empty-preview">
+                <span aria-hidden="true">□</span>
+                <strong>No preview yet</strong>
+                <p>Select the daily workbook to see orders, volumes and packaging before any deduction.</p>
+              </div>
+            ) : (
+              <>
+                <div className="dispatch-preview-heading">
+                  <div>
+                    <span className="prototype-eyebrow">Read-only preview</span>
+                    <h2>{preview.source?.filename}</h2>
+                    <p>{preview.source?.generated_at || "Workbook generated date not provided"}</p>
                   </div>
-                </details>
-              ) : null}
-
-              <div className="dispatch-orders-heading">
-                <div>
-                  <h3>Orders</h3>
-                  <p>
-                    {filteredPreviewOrders.length === preview.plan.orders.length
-                      ? `${preview.plan.orders.length} orders · ${previewTotals.lines} sheet lines · ${previewTotals.automaticItems} automatic items`
-                      : `${filteredPreviewOrders.length} of ${preview.plan.orders.length} orders`}
-                  </p>
+                  <div className="dispatch-preview-kpis">
+                    <div><span>Orders</span><strong>{previewTotals.orders}</strong></div>
+                    <div><span>Lines</span><strong>{previewTotals.lines}</strong></div>
+                    <div><span>Packages</span><strong>{preview.plan.totalPackages}</strong></div>
+                    <div><span>Device labels</span><strong>{preview.vehicle_label_count || 0}</strong></div>
+                  </div>
                 </div>
-                <input
-                  type="search"
-                  aria-label="Search dispatch orders"
-                  placeholder="Search order, customer, country or item…"
-                  value={orderSearch}
-                  onChange={(event) => setOrderSearch(event.target.value)}
-                />
-              </div>
 
-              <div className="dispatch-orders-scroll">
-                <table>
-                  <thead><tr><th>Order ID</th><th>Country</th><th>Customer</th><th>Items</th><th>Volume</th><th>Packaging — editable</th></tr></thead>
-                  <tbody>
-                    {filteredPreviewOrders.map((order) => {
-                      const allocation = order.packages[0];
-                      const eligibleIds = new Set(order.eligiblePackagingTypeIds || []);
-                      const options = (preview.packaging_options || []).filter(
-                        (option) => isPackagingContainer(option.category)
-                      );
-                      const selectedOption = options.find(
-                        (option) => option.id === allocation?.packagingTypeId
-                      );
-                      return <tr key={order.orderId}>
-                        <td><strong>{order.orderId}</strong></td>
-                        <td>{order.destinationCountry || "—"}</td>
-                        <td>{order.companyName || "—"}</td>
-                        <td>
-                          <div className="dispatch-order-items">
-                            {order.items.map((item) => (
-                              <span key={`${item.name}-${item.sourceItem}`}>
-                                <strong>{item.quantity} × {item.name}</strong>
-                                {Number(item.automaticQuantity || 0) > 0 ? (
-                                  <small>
-                                    {Number(item.workbookQuantity || 0) > 0
-                                      ? `+${item.automaticQuantity} automatic`
-                                      : "Automatic rule"}
+                {preview.plan.blockers.length > 0 ? (
+                  <details className="dispatch-blockers" role="alert">
+                    <summary>
+                      {preview.plan.blockers.length} packaging issue{preview.plan.blockers.length === 1 ? "" : "s"} block confirmation
+                    </summary>
+                    <div className="dispatch-blocker-list">
+                      {preview.plan.blockers.map((blocker) => <div key={blocker}>{blocker}</div>)}
+                    </div>
+                  </details>
+                ) : null}
+
+                <div className="dispatch-orders-heading">
+                  <div>
+                    <h3>Orders</h3>
+                    <p>
+                      {filteredPreviewOrders.length === preview.plan.orders.length
+                        ? `${preview.plan.orders.length} orders · ${previewTotals.lines} sheet lines · ${previewTotals.automaticItems} automatic items`
+                        : `${filteredPreviewOrders.length} of ${preview.plan.orders.length} orders`}
+                    </p>
+                  </div>
+                  <input
+                    type="search"
+                    aria-label="Search dispatch orders"
+                    placeholder="Search order, customer, country or item…"
+                    value={orderSearch}
+                    onChange={(event) => setOrderSearch(event.target.value)}
+                  />
+                </div>
+
+                <div className="dispatch-orders-scroll">
+                  <table>
+                    <thead><tr><th>Order ID</th><th>Country</th><th>Customer</th><th>Items</th><th>Volume</th><th>Packaging — editable</th></tr></thead>
+                    <tbody>
+                      {filteredPreviewOrders.map((order) => {
+                        const allocation = order.packages[0];
+                        const eligibleIds = new Set(order.eligiblePackagingTypeIds || []);
+                        const options = (preview.packaging_options || []).filter(
+                          (option) => isPackagingContainer(option.category)
+                        );
+                        const selectedOption = options.find(
+                          (option) => option.id === allocation?.packagingTypeId
+                        );
+                        return <tr key={order.orderId}>
+                          <td><strong>{order.orderId}</strong></td>
+                          <td>{order.destinationCountry || "—"}</td>
+                          <td>{order.companyName || "—"}</td>
+                          <td>
+                            <div className="dispatch-order-items">
+                              {order.items.map((item) => (
+                                <span key={`${item.name}-${item.sourceItem}`}>
+                                  <strong>{item.quantity} × {item.name}</strong>
+                                  {Number(item.automaticQuantity || 0) > 0 ? (
+                                    <small>
+                                      {Number(item.workbookQuantity || 0) > 0
+                                        ? `+${item.automaticQuantity} automatic`
+                                        : "Automatic rule"}
+                                    </small>
+                                  ) : null}
+                                </span>
+                              ))}
+                            </div>
+                          </td>
+                          <td>{formatNumber(order.totalVolumeCm3, 1)} cm³</td>
+                          <td>
+                            <div className="dispatch-packaging-control">
+                              <label>
+                                <select
+                                  aria-label={`Package for order ${order.orderId}`}
+                                  value={allocation?.packagingTypeId || ""}
+                                  onChange={(event) =>
+                                    updateOrderPackaging(order.orderId, {
+                                      packagingTypeId: event.target.value,
+                                    })
+                                  }
+                                >
+                                  {!allocation ? (
+                                    <option value="" disabled>Select a package…</option>
+                                  ) : null}
+                                  {options.map((option) => (
+                                    <option key={option.id} value={option.id}>
+                                      {option.name} · {formatPackageDimensions(option)} · {option.availableStock} available · {eligibleIds.has(option.id)
+                                        ? "calculated fit"
+                                        : "manual override"}
+                                    </option>
+                                  ))}
+                                </select>
+                                {selectedOption ? (
+                                  <small className="dispatch-package-dimensions">
+                                    {selectedOption.code} · {formatPackageDimensions(selectedOption)}
                                   </small>
                                 ) : null}
-                              </span>
-                            ))}
-                          </div>
-                        </td>
-                        <td>{formatNumber(order.totalVolumeCm3, 1)} cm³</td>
-                        <td>
-                          <div className="dispatch-packaging-control">
-                            <label>
-                              <select
-                                aria-label={`Package for order ${order.orderId}`}
-                                value={allocation?.packagingTypeId || ""}
-                                onChange={(event) =>
-                                  updateOrderPackaging(order.orderId, {
-                                    packagingTypeId: event.target.value,
-                                  })
-                                }
-                              >
-                                {!allocation ? (
-                                  <option value="" disabled>Select a package…</option>
-                                ) : null}
-                                {options.map((option) => (
-                                  <option key={option.id} value={option.id}>
-                                    {option.name} · {formatPackageDimensions(option)} · {option.availableStock} available · {eligibleIds.has(option.id)
-                                      ? "calculated fit"
-                                      : "manual override"}
-                                  </option>
-                                ))}
-                              </select>
-                              {selectedOption ? (
-                                <small className="dispatch-package-dimensions">
-                                  {selectedOption.code} · {formatPackageDimensions(selectedOption)}
+                              </label>
+                              <label className="dispatch-package-quantity">
+                                <span>Qty</span>
+                                <input
+                                  aria-label={`Package quantity for order ${order.orderId}`}
+                                  type="number"
+                                  min={1}
+                                  max={1_000_000}
+                                  value={allocation?.quantity ?? 1}
+                                  disabled={!allocation}
+                                  onChange={(event) =>
+                                    updateOrderPackaging(order.orderId, {
+                                      quantity: Number(event.target.value) || 1,
+                                    })
+                                  }
+                                />
+                              </label>
+                              {allocation ? (
+                                <small className={`dispatch-learning-note is-${allocation.source || "calculated"}`}>
+                                  {allocation.source === "learned"
+                                    ? `Learned from ${allocation.learningCount || 1} confirmed choice${(allocation.learningCount || 1) === 1 ? "" : "s"}`
+                                    : allocation.source === "manual"
+                                      ? "Adjusted — learned after confirmation"
+                                      : "Calculated suggestion"}
                                 </small>
+                              ) : (
+                                <small className="dispatch-learning-note is-manual">
+                                  Choose any active package to override the calculation.
+                                </small>
+                              )}
+                              {order.extras?.length ? (
+                                <div className="dispatch-packaging-extras">
+                                  <span>Added automatically</span>
+                                  {order.extras.map((extra) => (
+                                    <strong key={extra.packagingTypeId}>{`+ ${extra.quantity} × ${extra.name}`}</strong>
+                                  ))}
+                                </div>
                               ) : null}
-                            </label>
-                            <label className="dispatch-package-quantity">
-                              <span>Qty</span>
-                              <input
-                                aria-label={`Package quantity for order ${order.orderId}`}
-                                type="number"
-                                min={1}
-                                max={1_000_000}
-                                value={allocation?.quantity ?? 1}
-                                disabled={!allocation}
-                                onChange={(event) =>
-                                  updateOrderPackaging(order.orderId, {
-                                    quantity: Number(event.target.value) || 1,
-                                  })
-                                }
-                              />
-                            </label>
-                            {allocation ? (
-                              <small className={`dispatch-learning-note is-${allocation.source || "calculated"}`}>
-                                {allocation.source === "learned"
-                                  ? `Learned from ${allocation.learningCount || 1} confirmed choice${(allocation.learningCount || 1) === 1 ? "" : "s"}`
-                                  : allocation.source === "manual"
-                                    ? "Adjusted — learned after confirmation"
-                                    : "Calculated suggestion"}
-                              </small>
-                            ) : (
-                              <small className="dispatch-learning-note is-manual">
-                                Choose any active package to override the calculation.
-                              </small>
-                            )}
-                            {order.extras?.length ? (
-                              <div className="dispatch-packaging-extras">
-                                <span>Added automatically</span>
-                                {order.extras.map((extra) => (
-                                  <strong key={extra.packagingTypeId}>{`+ ${extra.quantity} × ${extra.name}`}</strong>
-                                ))}
-                              </div>
-                            ) : null}
-                          </div>
-                        </td>
-                      </tr>;
+                            </div>
+                          </td>
+                        </tr>;
+                      })}
+                      {filteredPreviewOrders.length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="dispatch-orders-empty">
+                            No orders match this search.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </tbody>
+                  </table>
+                </div>
+
+                <details className="dispatch-package-summary">
+                  <summary>
+                    <span>Packaging deduction</span>
+                    <strong>
+                      {preview.plan.totalPackages} packages · {preview.plan.packageUsage.length} format{preview.plan.packageUsage.length === 1 ? "" : "s"}
+                    </strong>
+                  </summary>
+                  <div className="dispatch-package-summary-list">
+                    {preview.plan.packageUsage.map((usage) => {
+                      const packaging = preview.packaging_options?.find(
+                        (option) => option.id === usage.packagingTypeId
+                      );
+                      return (
+                        <div key={usage.packagingTypeId}>
+                          <span>
+                            <strong>{usage.quantity} × {usage.name}</strong>
+                            <small>
+                              {usage.code}
+                              {packaging && isPackagingContainer(packaging.category)
+                                ? ` · ${formatPackageDimensions(packaging)}`
+                                : ""}
+                            </small>
+                          </span>
+                          <span
+                            className={usage.stockAfter < 0 ? "is-danger" : ""}
+                          >
+                            {usage.onHandStock} → {usage.stockAfter}
+                          </span>
+                        </div>
+                      );
                     })}
-                    {filteredPreviewOrders.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="dispatch-orders-empty">
-                          No orders match this search.
-                        </td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
+                  </div>
+                </details>
 
-              <details className="dispatch-package-summary">
-                <summary>
-                  <span>Packaging deduction</span>
-                  <strong>
-                    {preview.plan.totalPackages} packages · {preview.plan.packageUsage.length} format{preview.plan.packageUsage.length === 1 ? "" : "s"}
-                  </strong>
-                </summary>
-                <div className="dispatch-package-summary-list">
-                  {preview.plan.packageUsage.map((usage) => {
-                    const packaging = preview.packaging_options?.find(
-                      (option) => option.id === usage.packagingTypeId
-                    );
-                    return (
-                      <div key={usage.packagingTypeId}>
-                        <span>
-                          <strong>{usage.quantity} × {usage.name}</strong>
-                          <small>
-                            {usage.code}
-                            {packaging && isPackagingContainer(packaging.category)
-                              ? ` · ${formatPackageDimensions(packaging)}`
-                              : ""}
-                          </small>
-                        </span>
-                        <span
-                          className={usage.stockAfter < 0 ? "is-danger" : ""}
-                        >
-                          {usage.onHandStock} → {usage.stockAfter}
-                        </span>
-                      </div>
-                    );
-                  })}
+                <div className="dispatch-vehicle-labels-action">
+                  <div>
+                    <span className="dispatch-vehicle-labels-format">
+                      L4731 · Word
+                    </span>
+                    <span>
+                      <strong>Vehicle registration labels</strong>
+                      <small>
+                        One label per device row. Accessory rows are ignored.
+                      </small>
+                    </span>
+                  </div>
+                  <div className="dispatch-preview-tool-buttons">
+                    <button
+                      type="button"
+                      className="prototype-button secondary"
+                      onClick={() => setPickingSheetOpen(true)}
+                      disabled={!pickingSheet}
+                    >
+                      Print Picking Sheet
+                    </button>
+                    <button
+                      type="button"
+                      className="prototype-button secondary dispatch-picking-button"
+                      onClick={() => setPickingOpen(true)}
+                      disabled={pickingRows.length === 0}
+                    >
+                      Picking Summary · {pickingRows.length}
+                      {pickingAttentionCount > 0 ? (
+                        <span>{pickingAttentionCount} attention</span>
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      className="prototype-button secondary"
+                      onClick={downloadVehicleLabels}
+                      disabled={labelsBusy || !preview.vehicle_label_count}
+                    >
+                      {labelsBusy
+                        ? "Generating labels…"
+                        : `Download Vehicle Labels — Word (${preview.vehicle_label_count || 0})`}
+                    </button>
+                  </div>
                 </div>
-              </details>
 
-              <div className="dispatch-vehicle-labels-action">
-                <div>
-                  <span className="dispatch-vehicle-labels-format">
-                    L4731 · Word
-                  </span>
-                  <span>
-                    <strong>Vehicle registration labels</strong>
-                    <small>
-                      One label per device row. Accessory rows are ignored.
-                    </small>
-                  </span>
-                </div>
-                <div className="dispatch-preview-tool-buttons">
+                <div className="prototype-preview-actions">
                   <button
                     type="button"
                     className="prototype-button secondary"
-                    onClick={() => setPickingSheetOpen(true)}
-                    disabled={!pickingSheet}
-                  >
-                    Print Picking Sheet
-                  </button>
-                  <button
-                    type="button"
-                    className="prototype-button secondary dispatch-picking-button"
-                    onClick={() => setPickingOpen(true)}
-                    disabled={pickingRows.length === 0}
-                  >
-                    Picking Summary · {pickingRows.length}
-                    {pickingAttentionCount > 0 ? (
-                      <span>{pickingAttentionCount} attention</span>
-                    ) : null}
-                  </button>
-                  <button
-                    type="button"
-                    className="prototype-button secondary"
-                    onClick={downloadVehicleLabels}
-                    disabled={labelsBusy || !preview.vehicle_label_count}
-                  >
-                    {labelsBusy
-                      ? "Generating labels…"
-                      : `Download Vehicle Labels — Word (${preview.vehicle_label_count || 0})`}
-                  </button>
-                </div>
-              </div>
-
-              <div className="prototype-preview-actions">
-                <button
-                  type="button"
-                  className="prototype-button secondary"
-                  onClick={() => {
-                    setPreview(null);
-                    setOrderSearch("");
-                    setPickingOpen(false);
-                    setPickingSearch("");
-                    setPickingAttentionOnly(false);
-                    operationId.current = null;
-                  }}
-                  disabled={busy}
-                >
-                  Clear Preview
-                </button>
-                <button
-                  type="button"
-                  className="prototype-button confirm"
-                  onClick={() => setConfirmOpen(true)}
-                  disabled={busy || !preview.ok}
-                >
-                  Confirm &amp; Deduct Packaging
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </section>
-
-      {preview?.issues?.length ? (
-        <section className="prototype-card prototype-history-card">
-          <h2>Rows requiring correction</h2>
-          <p>Add the missing dimensions once: the workbook is checked again automatically and the item is remembered for the next days.</p>
-          <div className="dispatch-orders-scroll is-issues">
-            <table><thead><tr><th>Sheet</th><th>Row</th><th>Hardware Type</th><th>Device Type</th><th>Problem</th><th>Action</th></tr></thead>
-              <tbody>{preview.issues.map((issue, index) => (
-                <tr key={`${issue.sheet}-${issue.row}-${index}`}><td>{issue.sheet}</td><td>{issue.row}</td><td>{issue.hardwareType || "—"}</td><td>{issue.deviceType || "—"}</td><td>{issue.message}</td><td>{issue.suggestedName ? (
-                  <button
-                    type="button"
-                    className="prototype-button secondary"
+                    onClick={() => {
+                      setPreview(null);
+                      setOrderSearch("");
+                      setPickingOpen(false);
+                      setPickingSearch("");
+                      setPickingAttentionOnly(false);
+                      operationId.current = null;
+                    }}
                     disabled={busy}
-                    onClick={() => setResolveIssue({ label: issue.suggestedName!, hardwareType: issue.hardwareType, deviceType: issue.deviceType })}
                   >
-                    Add dimensions
+                    Clear Preview
                   </button>
-                ) : "—"}</td></tr>
-              ))}</tbody>
-            </table>
+                  <button
+                    type="button"
+                    className="prototype-button confirm"
+                    onClick={() => setConfirmOpen(true)}
+                    disabled={busy || !preview.ok}
+                  >
+                    Confirm &amp; Deduct Packaging
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </section>
-      ) : null}
+
+        {preview?.issues?.length ? (
+          <section className="prototype-card prototype-history-card">
+            <h2>Rows requiring correction</h2>
+            <p>Add the missing dimensions once: the workbook is checked again automatically and the item is remembered for the next days.</p>
+            <div className="dispatch-orders-scroll is-issues">
+              <table><thead><tr><th>Sheet</th><th>Row</th><th>Hardware Type</th><th>Device Type</th><th>Problem</th><th>Action</th></tr></thead>
+                <tbody>{preview.issues.map((issue, index) => (
+                  <tr key={`${issue.sheet}-${issue.row}-${index}`}><td>{issue.sheet}</td><td>{issue.row}</td><td>{issue.hardwareType || "—"}</td><td>{issue.deviceType || "—"}</td><td>{issue.message}</td><td>{issue.suggestedName ? (
+                    <button
+                      type="button"
+                      className="prototype-button secondary"
+                      disabled={busy}
+                      onClick={() => setResolveIssue({ label: issue.suggestedName!, hardwareType: issue.hardwareType, deviceType: issue.deviceType })}
+                    >
+                      Add dimensions
+                    </button>
+                  ) : "—"}</td></tr>
+                ))}</tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
+        </>
+      )}
 
       {pickingSheetOpen && pickingSheet && (
         <DispatchPickingSheet

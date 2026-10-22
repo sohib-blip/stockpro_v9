@@ -855,6 +855,35 @@ const FR: Record<string, string> = {
   "Added automatically": "Ajouté automatiquement",
   "An automatic packaging rule uses a packaging format that is inactive or missing.":
     "Une règle automatique utilise un emballage inactif ou supprimé.",
+  // Manual packaging outbound
+  "Daily workbook": "Fichier du jour",
+  "Manual packaging outbound": "Sortie manuelle d’emballages",
+  "Remove packaging by hand": "Retirer des emballages à la main",
+  "For packaging used outside the daily workbook. Automatic packaging rules still add sleeves and plastic envelopes.":
+    "Pour les emballages utilisés en dehors du fichier du jour. Les règles automatiques ajoutent toujours les sleeves et les enveloppes plastique.",
+  "Reference (optional)": "Référence (facultatif)",
+  "Comment (optional)": "Commentaire (facultatif)",
+  "+ Add line": "+ Ajouter une ligne",
+  "Preview Manual Outbound": "Aperçu de la sortie manuelle",
+  "Choose the packaging to remove, then preview every stock change before confirmation.":
+    "Choisissez les emballages à retirer, puis vérifiez chaque changement de stock avant de confirmer.",
+  Selected: "Choisi",
+  "Automatic rule": "Règle automatique",
+  "Selected + automatic rule": "Choisi + règle automatique",
+  "Confirm & Deduct": "Confirmer et retirer",
+  "Confirm manual outbound?": "Confirmer la sortie manuelle ?",
+  "Manual outbound confirmed": "Sortie manuelle confirmée",
+  "Manual outbound blocked": "Sortie manuelle bloquée",
+  "Manual outbound failed": "La sortie manuelle a échoué",
+  "Preview failed": "L’aperçu a échoué",
+  "Packaging stock or the selected formats need attention before confirmation.":
+    "Le stock d’emballages ou les formats choisis doivent être corrigés avant de confirmer.",
+  "Manual packaging outbound failed.": "La sortie manuelle d’emballages a échoué.",
+  "Manual packaging outbound could not be previewed.": "L’aperçu de la sortie manuelle n’a pas pu être affiché.",
+  "Every line needs a quantity between 1 and 1,000,000.": "Chaque ligne doit avoir une quantité entre 1 et 1 000 000.",
+  "A selected packaging format is inactive or missing.": "Un emballage choisi est inactif ou supprimé.",
+  "Add at least one packaging line.": "Ajoutez au moins une ligne d’emballage.",
+  "Invalid manual packaging outbound.": "Sortie manuelle d’emballages invalide.",
 };
 
 const NL: Record<string, string> = {
@@ -1702,6 +1731,35 @@ const NL: Record<string, string> = {
   "Added automatically": "Automatisch toegevoegd",
   "An automatic packaging rule uses a packaging format that is inactive or missing.":
     "Een automatische regel gebruikt een inactieve of ontbrekende verpakking.",
+  // Manual packaging outbound
+  "Daily workbook": "Dagbestand",
+  "Manual packaging outbound": "Manuele verpakkingsuitgifte",
+  "Remove packaging by hand": "Verpakking manueel afboeken",
+  "For packaging used outside the daily workbook. Automatic packaging rules still add sleeves and plastic envelopes.":
+    "Voor verpakking die buiten het dagbestand wordt gebruikt. Automatische regels voegen nog steeds sleeves en plastic enveloppen toe.",
+  "Reference (optional)": "Referentie (optioneel)",
+  "Comment (optional)": "Opmerking (optioneel)",
+  "+ Add line": "+ Regel toevoegen",
+  "Preview Manual Outbound": "Voorbeeld manuele uitgifte",
+  "Choose the packaging to remove, then preview every stock change before confirmation.":
+    "Kies de af te boeken verpakking en controleer elke voorraadwijziging voor de bevestiging.",
+  Selected: "Gekozen",
+  "Automatic rule": "Automatische regel",
+  "Selected + automatic rule": "Gekozen + automatische regel",
+  "Confirm & Deduct": "Bevestigen en afboeken",
+  "Confirm manual outbound?": "Manuele uitgifte bevestigen?",
+  "Manual outbound confirmed": "Manuele uitgifte bevestigd",
+  "Manual outbound blocked": "Manuele uitgifte geblokkeerd",
+  "Manual outbound failed": "Manuele uitgifte mislukt",
+  "Preview failed": "Voorbeeld mislukt",
+  "Packaging stock or the selected formats need attention before confirmation.":
+    "De verpakkingsvoorraad of de gekozen formaten moeten worden nagekeken voor de bevestiging.",
+  "Manual packaging outbound failed.": "Manuele verpakkingsuitgifte mislukt.",
+  "Manual packaging outbound could not be previewed.": "Het voorbeeld van de manuele uitgifte kon niet worden getoond.",
+  "Every line needs a quantity between 1 and 1,000,000.": "Elke regel heeft een hoeveelheid tussen 1 en 1.000.000 nodig.",
+  "A selected packaging format is inactive or missing.": "Een gekozen verpakking is inactief of ontbreekt.",
+  "Add at least one packaging line.": "Voeg minstens één verpakkingsregel toe.",
+  "Invalid manual packaging outbound.": "Ongeldige manuele verpakkingsuitgifte.",
 };
 
 const DICTIONARIES: Record<Exclude<Locale, "en">, Record<string, string>> = {
@@ -1775,6 +1833,10 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(.+) is no longer added automatically\.$/, "$1 n’est plus ajouté automatiquement."],
           [/^An automatic packaging rule uses (.+) that is inactive or missing\.$/, "Une règle automatique utilise $1, qui est inactif ou supprimé."],
           [/^Order (.+): (.+) is a sleeve and cannot hold an order\.$/, "Commande $1 : $2 est une sleeve et ne peut pas contenir une commande."],
+          [/^(\d+) packages deducted\. You can undo it in Dispatch History\.$/, "$1 emballages retirés. Vous pouvez annuler dans Dispatch History."],
+          [/^This will deduct (\d+) packages\. The action stays available in Dispatch History and can be undone\.$/, "$1 emballages vont être retirés. L’action reste visible dans Dispatch History et peut être annulée."],
+          [/^(.+) — (\d+) available$/, "$1 — $2 disponibles"],
+          [/^(\d+) packages$/, "$1 emballages"],
         ]
       : [
           [/^Page (\d+)$/, "Pagina $1"],
@@ -1839,6 +1901,10 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(.+) is no longer added automatically\.$/, "$1 wordt niet meer automatisch toegevoegd."],
           [/^An automatic packaging rule uses (.+) that is inactive or missing\.$/, "Een automatische regel gebruikt $1, dat inactief is of ontbreekt."],
           [/^Order (.+): (.+) is a sleeve and cannot hold an order\.$/, "Order $1: $2 is een sleeve en kan geen order bevatten."],
+          [/^(\d+) packages deducted\. You can undo it in Dispatch History\.$/, "$1 verpakkingen afgeboekt. U kunt dit ongedaan maken in Dispatch History."],
+          [/^This will deduct (\d+) packages\. The action stays available in Dispatch History and can be undone\.$/, "Er worden $1 verpakkingen afgeboekt. De actie blijft zichtbaar in Dispatch History en kan ongedaan worden gemaakt."],
+          [/^(.+) — (\d+) available$/, "$1 — $2 beschikbaar"],
+          [/^(\d+) packages$/, "$1 verpakkingen"],
         ];
 
   for (const [pattern, replacement] of rules as Array<[RegExp, string]>) {

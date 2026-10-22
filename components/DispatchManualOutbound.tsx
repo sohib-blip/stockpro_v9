@@ -230,9 +230,9 @@ export default function DispatchManualOutbound({
             <p>Choose the packaging to remove, then preview every stock change before confirmation.</p>
           </div>
         ) : (
-          <div className="dispatch-manual-preview">
+          <div className="outbound-preview">
             {plan.blockers.length > 0 ? (
-              <ul className="dispatch-manual-blockers">
+              <ul className="outbound-preview-blockers">
                 {plan.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}
               </ul>
             ) : null}
@@ -259,7 +259,7 @@ export default function DispatchManualOutbound({
                 ))}
               </tbody>
             </table>
-            <div className="dispatch-manual-actions">
+            <div className="outbound-preview-actions">
               <span>{`${plan.totalPackages} packages`}</span>
               <button
                 type="button"

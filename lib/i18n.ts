@@ -1837,6 +1837,8 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^This will deduct (\d+) packages\. The action stays available in Dispatch History and can be undone\.$/, "$1 emballages vont être retirés. L’action reste visible dans Dispatch History et peut être annulée."],
           [/^(.+) — (\d+) available$/, "$1 — $2 disponibles"],
           [/^(\d+) packages$/, "$1 emballages"],
+          [/^(\d+) units$/, "$1 unités"],
+          [/^Report (\d+) \+ automatic rule (\d+)$/, "Rapport $1 + règle automatique $2"],
         ]
       : [
           [/^Page (\d+)$/, "Pagina $1"],
@@ -1905,6 +1907,8 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^This will deduct (\d+) packages\. The action stays available in Dispatch History and can be undone\.$/, "Er worden $1 verpakkingen afgeboekt. De actie blijft zichtbaar in Dispatch History en kan ongedaan worden gemaakt."],
           [/^(.+) — (\d+) available$/, "$1 — $2 beschikbaar"],
           [/^(\d+) packages$/, "$1 verpakkingen"],
+          [/^(\d+) units$/, "$1 eenheden"],
+          [/^Report (\d+) \+ automatic rule (\d+)$/, "Rapport $1 + automatische regel $2"],
         ];
 
   for (const [pattern, replacement] of rules as Array<[RegExp, string]>) {

@@ -11,13 +11,19 @@ const page = readFileSync(
   join(root, "app/(app)/accessories/page.tsx"),
   "utf8"
 );
+const previewHelpers = readFileSync(
+  join(root, "lib/accessory-outbound-preview.ts"),
+  "utf8"
+);
 
 describe("accessory End-of-Day spreadsheet safety", () => {
   it("uses the structured report parser and report-first calculation", () => {
     expect(route).toContain("parseEndOfDayWorkbook");
     expect(route).toContain("buildAccessoryEndOfDayPreview");
-    expect(page).toContain("From report");
-    expect(page).toContain("Template fill");
+    // The preview tells which quantities come from the report and which from rules.
+    expect(page).toContain("spreadsheetSource(row)");
+    expect(previewHelpers).toContain("From report");
+    expect(previewHelpers).toContain("automatic rule");
   });
 
   it("derives an idempotency key from the file and blocks confirmed reports", () => {

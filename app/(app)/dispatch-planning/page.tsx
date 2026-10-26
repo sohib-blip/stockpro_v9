@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import DispatchItemDialog from "@/components/DispatchItemDialog";
@@ -113,6 +113,10 @@ type Preview = {
   }>;
   packaging_options?: PackagingOption[];
   packaging_rules?: DispatchPackagingRule[];
+  // Orders already deducted in an earlier dispatch: not deducted again, but
+  // still on the picking sheet and the vehicle labels.
+  carried_orders?: Array<DispatchOrder & { confirmedAt: string; confirmedIn: string }>;
+  nothing_new?: boolean;
   picking_summary?: PickingSummaryRow[];
   cabinet_stock?: Record<string, number>;
 };
@@ -207,15 +211,14 @@ function rebuildClientPlan(
       })
       .sort((a, b) => a.name.localeCompare(b.name));
 
-    const allocation = order.packages[0];
-    const option = allocation
-      ? optionsById.get(allocation.packagingTypeId)
-      : undefined;
-    if (!allocation || !option) {
+    const chosen = order.packages.flatMap((allocation) => {
+      const option = optionsById.get(allocation.packagingTypeId);
+      return option ? [{ option, quantity: allocation.quantity }] : [];
+    });
+    if (chosen.length === 0 || chosen.length < order.packages.length) {
       blockers.push(`Order ${order.orderId}: select an available package.`);
-    } else {
-      addUsage(option, allocation.quantity);
     }
+    for (const { option, quantity } of chosen) addUsage(option, quantity);
     for (const extra of extras) {
       addUsage(optionsById.get(extra.packagingTypeId)!, extra.quantity);
     }
@@ -345,7 +348,10 @@ export default function DispatchPlanningPage() {
         .map((row) => [row.name, row.availableStock])
     );
     return buildPickingSheet(
-      preview.plan.orders,
+      [
+        ...preview.plan.orders,
+        ...(preview.carried_orders || []).map((order) => ({ ...order, carried: true })),
+      ],
       preview.cabinet_stock || {},
       warehouseStock
     );
@@ -431,6 +437,14 @@ export default function DispatchPlanningPage() {
       });
       const json = await response.json().catch(() => null);
       if (json?.plan || json?.issues) setPreview(json);
+      if (json?.nothing_new) {
+        setFeedback({
+          kind: "info",
+          title: "Nothing new to deduct",
+          message: `All ${json.carried_orders?.length || 0} orders of this workbook were already deducted earlier. You can still print the picking sheet and the vehicle labels.`,
+        });
+        return;
+      }
       if (!response.ok || !json?.ok) {
         setFeedback({
           kind: "error",
@@ -453,7 +467,11 @@ export default function DispatchPlanningPage() {
               0
             ),
           0
-        )} required accessories were added to the volume calculation. Review the packaging deduction before confirming.`,
+        )} required accessories were added to the volume calculation.${
+          json.carried_orders?.length
+            ? ` ${json.carried_orders.length} orders already deducted earlier are ignored.`
+            : ""
+        } Review the packaging deduction before confirming.`,
       });
     } finally {
       setBusy(false);
@@ -474,20 +492,16 @@ export default function DispatchPlanningPage() {
             operationId.current ||
             (operationId.current = crypto.randomUUID()),
           preview_token: preview.preview_token,
-          selections: (preview.plan?.orders || []).flatMap((order) => {
-            const allocation = order.packages[0];
-            return allocation
-              ? [
-                  {
-                    orderId: order.orderId,
-                    packagingTypeId: allocation.packagingTypeId,
-                    quantity: allocation.quantity,
-                    source: allocation.source,
-                    learningCount: allocation.learningCount,
-                  },
-                ]
-              : [];
-          }),
+          // One selection per package line; an order can have several.
+          selections: (preview.plan?.orders || []).flatMap((order) =>
+            order.packages.map((allocation) => ({
+              orderId: order.orderId,
+              packagingTypeId: allocation.packagingTypeId,
+              quantity: allocation.quantity,
+              source: allocation.source,
+              learningCount: allocation.learningCount,
+            }))
+          ),
         }),
       });
       const json = await response.json().catch(() => null);
@@ -606,42 +620,31 @@ export default function DispatchPlanningPage() {
     URL.revokeObjectURL(objectUrl);
   }
 
-  function updateOrderPackaging(
+  // Change the package lines of one order; the result is a manual choice
+  // that StockPro learns once the dispatch is confirmed.
+  function changeOrderPackages(
     orderId: string,
-    update: { packagingTypeId?: string; quantity?: number }
+    change: (
+      packages: DispatchOrder["packages"],
+      optionById: Map<string, PackagingOption>
+    ) => DispatchOrder["packages"]
   ) {
     setPreview((current) => {
       if (!current?.plan) return current;
       const options = current.packaging_options || [];
       const optionById = new Map(options.map((option) => [option.id, option]));
-      const orders = current.plan.orders.map((order) => {
-        if (order.orderId !== orderId) return order;
-        const currentAllocation = order.packages[0];
-        const packagingTypeId =
-          update.packagingTypeId || currentAllocation?.packagingTypeId;
-        const option = packagingTypeId
-          ? optionById.get(packagingTypeId)
-          : undefined;
-        if (!option) return order;
-        return {
-          ...order,
-          packages: [
-            {
-              packagingTypeId: option.id,
-              code: option.code,
-              name: option.name,
-              quantity: Math.max(
-                1,
-                Math.min(
-                  1_000_000,
-                  update.quantity ?? currentAllocation?.quantity ?? 1
-                )
-              ),
-              source: "manual" as const,
-            },
-          ],
-        };
-      });
+      const orders = current.plan.orders.map((order) =>
+        order.orderId !== orderId
+          ? order
+          : {
+              ...order,
+              packages: change(order.packages, optionById).map((allocation) => ({
+                ...allocation,
+                source: "manual" as const,
+                learningCount: undefined,
+              })),
+            }
+      );
       const plan = rebuildClientPlan(orders, options, current.packaging_rules || []);
       return { ...current, ok: plan.blockers.length === 0, plan };
     });
@@ -651,6 +654,45 @@ export default function DispatchPlanningPage() {
       message:
         "Confirm the dispatch after the order is physically packed. StockPro will remember this choice for the same order composition.",
     });
+  }
+
+  function packageLine(option: PackagingOption, quantity: number) {
+    return {
+      packagingTypeId: option.id,
+      code: option.code,
+      name: option.name,
+      quantity: Math.max(1, Math.min(1_000_000, quantity)),
+    };
+  }
+
+  function updateOrderPackaging(
+    orderId: string,
+    index: number,
+    update: { packagingTypeId?: string; quantity?: number }
+  ) {
+    changeOrderPackages(orderId, (packages, optionById) => {
+      const current = packages[index];
+      const option = optionById.get(update.packagingTypeId || current?.packagingTypeId || "");
+      if (!option) return packages;
+      const line = packageLine(option, update.quantity ?? current?.quantity ?? 1);
+      return index < packages.length
+        ? packages.map((allocation, at) => (at === index ? line : allocation))
+        : [...packages, line];
+    });
+  }
+
+  function addOrderPackage(orderId: string) {
+    changeOrderPackages(orderId, (packages, optionById) => {
+      const last = packages[packages.length - 1];
+      const option = last ? optionById.get(last.packagingTypeId) : undefined;
+      return option ? [...packages, packageLine(option, 1)] : packages;
+    });
+  }
+
+  function removeOrderPackage(orderId: string, index: number) {
+    changeOrderPackages(orderId, (packages) =>
+      packages.length > 1 ? packages.filter((_, at) => at !== index) : packages
+    );
   }
 
   async function undoDispatch() {
@@ -835,6 +877,17 @@ export default function DispatchPlanningPage() {
                   />
                 </div>
 
+                {preview.carried_orders?.length ? (
+                  <div className="dispatch-carried-orders">
+                    <strong>{`${preview.carried_orders.length} orders already deducted earlier — not deducted again`}</strong>
+                    <span>They stay on the picking sheet and the vehicle labels.</span>
+                    <small>
+                      {preview.carried_orders
+                        .map((order) => `${order.orderId} (${formatDate(order.confirmedAt)})`)
+                        .join(" · ")}
+                    </small>
+                  </div>
+                ) : null}
                 <div className="dispatch-orders-scroll">
                   <table>
                     <thead><tr><th>Order ID</th><th>Country</th><th>Customer</th><th>Items</th><th>Volume</th><th>Packaging — editable</th></tr></thead>
@@ -845,9 +898,7 @@ export default function DispatchPlanningPage() {
                         const options = (preview.packaging_options || []).filter(
                           (option) => isPackagingContainer(option.category)
                         );
-                        const selectedOption = options.find(
-                          (option) => option.id === allocation?.packagingTypeId
-                        );
+                        const lines = order.packages.length > 0 ? order.packages : [null];
                         return <tr key={order.orderId}>
                           <td><strong>{order.orderId}</strong></td>
                           <td>{order.destinationCountry || "—"}</td>
@@ -871,62 +922,96 @@ export default function DispatchPlanningPage() {
                           <td>{formatNumber(order.totalVolumeCm3, 1)} cm³</td>
                           <td>
                             <div className="dispatch-packaging-control">
-                              <label>
-                                <select
-                                  aria-label={`Package for order ${order.orderId}`}
-                                  value={allocation?.packagingTypeId || ""}
-                                  onChange={(event) =>
-                                    updateOrderPackaging(order.orderId, {
-                                      packagingTypeId: event.target.value,
-                                    })
-                                  }
-                                >
-                                  {!allocation ? (
-                                    <option value="" disabled>Select a package…</option>
-                                  ) : null}
-                                  {options.map((option) => (
-                                    <option key={option.id} value={option.id}>
-                                      {option.name} · {formatPackageDimensions(option)} · {option.availableStock} available · {eligibleIds.has(option.id)
-                                        ? "calculated fit"
-                                        : "manual override"}
-                                    </option>
-                                  ))}
-                                </select>
-                                {selectedOption ? (
-                                  <small className="dispatch-package-dimensions">
-                                    {selectedOption.code} · {formatPackageDimensions(selectedOption)}
+                              {lines.map((line, index) => {
+                                const selectedOption = options.find(
+                                  (option) => option.id === line?.packagingTypeId
+                                );
+                                const label = index === 0
+                                  ? `Package for order ${order.orderId}`
+                                  : `Package ${index + 1} for order ${order.orderId}`;
+                                return (
+                                  <Fragment key={index}>
+                                    <label>
+                                      <select
+                                        aria-label={label}
+                                        value={line?.packagingTypeId || ""}
+                                        onChange={(event) =>
+                                          updateOrderPackaging(order.orderId, index, {
+                                            packagingTypeId: event.target.value,
+                                          })
+                                        }
+                                      >
+                                        {!line ? (
+                                          <option value="" disabled>Select a package…</option>
+                                        ) : null}
+                                        {options.map((option) => (
+                                          <option key={option.id} value={option.id}>
+                                            {option.name} · {formatPackageDimensions(option)} · {option.availableStock} available · {eligibleIds.has(option.id)
+                                              ? "calculated fit"
+                                              : "manual override"}
+                                          </option>
+                                        ))}
+                                      </select>
+                                      {selectedOption ? (
+                                        <small className="dispatch-package-dimensions">
+                                          {selectedOption.code} · {formatPackageDimensions(selectedOption)}
+                                        </small>
+                                      ) : null}
+                                    </label>
+                                    <label className="dispatch-package-quantity">
+                                      <span>Qty</span>
+                                      <input
+                                        aria-label={index === 0
+                                          ? `Package quantity for order ${order.orderId}`
+                                          : `Package ${index + 1} quantity for order ${order.orderId}`}
+                                        type="number"
+                                        min={1}
+                                        max={1_000_000}
+                                        value={line?.quantity ?? 1}
+                                        disabled={!line}
+                                        onChange={(event) =>
+                                          updateOrderPackaging(order.orderId, index, {
+                                            quantity: Number(event.target.value) || 1,
+                                          })
+                                        }
+                                      />
+                                    </label>
+                                    {order.packages.length > 1 ? (
+                                      <button
+                                        type="button"
+                                        className="dispatch-package-remove"
+                                        aria-label={`Remove package ${index + 1} from order ${order.orderId}`}
+                                        onClick={() => removeOrderPackage(order.orderId, index)}
+                                      >
+                                        ×
+                                      </button>
+                                    ) : <span />}
+                                  </Fragment>
+                                );
+                              })}
+                              <div className="dispatch-packaging-footer">
+                                {allocation ? (
+                                  <small className={`dispatch-learning-note is-${allocation.source || "calculated"}`}>
+                                    {allocation.source === "learned"
+                                      ? `Learned from ${allocation.learningCount || 1} confirmed choice${(allocation.learningCount || 1) === 1 ? "" : "s"}`
+                                      : allocation.source === "manual"
+                                        ? "Adjusted — learned after confirmation"
+                                        : "Calculated suggestion"}
                                   </small>
-                                ) : null}
-                              </label>
-                              <label className="dispatch-package-quantity">
-                                <span>Qty</span>
-                                <input
-                                  aria-label={`Package quantity for order ${order.orderId}`}
-                                  type="number"
-                                  min={1}
-                                  max={1_000_000}
-                                  value={allocation?.quantity ?? 1}
+                                ) : (
+                                  <small className="dispatch-learning-note is-manual">
+                                    Choose any active package to override the calculation.
+                                  </small>
+                                )}
+                                <button
+                                  type="button"
+                                  className="dispatch-add-box"
                                   disabled={!allocation}
-                                  onChange={(event) =>
-                                    updateOrderPackaging(order.orderId, {
-                                      quantity: Number(event.target.value) || 1,
-                                    })
-                                  }
-                                />
-                              </label>
-                              {allocation ? (
-                                <small className={`dispatch-learning-note is-${allocation.source || "calculated"}`}>
-                                  {allocation.source === "learned"
-                                    ? `Learned from ${allocation.learningCount || 1} confirmed choice${(allocation.learningCount || 1) === 1 ? "" : "s"}`
-                                    : allocation.source === "manual"
-                                      ? "Adjusted — learned after confirmation"
-                                      : "Calculated suggestion"}
-                                </small>
-                              ) : (
-                                <small className="dispatch-learning-note is-manual">
-                                  Choose any active package to override the calculation.
-                                </small>
-                              )}
+                                  onClick={() => addOrderPackage(order.orderId)}
+                                >
+                                  + Add box
+                                </button>
+                              </div>
                               {order.extras?.length ? (
                                 <div className="dispatch-packaging-extras">
                                   <span>Added automatically</span>

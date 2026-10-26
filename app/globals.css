@@ -804,7 +804,7 @@ body {
 .dispatch-packaging-control {
   min-width: 410px;
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) 58px auto;
+  grid-template-columns: minmax(180px, 1fr) 58px 26px;
   gap: 7px;
   align-items: center;
 }
@@ -825,9 +825,45 @@ body {
   padding: 0 30px 0 9px;
 }
 
-.dispatch-packaging-control > label:first-child {
+.dispatch-packaging-control > label:not(.dispatch-package-quantity) {
   display: grid;
   gap: 3px;
+}
+
+.dispatch-package-remove {
+  width: 26px;
+  height: 26px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--muted-strong);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+}
+
+.dispatch-packaging-footer {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.dispatch-add-box {
+  border: 0;
+  background: transparent;
+  color: var(--brand);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dispatch-add-box:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
 }
 
 .dispatch-package-dimensions {
@@ -966,6 +1002,23 @@ body {
   .dispatch-manual-fields {
     grid-template-columns: 1fr;
   }
+}
+
+.dispatch-carried-orders {
+  display: grid;
+  gap: 3px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface-subtle);
+  color: var(--foreground-soft);
+  font-size: 12px;
+}
+
+.dispatch-carried-orders small {
+  color: var(--muted);
+  font-size: 11px;
 }
 
 .dispatch-packaging-extras {
@@ -6153,6 +6206,44 @@ main.min-h-screen {
 
 .picking-sheet-orders strong {
   min-width: 72px;
+}
+
+.picking-sheet-columns {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.picking-sheet-totals {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.picking-sheet-totals li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 2px 0;
+  border-bottom: 1px dotted #bbb;
+  break-inside: avoid;
+}
+
+.picking-sheet-totals strong {
+  min-width: 34px;
+  text-align: right;
+}
+
+.picking-sheet-carried {
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid #555;
+  border-radius: 3px;
+  color: #333;
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
 .picking-sheet-box {

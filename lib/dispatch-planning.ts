@@ -1206,7 +1206,9 @@ export function applyDispatchPackagingSelections(
     automatic.orders.map((order) => [order.orderId, order])
   );
   const orderIds = new Set(orders.map((order) => order.orderId));
-  const selectionByOrder = new Map<string, DispatchPackagingSelection>();
+  // Several selections for one order mean several packages for that order
+  // (e.g. 1 Normal Box C + 2 Radius Box Small).
+  const selectionsByOrder = new Map<string, DispatchPackagingSelection[]>();
   const blockers: string[] = [];
 
   for (const selection of selections) {
@@ -1214,16 +1216,14 @@ export function applyDispatchPackagingSelections(
       blockers.push(`Unknown order ${selection.orderId} in packaging selection.`);
       continue;
     }
-    if (selectionByOrder.has(selection.orderId)) {
-      blockers.push(`Order ${selection.orderId} has more than one packaging selection.`);
-      continue;
-    }
-    selectionByOrder.set(selection.orderId, selection);
+    const current = selectionsByOrder.get(selection.orderId) ?? [];
+    current.push(selection);
+    selectionsByOrder.set(selection.orderId, current);
   }
 
   const plannedOrders = orders.map((order) => {
-    const selection = selectionByOrder.get(order.orderId);
-    if (!selection) {
+    const orderSelections = selectionsByOrder.get(order.orderId);
+    if (!orderSelections) {
       const planned = automaticByOrder.get(order.orderId);
       if (!planned?.packages.length) {
         blockers.push(
@@ -1232,56 +1232,68 @@ export function applyDispatchPackagingSelections(
       }
       return planned ?? { ...order, packages: [] };
     }
-
-    const packaging = packages.find(
-      (candidate) => candidate.id === selection.packagingTypeId
-    );
-    if (!packaging || !packaging.active) {
-      blockers.push(
-        `Order ${order.orderId}: the selected packaging format is unavailable.`
-      );
-      return { ...order, packages: [] };
-    }
-    if (!isPackagingContainer(packaging.category)) {
-      blockers.push(
-        `Order ${order.orderId}: ${packaging.name} is a sleeve and cannot hold an order.`
-      );
-      return { ...order, packages: [] };
-    }
-    if (
-      !Number.isInteger(selection.quantity) ||
-      selection.quantity < 1 ||
-      selection.quantity > 1_000_000
-    ) {
-      blockers.push(`Order ${order.orderId}: the package quantity is invalid.`);
-      return { ...order, packages: [] };
-    }
-    const selectionSource = selection.source ?? "manual";
-    if (
-      selectionSource === "calculated" &&
-      !order.items.every((item) => itemFitsPackage(item, packaging))
-    ) {
-      blockers.push(
-        `Order ${order.orderId}: ${packaging.name} cannot fit at least one item dimension.`
-      );
+    if (orderSelections.length > 20) {
+      blockers.push(`Order ${order.orderId}: use at most 20 different packages.`);
       return { ...order, packages: [] };
     }
 
-    return {
-      ...order,
-      packages: [
-        {
-          packagingTypeId: packaging.id,
-          code: packaging.code,
-          name: packaging.name,
-          quantity: selection.quantity,
-          unitVolumeCm3:
-            packaging.lengthCm * packaging.widthCm * packaging.heightCm,
-          source: selectionSource,
-          learningCount: selection.learningCount,
-        },
-      ],
-    };
+    const allocations: DispatchPackageAllocation[] = [];
+    for (const selection of orderSelections) {
+      const packaging = packages.find(
+        (candidate) => candidate.id === selection.packagingTypeId
+      );
+      if (!packaging || !packaging.active) {
+        blockers.push(
+          `Order ${order.orderId}: the selected packaging format is unavailable.`
+        );
+        return { ...order, packages: [] };
+      }
+      if (!isPackagingContainer(packaging.category)) {
+        blockers.push(
+          `Order ${order.orderId}: ${packaging.name} is a sleeve and cannot hold an order.`
+        );
+        return { ...order, packages: [] };
+      }
+      if (
+        !Number.isInteger(selection.quantity) ||
+        selection.quantity < 1 ||
+        selection.quantity > 1_000_000
+      ) {
+        blockers.push(`Order ${order.orderId}: the package quantity is invalid.`);
+        return { ...order, packages: [] };
+      }
+      const selectionSource = selection.source ?? "manual";
+      if (
+        selectionSource === "calculated" &&
+        orderSelections.length === 1 &&
+        !order.items.every((item) => itemFitsPackage(item, packaging))
+      ) {
+        blockers.push(
+          `Order ${order.orderId}: ${packaging.name} cannot fit at least one item dimension.`
+        );
+        return { ...order, packages: [] };
+      }
+
+      const existing = allocations.find(
+        (allocation) => allocation.packagingTypeId === packaging.id
+      );
+      if (existing) {
+        existing.quantity += selection.quantity;
+        continue;
+      }
+      allocations.push({
+        packagingTypeId: packaging.id,
+        code: packaging.code,
+        name: packaging.name,
+        quantity: selection.quantity,
+        unitVolumeCm3:
+          packaging.lengthCm * packaging.widthCm * packaging.heightCm,
+        source: selectionSource,
+        learningCount: selection.learningCount,
+      });
+    }
+
+    return { ...order, packages: allocations };
   });
 
   return summarizeDispatchPackaging(

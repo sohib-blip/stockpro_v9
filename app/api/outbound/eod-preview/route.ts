@@ -1,3 +1,4 @@
+import { deviceIdsInText } from "@/lib/device-serials";
 import { NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 import { getApiIdentity } from "@/lib/api-identity";
@@ -49,8 +50,8 @@ function collectImeisWithinLimit(values: unknown[]) {
 
   for (const raw of values) {
     const value = String(raw ?? "");
-    for (const match of value.matchAll(/\d{15}/g)) {
-      imeis.push(match[0]);
+    for (const id of deviceIdsInText(value)) {
+      imeis.push(id);
       if (imeis.length > MAX_PREVIEW_IMEIS) {
         throw new PayloadTooLargeError(
           `A preview supports at most ${MAX_PREVIEW_IMEIS} IMEIs`
@@ -154,7 +155,7 @@ export async function POST(req: Request) {
         {
           ok: false,
           error:
-            parseErrors[0]?.message || "No valid 15-digit IMEI detected.",
+            parseErrors[0]?.message || "No valid 15-digit IMEI or 12-digit MatrixIQ serial number detected.",
           imeis: [],
           unknown_imeis: isMultipart
             ? []

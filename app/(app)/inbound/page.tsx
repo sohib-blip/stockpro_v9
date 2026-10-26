@@ -6,6 +6,7 @@ import { parseVendorExcel } from "@/lib/inbound/parsers";
 import { toDeviceMatchList } from "@/lib/inbound/vendorParser";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
+import { isDeviceId, isMatrixIqBin, noDeviceIdsMessage } from "@/lib/device-serials";
 
 type Vendor = "teltonika" | "quicklink" | "digitalmatter" | "truster";
 type HistoryFilter = "all" | "excel" | "manual";
@@ -446,9 +447,14 @@ useEffect(() => {
     const found: string[] = [];
     for (const token of raw) {
       const digits = token.replace(/\D/g, "");
-      if (digits.length === 15) found.push(digits);
+      if (isDeviceId(digits)) found.push(digits);
     }
     return Array.from(new Set(found));
+  }
+
+  // MatrixIQ has no IMEI: its 12-digit serial numbers are scanned instead.
+  function binNameOf(binId: string) {
+    return devices.find((row) => row.device_id === binId)?.device;
   }
 
   async function previewManualImport() {
@@ -471,7 +477,7 @@ useEffect(() => {
 
     if (!selectedDevice) return showManualError("Select a device.");
     if (!selectedBox) return showManualError("Enter a box number.");
-    if (imeis.length === 0) return showManualError("No valid 15-digit IMEIs found.");
+    if (imeis.length === 0) return showManualError(noDeviceIdsMessage(binNameOf(selectedDevice)));
 
     startBusy("Preparing manual inbound preview…");
     try {
@@ -722,12 +728,12 @@ setManualMsg("");
           </select>
         </div>
 
-        <div className="prototype-field-heading"><label htmlFor="manual-imeis">IMEIs — scan or paste, one per line</label><span>{extractManualImeis(manualImeis).length} detected</span></div>
+        <div className="prototype-field-heading"><label htmlFor="manual-imeis">{isMatrixIqBin(binNameOf(manualDevice)) ? "Serial numbers (12 digits) — scan or paste, one per line" : "IMEIs — scan or paste, one per line"}</label><span>{extractManualImeis(manualImeis).length} detected</span></div>
         <textarea
           ref={manualImeisInputRef}
           id="manual-imeis"
           aria-label="Manual inbound IMEIs"
-          placeholder="Scan or paste IMEIs (one per line). Only 15-digit kept."
+          placeholder={isMatrixIqBin(binNameOf(manualDevice)) ? "Scan or paste MatrixIQ serial numbers (one per line). 12 digits." : "Scan or paste IMEIs (one per line). 15 digits; 12-digit serial numbers only for MatrixIQ."}
           className="prototype-imei-textarea"
           value={manualImeis}
           onChange={(e) => {

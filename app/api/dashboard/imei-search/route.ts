@@ -1,3 +1,4 @@
+import { isDeviceId } from "@/lib/device-serials";
 import { NextResponse } from "next/server";
 import { getApiIdentity } from "@/lib/api-identity";
 import { supabaseService } from "@/lib/auth";
@@ -30,7 +31,7 @@ function extractImeis(body: unknown) {
     new Set(
       inputs
         .flatMap((input) => String(input ?? "").split(/\D+/g))
-        .filter((candidate) => candidate.length === 15)
+        .filter(isDeviceId)
     )
   );
 }
@@ -55,7 +56,7 @@ export async function POST(req: Request) {
   const imeis = extractImeis(body);
   if (imeis.length === 0) {
     return NextResponse.json(
-      { ok: false, error: "Enter at least one valid 15-digit IMEI" },
+      { ok: false, error: "Enter at least one valid 15-digit IMEI or 12-digit MatrixIQ serial number" },
       { status: 400 }
     );
   }

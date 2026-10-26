@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
 import { getApiIdentity } from "@/lib/api-identity";
+import { deviceIdMismatch, isDeviceId, noDeviceIdsMessage } from "@/lib/device-serials";
 
 export const runtime = "nodejs";
 
@@ -27,7 +28,7 @@ function cleanImeis(values: unknown[]) {
     new Set(
       values
         .map((value) => String(value).replace(/\D/g, ""))
-        .filter((value) => value.length === 15)
+        .filter(isDeviceId)
     )
   );
 }
@@ -44,10 +45,24 @@ export async function POST(req: Request) {
       );
     }
 
-    const imeis = cleanImeis(parsed.data.imeis);
-    if (imeis.length === 0) {
+    // MatrixIQ takes 12-digit serial numbers, every other bin 15-digit IMEIs.
+    const { data: bin, error: binError } = await serviceClient()
+      .from("bins")
+      .select("id,name")
+      .eq("id", parsed.data.device)
+      .maybeSingle();
+    if (binError || !bin) {
       return NextResponse.json(
-        { ok: false, error: "No valid 15-digit IMEIs found" },
+        { ok: false, error: "Bin not found" },
+        { status: 400 }
+      );
+    }
+
+    const imeis = cleanImeis(parsed.data.imeis);
+    const mismatch = deviceIdMismatch(bin.name, imeis);
+    if (mismatch || imeis.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: mismatch || noDeviceIdsMessage(bin.name) },
         { status: 400 }
       );
     }

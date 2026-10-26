@@ -1,3 +1,4 @@
+import { isDeviceId } from "@/lib/device-serials";
 import { NextResponse } from "next/server";
 import PDFDocument from "pdfkit";
 import { z } from "zod";
@@ -20,7 +21,7 @@ const MAX_SHIPMENT_PDF_BYTES = 8 * 1024 * 1024;
 
 const shipmentSchema = z.object({
   imeis: z
-    .array(z.string().trim().regex(/^\d{15}$/))
+    .array(z.string().trim().refine(isDeviceId))
     .min(1)
     .max(MAX_SHIPMENT_IMEIS),
   shipment_ref: z.string().trim().max(100).nullish(),

@@ -2,11 +2,26 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import type { PickingSheet } from "@/lib/dispatch-picking-sheet";
+import type { PickingSheet, PickingSheetLine } from "@/lib/dispatch-picking-sheet";
 
-// One printable A4 page: devices to fetch from stock, then each order with a
-// box to tick once it is prepared. Rendered at the end of <body> so printing
-// can hide the rest of the application.
+function TotalsList({ lines, empty }: { lines: PickingSheetLine[]; empty: string }) {
+  if (lines.length === 0) return <p className="picking-sheet-ok">{empty}</p>;
+  return (
+    <ul className="picking-sheet-totals">
+      {lines.map((line) => (
+        <li key={line.name}>
+          <span className="picking-sheet-box" aria-hidden="true" />
+          <strong>{`${line.quantity} ×`}</strong>
+          <span>{line.name}</span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Printable A4 picking sheet: devices to fetch from stock, packaging and
+// accessories for the day, then the orders grouped by kind with a box to tick.
+// Rendered at the end of <body> so printing can hide the rest of the app.
 export default function DispatchPickingSheet({
   sheet,
   sourceName,
@@ -30,6 +45,7 @@ export default function DispatchPickingSheet({
   }, [onClose]);
 
   const today = new Intl.DateTimeFormat("en-GB", { dateStyle: "medium" }).format(new Date());
+  const packageCount = sheet.packaging.reduce((sum, line) => sum + line.quantity, 0);
 
   return createPortal(
     <div className="picking-sheet-overlay" role="dialog" aria-modal="true" aria-labelledby="picking-sheet-title">
@@ -45,7 +61,7 @@ export default function DispatchPickingSheet({
         <header>
           <h1 id="picking-sheet-title">Picking Sheet</h1>
           <p>
-            {`${today} · ${sheet.orders.length} orders · ${sheet.totalDevices} devices${sourceName ? ` · ${sourceName}` : ""}`}
+            {`${today} · ${sheet.orders.length} orders · ${sheet.totalDevices} devices · ${packageCount} packages${sourceName ? ` · ${sourceName}` : ""}`}
           </p>
         </header>
 
@@ -68,22 +84,36 @@ export default function DispatchPickingSheet({
           )}
         </section>
 
-        <section>
-          <h2>Orders</h2>
-          <ul className="picking-sheet-orders">
-            {sheet.orders.map((order) => (
-              <li key={order.orderId}>
-                <span className="picking-sheet-box" aria-hidden="true" />
-                <strong>{order.orderId}</strong>
-                <span>
-                  {order.devices.length > 0
-                    ? order.devices.map((line) => `${line.quantity} × ${line.device}`).join(" · ")
-                    : "Accessories only"}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
+        <div className="picking-sheet-columns">
+          <section>
+            <h2>Packaging</h2>
+            <TotalsList lines={sheet.packaging} empty="No packaging selected." />
+          </section>
+          <section>
+            <h2>Accessories</h2>
+            <TotalsList lines={sheet.accessories} empty="No accessories." />
+          </section>
+        </div>
+
+        {sheet.groups.map((group) => (
+          <section key={group.key}>
+            <h2>{`${group.title} (${group.orders.length})`}</h2>
+            <ul className="picking-sheet-orders">
+              {group.orders.map((order) => (
+                <li key={order.orderId}>
+                  <span className="picking-sheet-box" aria-hidden="true" />
+                  <strong>{order.orderId}</strong>
+                  <span>
+                    {order.devices.length > 0
+                      ? order.devices.map((line) => `${line.quantity} × ${line.device}`).join(" · ")
+                      : "Accessories only"}
+                    {order.carried ? <em className="picking-sheet-carried">Carried over</em> : null}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))}
       </article>
     </div>,
     document.body

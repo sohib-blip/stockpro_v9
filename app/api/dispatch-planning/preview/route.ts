@@ -46,6 +46,46 @@ const MAX_MULTIPART_BYTES = MAX_FILE_BYTES + 256 * 1024;
 const MAX_ORDERS = 500;
 const MAX_LINES = 10_000;
 
+type LearnedPackaging = {
+  compositionKey: string;
+  packages: Array<{ packagingTypeId: string; quantity: number }>;
+  confirmationCount: number;
+};
+
+// Learned packaging per order composition. Before the multiple-packages
+// migration only the single packaging_type_id / package_quantity exist.
+async function loadLearnedPackaging(
+  service: ReturnType<typeof supabaseService>,
+  compositionKeys: string[]
+): Promise<LearnedPackaging[]> {
+  if (compositionKeys.length === 0) return [];
+  const table = () => service.from("dispatch_packaging_preferences");
+  let result: { data: Array<Record<string, unknown>> | null; error: { code?: string } | null } =
+    await table()
+      .select("composition_key,packaging_type_id,package_quantity,packages,confirmation_count")
+      .in("composition_key", compositionKeys);
+  if (result.error?.code === "42703") {
+    result = await table()
+      .select("composition_key,packaging_type_id,package_quantity,confirmation_count")
+      .in("composition_key", compositionKeys);
+  }
+  if (result.error) throw result.error;
+  return (result.data || []).map((row) => {
+    const stored = Array.isArray(row.packages) ? row.packages : null;
+    const packages = (stored ?? [
+      { packagingTypeId: row.packaging_type_id, quantity: row.package_quantity },
+    ]).map((item: any) => ({
+      packagingTypeId: String(item.packagingTypeId),
+      quantity: Number(item.quantity),
+    }));
+    return {
+      compositionKey: String(row.composition_key),
+      packages,
+      confirmationCount: Number(row.confirmation_count || 1),
+    };
+  });
+}
+
 export async function POST(req: Request) {
   const identity = getApiIdentity(req);
   const admission = await acquireWorkloadLease(req, "outboundPreview", {
@@ -139,46 +179,53 @@ export async function POST(req: Request) {
         { status: 400 }
       );
     }
-    const dispatchOrders = enriched.orders;
-
     const sourceHash = createHash("sha256").update(buffer).digest("hex");
-    const orderIds = dispatchOrders.map((order) => order.orderId);
+    const allOrderIds = new Set(enriched.orders.map((order) => order.orderId));
     const service = supabaseService();
-    const [{ data: sameSource, error: sourceError }, { data: sameOrders, error: ordersError }] =
-      await Promise.all([
-        service
-          .from("dispatch_batches")
-          .select("id,source_filename,confirmed_at")
-          .eq("status", "CONFIRMED")
-          .eq("source_sha256", sourceHash)
-          .limit(1),
-        service
-          .from("dispatch_batches")
-          .select("id,source_filename,confirmed_at,order_ids")
-          .eq("status", "CONFIRMED")
-          .overlaps("order_ids", orderIds)
-          .limit(10),
-      ]);
-    if (sourceError || ordersError) throw sourceError || ordersError;
+    // Orders already confirmed in an earlier dispatch (e.g. not shipped yesterday
+    // and back in today's sheet) are not deducted again. They stay on the
+    // picking sheet and the vehicle labels with the packaging used back then.
+    const { data: confirmedBatches, error: confirmedError } = await service
+      .from("dispatch_batches")
+      .select("source_filename,confirmed_at,orders")
+      .eq("status", "CONFIRMED")
+      .overlaps("order_ids", Array.from(allOrderIds))
+      .order("confirmed_at", { ascending: false })
+      .limit(200);
+    if (confirmedError) throw confirmedError;
 
-    if ((sameSource || []).length > 0 || (sameOrders || []).length > 0) {
-      const existingIds = new Set(
-        (sameOrders || []).flatMap((batch) =>
-          (batch.order_ids || []).filter((id: string) => orderIds.includes(id))
-        )
-      );
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            (sameSource || []).length > 0
-              ? "This workbook has already been confirmed. Packaging stock was not changed."
-              : `${existingIds.size} order(s) were already confirmed in another dispatch batch. Packaging stock was not changed.`,
-          duplicate_order_ids: Array.from(existingIds).slice(0, 100),
-        },
-        { status: 409 }
-      );
+    const confirmedOrders = new Map<
+      string,
+      { confirmedAt: string; sourceFilename: string; packages: unknown[]; extras: unknown[] }
+    >();
+    for (const batch of confirmedBatches || []) {
+      for (const stored of (batch.orders || []) as Array<Record<string, unknown>>) {
+        const orderId = String(stored?.orderId ?? "");
+        if (!allOrderIds.has(orderId) || confirmedOrders.has(orderId)) continue;
+        confirmedOrders.set(orderId, {
+          confirmedAt: String(batch.confirmed_at),
+          sourceFilename: String(batch.source_filename),
+          packages: Array.isArray(stored.packages) ? stored.packages : [],
+          extras: Array.isArray(stored.extras) ? stored.extras : [],
+        });
+      }
     }
+    const dispatchOrders = enriched.orders.filter(
+      (order) => !confirmedOrders.has(order.orderId)
+    );
+    const carriedOrders = enriched.orders
+      .filter((order) => confirmedOrders.has(order.orderId))
+      .map((order) => {
+        const confirmed = confirmedOrders.get(order.orderId)!;
+        return {
+          ...order,
+          packages: confirmed.packages,
+          extras: confirmed.extras,
+          confirmedAt: confirmed.confirmedAt,
+          confirmedIn: confirmed.sourceFilename,
+        };
+      });
+    const nothingNew = dispatchOrders.length === 0;
 
     const [packages, pickingInventory, cabinetStock, packagingRules] = await Promise.all([
       loadDispatchPackagingOptions(),
@@ -189,13 +236,10 @@ export async function POST(req: Request) {
     const compositionKeys = new Map(
       dispatchOrders.map((order) => [order.orderId, dispatchCompositionKey(order)])
     );
-    const { data: learnedRows, error: learnedError } = await service
-      .from("dispatch_packaging_preferences")
-      .select(
-        "composition_key,packaging_type_id,package_quantity,confirmation_count"
-      )
-      .in("composition_key", Array.from(compositionKeys.values()));
-    if (learnedError) throw learnedError;
+    const learnedRows = await loadLearnedPackaging(
+      service,
+      Array.from(compositionKeys.values())
+    );
 
     const activePackageIds = new Set(
       packages
@@ -203,23 +247,21 @@ export async function POST(req: Request) {
         .map((packaging) => packaging.id)
     );
     const learnedByComposition = new Map(
-      (learnedRows || [])
-        .filter((row) => activePackageIds.has(String(row.packaging_type_id)))
-        .map((row) => [String(row.composition_key), row])
+      learnedRows
+        .filter((row) =>
+          row.packages.every((item) => activePackageIds.has(item.packagingTypeId))
+        )
+        .map((row) => [row.compositionKey, row])
     );
     const learnedSelections = dispatchOrders.flatMap((order) => {
       const learned = learnedByComposition.get(compositionKeys.get(order.orderId)!);
-      return learned
-        ? [
-            {
-              orderId: order.orderId,
-              packagingTypeId: String(learned.packaging_type_id),
-              quantity: Number(learned.package_quantity),
-              source: "learned" as const,
-              learningCount: Number(learned.confirmation_count || 1),
-            },
-          ]
-        : [];
+      return (learned?.packages ?? []).map((item) => ({
+        orderId: order.orderId,
+        packagingTypeId: item.packagingTypeId,
+        quantity: item.quantity,
+        source: "learned" as const,
+        learningCount: learned!.confirmationCount,
+      }));
     });
     const calculatedPlan = applyDispatchPackagingSelections(
       dispatchOrders,
@@ -235,7 +277,7 @@ export async function POST(req: Request) {
         eligiblePackagingTypeIds: eligibleDispatchPackagingIds(order, packages),
       })),
     };
-    const previewToken = createDispatchPreviewToken({
+    const previewToken = nothingNew ? undefined : createDispatchPreviewToken({
       sourceHash,
       sourceFilename: file.name || "daily-dispatch.xlsx",
       sourceGeneratedAt: parsed.generatedAt,
@@ -250,9 +292,11 @@ export async function POST(req: Request) {
     );
 
     return NextResponse.json({
-      ok: plan.blockers.length === 0,
-      error:
-        plan.blockers.length > 0
+      ok: plan.blockers.length === 0 && !nothingNew,
+      nothing_new: nothingNew,
+      error: nothingNew
+        ? `Nothing new to deduct: all ${carriedOrders.length} orders of this workbook were already confirmed.`
+        : plan.blockers.length > 0
           ? "Packaging recommendations are ready, but stock or dimensions need attention before confirmation."
           : undefined,
       preview_token: previewToken,
@@ -276,11 +320,12 @@ export async function POST(req: Request) {
         availableStock: packaging.onHandStock - packaging.reservedStock,
       })),
       packaging_rules: packagingRules,
+      carried_orders: carriedOrders,
       vehicle_label_count: vehicleLabelResult.labels.length,
       picking_summary: pickingSummary,
       cabinet_stock: cabinetStock,
       plan,
-    }, { status: plan.blockers.length > 0 ? 422 : 200 });
+    }, { status: plan.blockers.length > 0 && !nothingNew ? 422 : 200 });
   } catch (error) {
     if (error instanceof PayloadTooLargeError) {
       return NextResponse.json(

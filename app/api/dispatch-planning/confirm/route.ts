@@ -31,7 +31,8 @@ const schema = z.object({
         learningCount: z.number().int().min(1).max(1_000_000).optional(),
       })
     )
-    .max(500)
+    // Several entries for one order = several packages for that order.
+    .max(10000)
     .default([]),
 });
 

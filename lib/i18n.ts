@@ -884,6 +884,14 @@ const FR: Record<string, string> = {
   "A selected packaging format is inactive or missing.": "Un emballage choisi est inactif ou supprimé.",
   "Add at least one packaging line.": "Ajoutez au moins une ligne d’emballage.",
   "Invalid manual packaging outbound.": "Sortie manuelle d’emballages invalide.",
+  // Picking sheet and carried-over orders
+  "No packaging selected.": "Aucun emballage choisi.",
+  "No accessories.": "Aucun accessoire.",
+  "Carried over": "Reporté",
+  "Nothing new to deduct": "Rien de nouveau à retirer",
+  "They stay on the picking sheet and the vehicle labels.":
+    "Elles restent sur la feuille de picking et les étiquettes véhicules.",
+  "+ Add box": "+ Ajouter un carton",
 };
 
 const NL: Record<string, string> = {
@@ -1760,6 +1768,14 @@ const NL: Record<string, string> = {
   "A selected packaging format is inactive or missing.": "Een gekozen verpakking is inactief of ontbreekt.",
   "Add at least one packaging line.": "Voeg minstens één verpakkingsregel toe.",
   "Invalid manual packaging outbound.": "Ongeldige manuele verpakkingsuitgifte.",
+  // Picking sheet and carried-over orders
+  "No packaging selected.": "Geen verpakking gekozen.",
+  "No accessories.": "Geen accessoires.",
+  "Carried over": "Overgedragen",
+  "Nothing new to deduct": "Niets nieuws af te boeken",
+  "They stay on the picking sheet and the vehicle labels.":
+    "Ze blijven op de picklijst en de voertuiglabels.",
+  "+ Add box": "+ Doos toevoegen",
 };
 
 const DICTIONARIES: Record<Exclude<Locale, "en">, Record<string, string>> = {
@@ -1808,7 +1824,12 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(.+) download started\.$/, "Téléchargement de $1 démarré."],
           [/^Device (.+)$/, "Appareil $1"],
           [/^(\d+) rules?$/, "$1 règle(s)"],
+          [/^(.+?) · (\d+) orders · (\d+) devices · (\d+) packages(.*)$/, "$1 · $2 commandes · $3 appareils · $4 emballages$5"],
           [/^(.+?) · (\d+) orders · (\d+) devices(.*)$/, "$1 · $2 commandes · $3 appareils$4"],
+          [/^(\d+) orders already deducted earlier — not deducted again$/, "$1 commandes déjà retirées avant — pas retirées une 2e fois"],
+          [/^All (\d+) orders of this workbook were already deducted earlier\. You can still print the picking sheet and the vehicle labels\.$/, "Les $1 commandes de ce fichier ont déjà été retirées. Vous pouvez quand même imprimer la feuille de picking et les étiquettes véhicules."],
+          [/^Vision — AIO Camera & DVR \((\d+)\)$/, "Vision — caméra AIO et DVR ($1)"],
+          [/^Other orders \((\d+)\)$/, "Autres commandes ($1)"],
           [/^needed (\d+) · Cabinet (\d+)$/, "besoin $1 · Cabinet $2"],
           [/^Not enough stock: (\d+) missing in the warehouse$/, "Stock insuffisant : il en manque $1 dans l’entrepôt"],
           [/^"(.+)" has no dimensions yet\. Choose the matching device or accessory and enter its dimensions\.$/, "« $1 » n’a pas encore de dimensions. Choisissez l’appareil ou l’accessoire correspondant et saisissez ses dimensions."],
@@ -1878,7 +1899,12 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^(.+) download started\.$/, "Download van $1 gestart."],
           [/^Device (.+)$/, "Apparaat $1"],
           [/^(\d+) rules?$/, "$1 regel(s)"],
+          [/^(.+?) · (\d+) orders · (\d+) devices · (\d+) packages(.*)$/, "$1 · $2 orders · $3 apparaten · $4 verpakkingen$5"],
           [/^(.+?) · (\d+) orders · (\d+) devices(.*)$/, "$1 · $2 orders · $3 apparaten$4"],
+          [/^(\d+) orders already deducted earlier — not deducted again$/, "$1 orders al eerder afgeboekt — niet opnieuw afgeboekt"],
+          [/^All (\d+) orders of this workbook were already deducted earlier\. You can still print the picking sheet and the vehicle labels\.$/, "Alle $1 orders van dit bestand zijn al eerder afgeboekt. U kunt de picklijst en de voertuiglabels nog steeds afdrukken."],
+          [/^Vision — AIO Camera & DVR \((\d+)\)$/, "Vision — AIO-camera en DVR ($1)"],
+          [/^Other orders \((\d+)\)$/, "Andere orders ($1)"],
           [/^needed (\d+) · Cabinet (\d+)$/, "nodig $1 · Cabinet $2"],
           [/^Not enough stock: (\d+) missing in the warehouse$/, "Onvoldoende voorraad: er ontbreken er $1 in het magazijn"],
           [/^"(.+)" has no dimensions yet\. Choose the matching device or accessory and enter its dimensions\.$/, "\"$1\" heeft nog geen afmetingen. Kies het overeenkomstige apparaat of accessoire en voer de afmetingen in."],

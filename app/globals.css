@@ -3021,7 +3021,7 @@ body {
 
 .packaging-rules-form {
   display: grid;
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.4fr) minmax(0, 0.6fr) auto;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 0.55fr) minmax(0, 0.7fr) auto;
   align-items: end;
   gap: 10px;
   padding: 12px 24px;
@@ -3081,6 +3081,18 @@ body {
   text-align: right;
   font-variant-numeric: tabular-nums;
 }
+
+.packaging-number small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.packaging-rules-table th:nth-child(1) { width: 32%; }
+.packaging-rules-table th:nth-child(2) { width: 32%; }
+.packaging-rules-table th:nth-child(3) { width: 22%; text-align: right; }
+.packaging-rules-table th:nth-child(4) { width: 14%; text-align: right; }
 
 .packaging-table tr.is-inactive td {
   opacity: 0.58;

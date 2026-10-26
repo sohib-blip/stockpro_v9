@@ -8,6 +8,9 @@ export type DispatchPackagingRule = {
   triggerDeviceModel: string | null;
   packagingTypeId: string;
   quantity: number;
+  // The rule stops applying when the order holds more triggers than this
+  // (e.g. no CV200 Sleeve once an order has 3 cameras or more).
+  maxTriggerCount?: number | null;
 };
 
 export type DispatchPackagingExtra = {
@@ -43,6 +46,7 @@ export function dispatchPackagingRuleExtras(
         if (modelKey(model) === key) triggers += Number(count || 0);
       }
     }
+    if (rule.maxTriggerCount && triggers > rule.maxTriggerCount) continue;
     if (triggers > 0 && rule.quantity > 0) {
       quantities.set(
         rule.packagingTypeId,

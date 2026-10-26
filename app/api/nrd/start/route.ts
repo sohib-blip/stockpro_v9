@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getApiIdentity, resolveApiUserEmail } from "@/lib/api-identity";
+import { trySyncNrdForUser } from "@/lib/nrd-sync";
+import { isAfterNrdDayEnd } from "@/lib/nrd-time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,6 +31,18 @@ export async function POST(req: Request) {
     if (!task) {
       return NextResponse.json(
         { ok: false, error: "Missing task" },
+        { status: 400 }
+      );
+    }
+
+    await trySyncNrdForUser(supabase, userEmail);
+
+    if (isAfterNrdDayEnd(new Date())) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: "NRD tasks stop at 17:00 (Belgian time). A task cannot be started after 17:00.",
+        },
         { status: 400 }
       );
     }

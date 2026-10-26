@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveApiUserEmail } from "@/lib/api-identity";
+import { trySyncNrdForUser } from "@/lib/nrd-sync";
+import { nrdAutoStopAt, scheduleOccurrence, type NrdSchedule } from "@/lib/nrd-time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,6 +17,22 @@ function sb() {
   });
 }
 
+// End of the time slot of a task started by a schedule.
+async function scheduledEnd(
+  supabase: ReturnType<typeof sb>,
+  active: { schedule_id?: string | null; schedule_date?: string | null }
+) {
+  if (!active.schedule_id || !active.schedule_date) return null;
+  const { data } = await supabase
+    .from("nrd_schedules")
+    .select("id,task,repeat,schedule_date,weekday,start_time,end_time,created_at")
+    .eq("id", active.schedule_id)
+    .maybeSingle();
+  return data
+    ? scheduleOccurrence(data as NrdSchedule, active.schedule_date)?.end.toISOString() ?? null
+    : null;
+}
+
 export async function GET(req: Request) {
   try {
     const supabase = sb();
@@ -24,6 +42,8 @@ export async function GET(req: Request) {
       req,
       url.searchParams.get("user_email")
     );
+
+    await trySyncNrdForUser(supabase, userEmail);
 
     const { data, error } = await supabase
       .from("nrd_time_logs")
@@ -35,9 +55,14 @@ export async function GET(req: Request) {
 
     if (error) throw error;
 
+    const active = data?.[0] || null;
     return NextResponse.json({
       ok: true,
-      active: data?.[0] || null,
+      active: active
+        ? { ...active, scheduled_end: await scheduledEnd(supabase, active) }
+        : null,
+      // Every task stops at this time today (17:00 Belgian time).
+      day_end: nrdAutoStopAt(new Date()).toISOString(),
     });
   } catch (e: any) {
     return NextResponse.json(

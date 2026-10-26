@@ -51,7 +51,7 @@ export async function middleware(req: NextRequest) {
 
   const required = permissionsForApi(req.nextUrl.pathname, req.method);
 
-  // The low-stock cron route has its own CRON_SECRET authentication.
+  // Cron routes (low stock, NRD upkeep) have their own CRON_SECRET authentication.
   if (required === null) return NextResponse.next();
 
   // Fail closed: every newly added API route must be explicitly mapped.

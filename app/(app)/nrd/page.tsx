@@ -6,6 +6,7 @@ import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import { useAccess } from "@/components/AccessProvider";
 import { usePreferences } from "@/components/PreferencesProvider";
 import ProcessFeedback from "@/components/ProcessFeedback";
+import NrdSchedulesPanel from "@/components/NrdSchedulesPanel";
 
 const NRD_TASKS = [
   "Prepare FMC234",
@@ -115,6 +116,9 @@ export default function NRDPage() {
   const [forgottenModalDismissed, setForgottenModalDismissed] = useState(false);
 
   const [correctEndTime, setCorrectEndTime] = useState("");
+  // Every NRD task stops at this time today (17:00 Belgian time).
+  const [dayEnd, setDayEnd] = useState<string | null>(null);
+  const afterDayEnd = Boolean(dayEnd && Date.now() >= new Date(dayEnd).getTime());
 
 
   useEffect(() => {
@@ -141,6 +145,7 @@ export default function NRDPage() {
 
   if (json.ok) {
     setActive(json.active || null);
+    setDayEnd(json.day_end || null);
 
     if (json.active) {
       setForgottenModalDismissed(false);
@@ -188,6 +193,15 @@ export default function NRDPage() {
       loadStats(userEmail, periodMonth);
     }
   }, [userEmail, periodMonth]);
+
+  // Scheduled tasks start and stop by themselves, and every task stops at 17:00.
+  useEffect(() => {
+    if (!userEmail) return;
+    const interval = setInterval(() => {
+      void loadCurrent(userEmail);
+    }, 30_000);
+    return () => clearInterval(interval);
+  }, [userEmail]);
 
   useEffect(() => {
     if (!active?.started_at) {
@@ -460,6 +474,11 @@ async function stopTaskWithCorrection() {
           <strong>{active?.task || "No active task"}</strong>
           <div className="nrd-timer">{formatTimer(seconds)}</div>
           <p>{active ? `Started ${new Date(active.started_at).toLocaleString("en-GB")}` : "Start a duty from the next card"}</p>
+          {active?.scheduled_end ? (
+            <p className="nrd-auto-stop-note">{`Scheduled · stops at ${formatTime(active.scheduled_end)}`}</p>
+          ) : active ? (
+            <p className="nrd-auto-stop-note">Stops automatically at 17:00</p>
+          ) : null}
           {active && <div className="prototype-page-actions"><button type="button" className="prototype-button danger" onClick={stopTask} disabled={busy}>Stop now</button><button type="button" className="prototype-button secondary" onClick={() => { setCorrectEndTime(toLocalDateTimeValue(new Date())); setShowForgottenModal(true); }} disabled={busy}>Stop with corrected end time…</button></div>}
         </section>
 
@@ -467,7 +486,8 @@ async function stopTaskWithCorrection() {
           <div className="prototype-eyebrow">Start a task</div>
           <select aria-label="NRD task" value={task} onChange={(e) => setTask(e.target.value)} disabled={!!active}>{NRD_TASKS.map((item) => <option key={item} value={item}>{item}</option>)}</select>
           <p>Stock take · Cleaning shelves · Training · Meetings · Container work · Order checks…</p>
-          <button type="button" className="prototype-button primary" onClick={startTask} disabled={busy || !userEmail || !!active}>{active ? "Start (stop the active task first)" : busy ? "Starting…" : "Start Task"}</button>
+          <button type="button" className="prototype-button primary" onClick={startTask} disabled={busy || !userEmail || !!active || afterDayEnd}>{active ? "Start (stop the active task first)" : afterDayEnd ? "Tasks stop at 17:00" : busy ? "Starting…" : "Start Task"}</button>
+          <p className="nrd-auto-stop-note">NRD tasks stop automatically at 17:00 (Belgian time).</p>
         </section>
 
         <section className="nrd-overview-card summary">
@@ -491,6 +511,15 @@ async function stopTaskWithCorrection() {
           <div className="nrd-mini-breakdown">{stats?.by_task?.slice(0, 3).map((row: any) => { const width = stats.total_minutes ? Math.round((Number(row.minutes || 0) / Number(stats.total_minutes || 1)) * 100) : 0; return <div key={row.task}><div><span>{row.task}</span><small>{formatHours(Number(row.minutes || 0))}</small></div><i><span style={{ width: `${width}%` }} /></i></div>; })}</div>
         </section>
       </div>
+
+      <NrdSchedulesPanel
+        tasks={NRD_TASKS}
+        onChanged={() => {
+          void loadCurrent(userEmail);
+          void loadHistory(userEmail, periodMonth);
+        }}
+        onError={setErrorMsg}
+      />
 
       <div className="hidden">
         <div className="font-semibold">Current NRD Task</div>
@@ -703,7 +732,11 @@ async function stopTaskWithCorrection() {
                   <td className="p-2">
                     {row.ended_at ? formatTime(row.ended_at) : "-"}
                   </td>
-                  <td className="p-2">{row.task}</td>
+                  <td className="p-2">
+                    {row.task}
+                    {row.schedule_id ? <span className="nrd-history-tag">Scheduled</span> : null}
+                    {row.auto_stopped ? <span className="nrd-history-tag is-auto">Auto-stopped 17:00</span> : null}
+                  </td>
                   <td className="p-2 text-right font-semibold">
                     {row.duration_minutes ?? "-"}
                   </td>

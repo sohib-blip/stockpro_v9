@@ -83,7 +83,7 @@ async function readReport(req: Request) {
     form,
     buffer,
     fileName: String(file.name || "").trim().slice(0, MAX_FILE_NAME_REFERENCE),
-    report: parseEndOfDayWorkbook(workbook),
+    workbook,
   };
 }
 
@@ -95,7 +95,7 @@ export async function POST(req: Request) {
   if (!admission.ok) return workloadRejectionResponse(admission);
 
   try {
-    const { form, buffer, fileName, report } = await readReport(req);
+    const { form, buffer, fileName, workbook } = await readReport(req);
     const preview = String(form.get("preview") || "") === "1";
     const shipmentRef = String(form.get("shipment_ref") || "");
     // Without a typed reference, the report's file name keeps the history traceable.
@@ -146,6 +146,11 @@ export async function POST(req: Request) {
       .select("id, name, current_stock")
       .eq("active", true);
     if (accessoryError) throw accessoryError;
+
+    // Report rows named like an active accessory are recognised as accessories.
+    const report = parseEndOfDayWorkbook(workbook, {
+      accessoryNames: (accessoryBins || []).map((bin) => bin.name),
+    });
 
     const imeis = Array.from(new Set(report.devices.map((device) => device.imei)));
     const stockItems: EndOfDayStockItem[] = [];

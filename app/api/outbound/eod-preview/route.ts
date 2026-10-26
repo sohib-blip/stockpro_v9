@@ -63,6 +63,16 @@ function collectImeisWithinLimit(values: unknown[]) {
   return imeis;
 }
 
+// Report rows named like an active accessory are accessories, not unknown types.
+async function activeAccessoryNames() {
+  const { data, error } = await supabaseService()
+    .from("accessory_bins")
+    .select("name")
+    .eq("active", true);
+  if (error) throw error;
+  return (data || []).map((row: { name: string }) => row.name);
+}
+
 async function extractWorkbookValues(req: Request) {
   const requestBody = await readBodyWithinLimit(req, MAX_MULTIPART_BYTES);
   const form = await requestWithBoundedBody(req, requestBody).formData();
@@ -95,7 +105,9 @@ async function extractWorkbookValues(req: Request) {
     maxCells: 50_000,
   });
 
-  return parseEndOfDayWorkbook(workbook);
+  return parseEndOfDayWorkbook(workbook, {
+    accessoryNames: await activeAccessoryNames(),
+  });
 }
 
 async function extractJsonValues(req: Request) {

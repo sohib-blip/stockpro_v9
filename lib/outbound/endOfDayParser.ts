@@ -151,6 +151,15 @@ function classifyNonDevice(itemType: string): "accessory" | "service" | null {
   return null;
 }
 
+// An Item Type named like an active accessory of Inventory > Accessories
+// (same name, or the start of an accessory name) is an accessory row.
+function matchesAccessoryName(itemType: string, accessoryLabels: string[]) {
+  const normalized = normalizeText(itemType);
+  return accessoryLabels.some(
+    (label) => label === normalized || label.startsWith(`${normalized} `)
+  );
+}
+
 function isDvr(deviceKind: EndOfDayDeviceKind) {
   return deviceKind === "DVR_2" || deviceKind === "DVR_4" || deviceKind === "DVR_8";
 }
@@ -182,8 +191,12 @@ function findHeaderRow(rows: unknown[][]) {
 }
 
 export function parseEndOfDayWorkbook(
-  workbook: XLSX.WorkBook
+  workbook: XLSX.WorkBook,
+  options: { accessoryNames?: string[] } = {}
 ): EndOfDayParseResult {
+  const accessoryLabels = (options.accessoryNames || [])
+    .map((name) => normalizeText(name))
+    .filter(Boolean);
   const deviceRows: DeviceRow[] = [];
   const accessoryRows: EndOfDayAccessoryRow[] = [];
   const errors: EndOfDayParseIssue[] = [];
@@ -261,7 +274,9 @@ export function parseEndOfDayWorkbook(
       }
 
       ignoredRows += 1;
-      const nonDeviceKind = classifyNonDevice(itemType);
+      const nonDeviceKind =
+        classifyNonDevice(itemType) ??
+        (matchesAccessoryName(itemType, accessoryLabels) ? "accessory" : null);
       if (nonDeviceKind) {
         ignoredItemTypes.add(itemType);
         if (nonDeviceKind === "accessory") {

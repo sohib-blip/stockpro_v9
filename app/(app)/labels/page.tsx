@@ -1,5 +1,6 @@
 "use client";
 
+import { isDeviceId } from "@/lib/device-serials";
 import { useEffect, useMemo, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch } from "@/lib/apiFetch";
@@ -23,7 +24,7 @@ function extractImeis(text: string): string[] {
   const out: string[] = [];
   for (const t of tokens) {
     const digits = t.replace(/\D/g, "");
-    if (digits.length === 15) out.push(digits);
+    if (isDeviceId(digits)) out.push(digits);
   }
   return Array.from(new Set(out));
 }
@@ -152,7 +153,7 @@ export default function LabelsPage() {
         <div>
         <h1>Label Printing</h1>
         <p>
-          Generate ZD220 warehouse box labels. Only unique 15-digit IMEIs are included.
+          Generate ZD220 warehouse box labels. Only unique 15-digit IMEIs (12-digit serial numbers for MatrixIQ) are included.
         </p>
         </div>
         <div className="label-header-actions">

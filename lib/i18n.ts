@@ -702,8 +702,8 @@ const FR: Record<string, string> = {
   "+ Add accessory line": "+ Ajouter une ligne d’accessoire",
   "Automatic Accessory Rules": "Règles automatiques d’accessoires",
   "Rules by device bin": "Règles par emplacement appareil",
-  "Generate ZD220 warehouse box labels. Only unique 15-digit IMEIs are included.":
-    "Générez des étiquettes ZD220 pour les cartons. Seuls les IMEI uniques de 15 chiffres sont inclus.",
+  "Generate ZD220 warehouse box labels. Only unique 15-digit IMEIs (12-digit serial numbers for MatrixIQ) are included.":
+    "Générez des étiquettes ZD220 pour les cartons. Seuls les IMEI uniques de 15 chiffres (numéros de série de 12 chiffres pour MatrixIQ) sont inclus.",
   Size: "Format",
   "Label preview": "Aperçu de l’étiquette",
   "No IMEIs yet": "Aucun IMEI",
@@ -894,6 +894,13 @@ const FR: Record<string, string> = {
   "+ Add box": "+ Ajouter un carton",
   "Limit per order": "Limite par commande",
   // NRD auto stop and scheduled tasks
+  "Serial numbers (12 digits) — scan or paste, one per line": "Numéros de série (12 chiffres) — scanner ou coller, un par ligne",
+  "Scan or paste MatrixIQ serial numbers (one per line). 12 digits.": "Scannez ou collez les numéros de série MatrixIQ (un par ligne). 12 chiffres.",
+  "Scan or paste IMEIs (one per line). 15 digits; 12-digit serial numbers only for MatrixIQ.": "Scannez ou collez les IMEI (un par ligne). 15 chiffres ; numéros de série de 12 chiffres seulement pour MatrixIQ.",
+  "No valid 15-digit IMEIs found.": "Aucun IMEI valide de 15 chiffres trouvé.",
+  "No valid 12-digit serial numbers found.": "Aucun numéro de série valide de 12 chiffres trouvé.",
+  "Enter at least one valid 15-digit IMEI or 12-digit MatrixIQ serial number": "Saisissez au moins un IMEI valide de 15 chiffres ou un numéro de série MatrixIQ de 12 chiffres",
+  "No valid 15-digit IMEI or 12-digit MatrixIQ serial number detected.": "Aucun IMEI valide de 15 chiffres ni numéro de série MatrixIQ de 12 chiffres détecté.",
   "Scheduled tasks": "Tâches programmées",
   "Start and stop a task by itself at fixed times (Belgian time), for example a team meeting. Tasks always stop at 17:00.":
     "Une tâche démarre et s’arrête toute seule à heures fixes (heure belge), par exemple une réunion d’équipe. Les tâches s’arrêtent toujours à 17h.",
@@ -1631,8 +1638,8 @@ const NL: Record<string, string> = {
   "+ Add accessory line": "+ Accessoireregel toevoegen",
   "Automatic Accessory Rules": "Automatische accessoireregels",
   "Rules by device bin": "Regels per apparaatvak",
-  "Generate ZD220 warehouse box labels. Only unique 15-digit IMEIs are included.":
-    "Genereer ZD220-labels voor magazijndozen. Alleen unieke IMEI's van 15 cijfers worden opgenomen.",
+  "Generate ZD220 warehouse box labels. Only unique 15-digit IMEIs (12-digit serial numbers for MatrixIQ) are included.":
+    "Genereer ZD220-labels voor magazijndozen. Alleen unieke IMEI's van 15 cijfers (serienummers van 12 cijfers voor MatrixIQ) worden opgenomen.",
   Size: "Formaat",
   "Label preview": "Labelvoorbeeld",
   "No IMEIs yet": "Nog geen IMEI's",
@@ -1823,6 +1830,13 @@ const NL: Record<string, string> = {
   "+ Add box": "+ Doos toevoegen",
   "Limit per order": "Limiet per order",
   // NRD auto stop and scheduled tasks
+  "Serial numbers (12 digits) — scan or paste, one per line": "Serienummers (12 cijfers) — scan of plak, één per regel",
+  "Scan or paste MatrixIQ serial numbers (one per line). 12 digits.": "Scan of plak MatrixIQ-serienummers (één per regel). 12 cijfers.",
+  "Scan or paste IMEIs (one per line). 15 digits; 12-digit serial numbers only for MatrixIQ.": "Scan of plak IMEI's (één per regel). 15 cijfers; serienummers van 12 cijfers alleen voor MatrixIQ.",
+  "No valid 15-digit IMEIs found.": "Geen geldige IMEI's van 15 cijfers gevonden.",
+  "No valid 12-digit serial numbers found.": "Geen geldige serienummers van 12 cijfers gevonden.",
+  "Enter at least one valid 15-digit IMEI or 12-digit MatrixIQ serial number": "Voer minstens één geldige IMEI van 15 cijfers of MatrixIQ-serienummer van 12 cijfers in",
+  "No valid 15-digit IMEI or 12-digit MatrixIQ serial number detected.": "Geen geldige IMEI van 15 cijfers of MatrixIQ-serienummer van 12 cijfers gevonden.",
   "Scheduled tasks": "Geplande taken",
   "Start and stop a task by itself at fixed times (Belgian time), for example a team meeting. Tasks always stop at 17:00.":
     "Een taak start en stopt vanzelf op vaste tijden (Belgische tijd), bijvoorbeeld een teamvergadering. Taken stoppen altijd om 17:00.",
@@ -1922,6 +1936,9 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^Other orders \((\d+)\)$/, "Autres commandes ($1)"],
           [/^only up to (\d+) per order$/, "seulement jusqu’à $1 par commande"],
           [/^Scheduled · stops at (.+)$/, "Programmée · s’arrête à $1"],
+          [/^MatrixIQ uses 12-digit serial numbers, not 15-digit IMEIs\. Import blocked: (.+)$/, "MatrixIQ utilise des numéros de série de 12 chiffres, pas des IMEI de 15 chiffres. Import bloqué : $1"],
+          [/^12-digit serial numbers are only accepted for MatrixIQ\. Import blocked: (.+)$/, "Les numéros de série de 12 chiffres sont acceptés seulement pour MatrixIQ. Import bloqué : $1"],
+          [/^Device (.+) does not contain a valid 12-digit serial number\.$/, "L’appareil $1 ne contient pas de numéro de série valide de 12 chiffres."],
           [/^needed (\d+) · Cabinet (\d+)$/, "besoin $1 · Cabinet $2"],
           [/^Not enough stock: (\d+) missing in the warehouse$/, "Stock insuffisant : il en manque $1 dans l’entrepôt"],
           [/^"(.+)" has no dimensions yet\. Choose the matching device or accessory and enter its dimensions\.$/, "« $1 » n’a pas encore de dimensions. Choisissez l’appareil ou l’accessoire correspondant et saisissez ses dimensions."],
@@ -1999,6 +2016,9 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^Other orders \((\d+)\)$/, "Andere orders ($1)"],
           [/^only up to (\d+) per order$/, "alleen tot $1 per order"],
           [/^Scheduled · stops at (.+)$/, "Gepland · stopt om $1"],
+          [/^MatrixIQ uses 12-digit serial numbers, not 15-digit IMEIs\. Import blocked: (.+)$/, "MatrixIQ gebruikt serienummers van 12 cijfers, geen IMEI's van 15 cijfers. Import geblokkeerd: $1"],
+          [/^12-digit serial numbers are only accepted for MatrixIQ\. Import blocked: (.+)$/, "Serienummers van 12 cijfers worden alleen voor MatrixIQ aanvaard. Import geblokkeerd: $1"],
+          [/^Device (.+) does not contain a valid 12-digit serial number\.$/, "Apparaat $1 bevat geen geldig serienummer van 12 cijfers."],
           [/^needed (\d+) · Cabinet (\d+)$/, "nodig $1 · Cabinet $2"],
           [/^Not enough stock: (\d+) missing in the warehouse$/, "Onvoldoende voorraad: er ontbreken er $1 in het magazijn"],
           [/^"(.+)" has no dimensions yet\. Choose the matching device or accessory and enter its dimensions\.$/, "\"$1\" heeft nog geen afmetingen. Kies het overeenkomstige apparaat of accessoire en voer de afmetingen in."],

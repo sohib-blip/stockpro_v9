@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ProcessFeedback from "@/components/ProcessFeedback";
+import { deviceIdsInText } from "@/lib/device-serials";
 
 type HistoryRow = {
   operation_id: string;
@@ -91,7 +92,7 @@ const [page, setPage] = useState(1);
 setErrorMsg("");
 setPreview(null);
 
-    const imeis = imeiInput.match(/\d{15}/g) || [];
+    const imeis = deviceIdsInText(imeiInput);
 
     const res = await apiFetch("/api/outbound/eod-preview", {
       method: "POST",
@@ -283,7 +284,7 @@ if (!actorId) {
       {/* MANUAL */}
       {inputMode === "manual" && (
       <div className="prototype-input-card">
-        <div className="prototype-field-heading"><label htmlFor="outbound-imeis">IMEIs — scan or paste, one per line</label><span>{(imeiInput.match(/\d{15}/g) || []).length} detected</span></div>
+        <div className="prototype-field-heading"><label htmlFor="outbound-imeis">IMEIs — scan or paste, one per line</label><span>{deviceIdsInText(imeiInput).length} detected</span></div>
         <textarea
           id="outbound-imeis"
           aria-label="Outbound IMEIs"

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { deviceIdMismatch, isDeviceId, noDeviceIdsMessage } from "@/lib/device-serials";
 
 export const runtime = "nodejs";
 
@@ -23,17 +24,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Missing fields" }, { status: 400 });
     }
 
-    const cleaned = Array.from(
+    const cleaned: string[] = Array.from(
       new Set(
         imeis
           .map((i: string) => String(i).replace(/\D/g, ""))
-          .filter((i: string) => i.length === 15)
+          .filter(isDeviceId)
       )
     );
-
-    if (cleaned.length === 0) {
-      return NextResponse.json({ ok: false, error: "No valid 15-digit IMEIs found" }, { status: 400 });
-    }
 
     const supabase = sb();
 
@@ -46,6 +43,15 @@ export async function POST(req: Request) {
 
     if (binErr || !bin?.id) {
       return NextResponse.json({ ok: false, error: "Bin not found" }, { status: 400 });
+    }
+
+    // MatrixIQ takes 12-digit serial numbers, every other bin 15-digit IMEIs.
+    const mismatch = deviceIdMismatch(bin.name, cleaned);
+    if (mismatch) {
+      return NextResponse.json({ ok: false, error: mismatch }, { status: 400 });
+    }
+    if (cleaned.length === 0) {
+      return NextResponse.json({ ok: false, error: noDeviceIdsMessage(bin.name) }, { status: 400 });
     }
 
     const { data: existing } = await supabase

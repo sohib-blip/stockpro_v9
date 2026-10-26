@@ -1,3 +1,4 @@
+import { isDeviceId } from "@/lib/device-serials";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { z } from "zod";
@@ -11,7 +12,7 @@ export const runtime = "nodejs";
 
 const outboundCommandSchema = z.object({
   operation_id: z.string().uuid().optional(),
-  imeis: z.array(z.string().regex(/^\d{15}$/)).min(1).max(50_000),
+  imeis: z.array(z.string().refine(isDeviceId)).min(1).max(50_000),
   shipment_ref: z.string().trim().max(500).optional().nullable(),
   source: z.enum(["manual", "excel"]).optional(),
 });

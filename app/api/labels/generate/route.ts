@@ -1,3 +1,4 @@
+import { isDeviceId } from "@/lib/device-serials";
 import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import QRCode from "qrcode";
@@ -42,7 +43,7 @@ export async function POST(req: Request) {
         new Set(
           (label.imeis || [])
             .map((x: string) => String(x).replace(/\D/g, ""))
-            .filter((x: string) => x.length === 15)
+            .filter(isDeviceId)
         )
       );
 

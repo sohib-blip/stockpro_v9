@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { IMEI_LENGTH, MATRIXIQ_SERIAL_LENGTH, isDeviceId } from "../device-serials";
 
 const HEADER_SCAN_LIMIT = 100;
 
@@ -11,7 +12,8 @@ export type EndOfDayDeviceKind =
   | "TRAILER"
   | "DVR_2"
   | "DVR_4"
-  | "DVR_8";
+  | "DVR_8"
+  | "MATRIXIQ";
 
 type SourceLocation = {
   sheet: string;
@@ -81,18 +83,29 @@ function normalizeHeader(value: unknown) {
   return normalizeText(value).replace(/\s+/g, "");
 }
 
-function parseImei(value: unknown): string | null {
+// A device ID cell: a 15-digit IMEI, or a 12-digit serial number for MatrixIQ.
+function parseDeviceId(value: unknown): string | null {
   if (typeof value === "number") {
     if (!Number.isSafeInteger(value)) return null;
     const digits = String(value);
-    return /^\d{15}$/.test(digits) ? digits : null;
+    return isDeviceId(digits) ? digits : null;
   }
 
   const text = String(value ?? "").trim();
   if (!text || /^(?:N\/?A|NONE|NULL|-)$/i.test(text)) return null;
 
   const cleaned = text.replace(/^'/, "").replace(/\.0$/, "").trim();
-  return /^\d{15}$/.test(cleaned) ? cleaned : null;
+  return isDeviceId(cleaned) ? cleaned : null;
+}
+
+function parseImei(value: unknown): string | null {
+  const id = parseDeviceId(value);
+  return id?.length === IMEI_LENGTH ? id : null;
+}
+
+function parseMatrixIqSerial(value: unknown): string | null {
+  const id = parseDeviceId(value);
+  return id?.length === MATRIXIQ_SERIAL_LENGTH ? id : null;
 }
 
 export function normalizeEndOfDayLabel(value: unknown) {
@@ -102,6 +115,8 @@ export function normalizeEndOfDayLabel(value: unknown) {
 function classifyDevice(itemType: string): EndOfDayDeviceKind | null {
   const normalized = normalizeText(itemType);
 
+  // Before the camera accessories: "MatrixIQ", "Matrix IQ Camera", ...
+  if (normalized.replace(/\s+/g, "").includes("MATRIXIQ")) return "MATRIXIQ";
   if (normalized === "ATOM") return "ATOM";
   if (normalized === "NEON") return "NEON";
   if (normalized === "HARDWIRED") return "HARDWIRED";
@@ -208,7 +223,7 @@ export function parseEndOfDayWorkbook(
       const source = { sheet: sheetName, row: rowIndex + 1 };
 
       if (!itemType) {
-        if (parseImei(primaryValue) || parseImei(companionValue)) {
+        if (parseDeviceId(primaryValue) || parseDeviceId(companionValue)) {
           errors.push({
             ...source,
             message: "An IMEI is present but Item Type is empty.",
@@ -219,14 +234,19 @@ export function parseEndOfDayWorkbook(
 
       const deviceKind = classifyDevice(itemType);
       if (deviceKind) {
-        const primaryImei = parseImei(primaryValue);
+        const isMatrixIq = deviceKind === "MATRIXIQ";
+        const primaryImei = isMatrixIq
+          ? parseMatrixIqSerial(primaryValue)
+          : parseImei(primaryValue);
         const companionImei = parseImei(companionValue);
 
         if (!primaryImei) {
           errors.push({
             ...source,
             itemType,
-            message: `Device ${itemType} does not contain a valid 15-digit IMEI / ID.`,
+            message: isMatrixIq
+              ? `Device ${itemType} does not contain a valid 12-digit serial number.`
+              : `Device ${itemType} does not contain a valid 15-digit IMEI / ID.`,
           });
         }
 
@@ -249,7 +269,7 @@ export function parseEndOfDayWorkbook(
             ...source,
             orderRef,
             itemType,
-            linkedImei: parseImei(primaryValue),
+            linkedImei: parseDeviceId(primaryValue),
           });
         }
       } else {

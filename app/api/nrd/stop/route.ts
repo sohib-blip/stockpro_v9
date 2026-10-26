@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveApiUserEmail } from "@/lib/api-identity";
+import { trySyncNrdForUser } from "@/lib/nrd-sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -26,6 +27,9 @@ export async function POST(req: Request) {
 
     const { user_email: requestedEmail, ended_at } = body;
     const userEmail = resolveApiUserEmail(req, requestedEmail);
+
+    // A task already stopped at 17:00 or at its scheduled end is no longer active.
+    await trySyncNrdForUser(supabase, userEmail);
 
     /*
      * Recherche du NRD actuellement actif.

@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/low-stock",
       "schedule": "0 9 * * *"
+    },
+    {
+      "path": "/api/cron/nrd",
+      "schedule": "5 16 * * *"
     }
   ]
 }

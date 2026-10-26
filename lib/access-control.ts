@@ -133,6 +133,7 @@ export function permissionsForApi(
   }
   if (pathname.startsWith("/api/admin")) return ["can_admin"];
   if (pathname === "/api/cron/low-stock") return null;
+  if (pathname === "/api/cron/nrd") return null;
 
   const capability = capabilityForApiRequest(pathname, method);
   if (capability) return permissionsForCapability(capability);

@@ -8,6 +8,7 @@ import {
   accessoryNameParts,
   spreadsheetSource,
 } from "@/lib/accessory-outbound-preview";
+import { NO_SERVER_ANSWER, SPREADSHEET_UNREADABLE, snapshotFile } from "@/lib/outbound-feedback";
 
 type Accessory = {
   id: string;
@@ -70,6 +71,8 @@ export default function AccessoriesPage() {
   const [previewIssues, setPreviewIssues] = useState<string[]>([]);
   const [previewCommand, setPreviewCommand] =
     useState<PreviewCommand | null>(null);
+  // Why the last confirmation failed, shown next to Confirm & Deduct.
+  const [confirmError, setConfirmError] = useState("");
   const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
 
   async function loadUser() {
@@ -139,6 +142,7 @@ export default function AccessoriesPage() {
     setPreviewRows([]);
     setPreviewIssues([]);
     setPreviewCommand(null);
+    setConfirmError("");
   }
 
   async function previewManualOutbound() {
@@ -156,21 +160,27 @@ export default function AccessoriesPage() {
       return;
     }
 
-    const res = await apiFetch("/api/accessories/outbound/manual", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        shipment_ref: shipmentRef || null,
-        comment: comment || null,
-        actor,
-        actor_id: actorId,
-        lines: cleanLines,
-        preview: "1",
-      }),
-    });
-
-    const json = await res.json();
-    setBusy(false);
+    let json: any;
+    try {
+      const res = await apiFetch("/api/accessories/outbound/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          shipment_ref: shipmentRef || null,
+          comment: comment || null,
+          actor,
+          actor_id: actorId,
+          lines: cleanLines,
+          preview: "1",
+        }),
+      });
+      json = await res.json();
+    } catch {
+      setErrorMsg(NO_SERVER_ANSWER);
+      return;
+    } finally {
+      setBusy(false);
+    }
 
     if (!json.ok) {
       setErrorMsg(json.error || "Manual preview failed");
@@ -180,6 +190,7 @@ export default function AccessoriesPage() {
     setPreviewRows(json.rows || []);
     setPreviewIssues([]);
     setPreviewType("manual");
+    setConfirmError("");
     setPreviewCommand({
       operationId: crypto.randomUUID(),
       shipmentRef,
@@ -192,30 +203,36 @@ export default function AccessoriesPage() {
   async function confirmManualOutbound() {
     setErrorMsg("");
     setSuccessMsg("");
+    setConfirmError("");
 
     if (!previewCommand?.manualLines) {
-      setErrorMsg("Preview the accessory outbound again before confirming.");
+      setConfirmError("Preview the accessory outbound again before confirming.");
       return;
     }
 
-    const res = await apiFetch("/api/accessories/outbound/manual", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        operation_id: previewCommand.operationId,
-        shipment_ref: previewCommand.shipmentRef || null,
-        comment: previewCommand.comment || null,
-        actor,
-        actor_id: actorId,
-        lines: previewCommand.manualLines,
-        preview: "0",
-      }),
-    });
-
-    const json = await res.json();
+    let json: any;
+    try {
+      const res = await apiFetch("/api/accessories/outbound/manual", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation_id: previewCommand.operationId,
+          shipment_ref: previewCommand.shipmentRef || null,
+          comment: previewCommand.comment || null,
+          actor,
+          actor_id: actorId,
+          lines: previewCommand.manualLines,
+          preview: "0",
+        }),
+      });
+      json = await res.json();
+    } catch {
+      setConfirmError(NO_SERVER_ANSWER);
+      return;
+    }
 
     if (!json.ok) {
-      setErrorMsg(json.error || "Manual outbound failed");
+      setConfirmError(json.error || "Manual outbound failed");
       return;
     }
 
@@ -240,21 +257,36 @@ export default function AccessoriesPage() {
     setErrorMsg("");
     setSuccessMsg("");
 
+    // Read the report once: Confirm sends these same bytes, even if the file
+    // is opened in Excel afterwards.
+    const upload = await snapshotFile(file);
+    if (!upload) {
+      setBusy(false);
+      setErrorMsg(SPREADSHEET_UNREADABLE);
+      return;
+    }
+
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", upload);
     form.append("shipment_ref", shipmentRef || "");
     form.append("comment", comment || "");
     form.append("actor", actor);
     form.append("actor_id", actorId || "");
     form.append("preview", "1");
 
-    const res = await apiFetch("/api/accessories/outbound/excel", {
-      method: "POST",
-      body: form,
-    });
-
-    const json = await res.json();
-    setBusy(false);
+    let json: any;
+    try {
+      const res = await apiFetch("/api/accessories/outbound/excel", {
+        method: "POST",
+        body: form,
+      });
+      json = await res.json();
+    } catch {
+      setErrorMsg(NO_SERVER_ANSWER);
+      return;
+    } finally {
+      setBusy(false);
+    }
 
     if (!json.ok) {
       const issueDetails = Array.isArray(json.issues)
@@ -289,23 +321,25 @@ export default function AccessoriesPage() {
     setPreviewRows(json.rows || []);
     setPreviewIssues([]);
     setPreviewType("excel");
+    setConfirmError("");
     setPreviewCommand({
       operationId: json.operation_id,
       shipmentRef,
       comment,
-      file,
+      file: upload,
     });
     setPreviewOpen(true);
   }
 
   async function confirmExcelOutbound() {
-    if (!previewCommand?.file) {
-      setErrorMsg("Preview the spreadsheet again before confirming.");
-      return;
-    }
-
     setErrorMsg("");
     setSuccessMsg("");
+    setConfirmError("");
+
+    if (!previewCommand?.file) {
+      setConfirmError("Preview the spreadsheet again before confirming.");
+      return;
+    }
 
     const form = new FormData();
     form.append("file", previewCommand.file);
@@ -316,15 +350,20 @@ export default function AccessoriesPage() {
     form.append("actor_id", actorId || "");
     form.append("preview", "0");
 
-    const res = await apiFetch("/api/accessories/outbound/excel", {
-      method: "POST",
-      body: form,
-    });
-
-    const json = await res.json();
+    let json: any;
+    try {
+      const res = await apiFetch("/api/accessories/outbound/excel", {
+        method: "POST",
+        body: form,
+      });
+      json = await res.json();
+    } catch {
+      setConfirmError(NO_SERVER_ANSWER);
+      return;
+    }
 
     if (!json.ok) {
-      setErrorMsg(json.error || "Spreadsheet outbound failed");
+      setConfirmError(json.error || "Spreadsheet outbound failed");
       return;
     }
 
@@ -563,6 +602,9 @@ export default function AccessoriesPage() {
                 })}
               </tbody>
             </table>
+            {confirmError ? (
+              <p className="preview-confirm-error" role="alert">{confirmError}</p>
+            ) : null}
             <div className="outbound-preview-actions">
               <span>{`${previewUnits} units`}</span>
               <div>

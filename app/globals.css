@@ -981,6 +981,22 @@ body {
   font-size: 12px;
 }
 
+/* Why the last confirmation failed, right above the confirm button. */
+.preview-confirm-error {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--danger-soft, rgba(220, 38, 38, 0.08));
+  color: var(--danger);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.prototype-preview-actions .preview-confirm-error {
+  flex-basis: 100%;
+  margin: 0;
+}
+
 .outbound-preview-actions {
   display: flex;
   align-items: center;

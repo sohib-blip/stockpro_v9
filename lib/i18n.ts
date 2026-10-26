@@ -892,6 +892,8 @@ const FR: Record<string, string> = {
   "They stay on the picking sheet and the vehicle labels.":
     "Elles restent sur la feuille de picking et les étiquettes véhicules.",
   "+ Add box": "+ Ajouter un carton",
+  "Limit per order": "Limite par commande",
+  "No limit": "Sans limite",
 };
 
 const NL: Record<string, string> = {
@@ -1776,6 +1778,8 @@ const NL: Record<string, string> = {
   "They stay on the picking sheet and the vehicle labels.":
     "Ze blijven op de picklijst en de voertuiglabels.",
   "+ Add box": "+ Doos toevoegen",
+  "Limit per order": "Limiet per order",
+  "No limit": "Geen limiet",
 };
 
 const DICTIONARIES: Record<Exclude<Locale, "en">, Record<string, string>> = {
@@ -1830,6 +1834,7 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^All (\d+) orders of this workbook were already deducted earlier\. You can still print the picking sheet and the vehicle labels\.$/, "Les $1 commandes de ce fichier ont déjà été retirées. Vous pouvez quand même imprimer la feuille de picking et les étiquettes véhicules."],
           [/^Vision — AIO Camera & DVR \((\d+)\)$/, "Vision — caméra AIO et DVR ($1)"],
           [/^Other orders \((\d+)\)$/, "Autres commandes ($1)"],
+          [/^only up to (\d+) per order$/, "seulement jusqu’à $1 par commande"],
           [/^needed (\d+) · Cabinet (\d+)$/, "besoin $1 · Cabinet $2"],
           [/^Not enough stock: (\d+) missing in the warehouse$/, "Stock insuffisant : il en manque $1 dans l’entrepôt"],
           [/^"(.+)" has no dimensions yet\. Choose the matching device or accessory and enter its dimensions\.$/, "« $1 » n’a pas encore de dimensions. Choisissez l’appareil ou l’accessoire correspondant et saisissez ses dimensions."],
@@ -1905,6 +1910,7 @@ function translateDynamic(locale: Exclude<Locale, "en">, value: string) {
           [/^All (\d+) orders of this workbook were already deducted earlier\. You can still print the picking sheet and the vehicle labels\.$/, "Alle $1 orders van dit bestand zijn al eerder afgeboekt. U kunt de picklijst en de voertuiglabels nog steeds afdrukken."],
           [/^Vision — AIO Camera & DVR \((\d+)\)$/, "Vision — AIO-camera en DVR ($1)"],
           [/^Other orders \((\d+)\)$/, "Andere orders ($1)"],
+          [/^only up to (\d+) per order$/, "alleen tot $1 per order"],
           [/^needed (\d+) · Cabinet (\d+)$/, "nodig $1 · Cabinet $2"],
           [/^Not enough stock: (\d+) missing in the warehouse$/, "Onvoldoende voorraad: er ontbreken er $1 in het magazijn"],
           [/^"(.+)" has no dimensions yet\. Choose the matching device or accessory and enter its dimensions\.$/, "\"$1\" heeft nog geen afmetingen. Kies het overeenkomstige apparaat of accessoire en voer de afmetingen in."],

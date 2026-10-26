@@ -15,6 +15,8 @@ const ruleSchema = z.object({
   }),
   packaging_type_id: z.string().uuid(),
   quantity: z.coerce.number().int().min(1).max(1000),
+  // Optional: the rule only applies while the order holds at most this many triggers.
+  max_trigger_count: z.coerce.number().int().min(1).max(100000).nullable().optional(),
 });
 
 const deleteSchema = z.object({ id: z.string().uuid() });
@@ -29,7 +31,7 @@ export async function GET() {
     const [rules, packaging, devices] = await Promise.all([
       service
         .from("packaging_rules")
-        .select("id,trigger_packaging_type_id,trigger_device_id,packaging_type_id,quantity"),
+        .select("id,trigger_packaging_type_id,trigger_device_id,packaging_type_id,quantity,max_trigger_count"),
       service.from("packaging_types").select("id,name,category"),
       service.from("bins").select("id,name").order("name"),
     ]);
@@ -51,6 +53,7 @@ export async function GET() {
           packaging_type_id: rule.packaging_type_id,
           packaging_name: String(packagingById.get(rule.packaging_type_id)?.name ?? "Unknown"),
           quantity: Number(rule.quantity),
+          max_trigger_count: rule.max_trigger_count ? Number(rule.max_trigger_count) : null,
         };
       })
       .sort(
@@ -74,6 +77,7 @@ export async function POST(req: Request) {
     if (!parsed.success) return failure("Invalid packaging rule", 400);
 
     const { trigger, packaging_type_id: packagingTypeId, quantity } = parsed.data;
+    const maxTriggerCount = parsed.data.max_trigger_count ?? null;
     const service = supabaseService();
     const ids = trigger.kind === "packaging" ? [packagingTypeId, trigger.id] : [packagingTypeId];
     const { data: formats, error: formatsError } = await service
@@ -118,12 +122,18 @@ export async function POST(req: Request) {
     const { error } = existing
       ? await service
           .from("packaging_rules")
-          .update({ quantity, updated_at: new Date().toISOString(), updated_by_email: updatedBy })
+          .update({
+            quantity,
+            max_trigger_count: maxTriggerCount,
+            updated_at: new Date().toISOString(),
+            updated_by_email: updatedBy,
+          })
           .eq("id", existing.id)
       : await service.from("packaging_rules").insert({
           [triggerColumn]: trigger.id,
           packaging_type_id: packagingTypeId,
           quantity,
+          max_trigger_count: maxTriggerCount,
           updated_by_email: updatedBy,
         });
     if (error) {

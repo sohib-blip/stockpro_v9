@@ -13,6 +13,7 @@ type PackagingRule = {
   packaging_type_id: string;
   packaging_name: string;
   quantity: number;
+  max_trigger_count: number | null;
 };
 
 type Device = { id: string; name: string };
@@ -38,6 +39,8 @@ export default function PackagingRulesPanel({
   const [trigger, setTrigger] = useState("");
   const [packagingTypeId, setPackagingTypeId] = useState("");
   const [quantity, setQuantity] = useState("1");
+  // Optional: the rule stops applying above this many triggers in one order.
+  const [limit, setLimit] = useState("");
 
   const loadRules = useCallback(async () => {
     setLoading(true);
@@ -86,6 +89,7 @@ export default function PackagingRulesPanel({
           trigger: { kind: triggerKind, id: triggerId },
           packaging_type_id: packagingTypeId,
           quantity: Number(quantity),
+          max_trigger_count: limit.trim() ? Number(limit) : null,
         }),
       });
       const body = await response.json().catch(() => null);
@@ -94,6 +98,7 @@ export default function PackagingRulesPanel({
       }
       setPackagingTypeId("");
       setQuantity("1");
+      setLimit("");
       await loadRules();
       onFeedback({
         kind: "success",
@@ -196,6 +201,19 @@ export default function PackagingRulesPanel({
             aria-label="Rule quantity"
           />
         </label>
+        <label>
+          <span>Limit per order</span>
+          <input
+            type="number"
+            min="1"
+            max="100000"
+            step="1"
+            value={limit}
+            placeholder="No limit"
+            onChange={(event) => setLimit(event.target.value)}
+            aria-label="Rule limit per order"
+          />
+        </label>
         <button
           type="button"
           className="prototype-button primary"
@@ -207,7 +225,7 @@ export default function PackagingRulesPanel({
       </div>
 
       <div className="prototype-table-scroll">
-        <table className="prototype-table packaging-table">
+        <table className="prototype-table packaging-table packaging-rules-table">
           <thead>
             <tr><th>When</th><th>Also remove</th><th>Quantity</th><th>Actions</th></tr>
           </thead>
@@ -221,6 +239,9 @@ export default function PackagingRulesPanel({
                 <td>{rule.packaging_name}</td>
                 <td className="packaging-number">
                   {`${rule.quantity} per ${rule.trigger_kind === "packaging" ? "package" : "device"}`}
+                  {rule.max_trigger_count ? (
+                    <small>{`only up to ${rule.max_trigger_count} per order`}</small>
+                  ) : null}
                 </td>
                 <td>
                   <div className="packaging-row-actions">

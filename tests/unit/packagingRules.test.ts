@@ -18,6 +18,10 @@ import { translateUiText } from "../../lib/i18n";
 import { formatPackagingDimensions, packagingCategoryLabel } from "../../lib/packaging";
 import { packagingCreateSchema } from "../../lib/packaging-validation";
 
+const limitMigration = readFileSync(
+  join(process.cwd(), "supabase/migrations/20261026120000_add_packaging_rule_limit.sql"),
+  "utf8"
+).toLowerCase();
 const migration = readFileSync(
   join(process.cwd(), "supabase/migrations/20261022100000_add_packaging_sleeves_and_rules.sql"),
   "utf8"
@@ -102,6 +106,21 @@ describe("automatic packaging rules", () => {
       { packagingTypeId: "sleeve-cv200", quantity: 3 },
     ]);
     expect(dispatchPackagingRuleExtras({ packages: [{ packagingTypeId: "plastic-s", quantity: 1 }] }, rules)).toEqual([]);
+  });
+
+  it("stops a rule above its limit per order (no CV200 Sleeve from 3 cameras)", () => {
+    const limited: DispatchPackagingRule[] = [
+      { triggerPackagingTypeId: null, triggerDeviceModel: "CNHYCV200XEU", packagingTypeId: "sleeve-cv200", quantity: 1, maxTriggerCount: 2 },
+    ];
+    const sleeves = (cameras: number) =>
+      dispatchPackagingRuleExtras({ packages: [], deviceCounts: { CNHYCV200XEU: cameras } }, limited);
+    expect(sleeves(1)).toEqual([{ packagingTypeId: "sleeve-cv200", quantity: 1 }]);
+    expect(sleeves(2)).toEqual([{ packagingTypeId: "sleeve-cv200", quantity: 2 }]);
+    expect(sleeves(3)).toEqual([]);
+    expect(sleeves(22)).toEqual([]);
+    expect(limitMigration).toContain("add column if not exists max_trigger_count integer");
+    expect(limitMigration).toContain("max_trigger_count is null or max_trigger_count between 1 and 100000");
+    expect(translateUiText("fr", "only up to 2 per order")).toBe("seulement jusqu’à 2 par commande");
   });
 
   it("never chooses a sleeve as the packaging of an order", () => {

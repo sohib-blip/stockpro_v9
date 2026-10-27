@@ -5,6 +5,7 @@ import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ProcessFeedback from "@/components/ProcessFeedback";
 import { deviceIdsInText } from "@/lib/device-serials";
+import { NO_SERVER_ANSWER, SPREADSHEET_UNREADABLE, snapshotFile } from "@/lib/outbound-feedback";
 
 type HistoryRow = {
   operation_id: string;
@@ -94,13 +95,19 @@ setPreview(null);
 
     const imeis = deviceIdsInText(imeiInput);
 
-    const res = await apiFetch("/api/outbound/eod-preview", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ imeisText: imeiInput, imeis }),
-    });
-
-    const json = await res.json();
+    let json: any;
+    try {
+      const res = await apiFetch("/api/outbound/eod-preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ imeisText: imeiInput, imeis }),
+      });
+      json = await res.json();
+    } catch {
+      setErrorMsg(NO_SERVER_ANSWER);
+      setBusy(false);
+      return;
+    }
     if (!json.unknown_imeis) json.unknown_imeis = [];
 if (!json.already_out) json.already_out = [];
 if (!json.duplicates) json.duplicates = [];
@@ -129,15 +136,28 @@ setBusy(false);
     setErrorMsg("");
     setPreview(null);
 
+    const upload = await snapshotFile(file);
+    if (!upload) {
+      setErrorMsg(SPREADSHEET_UNREADABLE);
+      setBusy(false);
+      return;
+    }
+
     const form = new FormData();
-    form.append("file", file);
+    form.append("file", upload);
 
-    const res = await apiFetch("/api/outbound/eod-preview", {
-      method: "POST",
-      body: form,
-    });
-
-    const json = await res.json();
+    let json: any;
+    try {
+      const res = await apiFetch("/api/outbound/eod-preview", {
+        method: "POST",
+        body: form,
+      });
+      json = await res.json();
+    } catch {
+      setErrorMsg(NO_SERVER_ANSWER);
+      setBusy(false);
+      return;
+    }
     if (!json.unknown_imeis) json.unknown_imeis = [];
 if (!json.already_out) json.already_out = [];
 if (!json.duplicates) json.duplicates = [];
@@ -171,24 +191,31 @@ if (!actorId) {
 }
 
     setBusy(true);
+    setErrorMsg("");
 
-    const res = await apiFetch("/api/outbound/eod-confirm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        operation_id:
-          operationIdRef.current ||
-          (operationIdRef.current = crypto.randomUUID()),
-        imeis: preview.imeis,
-        shipment_ref: shipmentRef || null,
-        actor,
-        actor_id: actorId,
-        source: previewSource,
-      }),
-    });
-
-    const json = await res.json();
-    setBusy(false);
+    let json: any;
+    try {
+      const res = await apiFetch("/api/outbound/eod-confirm", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operation_id:
+            operationIdRef.current ||
+            (operationIdRef.current = crypto.randomUUID()),
+          imeis: preview.imeis,
+          shipment_ref: shipmentRef || null,
+          actor,
+          actor_id: actorId,
+          source: previewSource,
+        }),
+      });
+      json = await res.json();
+    } catch {
+      setErrorMsg(NO_SERVER_ANSWER);
+      return;
+    } finally {
+      setBusy(false);
+    }
 
     if (json.ok) {
       const imeiCount = Array.isArray(preview.imeis) ? preview.imeis.length : 0;
@@ -473,6 +500,9 @@ if (!actorId) {
     )}
     </div>
     <div className="prototype-preview-actions">
+    {errorMsg ? (
+      <p className="preview-confirm-error" role="alert">{errorMsg}</p>
+    ) : null}
     <button
       type="button"
       onClick={confirmOut}

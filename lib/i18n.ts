@@ -901,6 +901,8 @@ const FR: Record<string, string> = {
   "No valid 12-digit serial numbers found.": "Aucun numéro de série valide de 12 chiffres trouvé.",
   "Enter at least one valid 15-digit IMEI or 12-digit MatrixIQ serial number": "Saisissez au moins un IMEI valide de 15 chiffres ou un numéro de série MatrixIQ de 12 chiffres",
   "No valid 15-digit IMEI or 12-digit MatrixIQ serial number detected.": "Aucun IMEI valide de 15 chiffres ni numéro de série MatrixIQ de 12 chiffres détecté.",
+  "The spreadsheet could not be read. Close it in Excel (or choose it again), then preview it again.": "Le fichier n’a pas pu être lu. Fermez-le dans Excel (ou choisissez-le à nouveau), puis relancez l’aperçu.",
+  "No answer from the server. Check the history before trying again.": "Pas de réponse du serveur. Vérifiez l’historique avant de réessayer.",
   "Scheduled tasks": "Tâches programmées",
   "Start and stop a task by itself at fixed times (Belgian time), for example a team meeting. Tasks always stop at 17:00.":
     "Une tâche démarre et s’arrête toute seule à heures fixes (heure belge), par exemple une réunion d’équipe. Les tâches s’arrêtent toujours à 17h.",
@@ -1837,6 +1839,8 @@ const NL: Record<string, string> = {
   "No valid 12-digit serial numbers found.": "Geen geldige serienummers van 12 cijfers gevonden.",
   "Enter at least one valid 15-digit IMEI or 12-digit MatrixIQ serial number": "Voer minstens één geldige IMEI van 15 cijfers of MatrixIQ-serienummer van 12 cijfers in",
   "No valid 15-digit IMEI or 12-digit MatrixIQ serial number detected.": "Geen geldige IMEI van 15 cijfers of MatrixIQ-serienummer van 12 cijfers gevonden.",
+  "The spreadsheet could not be read. Close it in Excel (or choose it again), then preview it again.": "Het bestand kon niet worden gelezen. Sluit het in Excel (of kies het opnieuw) en start de voorvertoning opnieuw.",
+  "No answer from the server. Check the history before trying again.": "Geen antwoord van de server. Controleer de geschiedenis voordat u het opnieuw probeert.",
   "Scheduled tasks": "Geplande taken",
   "Start and stop a task by itself at fixed times (Belgian time), for example a team meeting. Tasks always stop at 17:00.":
     "Een taak start en stopt vanzelf op vaste tijden (Belgische tijd), bijvoorbeeld een teamvergadering. Taken stoppen altijd om 17:00.",

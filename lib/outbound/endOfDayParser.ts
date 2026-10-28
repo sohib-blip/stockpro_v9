@@ -1,5 +1,5 @@
 import * as XLSX from "xlsx";
-import { IMEI_LENGTH, MATRIXIQ_SERIAL_LENGTH, isDeviceId } from "../device-serials";
+import { IMEI_LENGTH, MATRIXIQ_SERIAL_LENGTH, isDeviceId, isMatrixIqBin } from "../device-serials";
 
 const HEADER_SCAN_LIMIT = 100;
 
@@ -115,8 +115,8 @@ export function normalizeEndOfDayLabel(value: unknown) {
 function classifyDevice(itemType: string): EndOfDayDeviceKind | null {
   const normalized = normalizeText(itemType);
 
-  // Before the camera accessories: "MatrixIQ", "Matrix IQ Camera", ...
-  if (normalized.replace(/\s+/g, "").includes("MATRIXIQ")) return "MATRIXIQ";
+  // Before the camera accessories: "MatrixIQ", "Matrix IQ Camera", "Matrix TagiQ", ...
+  if (isMatrixIqBin(normalized)) return "MATRIXIQ";
   if (normalized === "ATOM") return "ATOM";
   if (normalized === "NEON") return "NEON";
   if (normalized === "HARDWIRED") return "HARDWIRED";

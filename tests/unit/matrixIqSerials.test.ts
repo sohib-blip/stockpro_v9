@@ -33,11 +33,11 @@ function report(rows: unknown[][]) {
 
 describe("MatrixIQ serial numbers", () => {
   it("recognises the MatrixIQ bin whatever its spelling", () => {
-    for (const name of ["MatrixIQ", "MATRIXIQ", "Matrix-IQ", "Matrix iQ 2"]) {
+    for (const name of ["MatrixIQ", "MATRIXIQ", "Matrix-IQ", "Matrix iQ 2", "Matrix TagiQ", "MATRIX TAG-IQ"]) {
       expect(isMatrixIqBin(name)).toBe(true);
       expect(deviceIdLength(name)).toBe(12);
     }
-    for (const name of ["FMC234", "Matrix", "CNHYCV200XEU", "", null]) {
+    for (const name of ["FMC234", "Matrix", "Matrix Tag", "TagiQ", "CNHYCV200XEU", "", null]) {
       expect(isMatrixIqBin(name)).toBe(false);
       expect(deviceIdLength(name)).toBe(15);
     }
@@ -75,10 +75,11 @@ describe("MatrixIQ serial numbers", () => {
     const result = report([
       ["A-1", "MatrixIQ", SERIAL, "N/A"],
       ["A-1", "Matrix IQ Camera", 123456789013, "N/A"],
+      ["A-1", "Matrix TagiQ", "123456789014", "N/A"],
       ["A-2", "Neon", IMEI, "N/A"],
     ]);
     expect(result.errors).toEqual([]);
-    expect(result.imeis).toEqual([SERIAL, "123456789013", IMEI]);
+    expect(result.imeis).toEqual([SERIAL, "123456789013", "123456789014", IMEI]);
   });
 
   it("keeps the 15-digit rule for every other report device", () => {
@@ -90,6 +91,19 @@ describe("MatrixIQ serial numbers", () => {
       "Device Neon does not contain a valid 15-digit IMEI / ID.",
       "Device MatrixIQ does not contain a valid 12-digit serial number.",
     ]);
+  });
+
+  it("recognises Matrix TagiQ in the database too", () => {
+    const tagiq = readFileSync(
+      join(process.cwd(), "supabase/migrations/20261028090000_recognise_matrix_tagiq.sql"),
+      "utf8"
+    );
+    expect(tagiq.trimStart()).toMatch(/^--[\s\S]*\nbegin;/);
+    expect(tagiq.trimEnd()).toMatch(/commit;$/);
+    expect(tagiq).toContain("like '%MATRIXIQ%'");
+    expect(tagiq).toContain("like '%MATRIXTAGIQ%'");
+    expect(tagiq).toContain("then '^[0-9]{12}$'");
+    expect(tagiq).toContain("else '^[0-9]{15}$'");
   });
 
   it("applies the same rule in the database", () => {

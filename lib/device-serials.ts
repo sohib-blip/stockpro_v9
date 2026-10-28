@@ -5,12 +5,13 @@
 export const IMEI_LENGTH = 15;
 export const MATRIXIQ_SERIAL_LENGTH = 12;
 
-/** True for the MatrixIQ bin, whatever its spelling ("MatrixIQ", "MATRIX-IQ", "Matrix iQ"). */
+// Names of the MatrixIQ devices, without spaces or punctuation.
+const MATRIXIQ_NAMES = ["MATRIXIQ", "MATRIXTAGIQ"];
+
+/** True for the MatrixIQ bin, whatever its spelling ("MatrixIQ", "Matrix-IQ", "Matrix TagiQ"). */
 export function isMatrixIqBin(name: string | null | undefined) {
-  return String(name ?? "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "")
-    .includes("MATRIXIQ");
+  const compact = String(name ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  return MATRIXIQ_NAMES.some((matrixName) => compact.includes(matrixName));
 }
 
 /** Number of digits of a device ID in this bin. */

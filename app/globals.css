@@ -6782,3 +6782,155 @@ main.min-h-screen {
     box-shadow: none;
   }
 }
+
+/* Admin-only security update alert (Dashboard) */
+.security-updates-banner {
+  border: 1px solid color-mix(in srgb, var(--warning) 35%, transparent);
+  border-radius: 10px;
+  background: var(--warning-soft);
+  color: var(--foreground);
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+.security-updates-banner.is-urgent {
+  border-color: color-mix(in srgb, var(--danger) 40%, transparent);
+  background: var(--danger-soft);
+}
+
+.security-updates-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.security-updates-text {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  gap: 8px 12px;
+  flex-wrap: wrap;
+  min-width: min(100%, 260px);
+}
+
+.security-updates-banner.is-urgent .security-updates-text > strong {
+  color: var(--danger);
+}
+
+.security-updates-counts,
+.security-advisory-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.security-updates-counts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.security-severity {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11.5px;
+  font-weight: 600;
+  background: var(--surface);
+  color: var(--muted-strong);
+  white-space: nowrap;
+}
+
+.security-severity.is-critical,
+.security-severity.is-high {
+  color: var(--danger);
+}
+
+.security-severity.is-moderate {
+  color: var(--warning);
+}
+
+.security-updates-contact {
+  color: var(--foreground-soft);
+}
+
+.security-updates-it-hint {
+  flex-basis: 100%;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-it-contact {
+  border-style: dashed !important;
+}
+
+.security-updates-details {
+  margin-top: 12px;
+  max-height: 420px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.security-updates-details table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+.security-updates-details th,
+.security-updates-details td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.security-updates-details th {
+  color: var(--muted-strong);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.security-package-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.security-advisory-list li + li {
+  margin-top: 6px;
+}
+
+.security-advisory-list a {
+  color: var(--brand);
+}
+
+.security-advisory-list code {
+  color: var(--muted-strong);
+  font-size: 11.5px;
+}
+
+.security-updates-checked {
+  margin: 0;
+  padding: 8px 10px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.security-updates-unavailable {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+@media (max-width: 640px) {
+  .security-updates-details table {
+    min-width: 560px;
+  }
+}

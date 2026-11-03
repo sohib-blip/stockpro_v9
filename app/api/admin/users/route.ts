@@ -7,6 +7,10 @@ import {
   ROLE_VALUES,
 } from "@/lib/access-control";
 import { authorizeApiRequest, supabaseService } from "@/lib/auth";
+import {
+  saveSecurityAlertRecipient,
+  securityAlertRecipientIds,
+} from "@/lib/security-alert-recipients";
 
 const roleSchema = z.enum(ROLE_VALUES);
 const permissionsSchema = z.record(z.boolean()).default({});
@@ -15,6 +19,8 @@ const updateSchema = z.object({
   user_id: z.string().uuid(),
   role: roleSchema,
   permissions: permissionsSchema,
+  // IT contact for the security update alert (administrators only).
+  security_alerts: z.boolean().optional(),
 });
 
 const inviteSchema = z.object({
@@ -59,11 +65,12 @@ export async function GET(req: Request) {
   }
 
   const supabase = supabaseService();
-  const [{ data: authData, error: authError }, roles, permissions] =
+  const [{ data: authData, error: authError }, roles, permissions, itContacts] =
     await Promise.all([
       supabase.auth.admin.listUsers({ page: 1, perPage: 1000 }),
       supabase.from("user_roles").select("user_id,role"),
       supabase.from("user_permissions").select("*"),
+      securityAlertRecipientIds(supabase).catch(() => null),
     ]);
 
   if (authError || roles.error || permissions.error) {
@@ -97,7 +104,9 @@ export async function GET(req: Request) {
       last_sign_in_at: user.last_sign_in_at ?? null,
       role: roleByUser.get(user.id) ?? null,
       permissions: permissionsByUser.get(user.id) ?? null,
+      security_alerts: itContacts?.has(user.id) ?? false,
     })),
+    security_alerts_available: itContacts !== null,
   });
 }
 
@@ -123,6 +132,13 @@ export async function PUT(req: Request) {
       parsed.data.user_id,
       parsed.data.role,
       parsed.data.permissions
+    );
+    await saveSecurityAlertRecipient(
+      supabaseService(),
+      parsed.data.user_id,
+      parsed.data.role,
+      parsed.data.security_alerts,
+      admin.user.email ?? null
     );
     return NextResponse.json({
       ok: true,

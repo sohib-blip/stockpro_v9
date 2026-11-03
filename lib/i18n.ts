@@ -986,7 +986,25 @@ const FR: Record<string, string> = {
   "Assignment not saved": "Attribution non enregistrée",
   "Dispatch planning ended": "Dispatch planning terminé",
   "Dispatch planning not changed": "Dispatch planning non modifié",
-  "You are now doing today's dispatch planning": "Vous faites maintenant le dispatch planning du jour",
+  "You are now doing today's dispatch planning": "Vous faites maintenant le dispatch planning du jour",  "Security updates needed": "Mises à jour de sécurité nécessaires",
+  Critical: "Critique",
+  High: "Élevée",
+  Moderate: "Modérée",
+  Low: "Faible",
+  "Contact the person who maintains StockPro so they can update the app.":
+    "Contactez la personne qui maintient StockPro pour qu’elle mette l’application à jour.",
+  "Show details": "Voir le détail",
+  "Hide details": "Masquer le détail",
+  Package: "Paquet",
+  "Installed version": "Version installée",
+  Severity: "Gravité",
+  "Security advisories": "Avis de sécurité",
+  "Last checked:": "Dernière vérification :",
+  "Security update check unavailable. StockPro will try again later.":
+    "Vérification des mises à jour de sécurité indisponible. StockPro réessaiera plus tard.",
+  "No IT contact chosen yet: choose one in User Access.":
+    "Aucun contact IT choisi : choisissez-en un dans Accès utilisateurs.",
+  "IT — security alerts": "IT — alertes de sécurité",
 };
 
 const NL: Record<string, string> = {
@@ -1965,7 +1983,25 @@ const NL: Record<string, string> = {
   "Assignment not saved": "Toewijzing niet opgeslagen",
   "Dispatch planning ended": "Dispatch planning beëindigd",
   "Dispatch planning not changed": "Dispatch planning niet gewijzigd",
-  "You are now doing today's dispatch planning": "U doet nu de dispatch planning van vandaag",
+  "You are now doing today's dispatch planning": "U doet nu de dispatch planning van vandaag",  "Security updates needed": "Beveiligingsupdates nodig",
+  Critical: "Kritiek",
+  High: "Hoog",
+  Moderate: "Matig",
+  Low: "Laag",
+  "Contact the person who maintains StockPro so they can update the app.":
+    "Neem contact op met de persoon die StockPro onderhoudt, zodat de app kan worden bijgewerkt.",
+  "Show details": "Details tonen",
+  "Hide details": "Details verbergen",
+  Package: "Pakket",
+  "Installed version": "Geïnstalleerde versie",
+  Severity: "Ernst",
+  "Security advisories": "Beveiligingsadviezen",
+  "Last checked:": "Laatst gecontroleerd:",
+  "Security update check unavailable. StockPro will try again later.":
+    "Controle op beveiligingsupdates niet beschikbaar. StockPro probeert het later opnieuw.",
+  "No IT contact chosen yet: choose one in User Access.":
+    "Nog geen IT-contact gekozen: kies er een in Gebruikerstoegang.",
+  "IT — security alerts": "IT — beveiligingswaarschuwingen",
 };
 
 const DICTIONARIES: Record<Exclude<Locale, "en">, Record<string, string>> = {

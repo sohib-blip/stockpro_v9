@@ -17,6 +17,7 @@ type ManagedUser = {
   last_sign_in_at: string | null;
   role: AppRole | null;
   permissions: Permissions | null;
+  security_alerts?: boolean;
 };
 
 const ROLE_LABELS: Record<AppRole, string> = {
@@ -50,6 +51,7 @@ function accessForUser(user: ManagedUser) {
 export default function AdminPage() {
   const [users, setUsers] = useState<ManagedUser[]>([]);
   const [currentUserId, setCurrentUserId] = useState("");
+  const [securityAlertsAvailable, setSecurityAlertsAvailable] = useState(false);
   const [loading, setLoading] = useState(true);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -80,6 +82,7 @@ export default function AdminPage() {
 
     setUsers(body.users ?? []);
     setCurrentUserId(body.current_user_id ?? "");
+    setSecurityAlertsAvailable(body.security_alerts_available === true);
     setLoading(false);
   }
 
@@ -114,6 +117,9 @@ export default function AdminPage() {
         user_id: user.id,
         role: access.role,
         permissions: access.permissions,
+        ...(securityAlertsAvailable
+          ? { security_alerts: access.role === "admin" && user.security_alerts === true }
+          : {}),
       }),
     });
     const body = await response.json().catch(() => null);
@@ -309,6 +315,28 @@ export default function AdminPage() {
                       {label}
                     </label>
                   ))}
+                  {securityAlertsAvailable && (
+                    <label
+                      className="admin-it-contact flex items-center gap-2 rounded-lg border border-slate-800 px-3 py-2 text-xs"
+                      title="Only IT contacts see the security update alert on the Dashboard. Administrators only."
+                    >
+                      <input
+                        type="checkbox"
+                        checked={access.role === "admin" && user.security_alerts === true}
+                        disabled={access.role !== "admin"}
+                        onChange={(event) =>
+                          setUsers((current) =>
+                            current.map((candidate) =>
+                              candidate.id === user.id
+                                ? { ...candidate, security_alerts: event.target.checked }
+                                : candidate
+                            )
+                          )
+                        }
+                      />
+                      IT — security alerts
+                    </label>
+                  )}
                 </div>
               </article>
             );

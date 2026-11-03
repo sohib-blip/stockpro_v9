@@ -174,7 +174,7 @@ export async function POST(req: Request) {
     for (const chunk of chunkArray(deviceIds, LOOKUP_BATCH_SIZE)) {
       const { data, error } = await supabase
         .from("device_accessory_templates")
-        .select("device_id, accessory_bin_id, quantity, per_devices")
+        .select("device_id, accessory_bin_id, quantity, per_devices, per_order")
         .in("device_id", chunk);
       if (error) throw error;
       templates.push(...((data || []) as DeviceAccessoryTemplate[]));

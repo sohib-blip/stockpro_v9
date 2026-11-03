@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import PackagingInventoryPanel from "@/components/PackagingInventoryPanel";
+import InboundAccessoriesPanel from "@/components/InboundAccessoriesPanel";
 import { formatDispatchDimensions } from "@/components/DispatchItemDialog";
 
 type AccessoryCategory =
@@ -119,12 +120,14 @@ export default function BinsPage() {
   const [templateAccessoryId, setTemplateAccessoryId] = useState("");
   const [templateQty, setTemplateQty] = useState(1);
   const [templatePerDevices, setTemplatePerDevices] = useState(1);
+  const [templatePerOrder, setTemplatePerOrder] = useState(false);
   const [ruleCounts, setRuleCounts] = useState<Record<string, number>>({});
 
   const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
   const [editTemplateAccessoryId, setEditTemplateAccessoryId] = useState("");
   const [editTemplateQty, setEditTemplateQty] = useState(1);
   const [editTemplatePerDevices, setEditTemplatePerDevices] = useState(1);
+  const [editTemplatePerOrder, setEditTemplatePerOrder] = useState(false);
 
   const [accessoryFilter, setAccessoryFilter] =
     useState<"all" | "show" | "hide">("all");
@@ -416,7 +419,8 @@ export default function BinsPage() {
         device_id: selectedDevice.id,
         accessory_bin_id: templateAccessoryId,
         quantity: templateQty,
-        per_devices: templatePerDevices,
+        per_devices: templatePerOrder ? 1 : templatePerDevices,
+        per_order: templatePerOrder,
       }),
     });
 
@@ -431,6 +435,7 @@ export default function BinsPage() {
     setTemplateAccessoryId("");
     setTemplateQty(1);
     setTemplatePerDevices(1);
+    setTemplatePerOrder(false);
 
     await openTemplate(selectedDevice);
     showSetupSuccess("Automatic accessory rule created successfully.");
@@ -441,6 +446,7 @@ export default function BinsPage() {
     setEditTemplateAccessoryId(t.accessory_bin_id);
     setEditTemplateQty(Number(t.quantity || 1));
     setEditTemplatePerDevices(Number(t.per_devices || 1));
+    setEditTemplatePerOrder(Boolean(t.per_order));
   }
 
   function cancelEditTemplate() {
@@ -448,6 +454,7 @@ export default function BinsPage() {
     setEditTemplateAccessoryId("");
     setEditTemplateQty(1);
     setEditTemplatePerDevices(1);
+    setEditTemplatePerOrder(false);
   }
 
   async function saveTemplateEdit() {
@@ -462,7 +469,8 @@ export default function BinsPage() {
         device_id: selectedDevice.id,
         accessory_bin_id: editTemplateAccessoryId,
         quantity: editTemplateQty,
-        per_devices: editTemplatePerDevices,
+        per_devices: editTemplatePerOrder ? 1 : editTemplatePerDevices,
+        per_order: editTemplatePerOrder,
       }),
     });
 
@@ -713,15 +721,29 @@ export default function BinsPage() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-400">Devices per allocation</label>
+              <label className="text-xs text-slate-400">Applies</label>
 
-              <input
-                type="number"
-                min={1}
-                value={templatePerDevices}
-                onChange={(e) => setTemplatePerDevices(Number(e.target.value))}
-                className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
-              />
+              <div className="flex gap-2">
+                <select
+                  aria-label="Rule applies"
+                  value={templatePerOrder ? "order" : "devices"}
+                  onChange={(e) => setTemplatePerOrder(e.target.value === "order")}
+                  className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-full"
+                >
+                  <option value="devices">Per devices</option>
+                  <option value="order">Per order</option>
+                </select>
+                {!templatePerOrder ? (
+                  <input
+                    aria-label="Devices per allocation"
+                    type="number"
+                    min={1}
+                    value={templatePerDevices}
+                    onChange={(e) => setTemplatePerDevices(Number(e.target.value))}
+                    className="bg-slate-950 border border-slate-800 px-3 py-2 rounded-xl text-sm w-20"
+                  />
+                ) : null}
+              </div>
             </div>
 
             <div className="space-y-1">
@@ -743,13 +765,17 @@ export default function BinsPage() {
             <b>5 accessories</b>.
           </div>
 
+          <div className="text-xs text-slate-500">
+            Per order: the quantity is removed once per order that contains this device, whatever the number of devices.
+          </div>
+
           <div className="border border-slate-800 rounded-xl overflow-hidden">
             <table className="w-full text-sm">
               <thead className="bg-slate-900">
                 <tr>
                   <th className="text-left p-3">Accessory</th>
                   <th className="text-right p-3">Quantity</th>
-                  <th className="text-right p-3">Device Interval</th>
+                  <th className="text-right p-3">Applies</th>
                   <th className="text-right p-3">Actions</th>
                 </tr>
               </thead>
@@ -798,17 +824,33 @@ export default function BinsPage() {
 
                       <td className="p-3 text-right">
                         {isEditingTemplate ? (
-                          <input
-                            type="number"
-                            min={1}
-                            value={editTemplatePerDevices}
-                            onChange={(e) =>
-                              setEditTemplatePerDevices(Number(e.target.value))
-                            }
-                            className="w-20 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
-                          />
+                          <div className="flex justify-end gap-2">
+                            <select
+                              aria-label="Rule applies"
+                              value={editTemplatePerOrder ? "order" : "devices"}
+                              onChange={(e) => setEditTemplatePerOrder(e.target.value === "order")}
+                              className="bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm"
+                            >
+                              <option value="devices">Per devices</option>
+                              <option value="order">Per order</option>
+                            </select>
+                            {!editTemplatePerOrder ? (
+                              <input
+                                aria-label="Devices per allocation"
+                                type="number"
+                                min={1}
+                                value={editTemplatePerDevices}
+                                onChange={(e) =>
+                                  setEditTemplatePerDevices(Number(e.target.value))
+                                }
+                                className="w-20 bg-slate-950 border border-slate-800 px-2 py-1 rounded-lg text-sm text-right"
+                              />
+                            ) : null}
+                          </div>
+                        ) : t.per_order ? (
+                          "Per order"
                         ) : (
-                          t.per_devices
+                          `Per ${t.per_devices} ${Number(t.per_devices) === 1 ? "device" : "devices"}`
                         )}
                       </td>
 
@@ -861,6 +903,14 @@ export default function BinsPage() {
               </tbody>
             </table>
           </div>
+
+          <InboundAccessoriesPanel
+            key={selectedDevice.id}
+            device={selectedDevice}
+            accessories={templateAccessories}
+            onError={showSetupError}
+            onSuccess={showSetupSuccess}
+          />
         </div>
         </div>
       )}

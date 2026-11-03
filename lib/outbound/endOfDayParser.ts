@@ -23,6 +23,7 @@ type SourceLocation = {
 type DeviceRow = SourceLocation & {
   deviceKind: EndOfDayDeviceKind;
   itemType: string;
+  orderRef: string;
   primaryImei: string | null;
   companionImei: string | null;
 };
@@ -31,10 +32,14 @@ export type EndOfDayAccessoryRow = SourceLocation & {
   orderRef: string;
   itemType: string;
   linkedImei: string | null;
+  /** Items on this line: the Item Quantity, or 1 when it is 0 or missing. */
+  quantity: number;
 };
 
 export type EndOfDayDeviceRow = SourceLocation & {
   itemType: string;
+  /** Order Ref of the line; automatic rules per order count orders by it. */
+  orderRef: string;
   deviceKind: EndOfDayDeviceKind;
   primaryImei: string;
   companionImei: string | null;
@@ -164,6 +169,20 @@ function isDvr(deviceKind: EndOfDayDeviceKind) {
   return deviceKind === "DVR_2" || deviceKind === "DVR_4" || deviceKind === "DVR_8";
 }
 
+const MAX_ITEM_QUANTITY = 999;
+
+// "Item Quantity": 0 or empty means one item per line (devices and most
+// accessories); a number from 1 is the quantity ordered on that one line.
+// Null when the cell is not a whole number from 0 to 999.
+function parseItemQuantity(value: unknown): number | null {
+  const text = String(value ?? "").trim();
+  if (!text) return 1;
+  if (!/^\d+(?:\.0+)?$/.test(text)) return null;
+  const quantity = Number(text);
+  if (!Number.isSafeInteger(quantity) || quantity > MAX_ITEM_QUANTITY) return null;
+  return quantity === 0 ? 1 : quantity;
+}
+
 function findHeaderRow(rows: unknown[][]) {
   const limit = Math.min(rows.length, HEADER_SCAN_LIMIT);
 
@@ -183,6 +202,9 @@ function findHeaderRow(rows: unknown[][]) {
       orderRefIndex: headers.findIndex((header) => header === "ORDERREF"),
       companionIndex: headers.findIndex(
         (header) => header === "COMPANIONDEVICEIMEI"
+      ),
+      quantityIndex: headers.findIndex(
+        (header) => header === "ITEMQUANTITY" || header === "QUANTITY" || header === "QTY"
       ),
     };
   }
@@ -233,6 +255,9 @@ export function parseEndOfDayWorkbook(
           : "";
       const companionValue =
         header.companionIndex >= 0 ? row[header.companionIndex] : "";
+      const rawQuantity =
+        header.quantityIndex >= 0 ? row[header.quantityIndex] : "";
+      const quantity = parseItemQuantity(rawQuantity);
       const source = { sheet: sheetName, row: rowIndex + 1 };
 
       if (!itemType) {
@@ -263,10 +288,20 @@ export function parseEndOfDayWorkbook(
           });
         }
 
+        // One line per device: a quantity above 1 cannot say which IMEIs leave.
+        if (quantity === null || quantity > 1) {
+          errors.push({
+            ...source,
+            itemType,
+            message: `Device ${itemType} has Item Quantity ${String(rawQuantity).trim()}. Each device needs its own line and IMEI.`,
+          });
+        }
+
         deviceRows.push({
           ...source,
           deviceKind,
           itemType,
+          orderRef,
           primaryImei,
           companionImei,
         });
@@ -280,11 +315,20 @@ export function parseEndOfDayWorkbook(
       if (nonDeviceKind) {
         ignoredItemTypes.add(itemType);
         if (nonDeviceKind === "accessory") {
+          if (quantity === null) {
+            errors.push({
+              ...source,
+              itemType,
+              message: `Item Quantity "${String(rawQuantity).trim()}" of ${itemType} is not a valid quantity (whole number from 0 to 999).`,
+            });
+            continue;
+          }
           accessoryRows.push({
             ...source,
             orderRef,
             itemType,
             linkedImei: parseDeviceId(primaryValue),
+            quantity,
           });
         }
       } else {
@@ -338,6 +382,7 @@ export function parseEndOfDayWorkbook(
         sheet: row.sheet,
         row: row.row,
         itemType: row.itemType,
+        orderRef: row.orderRef,
         deviceKind: row.deviceKind,
         primaryImei: row.primaryImei,
         companionImei: row.companionImei,
@@ -351,6 +396,7 @@ export function parseEndOfDayWorkbook(
       sheet: row.sheet,
       row: row.row,
       itemType: row.itemType,
+      orderRef: row.orderRef,
       deviceKind: row.deviceKind,
       primaryImei: row.primaryImei,
       companionImei: row.companionImei,

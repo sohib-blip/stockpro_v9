@@ -3,6 +3,10 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import DispatchAssignments, {
+  DispatchPlanBanner,
+  type DispatchPlanState,
+} from "@/components/DispatchAssignments";
 import DispatchItemDialog from "@/components/DispatchItemDialog";
 import DispatchManualOutbound from "@/components/DispatchManualOutbound";
 import DispatchPickingSheet from "@/components/DispatchPickingSheet";
@@ -272,7 +276,18 @@ export default function DispatchPlanningPage() {
     hardwareType?: string;
     deviceType?: string;
   } | null>(null);
+  const [planState, setPlanState] = useState<DispatchPlanState | null>(null);
+  const [replaceAsk, setReplaceAsk] = useState<{
+    filename: string;
+    assignments: number;
+  } | null>(null);
   const operationId = useRef<string | null>(null);
+  // Another account is doing today's dispatch planning: no import, no confirm.
+  const lockedByOther = Boolean(
+    planState?.plan?.locking &&
+      planState.me &&
+      planState.plan.planner_id !== planState.me.id
+  );
 
   const previewTotals = useMemo(() => {
     const orders = preview?.plan?.orders || [];
@@ -406,11 +421,26 @@ export default function DispatchPlanningPage() {
     }
   }
 
+  async function loadPlan() {
+    const response = await apiFetch(
+      `/api/dispatch-planning/plan?t=${Date.now()}`,
+      { cache: "no-store" }
+    ).catch(() => null);
+    const json = await response?.json().catch(() => null);
+    if (response?.ok && json?.ok) setPlanState(json);
+  }
+
   useEffect(() => {
     loadHistory();
+    loadPlan();
+    // Keeps the planner banner and the assignments current on every account.
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void loadPlan();
+    }, 30_000);
+    return () => window.clearInterval(timer);
   }, []);
 
-  async function previewWorkbook() {
+  async function previewWorkbook(replacePlan = false) {
     if (!file) {
       setFeedback({
         kind: "error",
@@ -431,11 +461,28 @@ export default function DispatchPlanningPage() {
     try {
       const form = new FormData();
       form.append("file", file);
+      if (replacePlan) form.append("replace_plan", "1");
       const response = await apiFetch("/api/dispatch-planning/preview", {
         method: "POST",
         body: form,
       });
       const json = await response.json().catch(() => null);
+      void loadPlan();
+      if (json?.code === "DISPATCH_PLAN_REPLACE_REQUIRED") {
+        setReplaceAsk({
+          filename: json.source_filename || "another workbook",
+          assignments: Number(json.assignment_count || 0),
+        });
+        return;
+      }
+      if (json?.code === "DISPATCH_PLAN_LOCKED") {
+        setFeedback({
+          kind: "error",
+          title: "Dispatch planning in progress",
+          message: json.error,
+        });
+        return;
+      }
       if (json?.plan || json?.issues) setPreview(json);
       if (json?.nothing_new) {
         setFeedback({
@@ -523,7 +570,7 @@ export default function DispatchPlanningPage() {
       setFile(null);
       setFileInputKey((value) => value + 1);
       operationId.current = null;
-      await loadHistory();
+      await Promise.all([loadHistory(), loadPlan()]);
     } finally {
       setBusy(false);
     }
@@ -770,6 +817,7 @@ export default function DispatchPlanningPage() {
         />
       ) : (
         <>
+        <DispatchPlanBanner state={planState} onReload={loadPlan} onFeedback={setFeedback} />
         <div className="prototype-stepper" aria-label="Dispatch progress">
           <div className={`prototype-step ${preview ? "is-complete" : "is-active"}`}>
             <span>{preview ? "✓" : "1"}</span><strong>Upload</strong>
@@ -818,8 +866,8 @@ export default function DispatchPlanningPage() {
             <button
               type="button"
               className="prototype-button primary dispatch-full-button"
-              onClick={previewWorkbook}
-              disabled={busy || !file}
+              onClick={() => void previewWorkbook()}
+              disabled={busy || !file || lockedByOther}
             >
               {busy ? "Working…" : "Preview Packaging"}
             </button>
@@ -1134,7 +1182,7 @@ export default function DispatchPlanningPage() {
                     type="button"
                     className="prototype-button confirm"
                     onClick={() => setConfirmOpen(true)}
-                    disabled={busy || !preview.ok}
+                    disabled={busy || !preview.ok || lockedByOther}
                   >
                     Confirm &amp; Deduct Packaging
                   </button>
@@ -1189,6 +1237,8 @@ export default function DispatchPlanningPage() {
           }}
         />
       )}
+
+      <DispatchAssignments state={planState} onReload={loadPlan} onFeedback={setFeedback} />
 
       <section className="prototype-card prototype-history-card dispatch-history-card">
         <div className="dispatch-history-heading">
@@ -1410,6 +1460,18 @@ export default function DispatchPlanningPage() {
       ) : null}
 
       <ConfirmDialog open={confirmOpen} title="Confirm daily dispatch?" message={`This will deduct ${preview?.plan?.totalPackages || 0} packages for ${preview?.plan?.orders.length || 0} orders. The action stays available in history and can be undone.`} confirmText="Confirm & Deduct" onConfirm={confirmDispatch} onCancel={() => setConfirmOpen(false)} />
+      <ConfirmDialog
+        open={Boolean(replaceAsk)}
+        title="Replace today's planning?"
+        message={replaceAsk ? `Today's planning was started with ${replaceAsk.filename}${replaceAsk.assignments ? ` and ${replaceAsk.assignments} assigned orders` : ""}. This workbook replaces it${replaceAsk.assignments ? " and the assignments are removed" : ""}.` : undefined}
+        confirmText="Replace planning"
+        danger={Boolean(replaceAsk?.assignments)}
+        onConfirm={() => {
+          setReplaceAsk(null);
+          void previewWorkbook(true);
+        }}
+        onCancel={() => setReplaceAsk(null)}
+      />
       <ConfirmDialog open={Boolean(undoTarget)} title="Undo this dispatch batch?" message={undoTarget ? `This restores ${undoTarget.total_packages} packages to stock. The batch stays in history as UNDONE.` : undefined} confirmText="Undo & Restore Stock" danger onConfirm={undoDispatch} onCancel={() => setUndoTarget(null)} />
     </div>
   );

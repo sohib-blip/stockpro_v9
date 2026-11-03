@@ -24,6 +24,8 @@ const inboundCommandSchema = z.object({
   labels: z.array(z.record(z.string(), z.unknown())).min(1).max(1000),
   vendor: z.string().trim().max(200).optional().nullable(),
   shipment_ref: z.string().trim().max(500).optional().nullable(),
+  // Included accessories unticked in the preview (Inventory Setup > Included at inbound).
+  skip_included_accessories: z.array(z.string().uuid()).max(500).optional(),
 });
 
 function serviceClient() {
@@ -99,6 +101,7 @@ export async function POST(req: Request) {
         p_source: "excel",
         p_shipment_ref: parsed.data.shipment_ref || null,
         p_labels: normalizedLabels,
+        p_skip_included_accessories: parsed.data.skip_included_accessories ?? [],
       }
     );
 

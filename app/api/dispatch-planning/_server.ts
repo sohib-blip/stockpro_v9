@@ -192,7 +192,7 @@ export async function loadDispatchAutomaticAccessoryRules(
   const binIds = matchingBins.map((bin) => String(bin.id));
   const { data: templates, error: templatesError } = await service
     .from("device_accessory_templates")
-    .select("device_id,accessory_bin_id,quantity,per_devices")
+    .select("device_id,accessory_bin_id,quantity,per_devices,per_order")
     .in("device_id", binIds);
   if (templatesError) throw templatesError;
   if (!templates?.length) return [];
@@ -233,6 +233,7 @@ export async function loadDispatchAutomaticAccessoryRules(
             accessoryName,
             quantity: Number(template.quantity),
             perDevices: Number(template.per_devices),
+            perOrder: Boolean(template.per_order),
           },
         ]
       : [];

@@ -56,7 +56,7 @@ export async function GET(req: Request) {
 
     supabase
       .from("device_accessory_templates")
-      .select("id, device_id, accessory_bin_id, quantity, per_devices, created_at")
+      .select("id, device_id, accessory_bin_id, quantity, per_devices, per_order, created_at")
       .eq("device_id", deviceId)
       .order("created_at", { ascending: false }),
 

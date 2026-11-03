@@ -22,6 +22,11 @@ import {
   loadDispatchPackagingOptions,
   loadDispatchPickingInventory,
 } from "@/app/api/dispatch-planning/_server";
+import { startDispatchPlan } from "@/app/api/dispatch-planning/plan/_plan";
+import {
+  dispatchPlanLabels,
+  dispatchPlanOrders,
+} from "@/lib/dispatch-assignments";
 import {
   PayloadTooLargeError,
   readBodyWithinLimit,
@@ -180,8 +185,41 @@ export async function POST(req: Request) {
       );
     }
     const sourceHash = createHash("sha256").update(buffer).digest("hex");
-    const allOrderIds = new Set(enriched.orders.map((order) => order.orderId));
     const service = supabaseService();
+    // The person who previews today's workbook becomes today's planner. While
+    // that planning is open, other accounts are blocked (no double work).
+    const dispatchPlan = await startDispatchPlan(service, identity, {
+      sourceHash,
+      sourceFilename: file.name || "daily-dispatch.xlsx",
+      orders: dispatchPlanOrders(parsed.orders),
+      labels: dispatchPlanLabels(vehicleLabelResult.labels),
+      replace: form.get("replace_plan") === "1",
+    });
+    if (!dispatchPlan.ok && dispatchPlan.code === "LOCKED") {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "DISPATCH_PLAN_LOCKED",
+          planner_email: dispatchPlan.planner_email,
+          started_at: dispatchPlan.started_at,
+          error: `${dispatchPlan.planner_email} is doing today's dispatch planning. Wait until the deduction is confirmed to avoid double work.`,
+        },
+        { status: 409 }
+      );
+    }
+    if (!dispatchPlan.ok && dispatchPlan.code === "REPLACE_REQUIRED") {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "DISPATCH_PLAN_REPLACE_REQUIRED",
+          source_filename: dispatchPlan.source_filename,
+          assignment_count: dispatchPlan.assignment_count,
+          error: `Today's planning was started with ${dispatchPlan.source_filename}. Replace it with this workbook?`,
+        },
+        { status: 409 }
+      );
+    }
+    const allOrderIds = new Set(enriched.orders.map((order) => order.orderId));
     // Orders already confirmed in an earlier dispatch (e.g. not shipped yesterday
     // and back in today's sheet) are not deducted again. They stay on the
     // picking sheet and the vehicle labels with the packaging used back then.
@@ -322,6 +360,9 @@ export async function POST(req: Request) {
       packaging_rules: packagingRules,
       carried_orders: carriedOrders,
       vehicle_label_count: vehicleLabelResult.labels.length,
+      dispatch_plan: dispatchPlan.ok
+        ? { id: dispatchPlan.plan_id, status: dispatchPlan.status, resumed: dispatchPlan.resumed }
+        : null,
       picking_summary: pickingSummary,
       cabinet_stock: cabinetStock,
       plan,

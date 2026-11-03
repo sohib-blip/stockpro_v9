@@ -981,6 +981,128 @@ body {
   font-size: 12px;
 }
 
+/* Accessories included with received devices (inbound preview). */
+.included-accessories {
+  margin: 14px 0 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--success-soft);
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.included-accessories > p {
+  margin: 2px 0 8px;
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.included-accessories ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.included-accessories label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.included-accessories label > span {
+  display: grid;
+}
+
+.included-accessories small {
+  color: var(--muted-strong);
+  font-size: 11.5px;
+}
+
+.included-accessories li.is-skipped b {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* Inventory Setup > Included at inbound. */
+.inbound-accessories-panel {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.inbound-accessories-heading p,
+.inbound-accessories-empty {
+  margin: 2px 0 0;
+  color: var(--muted-strong);
+  font-size: 12px;
+}
+
+.inbound-accessories-form {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 10px;
+}
+
+.inbound-accessories-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted-strong);
+}
+
+.inbound-accessories-form select,
+.inbound-accessories-form input {
+  width: 100%;
+  min-height: 38px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--foreground);
+  font-size: 13px;
+}
+
+.inbound-accessories-list {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inbound-accessories-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-subtle);
+  font-size: 13px;
+}
+
+.inbound-accessories-list button {
+  border: 0;
+  background: none;
+  color: var(--danger);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+@media (max-width: 640px) {
+  .inbound-accessories-form {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Why the last confirmation failed, right above the confirm button. */
 .preview-confirm-error {
   margin: 14px 0 0;
@@ -1166,6 +1288,180 @@ body {
 
 .dispatch-row-actions button.is-danger {
   color: var(--danger);
+}
+
+/* Dispatch Planning: today's planner and order assignment */
+.dispatch-plan-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--brand) 24%, var(--border));
+  border-radius: 10px;
+  background: var(--brand-soft);
+  font-size: 12.5px;
+}
+
+.dispatch-plan-banner.is-locked {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+  background: var(--warning-soft);
+}
+
+.dispatch-plan-banner > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: var(--foreground-soft);
+}
+
+.dispatch-plan-banner strong {
+  color: var(--foreground);
+}
+
+.dispatch-assign-card {
+  margin-top: 18px;
+  overflow: hidden;
+}
+
+.dispatch-assign-mine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.dispatch-assign-mine > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: var(--foreground-soft);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dispatch-assign-mine strong {
+  color: var(--foreground);
+  font-size: 14px;
+}
+
+.dispatch-assign-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dispatch-assign-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.dispatch-assign-bar select {
+  width: 240px;
+  max-width: 100%;
+}
+
+.dispatch-assign-bar .dispatch-assign-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 9px;
+  color: var(--foreground-soft);
+}
+
+.dispatch-assign-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 22px;
+}
+
+.dispatch-assign-totals > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.dispatch-assign-totals > div.is-unassigned {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+  background: var(--warning-soft);
+}
+
+.dispatch-assign-totals strong {
+  color: var(--foreground);
+  font-size: 12px;
+}
+
+.dispatch-assign-totals button {
+  align-self: flex-start;
+  margin-top: 3px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--brand);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+.dispatch-assign-card .dispatch-orders-heading {
+  padding: 0 22px 12px;
+}
+
+.dispatch-assign-card .dispatch-history-scroll table {
+  min-width: 860px;
+}
+
+.dispatch-assign-card tr.is-unassigned td {
+  background: color-mix(in srgb, var(--warning-soft) 55%, var(--surface));
+}
+
+.dispatch-assign-card td select {
+  width: 100%;
+  min-width: 200px;
+}
+
+.dispatch-assign-none {
+  color: var(--warning);
+  font-weight: 650;
+}
+
+@media (max-width: 720px) {
+  .dispatch-plan-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dispatch-assign-bar select {
+    width: 100%;
+  }
+
+  .dispatch-assign-bar label {
+    flex: 1 1 100%;
+  }
 }
 
 @media (max-width: 980px) {

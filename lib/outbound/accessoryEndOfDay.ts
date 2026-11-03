@@ -111,7 +111,7 @@ export function buildAccessoryEndOfDayPreview(input: {
       continue;
     }
 
-    reportQuantities.set(bin.id, (reportQuantities.get(bin.id) || 0) + 1);
+    reportQuantities.set(bin.id, (reportQuantities.get(bin.id) || 0) + row.quantity);
   }
 
   const stockByImei = new Map(

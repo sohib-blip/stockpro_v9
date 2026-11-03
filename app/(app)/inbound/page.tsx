@@ -7,6 +7,8 @@ import { toDeviceMatchList } from "@/lib/inbound/vendorParser";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
 import { isDeviceId, isMatrixIqBin, noDeviceIdsMessage } from "@/lib/device-serials";
+import { includedAccessoryLines, type InboundAccessoryRule } from "@/lib/inbound-accessories";
+import IncludedAccessoriesPreview from "@/components/IncludedAccessoriesPreview";
 
 type Vendor = "teltonika" | "quicklink" | "digitalmatter" | "truster";
 type HistoryFilter = "all" | "excel" | "manual";
@@ -32,7 +34,15 @@ type InboundBatchSummary = {
   skipped: number;
   boxesCreated?: number;
   boxesReused?: number;
+  accessories?: Array<{ accessory: string; qty: number }>;
 };
+
+// "+10 HARDWIRED Cable for CV200" for each accessory added with the devices.
+function addedAccessoriesText(accessories?: Array<{ accessory: string; qty: number }>) {
+  return (accessories || [])
+    .map((line) => `+${line.qty} ${String(line.accessory).split("\t")[0].trim()}`)
+    .join(", ");
+}
 
 function normName(s: any) {
   return String(s ?? "").trim().toLowerCase();
@@ -68,6 +78,11 @@ const [page, setPage] = useState(1);
 
   // Devices list (for manual dropdown) => NOW BINS
   const [devices, setDevices] = useState<DeviceRow[]>([]);
+
+  // Accessories delivered with each device model (Inventory Setup > Included
+  // at inbound) and the preview lines unticked by the user.
+  const [includedRules, setIncludedRules] = useState<InboundAccessoryRule[]>([]);
+  const [skippedIncluded, setSkippedIncluded] = useState<string[]>([]);
 
   // Map "bin name" -> "bin id" (used for Excel confirm)
   const [binNameToId, setBinNameToId] = useState<Record<string, string>>({});
@@ -119,6 +134,20 @@ const [page, setPage] = useState(1);
     setManualPreview(null);
     setManualReadyToImport(false);
     manualOperationIdRef.current = null;
+  }
+
+  useEffect(() => {
+    (async () => {
+      const res = await apiFetch(`/api/inbound/included-accessories?t=${Date.now()}`, { cache: "no-store" });
+      const json = await res.json().catch(() => null);
+      if (json?.ok) setIncludedRules(json.rules || []);
+    })();
+  }, []);
+
+  function toggleIncluded(ruleId: string) {
+    setSkippedIncluded((current) =>
+      current.includes(ruleId) ? current.filter((id) => id !== ruleId) : [...current, ruleId]
+    );
   }
 
   useEffect(() => {
@@ -314,6 +343,22 @@ useEffect(() => {
           existing: existingImeis.size,
           new: spreadsheetImeis.length - existingImeis.size,
         };
+
+        // New devices per bin: accessories included at inbound follow them.
+        const newDevicesByBin: Record<string, number> = {};
+        const countedImeis = new Set<string>();
+        for (const label of parsed.labels || []) {
+          const binId = map[normName(String(label.device || "").trim())];
+          if (!binId) continue;
+          for (const raw of label.imeis || []) {
+            const imei = String(raw).replace(/\D/g, "");
+            if (imei.length !== 15 || existingImeis.has(imei) || countedImeis.has(imei)) continue;
+            countedImeis.add(imei);
+            newDevicesByBin[binId] = (newDevicesByBin[binId] || 0) + 1;
+          }
+        }
+        (parsed as any).new_devices_by_bin = newDevicesByBin;
+        setSkippedIncluded([]);
       }
 
       if (!parsed?.ok) {
@@ -379,6 +424,7 @@ useEffect(() => {
         actor_id: actorId,
         vendor,
         shipment_ref: shipmentRef || null,
+        skip_included_accessories: skippedIncluded,
       };
 
       const res = await apiFetch("/api/inbound/confirm", {
@@ -415,6 +461,7 @@ useEffect(() => {
         skipped: json.totals.skipped_existing_imeis,
         boxesCreated: json.totals.created_boxes,
         boxesReused: json.totals.reused_boxes,
+        accessories: json.included_accessories || [],
       });
       setResult(null);
       setFile(null);
@@ -500,6 +547,7 @@ useEffect(() => {
 }
 
 setManualPreview(json);
+setSkippedIncluded([]);
 setManualReadyToImport(true);
 setManualMsg("");
     } catch (e: any) {
@@ -552,6 +600,7 @@ setManualMsg("");
           floor: previewFloor,
           imeis: imeisToInsert,
           shipment_ref: shipmentRef.trim() || null,
+          skip_included_accessories: skippedIncluded,
           actor,
           actor_id: actorId,
         }),
@@ -578,7 +627,7 @@ setManualMsg("");
       manualOperationIdRef.current = null;
 
       const skipped = json.skipped_existing || 0;
-      setLastBatchSummary({ imported: json.inserted, skipped });
+      setLastBatchSummary({ imported: json.inserted, skipped, accessories: json.included_accessories || [] });
       setManualMsg("");
 
       // Refresh history without reloading the page.
@@ -884,6 +933,15 @@ setManualMsg("");
                 </div>
               )}
 
+              {!allExcelImeisAlreadyInStock && (
+                <IncludedAccessoriesPreview
+                  lines={includedAccessoryLines(includedRules, result?.new_devices_by_bin || {})}
+                  skipped={skippedIncluded}
+                  onToggle={toggleIncluded}
+                  deviceName={binNameOf}
+                />
+              )}
+
               {result?.box_breakdown?.length > 0 && (
                 <div className="text-xs text-slate-400 space-y-1">
                   <b>Boxes detected:</b>
@@ -946,6 +1004,12 @@ setManualMsg("");
             <div><span>Floor</span><strong>Floor {manualPreview.floor || "—"}</strong></div>
             <div><span>New IMEIs</span><strong>{manualPreview.valid_new}</strong></div>
           </div>
+          <IncludedAccessoriesPreview
+            lines={includedAccessoryLines(includedRules, { [manualPreview.bin_id]: Number(manualPreview.valid_new || 0) })}
+            skipped={skippedIncluded}
+            onToggle={toggleIncluded}
+            deviceName={binNameOf}
+          />
           <div className="prototype-preview-footer">
             <span>No blocking errors. Review the summary before confirmation.</span>
             <button type="button" onClick={confirmManualImport} disabled={busy || !manualReadyToImport} className="prototype-button confirm">Confirm Inbound</button>
@@ -969,7 +1033,7 @@ setManualMsg("");
             title="Inbound completed"
             message={
               lastBatchSummary
-                ? `${lastBatchSummary.imported} IMEIs imported · ${lastBatchSummary.skipped} skipped${lastBatchSummary.boxesCreated !== undefined ? ` · ${lastBatchSummary.boxesCreated} boxes created · ${lastBatchSummary.boxesReused || 0} boxes reused` : ""} · ${shipmentRef || "Manual inbound"}`
+                ? `${lastBatchSummary.imported} IMEIs imported · ${lastBatchSummary.skipped} skipped${lastBatchSummary.boxesCreated !== undefined ? ` · ${lastBatchSummary.boxesCreated} boxes created · ${lastBatchSummary.boxesReused || 0} boxes reused` : ""}${lastBatchSummary.accessories?.length ? ` · ${addedAccessoriesText(lastBatchSummary.accessories)}` : ""} · ${shipmentRef || "Manual inbound"}`
                 : `${shipmentRef || "Manual inbound"} · ${actor}`
             }
             onDismiss={() => {

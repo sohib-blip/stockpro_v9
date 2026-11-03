@@ -13,6 +13,8 @@ const manualInboundSchema = z.object({
   floor: z.string().trim().max(50).optional().nullable(),
   imeis: z.array(z.unknown()).min(1).max(50000),
   shipment_ref: z.string().trim().max(500).optional().nullable(),
+  // Included accessories unticked in the preview (Inventory Setup > Included at inbound).
+  skip_included_accessories: z.array(z.string().uuid()).max(500).optional(),
 });
 
 function serviceClient() {
@@ -86,6 +88,7 @@ export async function POST(req: Request) {
             imeis,
           },
         ],
+        p_skip_included_accessories: parsed.data.skip_included_accessories ?? [],
       }
     );
 
@@ -132,6 +135,7 @@ export async function POST(req: Request) {
       inserted: data.totals?.inserted_imeis || 0,
       skipped_existing: data.totals?.skipped_existing_imeis || 0,
       batch_id: data.batch_id,
+      included_accessories: data.included_accessories || [],
     });
   } catch (error) {
     console.error("MANUAL INBOUND CONFIRM ERROR", error);

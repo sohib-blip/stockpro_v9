@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import PackagingInventoryPanel from "@/components/PackagingInventoryPanel";
+import InboundAccessoriesPanel from "@/components/InboundAccessoriesPanel";
 import { formatDispatchDimensions } from "@/components/DispatchItemDialog";
 
 type AccessoryCategory =
@@ -861,6 +862,14 @@ export default function BinsPage() {
               </tbody>
             </table>
           </div>
+
+          <InboundAccessoriesPanel
+            key={selectedDevice.id}
+            device={selectedDevice}
+            accessories={templateAccessories}
+            onError={showSetupError}
+            onSuccess={showSetupSuccess}
+          />
         </div>
         </div>
       )}

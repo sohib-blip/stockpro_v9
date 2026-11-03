@@ -58,6 +58,8 @@ export type DispatchAutomaticAccessoryRule = {
   accessoryName: string;
   quantity: number;
   perDevices: number;
+  /** Quantity once per order that contains the device model. */
+  perOrder?: boolean;
 };
 
 export type DispatchParseIssue = {
@@ -829,6 +831,9 @@ export function applyDispatchAutomaticAccessoryRules(
       string,
       { catalogItem: DispatchCatalogItem; expected: number; accessoryName: string }
     >();
+    // Rules per order: the largest quantity once per accessory, whatever the
+    // number of devices or of models in this order with such a rule.
+    const perOrderByAccessory = new Map<string, number>();
 
     for (const rule of rules) {
       const deviceCount = Object.entries(order.deviceCounts || {}).find(
@@ -840,8 +845,7 @@ export function applyDispatchAutomaticAccessoryRules(
       if (
         !Number.isSafeInteger(rule.quantity) ||
         rule.quantity <= 0 ||
-        !Number.isSafeInteger(rule.perDevices) ||
-        rule.perDevices <= 0
+        (!rule.perOrder && (!Number.isSafeInteger(rule.perDevices) || rule.perDevices <= 0))
       ) {
         issues.push({
           sheet: "Automatic accessory rules",
@@ -871,12 +875,16 @@ export function applyDispatchAutomaticAccessoryRules(
 
       const accessoryKey = dispatchItemKey(catalogItem.name);
       const current = expectedByAccessory.get(accessoryKey);
+      let added = Math.ceil(deviceCount / rule.perDevices) * rule.quantity;
+      if (rule.perOrder) {
+        const previous = perOrderByAccessory.get(accessoryKey) || 0;
+        added = Math.max(0, rule.quantity - previous);
+        perOrderByAccessory.set(accessoryKey, Math.max(previous, rule.quantity));
+      }
       expectedByAccessory.set(accessoryKey, {
         catalogItem,
         accessoryName: rule.accessoryName,
-        expected:
-          (current?.expected || 0) +
-          Math.ceil(deviceCount / rule.perDevices) * rule.quantity,
+        expected: (current?.expected || 0) + added,
       });
     }
 

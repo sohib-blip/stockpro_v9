@@ -17,6 +17,7 @@ export async function POST(req: Request) {
       accessory_bin_id,
       quantity,
       per_devices,
+      per_order,
     } = body;
 
     if (!device_id || !accessory_bin_id) {
@@ -37,6 +38,8 @@ export async function POST(req: Request) {
           accessory_bin_id,
           quantity: Number(quantity || 1),
           per_devices: Number(per_devices || 1),
+          // Once per order that contains this device model.
+          per_order: per_order === true,
         },
         {
           onConflict: "device_id,accessory_bin_id",

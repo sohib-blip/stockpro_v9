@@ -19,6 +19,8 @@ export type DeviceAccessoryTemplate = {
   accessory_bin_id: string;
   quantity: number | null;
   per_devices: number | null;
+  /** Quantity once per order that contains this device model. */
+  per_order?: boolean | null;
 };
 
 export type AccessoryEndOfDayIssue = {
@@ -118,6 +120,7 @@ export function buildAccessoryEndOfDayPreview(input: {
     stockItems.map((item) => [String(item.imei), item])
   );
   const deviceCounts = new Map<string, number>();
+  const modelsByOrder = new Map<string, Set<string>>();
   const missingImeis = new Set<string>();
 
   for (const device of report.devices) {
@@ -138,9 +141,15 @@ export function buildAccessoryEndOfDayPreview(input: {
       item.device_id,
       (deviceCounts.get(item.device_id) || 0) + 1
     );
+    // Device models of each order; a line without Order Ref is its own order.
+    const orderKey = device.orderRef?.trim() || `device:${device.imei}`;
+    const orderModels = modelsByOrder.get(orderKey) || new Set<string>();
+    orderModels.add(item.device_id);
+    modelsByOrder.set(orderKey, orderModels);
   }
 
   const templateExpected = new Map<string, number>();
+  const perOrderTemplates: Array<{ deviceId: string; accessoryBinId: string; quantity: number }> = [];
   for (const template of templates) {
     const deviceCount = deviceCounts.get(template.device_id) || 0;
     if (deviceCount === 0) continue;
@@ -150,8 +159,7 @@ export function buildAccessoryEndOfDayPreview(input: {
     if (
       !Number.isSafeInteger(quantity) ||
       quantity <= 0 ||
-      !Number.isSafeInteger(perDevices) ||
-      perDevices <= 0
+      (!template.per_order && (!Number.isSafeInteger(perDevices) || perDevices <= 0))
     ) {
       issues.push({
         message: `An automatic accessory template for device ${template.device_id} has an invalid quantity.`,
@@ -166,11 +174,37 @@ export function buildAccessoryEndOfDayPreview(input: {
       continue;
     }
 
+    if (template.per_order) {
+      perOrderTemplates.push({
+        deviceId: template.device_id,
+        accessoryBinId: template.accessory_bin_id,
+        quantity,
+      });
+      continue;
+    }
+
     const expected = Math.ceil(deviceCount / perDevices) * quantity;
     templateExpected.set(
       template.accessory_bin_id,
       (templateExpected.get(template.accessory_bin_id) || 0) + expected
     );
+  }
+
+  // Rules per order: once per order that contains the device model. When
+  // several models of one order have a rule for the same accessory, that
+  // order gets the largest quantity once, not the sum.
+  for (const models of modelsByOrder.values()) {
+    const perAccessory = new Map<string, number>();
+    for (const template of perOrderTemplates) {
+      if (!models.has(template.deviceId)) continue;
+      perAccessory.set(
+        template.accessoryBinId,
+        Math.max(perAccessory.get(template.accessoryBinId) || 0, template.quantity)
+      );
+    }
+    for (const [accessoryBinId, quantity] of perAccessory) {
+      templateExpected.set(accessoryBinId, (templateExpected.get(accessoryBinId) || 0) + quantity);
+    }
   }
 
   const affectedBinIds = new Set([

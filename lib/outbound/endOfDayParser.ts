@@ -23,6 +23,7 @@ type SourceLocation = {
 type DeviceRow = SourceLocation & {
   deviceKind: EndOfDayDeviceKind;
   itemType: string;
+  orderRef: string;
   primaryImei: string | null;
   companionImei: string | null;
 };
@@ -37,6 +38,8 @@ export type EndOfDayAccessoryRow = SourceLocation & {
 
 export type EndOfDayDeviceRow = SourceLocation & {
   itemType: string;
+  /** Order Ref of the line; automatic rules per order count orders by it. */
+  orderRef: string;
   deviceKind: EndOfDayDeviceKind;
   primaryImei: string;
   companionImei: string | null;
@@ -298,6 +301,7 @@ export function parseEndOfDayWorkbook(
           ...source,
           deviceKind,
           itemType,
+          orderRef,
           primaryImei,
           companionImei,
         });
@@ -378,6 +382,7 @@ export function parseEndOfDayWorkbook(
         sheet: row.sheet,
         row: row.row,
         itemType: row.itemType,
+        orderRef: row.orderRef,
         deviceKind: row.deviceKind,
         primaryImei: row.primaryImei,
         companionImei: row.companionImei,
@@ -391,6 +396,7 @@ export function parseEndOfDayWorkbook(
       sheet: row.sheet,
       row: row.row,
       itemType: row.itemType,
+      orderRef: row.orderRef,
       deviceKind: row.deviceKind,
       primaryImei: row.primaryImei,
       companionImei: row.companionImei,

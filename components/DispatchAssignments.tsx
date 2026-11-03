@@ -73,10 +73,16 @@ export function DispatchPlanBanner({
   state,
   onReload,
   onFeedback,
+  onEnded,
+  previewMissing,
 }: {
   state: DispatchPlanState | null;
   onReload: () => Promise<void> | void;
   onFeedback: (value: ProcessFeedbackValue | null) => void;
+  /** Called once the planning is ended without deduction (clears the preview). */
+  onEnded?: () => void;
+  /** Today's planning is ours but its preview is not on this screen. */
+  previewMissing?: boolean;
 }) {
   const [action, setAction] = useState<"release" | "takeover" | null>(null);
   const [busy, setBusy] = useState(false);
@@ -89,11 +95,12 @@ export function DispatchPlanBanner({
     setBusy(true);
     try {
       const result = await changeDispatchPlanLock(plan!.id, kind);
+      if (result.ok && kind === "release") onEnded?.();
       onFeedback(
         result.ok
           ? {
               kind: "success",
-              title: kind === "takeover" ? "You are now doing today's dispatch planning" : "Dispatch planning ended",
+              title: kind === "takeover" ? "You are now doing today's dispatch planning" : "Preview cleared — planning ended",
               message:
                 kind === "takeover"
                   ? "The assignments were kept. Import the same workbook to continue."
@@ -122,7 +129,9 @@ export function DispatchPlanBanner({
           </strong>
           <span>
             {mine
-              ? "Other accounts cannot import or confirm a workbook until you confirm the deduction."
+              ? previewMissing
+                ? `The preview is not shown on this computer: select ${plan.source_filename} again and click Preview Packaging to continue.`
+                : "Other accounts cannot import or confirm a workbook until you confirm the deduction."
               : "Import and confirmation are blocked on your account to avoid double work. You can still see the assignments below."}
           </span>
         </div>
@@ -142,7 +151,7 @@ export function DispatchPlanBanner({
         message={
           action === "takeover"
             ? `${plan.planner_email} will no longer be able to assign orders or confirm the deduction. The assignments are kept.`
-            : "No packaging is deducted. Other accounts can then import a workbook. Normally the planning ends when you confirm the deduction."
+            : "Nothing is deducted. The preview, the planner banner and the order assignment disappear, and other accounts can import a workbook again. Normally the planning ends when you confirm the deduction."
         }
         confirmText={action === "takeover" ? "Take over" : "End planning"}
         onConfirm={() => action && void run(action)}

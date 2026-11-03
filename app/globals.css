@@ -1349,6 +1349,24 @@ body {
   font-weight: 650;
 }
 
+.dispatch-planning-page .prototype-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.dispatch-confirm-expired {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 10px 22px;
+  border-top: 1px solid var(--border);
+  background: var(--warning-soft);
+  color: var(--foreground-soft);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .dispatch-confirm-card .prototype-preview-actions {
   padding-inline: 22px;
 }

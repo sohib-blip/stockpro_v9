@@ -6808,10 +6808,11 @@ main.min-h-screen {
 
 .security-updates-text {
   display: flex;
+  flex: 1 1 0;
   align-items: center;
   gap: 8px 12px;
   flex-wrap: wrap;
-  min-width: 0;
+  min-width: min(100%, 260px);
 }
 
 .security-updates-banner.is-urgent .security-updates-text > strong {
@@ -6855,6 +6856,17 @@ main.min-h-screen {
 
 .security-updates-contact {
   color: var(--foreground-soft);
+}
+
+.security-updates-it-hint {
+  flex-basis: 100%;
+  color: var(--brand);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.admin-it-contact {
+  border-style: dashed !important;
 }
 
 .security-updates-details {

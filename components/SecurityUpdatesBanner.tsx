@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useAccess } from "@/components/AccessProvider";
 import { apiFetch } from "@/lib/apiFetch";
@@ -9,8 +10,13 @@ import type {
 } from "@/lib/security-updates";
 
 type SecurityUpdatesResponse =
-  | ({ ok: true; status: "checked" } & SecurityUpdatesReport)
+  | ({
+      ok: true;
+      status: "checked";
+      it_contact_missing?: boolean;
+    } & SecurityUpdatesReport)
   | { ok: true; status: "unavailable" }
+  | { ok: true; status: "not_recipient" }
   | { ok: false; error?: string };
 
 const SEVERITY_LABELS: Record<SecuritySeverity, string> = {
@@ -33,9 +39,10 @@ function formatCheckedAt(value: string) {
 }
 
 /**
- * Tells administrators when StockPro's production dependencies have known
- * security advisories, so someone without GitHub access knows an update is
- * needed. Other roles never see it and never call the admin-only route.
+ * Tells the IT contact (an administrator chosen in User Access) when StockPro's
+ * production dependencies have known security advisories, so someone without
+ * GitHub access knows an update is needed. While no IT contact is chosen,
+ * every administrator sees it. Other roles never call the admin-only route.
  */
 export default function SecurityUpdatesBanner() {
   const { loading, hasPermission } = useAccess();
@@ -64,7 +71,9 @@ export default function SecurityUpdatesBanner() {
     };
   }, [isAdmin]);
 
-  if (!isAdmin || !result || !result.ok) return null;
+  if (!isAdmin || !result || !result.ok || result.status === "not_recipient") {
+    return null;
+  }
 
   if (result.status === "unavailable") {
     return (
@@ -101,6 +110,11 @@ export default function SecurityUpdatesBanner() {
           <span className="security-updates-contact">
             Contact the person who maintains StockPro so they can update the app.
           </span>
+          {result.it_contact_missing && (
+            <Link href="/admin" className="security-updates-it-hint">
+              No IT contact chosen yet: choose one in User Access.
+            </Link>
+          )}
         </div>
         <button
           type="button"

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { unstable_cache } from "next/cache";
-import { authorizeApiRequest } from "@/lib/auth";
+import { authorizeApiRequest, supabaseService } from "@/lib/auth";
+import { securityAlertAudience } from "@/lib/security-alert-recipients";
 import {
   checkSecurityUpdates,
   productionPackageVersions,
@@ -37,9 +38,28 @@ export async function GET(req: Request) {
     );
   }
 
+  // Only the designated IT contacts see the alert (every admin while none is
+  // designated). Other admins get no report and npm is not contacted. If the
+  // list cannot be read, administrators still see the alert rather than nobody.
+  let audience;
+  try {
+    audience = await securityAlertAudience(supabaseService(), admin.user.id);
+  } catch (error) {
+    console.warn("Security alert IT contacts unavailable", error);
+    audience = { visible: true, itContactMissing: false };
+  }
+  if (!audience.visible) {
+    return NextResponse.json({ ok: true, status: "not_recipient" });
+  }
+
   try {
     const report = await cachedSecurityUpdates();
-    return NextResponse.json({ ok: true, status: "checked", ...report });
+    return NextResponse.json({
+      ok: true,
+      status: "checked",
+      it_contact_missing: audience.itContactMissing,
+      ...report,
+    });
   } catch (error) {
     console.warn("Security update check unavailable", error);
     return NextResponse.json({ ok: true, status: "unavailable" });

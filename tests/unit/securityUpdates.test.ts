@@ -7,15 +7,22 @@ import {
   summarizeAdvisories,
 } from "../../lib/security-updates";
 
-const { authorizeApiRequest, checkMock } = vi.hoisted(() => ({
+const { authorizeApiRequest, checkMock, audienceMock } = vi.hoisted(() => ({
   authorizeApiRequest: vi.fn(),
   checkMock: vi.fn(),
+  audienceMock: vi.fn(),
 }));
 
 vi.mock("next/cache", () => ({
   unstable_cache: (fn: () => unknown) => fn,
 }));
-vi.mock("@/lib/auth", () => ({ authorizeApiRequest }));
+vi.mock("@/lib/auth", () => ({
+  authorizeApiRequest,
+  supabaseService: () => ({}),
+}));
+vi.mock("@/lib/security-alert-recipients", () => ({
+  securityAlertAudience: audienceMock,
+}));
 vi.mock("@/lib/security-updates", async () => {
   const actual = await import("../../lib/security-updates");
   return { ...actual, checkSecurityUpdates: checkMock };
@@ -32,6 +39,7 @@ vi.mock("@/package-lock.json", () => ({
 afterEach(() => {
   authorizeApiRequest.mockReset();
   checkMock.mockReset();
+  audienceMock.mockReset();
 });
 
 const LOCKFILE = {
@@ -188,8 +196,41 @@ describe("security updates route", () => {
     expect(checkMock).not.toHaveBeenCalled();
   });
 
-  it("returns the report to administrators", async () => {
-    authorizeApiRequest.mockResolvedValue({ ok: true });
+  it("gives other administrators nothing once an IT contact is chosen", async () => {
+    authorizeApiRequest.mockResolvedValue({ ok: true, user: { id: "admin-2" } });
+    audienceMock.mockResolvedValue({ visible: false, itContactMissing: false });
+    const { GET } = await import("../../app/api/admin/security-updates/route");
+
+    const response = await GET(
+      new Request("https://stockpro.test/api/admin/security-updates")
+    );
+
+    expect(await response.json()).toEqual({ ok: true, status: "not_recipient" });
+    expect(audienceMock).toHaveBeenCalledWith(expect.anything(), "admin-2");
+    expect(checkMock).not.toHaveBeenCalled();
+  });
+
+  it("still shows administrators the alert if the IT contacts cannot be read", async () => {
+    authorizeApiRequest.mockResolvedValue({ ok: true, user: { id: "admin-1" } });
+    audienceMock.mockRejectedValue(new Error("database unavailable"));
+    checkMock.mockResolvedValue({
+      checkedAt: "2026-11-03T10:00:00.000Z",
+      counts: { critical: 1, high: 0, moderate: 0, low: 0 },
+      packages: [],
+    });
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { GET } = await import("../../app/api/admin/security-updates/route");
+
+    const response = await GET(
+      new Request("https://stockpro.test/api/admin/security-updates")
+    );
+
+    expect(await response.json()).toMatchObject({ ok: true, status: "checked" });
+  });
+
+  it("returns the report to the IT contact, flagging when none is chosen", async () => {
+    authorizeApiRequest.mockResolvedValue({ ok: true, user: { id: "admin-1" } });
+    audienceMock.mockResolvedValue({ visible: true, itContactMissing: true });
     checkMock.mockResolvedValue({
       checkedAt: "2026-11-03T10:00:00.000Z",
       counts: { critical: 1, high: 0, moderate: 0, low: 0 },
@@ -203,12 +244,18 @@ describe("security updates route", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body).toMatchObject({ ok: true, status: "checked", counts: { critical: 1 } });
+    expect(body).toMatchObject({
+      ok: true,
+      status: "checked",
+      it_contact_missing: true,
+      counts: { critical: 1 },
+    });
     expect(checkMock).toHaveBeenCalledWith({ next: ["14.2.10"] });
   });
 
   it("reports the check as unavailable instead of failing when npm is down", async () => {
-    authorizeApiRequest.mockResolvedValue({ ok: true });
+    authorizeApiRequest.mockResolvedValue({ ok: true, user: { id: "admin-1" } });
+    audienceMock.mockResolvedValue({ visible: true, itContactMissing: false });
     checkMock.mockRejectedValue(new Error("npm advisory check failed (503)"));
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const { GET } = await import("../../app/api/admin/security-updates/route");

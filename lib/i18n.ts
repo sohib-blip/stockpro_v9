@@ -1002,6 +1002,9 @@ const FR: Record<string, string> = {
   "Last checked:": "Dernière vérification :",
   "Security update check unavailable. StockPro will try again later.":
     "Vérification des mises à jour de sécurité indisponible. StockPro réessaiera plus tard.",
+  "No IT contact chosen yet: choose one in User Access.":
+    "Aucun contact IT choisi : choisissez-en un dans Accès utilisateurs.",
+  "IT — security alerts": "IT — alertes de sécurité",
 };
 
 const NL: Record<string, string> = {
@@ -1996,6 +1999,9 @@ const NL: Record<string, string> = {
   "Last checked:": "Laatst gecontroleerd:",
   "Security update check unavailable. StockPro will try again later.":
     "Controle op beveiligingsupdates niet beschikbaar. StockPro probeert het later opnieuw.",
+  "No IT contact chosen yet: choose one in User Access.":
+    "Nog geen IT-contact gekozen: kies er een in Gebruikerstoegang.",
+  "IT — security alerts": "IT — beveiligingswaarschuwingen",
 };
 
 const DICTIONARIES: Record<Exclude<Locale, "en">, Record<string, string>> = {

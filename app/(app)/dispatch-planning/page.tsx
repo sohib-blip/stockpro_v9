@@ -16,6 +16,12 @@ import {
   type DispatchPackagingRule,
 } from "@/lib/dispatch-packaging-rules";
 import { buildPickingSheet } from "@/lib/dispatch-picking-sheet";
+import {
+  clearStoredDispatchPreview,
+  dispatchPreviewExpiresAt,
+  loadStoredDispatchPreview,
+  saveStoredDispatchPreview,
+} from "@/lib/dispatch-preview-store";
 import { isPackagingContainer } from "@/lib/packaging";
 import ProcessFeedback, {
   type ProcessFeedbackValue,
@@ -124,6 +130,7 @@ type Preview = {
   nothing_new?: boolean;
   picking_summary?: PickingSummaryRow[];
   cabinet_stock?: Record<string, number>;
+  dispatch_plan?: { id: string; status: string; resumed: boolean } | null;
 };
 
 type HistoryRow = {
@@ -252,6 +259,32 @@ function rebuildClientPlan(
   };
 }
 
+function manualOrders(preview: Preview | null) {
+  return (preview?.plan?.orders || []).filter((order) =>
+    order.packages.some((allocation) => allocation.source === "manual")
+  );
+}
+
+// Puts the packages chosen by hand back on the same orders after a new preview.
+function withManualPackages(preview: Preview, manual: DispatchOrder[]): Preview {
+  if (!preview.plan || manual.length === 0) return preview;
+  const options = preview.packaging_options || [];
+  const optionIds = new Set(options.map((option) => option.id));
+  const packagesByOrder = new Map(manual.map((order) => [order.orderId, order.packages]));
+  let changed = false;
+  const orders = preview.plan.orders.map((order) => {
+    const packages = packagesByOrder.get(order.orderId);
+    if (!packages?.every((allocation) => optionIds.has(allocation.packagingTypeId))) {
+      return order;
+    }
+    changed = true;
+    return { ...order, packages };
+  });
+  if (!changed) return preview;
+  const plan = rebuildClientPlan(orders, options, preview.packaging_rules || []);
+  return { ...preview, ok: plan.blockers.length === 0 && !preview.nothing_new, plan };
+}
+
 export default function DispatchPlanningPage() {
   const [file, setFile] = useState<File | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
@@ -283,6 +316,9 @@ export default function DispatchPlanningPage() {
     assignments: number;
   } | null>(null);
   const operationId = useRef<string | null>(null);
+  const restoreStarted = useRef(false);
+  const [restoreChecked, setRestoreChecked] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
   // Another account is doing today's dispatch planning: no import, no confirm.
   const lockedByOther = Boolean(
     planState?.plan?.locking &&
@@ -295,6 +331,12 @@ export default function DispatchPlanningPage() {
       planState.plan.planner_id === planState.me.id
   );
   const assignedCount = planState?.assignments?.length || 0;
+  const previewExpiresAt = useMemo(
+    () => dispatchPreviewExpiresAt(preview?.preview_token),
+    [preview?.preview_token]
+  );
+  // One minute of margin so a confirmation never reaches the server expired.
+  const previewExpired = previewExpiresAt !== null && previewExpiresAt - 60_000 <= now;
 
   const previewTotals = useMemo(() => {
     const orders = preview?.plan?.orders || [];
@@ -447,7 +489,65 @@ export default function DispatchPlanningPage() {
     return () => window.clearInterval(timer);
   }, []);
 
-  async function previewWorkbook(replacePlan = false) {
+  // Keep the preview in this browser while today's planning is open, so a
+  // menu change or a reload does not lose it.
+  const myId = planState?.me?.id;
+  useEffect(() => {
+    const planId = preview?.dispatch_plan?.id;
+    if (!preview?.plan || !planId || !myId || !file) return;
+    void saveStoredDispatchPreview({
+      planId,
+      userId: myId,
+      savedAt: Date.now(),
+      fileName: file.name,
+      file,
+      preview,
+    });
+  }, [preview, file, myId]);
+
+  // Show the kept preview again, like the assignments: only while that
+  // planning is still open and ours.
+  useEffect(() => {
+    if (restoreStarted.current || !planState) return;
+    restoreStarted.current = true;
+    void (async () => {
+      try {
+        const stored = await loadStoredDispatchPreview<Preview>();
+        if (!stored) return;
+        const plan = planState.plan;
+        const ours = Boolean(
+          plan &&
+            plan.id === stored.planId &&
+            plan.status === "OPEN" &&
+            plan.locking &&
+            plan.planner_id === stored.userId &&
+            planState.me?.id === stored.userId
+        );
+        if (!ours) {
+          await clearStoredDispatchPreview();
+          return;
+        }
+        setPreview((current) => current ?? stored.preview);
+        setFile(
+          (current) =>
+            current ?? new File([stored.file], stored.fileName, { type: stored.file.type })
+        );
+        operationId.current ??= crypto.randomUUID();
+      } finally {
+        setRestoreChecked(true);
+      }
+    })();
+  }, [planState]);
+
+  useEffect(() => {
+    if (previewExpiresAt === null) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [previewExpiresAt]);
+
+  // keepManual: packages chosen by hand that survive a refreshed preview.
+  async function previewWorkbook(replacePlan = false, keepManual: DispatchOrder[] = []) {
     if (!file) {
       setFeedback({
         kind: "error",
@@ -460,6 +560,7 @@ export default function DispatchPlanningPage() {
     setBusy(true);
     setFeedback(null);
     setPreview(null);
+    void clearStoredDispatchPreview();
     setOrderSearch("");
     setPickingOpen(false);
     setPickingSearch("");
@@ -490,7 +591,9 @@ export default function DispatchPlanningPage() {
         });
         return;
       }
-      if (json?.plan || json?.issues) setPreview(json);
+      if (json?.plan || json?.issues) {
+        setPreview(json.plan ? withManualPackages(json, keepManual) : json);
+      }
       if (json?.nothing_new) {
         setFeedback({
           kind: "info",
@@ -574,6 +677,7 @@ export default function DispatchPlanningPage() {
         message: `${json.order_count} orders confirmed and ${json.total_packages} packages deducted.`,
       });
       setPreview(null);
+      void clearStoredDispatchPreview();
       setFile(null);
       setFileInputKey((value) => value + 1);
       operationId.current = null;
@@ -585,6 +689,7 @@ export default function DispatchPlanningPage() {
 
   function resetPreview() {
     setPreview(null);
+    void clearStoredDispatchPreview();
     setOrderSearch("");
     setPickingOpen(false);
     setPickingSearch("");
@@ -816,7 +921,13 @@ export default function DispatchPlanningPage() {
         />
       ) : (
         <>
-        <DispatchPlanBanner state={planState} onReload={loadPlan} onFeedback={setFeedback} />
+        <DispatchPlanBanner
+          state={planState}
+          onReload={loadPlan}
+          onFeedback={setFeedback}
+          onEnded={resetPreview}
+          previewMissing={restoreChecked && planningMine && !preview?.plan && !busy}
+        />
         <div className="prototype-stepper" aria-label="Dispatch progress">
           <div className={`prototype-step ${preview ? "is-complete" : "is-active"}`}>
             <span>{preview ? "✓" : "1"}</span><strong>Upload</strong>
@@ -854,6 +965,7 @@ export default function DispatchPlanningPage() {
                 onChange={(event) => {
                   setFile(event.target.files?.[0] || null);
                   setPreview(null);
+                  void clearStoredDispatchPreview();
                   setOrderSearch("");
                   setPickingOpen(false);
                   setPickingSearch("");
@@ -1181,6 +1293,21 @@ export default function DispatchPlanningPage() {
               })}
             </div>
           </div>
+          {previewExpired ? (
+            <div className="dispatch-confirm-expired" role="status">
+              <span>
+                This preview is more than 1 hour old. Refresh it before confirming; your packaging choices are kept.
+              </span>
+              <button
+                type="button"
+                className="prototype-button secondary dispatch-small-button"
+                disabled={busy || !file || lockedByOther}
+                onClick={() => void previewWorkbook(false, manualOrders(preview))}
+              >
+                Refresh preview
+              </button>
+            </div>
+          ) : null}
           {preview.plan.blockers.length > 0 ? (
             <p className="dispatch-confirm-blocked">
               Fix the packaging issues shown above the orders to confirm.
@@ -1199,7 +1326,7 @@ export default function DispatchPlanningPage() {
               type="button"
               className="prototype-button confirm"
               onClick={() => setConfirmOpen(true)}
-              disabled={busy || !preview.ok || lockedByOther}
+              disabled={busy || !preview.ok || lockedByOther || previewExpired}
             >
               Confirm &amp; Deduct Packaging
             </button>
@@ -1223,7 +1350,7 @@ export default function DispatchPlanningPage() {
           onClose={() => setResolveIssue(null)}
           onSaved={() => {
             setResolveIssue(null);
-            void previewWorkbook();
+            void previewWorkbook(false, manualOrders(preview));
           }}
         />
       )}

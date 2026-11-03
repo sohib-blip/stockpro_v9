@@ -11,6 +11,7 @@ import PreferenceControls from "@/components/PreferenceControls";
 import { usePreferences } from "@/components/PreferencesProvider";
 import { apiFetch } from "@/lib/apiFetch";
 import { signOutCurrentDevice } from "@/lib/session-control";
+import { clearStoredDispatchPreview } from "@/lib/dispatch-preview-store";
 import BrandLogo from "@/components/BrandLogo";
 
 type NavItem = {
@@ -150,6 +151,7 @@ export default function AppShell({ children }: { children: ReactNode }) {
     activeGroup && activeGroup.items.length > 1 ? activeGroup.items : [];
 
   async function handleLogout() {
+    await clearStoredDispatchPreview();
     await signOutCurrentDevice(supabase, window.sessionStorage);
     router.replace("/login");
     router.refresh();

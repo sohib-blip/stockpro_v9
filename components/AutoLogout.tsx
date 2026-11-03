@@ -10,6 +10,7 @@ import {
   STOCKPRO_SESSION_NOTICE_KEY,
 } from "@/lib/session-control";
 import { apiFetch } from "@/lib/apiFetch";
+import { clearStoredDispatchPreview } from "@/lib/dispatch-preview-store";
 
 const INACTIVITY_LIMIT = 60 * 60 * 1000; // 1 hour
 const SESSION_CHECK_INTERVAL = 30 * 1000; // 30 seconds
@@ -43,6 +44,7 @@ export default function AutoLogout() {
         );
       }
 
+      await clearStoredDispatchPreview();
       await signOutCurrentDevice(supabase, window.sessionStorage);
 
       if (showMessage) {

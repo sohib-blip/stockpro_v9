@@ -36,6 +36,9 @@ export type DispatchPlanState = {
   users?: Array<{ id: string; email: string }>;
 };
 
+// Same file name as the former full download from the preview.
+const ALL_LABELS_FILENAME = "vehicle-registration-labels-L4731.docx";
+
 function formatTime(value: string | null) {
   if (!value) return "—";
   return new Intl.DateTimeFormat("en-GB", {
@@ -49,6 +52,20 @@ function deviceSummary(order: DispatchPlanOrder) {
     ([model, count]) => `${count} × ${model}`
   );
   return parts.length ? parts.join(", ") : "No devices";
+}
+
+/** Ends today's planning without a deduction, or lets an admin take it over. */
+export async function changeDispatchPlanLock(
+  planId: string,
+  action: "release" | "takeover"
+): Promise<{ ok: true } | { ok: false; error?: string }> {
+  const response = await apiFetch("/api/dispatch-planning/plan/lock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ plan_id: planId, action }),
+  });
+  const json = await response.json().catch(() => null);
+  return response.ok && json?.ok ? { ok: true } : { ok: false, error: json?.error };
 }
 
 /** Who is doing today's dispatch planning; shown above the workbook import. */
@@ -71,26 +88,21 @@ export function DispatchPlanBanner({
     setAction(null);
     setBusy(true);
     try {
-      const response = await apiFetch("/api/dispatch-planning/plan/lock", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ plan_id: plan!.id, action: kind }),
-      });
-      const json = await response.json().catch(() => null);
+      const result = await changeDispatchPlanLock(plan!.id, kind);
       onFeedback(
-        response.ok && json?.ok
+        result.ok
           ? {
               kind: "success",
               title: kind === "takeover" ? "You are now doing today's dispatch planning" : "Dispatch planning ended",
               message:
                 kind === "takeover"
                   ? "The assignments were kept. Import the same workbook to continue."
-                  : "Other accounts can import a workbook again. The assignments and vehicle labels stay available today.",
+                  : "Nothing was deducted. Other accounts can import a workbook again.",
             }
           : {
               kind: "error",
               title: "Dispatch planning not changed",
-              message: json?.error || "The dispatch planning could not be updated.",
+              message: (!result.ok && result.error) || "The dispatch planning could not be updated.",
             }
       );
       await onReload();
@@ -191,7 +203,12 @@ export default function DispatchAssignments({
     );
   }, [byOrder, plan, search]);
 
-  if (!state?.installed || !plan) return null;
+  // A planning ended without deduction is abandoned: nothing left to assign.
+  if (!state?.installed || !plan || plan.status === "RELEASED" || plan.status === "REPLACED") {
+    return null;
+  }
+  const allLabelCount = plan.orders.reduce((total, order) => total + order.labelCount, 0);
+  const allDeviceCount = plan.orders.reduce((total, order) => total + order.deviceCount, 0);
 
   const modelOrderIds = model
     ? dispatchOrdersForModel(plan.orders, model, assignments, onlyUnassigned)
@@ -220,13 +237,16 @@ export default function DispatchAssignments({
     }
   }
 
-  async function downloadLabels(assigneeId: string, email: string) {
+  // One person's orders, or every order of the planning ("all").
+  async function downloadLabels(assigneeId: string | "all", email = "") {
     if (!plan) return;
     setLabelsBusy(assigneeId);
     try {
       await downloadApiFile(
-        `/api/dispatch-planning/plan/labels?plan_id=${plan.id}&assignee_id=${assigneeId}`,
-        vehicleLabelsFilename(email)
+        assigneeId === "all"
+          ? `/api/dispatch-planning/plan/labels?plan_id=${plan.id}&scope=all`
+          : `/api/dispatch-planning/plan/labels?plan_id=${plan.id}&assignee_id=${assigneeId}`,
+        assigneeId === "all" ? ALL_LABELS_FILENAME : vehicleLabelsFilename(email)
       );
     } catch (error) {
       onFeedback({
@@ -250,14 +270,14 @@ export default function DispatchAssignments({
 
   return (
     <section className="prototype-card dispatch-assign-card">
-      <div className="dispatch-history-heading">
+      <div className="dispatch-card-heading">
         <div>
           <h2>Order assignment</h2>
           <p>
             {plan.source_filename} · {statusText}
           </p>
         </div>
-        <button type="button" className="prototype-button secondary" onClick={() => void onReload()} disabled={busy}>
+        <button type="button" className="prototype-button secondary dispatch-small-button" onClick={() => void onReload()} disabled={busy}>
           Refresh
         </button>
       </div>
@@ -318,6 +338,20 @@ export default function DispatchAssignments({
       ) : null}
 
       <div className="dispatch-assign-totals">
+        <div className="is-all">
+          <strong>All orders</strong>
+          <span>
+            {plan.orders.length} order{plan.orders.length === 1 ? "" : "s"} · {allDeviceCount} devices
+          </span>
+          <button
+            type="button"
+            aria-label={`Download vehicle labels for all orders — Word (${allLabelCount})`}
+            disabled={labelsBusy !== null || allLabelCount === 0}
+            onClick={() => void downloadLabels("all")}
+          >
+            {labelsBusy === "all" ? "Generating…" : `Word labels (${allLabelCount})`}
+          </button>
+        </div>
         {totals.map((total) => (
           <div key={total.assigneeId ?? "unassigned"} className={total.assigneeId ? "" : "is-unassigned"}>
             <strong>{total.assigneeEmail ?? "Unassigned"}</strong>

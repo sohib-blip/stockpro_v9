@@ -131,6 +131,15 @@ describe("dispatch planner lock", () => {
     expect(confirm).toContain("confirmDispatchPlan(");
   });
 
+  it("serves every order's Word labels from the saved planning", () => {
+    const labels = read("app/api/dispatch-planning/plan/labels/route.ts");
+    expect(labels).toContain('params.get("scope") === "all"');
+    expect(labels).toMatch(/allOrders\s*\?\s*plan\.labels/);
+    const page = read("app/(app)/dispatch-planning/page.tsx");
+    expect(page).not.toContain("/api/dispatch-planning/vehicle-labels");
+    expect(page).toContain('changeDispatchPlanLock(planId, "release")');
+  });
+
   it("only lets today's planner assign orders", () => {
     const assign = read("app/api/dispatch-planning/plan/assign/route.ts");
     expect(assign).toContain("plan.planner_id !== identity.userId");

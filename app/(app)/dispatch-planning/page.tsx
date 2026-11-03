@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import DispatchAssignments, {
+  changeDispatchPlanLock,
   DispatchPlanBanner,
   type DispatchPlanState,
 } from "@/components/DispatchAssignments";
@@ -260,9 +261,9 @@ export default function DispatchPlanningPage() {
   const [feedback, setFeedback] = useState<ProcessFeedbackValue | null>(null);
   const [mode, setMode] = useState<"workbook" | "manual">("workbook");
   const [busy, setBusy] = useState(false);
-  const [labelsBusy, setLabelsBusy] = useState(false);
   const [historyBusy, setHistoryBusy] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [clearAsk, setClearAsk] = useState(false);
   const [undoTarget, setUndoTarget] = useState<HistoryRow | null>(null);
   const [orderSearch, setOrderSearch] = useState("");
   const [pickingOpen, setPickingOpen] = useState(false);
@@ -288,6 +289,12 @@ export default function DispatchPlanningPage() {
       planState.me &&
       planState.plan.planner_id !== planState.me.id
   );
+  const planningMine = Boolean(
+    planState?.plan?.locking &&
+      planState.me &&
+      planState.plan.planner_id === planState.me.id
+  );
+  const assignedCount = planState?.assignments?.length || 0;
 
   const previewTotals = useMemo(() => {
     const orders = preview?.plan?.orders || [];
@@ -576,53 +583,45 @@ export default function DispatchPlanningPage() {
     }
   }
 
-  async function downloadVehicleLabels() {
-    if (!file || !preview?.vehicle_label_count) {
-      setFeedback({
-        kind: "error",
-        title: "Vehicle label generation blocked",
-        message: "Preview a workbook containing at least one device first.",
-      });
+  function resetPreview() {
+    setPreview(null);
+    setOrderSearch("");
+    setPickingOpen(false);
+    setPickingSearch("");
+    setPickingAttentionOnly(false);
+    operationId.current = null;
+  }
+
+  // Clearing the preview of an open planning also ends that planning, so the
+  // banner and the assignments do not stay behind and other accounts can work.
+  async function clearPreviewAndEndPlanning() {
+    setClearAsk(false);
+    const planId = planState?.plan?.id;
+    if (!planId) {
+      resetPreview();
       return;
     }
-
-    setLabelsBusy(true);
+    setBusy(true);
     setFeedback(null);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      const response = await apiFetch(
-        "/api/dispatch-planning/vehicle-labels",
-        { method: "POST", body: form }
-      );
-      if (!response.ok) {
-        const json = await response.json().catch(() => null);
+      const result = await changeDispatchPlanLock(planId, "release");
+      if (!result.ok) {
         setFeedback({
           kind: "error",
-          title: "Vehicle label generation failed",
-          message:
-            json?.error ||
-            "The vehicle label Word document could not be generated.",
+          title: "Dispatch planning not changed",
+          message: result.error || "The dispatch planning could not be ended.",
         });
         return;
       }
-
-      const blob = await response.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = "vehicle-registration-labels-L4731.docx";
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(objectUrl);
+      resetPreview();
       setFeedback({
-        kind: "success",
-        title: "Vehicle labels ready",
-        message: `${preview.vehicle_label_count} device labels were generated from Vehicle Registration. Accessory rows were ignored.`,
+        kind: "info",
+        title: "Preview cleared — planning ended",
+        message: "Nothing was deducted. Other accounts can import a workbook again.",
       });
     } finally {
-      setLabelsBusy(false);
+      await loadPlan();
+      setBusy(false);
     }
   }
 
@@ -823,12 +822,16 @@ export default function DispatchPlanningPage() {
             <span>{preview ? "✓" : "1"}</span><strong>Upload</strong>
           </div>
           <i />
-          <div className={`prototype-step ${preview?.ok ? "is-active" : ""}`}>
-            <span>2</span><strong>Preview</strong>
+          <div className={`prototype-step ${preview?.plan ? (assignedCount > 0 ? "is-complete" : "is-active") : ""}`}>
+            <span>{preview?.plan && assignedCount > 0 ? "✓" : "2"}</span><strong>Preview</strong>
+          </div>
+          <i />
+          <div className={`prototype-step ${preview?.plan && assignedCount > 0 ? "is-active" : ""}`}>
+            <span>3</span><strong>Assign</strong>
           </div>
           <i />
           <div className="prototype-step">
-            <span>3</span><strong>Confirm</strong>
+            <span>4</span><strong>Confirm</strong>
           </div>
         </div>
 
@@ -916,13 +919,34 @@ export default function DispatchPlanningPage() {
                         : `${filteredPreviewOrders.length} of ${preview.plan.orders.length} orders`}
                     </p>
                   </div>
-                  <input
-                    type="search"
-                    aria-label="Search dispatch orders"
-                    placeholder="Search order, customer, country or item…"
-                    value={orderSearch}
-                    onChange={(event) => setOrderSearch(event.target.value)}
-                  />
+                  <div className="dispatch-orders-tools">
+                    <input
+                      type="search"
+                      aria-label="Search dispatch orders"
+                      placeholder="Search order, customer, country or item…"
+                      value={orderSearch}
+                      onChange={(event) => setOrderSearch(event.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="prototype-button secondary"
+                      onClick={() => setPickingSheetOpen(true)}
+                      disabled={!pickingSheet}
+                    >
+                      Print Picking Sheet
+                    </button>
+                    <button
+                      type="button"
+                      className="prototype-button secondary dispatch-picking-button"
+                      onClick={() => setPickingOpen(true)}
+                      disabled={pickingRows.length === 0}
+                    >
+                      Picking Summary · {pickingRows.length}
+                      {pickingAttentionCount > 0 ? (
+                        <span>{pickingAttentionCount} attention</span>
+                      ) : null}
+                    </button>
+                  </div>
                 </div>
 
                 {preview.carried_orders?.length ? (
@@ -1082,111 +1106,6 @@ export default function DispatchPlanningPage() {
                     </tbody>
                   </table>
                 </div>
-
-                <details className="dispatch-package-summary">
-                  <summary>
-                    <span>Packaging deduction</span>
-                    <strong>
-                      {preview.plan.totalPackages} packages · {preview.plan.packageUsage.length} format{preview.plan.packageUsage.length === 1 ? "" : "s"}
-                    </strong>
-                  </summary>
-                  <div className="dispatch-package-summary-list">
-                    {preview.plan.packageUsage.map((usage) => {
-                      const packaging = preview.packaging_options?.find(
-                        (option) => option.id === usage.packagingTypeId
-                      );
-                      return (
-                        <div key={usage.packagingTypeId}>
-                          <span>
-                            <strong>{usage.quantity} × {usage.name}</strong>
-                            <small>
-                              {usage.code}
-                              {packaging && isPackagingContainer(packaging.category)
-                                ? ` · ${formatPackageDimensions(packaging)}`
-                                : ""}
-                            </small>
-                          </span>
-                          <span
-                            className={usage.stockAfter < 0 ? "is-danger" : ""}
-                          >
-                            {usage.onHandStock} → {usage.stockAfter}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </details>
-
-                <div className="dispatch-vehicle-labels-action">
-                  <div>
-                    <span className="dispatch-vehicle-labels-format">
-                      L4731 · Word
-                    </span>
-                    <span>
-                      <strong>Vehicle registration labels</strong>
-                      <small>
-                        One label per device row. Accessory rows are ignored.
-                      </small>
-                    </span>
-                  </div>
-                  <div className="dispatch-preview-tool-buttons">
-                    <button
-                      type="button"
-                      className="prototype-button secondary"
-                      onClick={() => setPickingSheetOpen(true)}
-                      disabled={!pickingSheet}
-                    >
-                      Print Picking Sheet
-                    </button>
-                    <button
-                      type="button"
-                      className="prototype-button secondary dispatch-picking-button"
-                      onClick={() => setPickingOpen(true)}
-                      disabled={pickingRows.length === 0}
-                    >
-                      Picking Summary · {pickingRows.length}
-                      {pickingAttentionCount > 0 ? (
-                        <span>{pickingAttentionCount} attention</span>
-                      ) : null}
-                    </button>
-                    <button
-                      type="button"
-                      className="prototype-button secondary"
-                      onClick={downloadVehicleLabels}
-                      disabled={labelsBusy || !preview.vehicle_label_count}
-                    >
-                      {labelsBusy
-                        ? "Generating labels…"
-                        : `Download Vehicle Labels — Word (${preview.vehicle_label_count || 0})`}
-                    </button>
-                  </div>
-                </div>
-
-                <div className="prototype-preview-actions">
-                  <button
-                    type="button"
-                    className="prototype-button secondary"
-                    onClick={() => {
-                      setPreview(null);
-                      setOrderSearch("");
-                      setPickingOpen(false);
-                      setPickingSearch("");
-                      setPickingAttentionOnly(false);
-                      operationId.current = null;
-                    }}
-                    disabled={busy}
-                  >
-                    Clear Preview
-                  </button>
-                  <button
-                    type="button"
-                    className="prototype-button confirm"
-                    onClick={() => setConfirmOpen(true)}
-                    disabled={busy || !preview.ok || lockedByOther}
-                  >
-                    Confirm &amp; Deduct Packaging
-                  </button>
-                </div>
               </>
             )}
           </div>
@@ -1217,6 +1136,77 @@ export default function DispatchPlanningPage() {
         </>
       )}
 
+      <DispatchAssignments state={planState} onReload={loadPlan} onFeedback={setFeedback} />
+
+      {mode === "workbook" && preview?.plan ? (
+        <section className="prototype-card dispatch-confirm-card">
+          <div className="dispatch-card-heading">
+            <div>
+              <h2>Confirm the dispatch</h2>
+              <p>
+                Packaging stock changes only when you confirm. Confirming also ends today&apos;s planning; the assignments and Word labels stay available today.
+              </p>
+            </div>
+          </div>
+          <div className="dispatch-package-summary">
+            <div className="dispatch-package-summary-title">
+              <span>Packaging deduction</span>
+              <strong>
+                {preview.plan.totalPackages} packages · {preview.plan.packageUsage.length} format{preview.plan.packageUsage.length === 1 ? "" : "s"}
+              </strong>
+            </div>
+            <div className="dispatch-package-summary-list">
+              {preview.plan.packageUsage.map((usage) => {
+                const packaging = preview.packaging_options?.find(
+                  (option) => option.id === usage.packagingTypeId
+                );
+                return (
+                  <div key={usage.packagingTypeId}>
+                    <span>
+                      <strong>{usage.quantity} × {usage.name}</strong>
+                      <small>
+                        {usage.code}
+                        {packaging && isPackagingContainer(packaging.category)
+                          ? ` · ${formatPackageDimensions(packaging)}`
+                          : ""}
+                      </small>
+                    </span>
+                    <span
+                      className={usage.stockAfter < 0 ? "is-danger" : ""}
+                    >
+                      {usage.onHandStock} → {usage.stockAfter}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {preview.plan.blockers.length > 0 ? (
+            <p className="dispatch-confirm-blocked">
+              Fix the packaging issues shown above the orders to confirm.
+            </p>
+          ) : null}
+          <div className="prototype-preview-actions">
+            <button
+              type="button"
+              className="prototype-button secondary"
+              onClick={() => (planningMine ? setClearAsk(true) : resetPreview())}
+              disabled={busy}
+            >
+              Clear Preview
+            </button>
+            <button
+              type="button"
+              className="prototype-button confirm"
+              onClick={() => setConfirmOpen(true)}
+              disabled={busy || !preview.ok || lockedByOther}
+            >
+              Confirm &amp; Deduct Packaging
+            </button>
+          </div>
+        </section>
+      ) : null}
+
       {pickingSheetOpen && pickingSheet && (
         <DispatchPickingSheet
           sheet={pickingSheet}
@@ -1237,8 +1227,6 @@ export default function DispatchPlanningPage() {
           }}
         />
       )}
-
-      <DispatchAssignments state={planState} onReload={loadPlan} onFeedback={setFeedback} />
 
       <section className="prototype-card prototype-history-card dispatch-history-card">
         <div className="dispatch-history-heading">
@@ -1460,6 +1448,14 @@ export default function DispatchPlanningPage() {
       ) : null}
 
       <ConfirmDialog open={confirmOpen} title="Confirm daily dispatch?" message={`This will deduct ${preview?.plan?.totalPackages || 0} packages for ${preview?.plan?.orders.length || 0} orders. The action stays available in history and can be undone.`} confirmText="Confirm & Deduct" onConfirm={confirmDispatch} onCancel={() => setConfirmOpen(false)} />
+      <ConfirmDialog
+        open={clearAsk}
+        title="Clear the preview and end today's planning?"
+        message="Nothing is deducted. The planner banner and the order assignment disappear, and other accounts can import a workbook again. Importing the same workbook again reopens it with its assignments."
+        confirmText="End planning"
+        onConfirm={() => void clearPreviewAndEndPlanning()}
+        onCancel={() => setClearAsk(false)}
+      />
       <ConfirmDialog
         open={Boolean(replaceAsk)}
         title="Replace today's planning?"

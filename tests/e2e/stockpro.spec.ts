@@ -1792,10 +1792,15 @@ test.describe.serial("StockPro staging end-to-end", () => {
     ).toBeVisible();
     await expect(
       page.getByRole("button", {
-        name: "Download Vehicle Labels — Word (1)",
+        name: "Download vehicle labels for all orders — Word (1)",
       })
     ).toBeVisible();
     await page.getByRole("button", { name: "Clear Preview" }).click();
+    await page
+      .getByRole("dialog", { name: "Clear the preview and end today's planning?" })
+      .getByRole("button", { name: "End planning" })
+      .click();
+    await expect(page.getByText("Preview cleared — planning ended")).toBeVisible();
 
     await page.locator('input[type="file"]').setInputFiles(path);
     await page.getByRole("button", { name: "Preview Packaging" }).click();
@@ -1818,11 +1823,10 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expectDownload(
       page,
       page.getByRole("button", {
-        name: "Download Vehicle Labels — Word (1)",
+        name: "Download vehicle labels for all orders — Word (1)",
       }),
       /vehicle-registration-labels-L4731\.docx$/
     );
-    await expect(page.getByText("Vehicle labels ready")).toBeVisible();
     const orderSearch = page.getByLabel("Search dispatch orders");
     await orderSearch.fill("definitely-not-a-dispatch-order");
     await expect(page.getByText("No orders match this search.")).toBeVisible();
@@ -1886,6 +1890,11 @@ test.describe.serial("StockPro staging end-to-end", () => {
     ).toHaveValue(run.dispatchAlternatePackaging.id);
     await expect(page.getByText("Learned from 1 confirmed choice")).toBeVisible();
     await page.getByRole("button", { name: "Clear Preview" }).click();
+    await page
+      .getByRole("dialog", { name: "Clear the preview and end today's planning?" })
+      .getByRole("button", { name: "End planning" })
+      .click();
+    await expect(page.getByText("Preview cleared — planning ended")).toBeVisible();
 
     await page.locator('input[type="file"]').setInputFiles(path);
     await page.getByRole("button", { name: "Preview Packaging" }).click();

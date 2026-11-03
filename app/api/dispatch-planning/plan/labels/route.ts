@@ -23,8 +23,9 @@ export const revalidate = 0;
 
 const MAX_DOCX_BYTES = 8 * 1024 * 1024;
 
-// Word vehicle registration labels (same L4731 sheet as the full download)
-// for the orders assigned to one person; by default the signed-in person.
+// Word vehicle registration labels (L4731 sheet) for the orders assigned to
+// one person, by default the signed-in person, or for every order of the
+// planning with scope=all.
 export async function GET(req: Request) {
   const identity = getApiIdentity(req);
   const admission = await acquireWorkloadLease(req, "dispatchLabels", {
@@ -35,6 +36,7 @@ export async function GET(req: Request) {
   try {
     const params = new URL(req.url).searchParams;
     const planId = z.string().uuid().safeParse(params.get("plan_id"));
+    const allOrders = params.get("scope") === "all";
     const assignee = params.get("assignee_id");
     const assigneeId = assignee
       ? z.string().uuid().safeParse(assignee)
@@ -55,14 +57,17 @@ export async function GET(req: Request) {
       );
     }
     const assignments = await loadDispatchPlanAssignments(service, plan.id);
-    const labels = dispatchLabelsForAssignee(
-      plan.labels || [],
-      assignments,
-      assigneeId.data
-    );
+    const labels = allOrders
+      ? plan.labels || []
+      : dispatchLabelsForAssignee(plan.labels || [], assignments, assigneeId.data);
     if (labels.length === 0) {
       return NextResponse.json(
-        { ok: false, error: "No vehicle labels: no device order is assigned to this person." },
+        {
+          ok: false,
+          error: allOrders
+            ? "No vehicle labels: this planning has no device order."
+            : "No vehicle labels: no device order is assigned to this person.",
+        },
         { status: 404 }
       );
     }
@@ -79,12 +84,15 @@ export async function GET(req: Request) {
     const email =
       assignments.find((assignment) => assignment.assigneeId === assigneeId.data)
         ?.assigneeEmail || identity.email;
+    const filename = allOrders
+      ? "vehicle-registration-labels-L4731.docx"
+      : vehicleLabelsFilename(email);
 
     return new NextResponse(new Uint8Array(docx), {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="${vehicleLabelsFilename(email)}"`,
+        "Content-Disposition": `attachment; filename="${filename}"`,
         "Cache-Control": "no-store",
         "X-StockPro-Label-Count": String(labels.length),
       },

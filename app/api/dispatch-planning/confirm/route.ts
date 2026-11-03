@@ -10,6 +10,10 @@ import {
   loadDispatchPackagingRules,
 } from "@/app/api/dispatch-planning/_server";
 import {
+  confirmDispatchPlan,
+  dispatchPlanHeldByOther,
+} from "@/app/api/dispatch-planning/plan/_plan";
+import {
   inventoryCommandErrorMessage,
   inventoryCommandErrorStatus,
 } from "@/lib/inventory-command-error";
@@ -58,6 +62,19 @@ export async function POST(req: Request) {
       );
     }
 
+    const identity = getApiIdentity(req);
+    const heldBy = await dispatchPlanHeldByOther(supabaseService(), identity);
+    if (heldBy) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "DISPATCH_PLAN_LOCKED",
+          error: `${heldBy.plannerEmail} is doing today's dispatch planning. Only that person can confirm the deduction.`,
+        },
+        { status: 409 }
+      );
+    }
+
     const [packages, packagingRules] = await Promise.all([
       loadDispatchPackagingOptions(),
       loadDispatchPackagingRules(),
@@ -83,7 +100,6 @@ export async function POST(req: Request) {
       ...order,
       compositionKey: dispatchCompositionKey(order),
     }));
-    const identity = getApiIdentity(req);
     const { data, error } = await supabaseService().rpc(
       "confirm_dispatch_batch",
       {
@@ -108,6 +124,13 @@ export async function POST(req: Request) {
           ),
         },
         { status: inventoryCommandErrorStatus(error) }
+      );
+    }
+    if ((data as { ok?: boolean } | null)?.ok) {
+      // The deduction is done: today's planner lock ends, the assignments
+      // stay so everyone can still print their vehicle labels today.
+      await confirmDispatchPlan(supabaseService(), identity, preview.sourceHash).catch(
+        (planError) => console.error("DISPATCH PLAN CONFIRM ERROR", planError)
       );
     }
     return NextResponse.json(data);

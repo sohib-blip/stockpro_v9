@@ -1290,6 +1290,180 @@ body {
   color: var(--danger);
 }
 
+/* Dispatch Planning: today's planner and order assignment */
+.dispatch-plan-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  border: 1px solid color-mix(in srgb, var(--brand) 24%, var(--border));
+  border-radius: 10px;
+  background: var(--brand-soft);
+  font-size: 12.5px;
+}
+
+.dispatch-plan-banner.is-locked {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+  background: var(--warning-soft);
+}
+
+.dispatch-plan-banner > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: var(--foreground-soft);
+}
+
+.dispatch-plan-banner strong {
+  color: var(--foreground);
+}
+
+.dispatch-assign-card {
+  margin-top: 18px;
+  overflow: hidden;
+}
+
+.dispatch-assign-mine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface-subtle);
+}
+
+.dispatch-assign-mine > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  color: var(--foreground-soft);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.dispatch-assign-mine strong {
+  color: var(--foreground);
+  font-size: 14px;
+}
+
+.dispatch-assign-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.dispatch-assign-bar label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 650;
+}
+
+.dispatch-assign-bar select {
+  width: 240px;
+  max-width: 100%;
+}
+
+.dispatch-assign-bar .dispatch-assign-check {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 9px;
+  color: var(--foreground-soft);
+}
+
+.dispatch-assign-totals {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 22px;
+}
+
+.dispatch-assign-totals > div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+  font-size: 11.5px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.dispatch-assign-totals > div.is-unassigned {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border));
+  background: var(--warning-soft);
+}
+
+.dispatch-assign-totals strong {
+  color: var(--foreground);
+  font-size: 12px;
+}
+
+.dispatch-assign-totals button {
+  align-self: flex-start;
+  margin-top: 3px;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--brand);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 650;
+}
+
+.dispatch-assign-card .dispatch-orders-heading {
+  padding: 0 22px 12px;
+}
+
+.dispatch-assign-card .dispatch-history-scroll table {
+  min-width: 860px;
+}
+
+.dispatch-assign-card tr.is-unassigned td {
+  background: color-mix(in srgb, var(--warning-soft) 55%, var(--surface));
+}
+
+.dispatch-assign-card td select {
+  width: 100%;
+  min-width: 200px;
+}
+
+.dispatch-assign-none {
+  color: var(--warning);
+  font-weight: 650;
+}
+
+@media (max-width: 720px) {
+  .dispatch-plan-banner {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dispatch-assign-bar select {
+    width: 100%;
+  }
+
+  .dispatch-assign-bar label {
+    flex: 1 1 100%;
+  }
+}
+
 @media (max-width: 980px) {
   .dispatch-process-grid {
     grid-template-columns: 1fr;

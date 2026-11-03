@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import { useAccess } from "@/components/AccessProvider";
+import SecurityUpdatesBanner from "@/components/SecurityUpdatesBanner";
 import ProcessFeedback, { type ProcessFeedbackValue } from "@/components/ProcessFeedback";
 import {
   buildDashboardStockAlerts,
@@ -450,6 +451,8 @@ export default function DashboardPage() {
           </button>
         </div>
       </header>
+
+      <SecurityUpdatesBanner />
 
       {feedback && (
         <ProcessFeedback

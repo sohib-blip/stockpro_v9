@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useEffect, useRef, useState } from "react";
+import { useAccess } from "@/components/AccessProvider";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
@@ -34,7 +34,7 @@ type SupplyItem = {
 };
 
 export default function SupplyPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { user } = useAccess();
 
   const [userEmail, setUserEmail] = useState("unknown");
   const [userId, setUserId] = useState<string | null>(null);
@@ -85,11 +85,11 @@ const pageSize = 20;
     setMsg(message);
   }
 
-  async function loadUser() {
-    const { data } = await supabase.auth.getUser();
-    if (data.user?.email) setUserEmail(data.user.email);
-    if (data.user?.id) setUserId(data.user.id);
-  }
+  // The signed-in user is already loaded by AccessProvider.
+  useEffect(() => {
+    if (user?.email) setUserEmail(user.email);
+    if (user?.id) setUserId(user.id);
+  }, [user]);
 
   async function loadSupply() {
   const res = await apiFetch(`/api/supply/list?t=${Date.now()}`, {
@@ -131,7 +131,6 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
 }
 
   useEffect(() => {
-  loadUser();
   loadSupply();
   loadProducts();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- load once when the page opens

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import { useAccess } from "@/components/AccessProvider";
 import { usePreferences } from "@/components/PreferencesProvider";
@@ -94,9 +93,8 @@ function notifyNrdChanged(active: unknown) {
 }
 
 export default function NRDPage() {
-  const { hasPermission } = useAccess();
+  const { hasPermission, user: accessUser } = useAccess();
   const { locale } = usePreferences();
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const reportingMonths = useMemo(() => getReportingMonths(locale), [locale]);
 
   const [userEmail, setUserEmail] = useState("");
@@ -121,15 +119,11 @@ export default function NRDPage() {
   const afterDayEnd = Boolean(dayEnd && Date.now() >= new Date(dayEnd).getTime());
 
 
+  // The signed-in user is already loaded by AccessProvider.
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-
-      if (user?.email) setUserEmail(user.email);
-      if (user?.id) setUserId(user.id);
-    })();
-  }, [supabase]);
+    if (accessUser?.email) setUserEmail(accessUser.email);
+    if (accessUser?.id) setUserId(accessUser.id);
+  }, [accessUser]);
 
   async function loadCurrent(email = userEmail) {
   if (!email) return;

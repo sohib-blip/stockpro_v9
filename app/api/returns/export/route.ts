@@ -7,6 +7,11 @@ import {
   returnStatusLabel,
   returnStockActionLabel,
 } from "@/lib/returns";
+import {
+  readAllPages,
+  readInChunks,
+  rowsOrThrow,
+} from "@/lib/supabase/read-all-pages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,51 +43,46 @@ function locationLabel(box?: string | null, floor?: string | null) {
 
 export async function GET() {
   try {
-    const { data, error } = await supabase
-      .from("return_records")
-      .select(`
-        id,
-        created_at,
-        actor,
-        return_ref,
-        customer,
-        sur_id,
-        courier,
-        country_code,
-        return_status,
-        return_reason,
-        imei,
-        device_id,
-        reported_device,
-        previous_box,
-        previous_floor,
-        target_box,
-        target_floor,
-        stock_action
-      `)
-      .order("created_at", { ascending: false })
-      .limit(50_000);
-
-    if (error) throw error;
-
-    const deviceIds = Array.from(
-      new Set((data || []).map((record) => record.device_id).filter(Boolean))
+    // Every return is exported: read page by page past the 1,000-row cap.
+    const data = await readAllPages((from, to) =>
+      supabase
+        .from("return_records")
+        .select(`
+          id,
+          created_at,
+          actor,
+          return_ref,
+          customer,
+          sur_id,
+          courier,
+          country_code,
+          return_status,
+          return_reason,
+          imei,
+          device_id,
+          reported_device,
+          previous_box,
+          previous_floor,
+          target_box,
+          target_floor,
+          stock_action
+        `)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to)
+        .then(rowsOrThrow)
     );
-    const { data: bins, error: binsError } = await supabase
-      .from("bins")
-      .select("id,name")
-      .in(
-        "id",
-        deviceIds.length
-          ? deviceIds
-          : ["00000000-0000-0000-0000-000000000000"]
-      );
-    if (binsError) throw binsError;
+
+    const bins = await readInChunks(
+      data.map((record) => record.device_id).filter(Boolean),
+      (ids) =>
+        supabase.from("bins").select("id,name").in("id", ids).then(rowsOrThrow)
+    );
 
     const binMap = Object.fromEntries(
-      (bins || []).map((bin) => [String(bin.id), String(bin.name || "")])
+      bins.map((bin) => [String(bin.id), String(bin.name || "")])
     );
-    const rows = (data || []).map((record) => ({
+    const rows = data.map((record) => ({
       "Return date & time": formatReturnDate(record.created_at),
       "Return reference": record.return_ref,
       "SUR ID": record.sur_id,

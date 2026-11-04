@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useAccess } from "@/components/AccessProvider";
 import { parseVendorExcel } from "@/lib/inbound/parsers";
 import { toDeviceMatchList } from "@/lib/inbound/vendorParser";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
@@ -50,6 +51,7 @@ function normName(s: any) {
 
 export default function InboundPage() {
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { user: accessUser } = useAccess();
 
   const [actor, setActor] = useState("unknown");
   const [actorId, setActorId] = useState<string>("");
@@ -150,15 +152,11 @@ const [page, setPage] = useState(1);
     );
   }
 
+  // The signed-in user is already loaded by AccessProvider.
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      const email = data?.user?.email;
-      const id = data?.user?.id;
-      if (email) setActor(email);
-      if (id) setActorId(id);
-    })();
-  }, [supabase]);
+    if (accessUser?.email) setActor(accessUser.email);
+    if (accessUser?.id) setActorId(accessUser.id);
+  }, [accessUser]);
 
   async function loadDevices() {
     const { data, error } = await supabase

@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import {
+  readAllPages,
+  readInChunks,
+  rowsOrThrow,
+} from "@/lib/supabase/read-all-pages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -14,34 +19,20 @@ function sb() {
   });
 }
 
-async function fetchAllMovements(supabase: any, batch_id: string) {
-
-  const pageSize = 1000;
-  let from = 0;
-  const allRows: any[] = [];
-
-  while (true) {
-
-    const { data, error } = await supabase
+// created_at is shared by a whole batch, so movement_id keeps the page order
+// stable and no row is repeated or skipped between pages.
+function fetchAllMovements(supabase: ReturnType<typeof sb>, batch_id: string) {
+  return readAllPages((from, to) =>
+    supabase
       .from("movements")
       .select("created_at, actor, imei, box_id")
       .eq("type", "IN")
       .eq("batch_id", batch_id)
       .order("created_at", { ascending: true })
-      .range(from, from + pageSize - 1);
-
-    if (error) throw error;
-
-    if (!data || data.length === 0) break;
-
-    allRows.push(...data);
-
-    if (data.length < pageSize) break;
-
-    from += pageSize;
-  }
-
-  return allRows;
+      .order("movement_id", { ascending: true })
+      .range(from, to)
+      .then(rowsOrThrow)
+  );
 }
 
 export async function GET(req: Request) {
@@ -62,27 +53,27 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "No movements found" }, { status: 404 });
     }
 
-    const boxIds = Array.from(new Set(movs.map((m: any) => String(m.box_id)).filter(Boolean)));
+    const boxIds = movs.map((m: any) => m.box_id).filter(Boolean).map(String);
 
-    const { data: boxes } = await supabase
-      .from("boxes")
-      .select("id, box_code, floor, bin_id")
-      .in("id", boxIds);
-
-    const boxMap: Record<string, any> = {};
-    for (const b of boxes || []) boxMap[String((b as any).id)] = b;
-
-    const binIds = Array.from(
-      new Set((boxes || []).map((b: any) => String(b.bin_id)).filter(Boolean))
+    const boxes = await readInChunks(boxIds, (ids) =>
+      supabase
+        .from("boxes")
+        .select("id, box_code, floor, bin_id")
+        .in("id", ids)
+        .then(rowsOrThrow)
     );
 
-    const { data: bins } = await supabase
-      .from("bins")
-      .select("id, name")
-      .in("id", binIds);
+    const boxMap: Record<string, any> = {};
+    for (const b of boxes) boxMap[String((b as any).id)] = b;
+
+    const binIds = boxes.map((b: any) => b.bin_id).filter(Boolean).map(String);
+
+    const bins = await readInChunks(binIds, (ids) =>
+      supabase.from("bins").select("id, name").in("id", ids).then(rowsOrThrow)
+    );
 
     const binMap: Record<string, string> = {};
-    for (const b of bins || []) binMap[String((b as any).id)] = String((b as any).name);
+    for (const b of bins) binMap[String((b as any).id)] = String((b as any).name);
 
     const rows = movs.map((m: any) => {
 

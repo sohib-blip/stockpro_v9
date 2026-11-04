@@ -42,8 +42,11 @@ export default function AccessProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [access, setAccess] = useState<AccessProfile>(EMPTY_ACCESS);
   const initialLoadResolved = useRef(false);
+  // User whose role and permissions are loaded, and the lookup in progress.
+  const loadedUserId = useRef<string | null | undefined>(undefined);
+  const pendingRefresh = useRef<Promise<void> | null>(null);
 
-  const refreshAccess = useCallback(async () => {
+  const loadAccess = useCallback(async () => {
     // Supabase can emit SIGNED_IN/TOKEN_REFRESHED again when a background tab
     // becomes active. Only block the route during the first access lookup;
     // blocking every silent refresh unmounts the page and erases form state.
@@ -52,8 +55,9 @@ export default function AccessProvider({ children }: { children: ReactNode }) {
       data: { user: currentUser },
     } = await supabase.auth.getUser();
 
-    setUser(currentUser ?? null);
     if (!currentUser) {
+      loadedUserId.current = null;
+      setUser(null);
       setAccess(EMPTY_ACCESS);
       initialLoadResolved.current = true;
       setLoading(false);
@@ -73,6 +77,9 @@ export default function AccessProvider({ children }: { children: ReactNode }) {
         .maybeSingle(),
     ]);
 
+    // User and access change together, so the app renders once per lookup.
+    loadedUserId.current = currentUser.id;
+    setUser(currentUser);
     setAccess({
       role: (roleRow?.role as AppRole | undefined) ?? null,
       permissions: permissionRow
@@ -83,11 +90,30 @@ export default function AccessProvider({ children }: { children: ReactNode }) {
     setLoading(false);
   }, [supabase]);
 
-  useEffect(() => {
-    refreshAccess();
+  // Calls made while a lookup is running share it instead of starting another.
+  const refreshAccess = useCallback(() => {
+    if (!pendingRefresh.current) {
+      pendingRefresh.current = loadAccess().finally(() => {
+        pendingRefresh.current = null;
+      });
+    }
+    return pendingRefresh.current;
+  }, [loadAccess]);
 
-    const { data } = supabase.auth.onAuthStateChange(() => {
-      refreshAccess();
+  useEffect(() => {
+    void refreshAccess();
+
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      // The first lookup above already covers the stored session, and a
+      // renewed token changes neither the user nor their access.
+      if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
+      // Supabase asks not to call it from inside this callback.
+      setTimeout(() => {
+        // Supabase repeats SIGNED_IN for the same user when a tab regains
+        // focus; a lookup still running is shared by refreshAccess.
+        if (event === "SIGNED_IN" && session?.user?.id === loadedUserId.current) return;
+        void refreshAccess();
+      }, 0);
     });
 
     return () => data.subscription.unsubscribe();

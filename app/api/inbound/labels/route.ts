@@ -67,6 +67,8 @@ export async function GET(req: Request) {
         .select("box_id, imei")
         .eq("import_id", batch_id)
         .order("box_id", { ascending: true })
+        // box_id repeats for every IMEI of a box: item_id keeps pages stable.
+        .order("item_id", { ascending: true })
         .range(from, to);
 
       if (error) throw error;

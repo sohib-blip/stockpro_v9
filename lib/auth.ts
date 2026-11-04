@@ -95,14 +95,20 @@ export async function authorizeApiRequest(
     };
   }
 
+  // The token is verified first; the session check and the permission
+  // lookup then run side by side (one round trip to the database, not two).
   const service = supabaseService();
-  const { data: activeSession, error: sessionError } = await service.rpc(
-    "touch_app_session",
-    {
-      p_user_id: session.user.id,
-      p_session_id: session.sessionId,
-    }
-  );
+  const [{ data: activeSession, error: sessionError }, accessResult] =
+    await Promise.all([
+      service.rpc("touch_app_session", {
+        p_user_id: session.user.id,
+        p_session_id: session.sessionId,
+      }),
+      getAccessProfile(session.user.id).then(
+        (profile) => ({ ok: true as const, profile }),
+        () => ({ ok: false as const })
+      ),
+    ]);
 
   if (sessionError) {
     return {
@@ -120,16 +126,14 @@ export async function authorizeApiRequest(
     };
   }
 
-  let access: AccessProfile;
-  try {
-    access = await getAccessProfile(session.user.id);
-  } catch {
+  if (!accessResult.ok) {
     return {
       ok: false as const,
       status: 503,
       error: "Unable to verify permissions",
     };
   }
+  const access = accessResult.profile;
 
   const isAdmin = access.role === "admin";
   const allowed =

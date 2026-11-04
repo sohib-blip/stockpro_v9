@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { trySyncNrdForUser } from "@/lib/nrd-sync";
+import { syncNrdForReader } from "@/lib/nrd-sync";
 import { createClient } from "@supabase/supabase-js";
 import { resolveApiUserEmail } from "@/lib/api-identity";
 
@@ -47,7 +47,7 @@ export async function GET(req: Request) {
 
     const range = getMonthRange(periodMonth);
     // Forgotten tasks end at 17:00 and scheduled tasks are recorded first.
-    await trySyncNrdForUser(supabase, userEmail);
+    await syncNrdForReader(supabase, userEmail);
 
     const { data, error } = await supabase
       .from("nrd_time_logs")

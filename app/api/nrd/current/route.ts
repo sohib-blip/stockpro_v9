@@ -1,8 +1,13 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveApiUserEmail } from "@/lib/api-identity";
-import { trySyncNrdForUser } from "@/lib/nrd-sync";
-import { nrdAutoStopAt, scheduleOccurrence, type NrdSchedule } from "@/lib/nrd-time";
+import { syncNrdForReader } from "@/lib/nrd-sync";
+import {
+  nrdAutoStopAt,
+  nrdTaskStopsAt,
+  scheduleOccurrence,
+  type NrdSchedule,
+} from "@/lib/nrd-time";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,26 +48,43 @@ export async function GET(req: Request) {
       url.searchParams.get("user_email")
     );
 
-    await trySyncNrdForUser(supabase, userEmail);
+    const now = new Date();
+    const synced = await syncNrdForReader(supabase, userEmail, now);
 
-    const { data, error } = await supabase
-      .from("nrd_time_logs")
-      .select("*")
-      .eq("user_email", userEmail)
-      .is("ended_at", null)
-      .order("started_at", { ascending: false })
-      .limit(1);
+    async function readActive() {
+      const { data, error } = await supabase
+        .from("nrd_time_logs")
+        .select("*")
+        .eq("user_email", userEmail)
+        .is("ended_at", null)
+        .order("started_at", { ascending: false })
+        .limit(1);
+      if (error) throw error;
+      const row = data?.[0] || null;
+      return row ? { ...row, scheduled_end: await scheduledEnd(supabase, row) } : null;
+    }
 
-    if (error) throw error;
+    let active = await readActive();
+    // The last sync is less than a minute old but this task has reached
+    // 17:00 or the end of its slot: stop it now rather than at the next sync.
+    if (
+      !synced &&
+      active &&
+      now.getTime() >=
+        nrdTaskStopsAt(
+          new Date(active.started_at),
+          active.scheduled_end ? new Date(active.scheduled_end) : null
+        ).at.getTime()
+    ) {
+      await syncNrdForReader(supabase, userEmail, now, { force: true });
+      active = await readActive();
+    }
 
-    const active = data?.[0] || null;
     return NextResponse.json({
       ok: true,
-      active: active
-        ? { ...active, scheduled_end: await scheduledEnd(supabase, active) }
-        : null,
+      active,
       // Every task stops at this time today (17:00 Belgian time).
-      day_end: nrdAutoStopAt(new Date()).toISOString(),
+      day_end: nrdAutoStopAt(now).toISOString(),
     });
   } catch (e: any) {
     return NextResponse.json(

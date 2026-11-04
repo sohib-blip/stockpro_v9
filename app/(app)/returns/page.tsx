@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useEffect, useRef, useState } from "react";
+import { useAccess } from "@/components/AccessProvider";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
 import {
@@ -94,7 +94,7 @@ type HistoryDetailRow = {
 };
 
 export default function ReturnsPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { user: accessUser } = useAccess();
 
   const [actor, setActor] = useState("unknown");
   const [actorId, setActorId] = useState("");
@@ -160,13 +160,11 @@ export default function ReturnsPage() {
   const [historyDetailsError, setHistoryDetailsError] = useState("");
   const returnOperationIdRef = useRef<string | null>(null);
 
+  // The signed-in user is already loaded by AccessProvider.
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      if (data?.user?.email) setActor(data.user.email);
-      if (data?.user?.id) setActorId(data.user.id);
-    })();
-  }, [supabase]);
+    if (accessUser?.email) setActor(accessUser.email);
+    if (accessUser?.id) setActorId(accessUser.id);
+  }, [accessUser]);
 
   useEffect(() => {
     let cancelled = false;

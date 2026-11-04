@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useEffect, useState } from "react";
+import { useAccess } from "@/components/AccessProvider";
 import { apiFetch } from "@/lib/apiFetch";
 import ProcessFeedback from "@/components/ProcessFeedback";
 import {
@@ -41,7 +41,7 @@ type PreviewCommand = {
 };
 
 export default function AccessoriesPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { user } = useAccess();
 
   const [actor, setActor] = useState("unknown");
   const [actorId, setActorId] = useState<string | null>(null);
@@ -75,13 +75,11 @@ export default function AccessoriesPage() {
   const [confirmError, setConfirmError] = useState("");
   const [inputMode, setInputMode] = useState<"manual" | "spreadsheet">("manual");
 
-  async function loadUser() {
-    const { data } = await supabase.auth.getUser();
-    const user = data?.user;
-
+  // The signed-in user is already loaded by AccessProvider.
+  useEffect(() => {
     if (user?.email) setActor(user.email);
     if (user?.id) setActorId(user.id);
-  }
+  }, [user]);
 
   async function loadAccessories() {
     const res = await apiFetch(`/api/accessory-bins/list?t=${Date.now()}`, {
@@ -117,7 +115,6 @@ export default function AccessoriesPage() {
   }
 
   useEffect(() => {
-    loadUser();
     loadAccessories();
     loadHistory();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- load once when the page opens

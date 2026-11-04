@@ -74,6 +74,16 @@ export function nrdAutoStopAt(startedAt: Date) {
   return brusselsInstant(brusselsDate(startedAt), NRD_DAY_END);
 }
 
+/**
+ * When a running task stops by itself: at the end of its scheduled slot when
+ * that comes before 17:00, otherwise at 17:00 Belgian time of its start day.
+ */
+export function nrdTaskStopsAt(startedAt: Date, scheduledEnd?: Date | null) {
+  const dayEnd = nrdAutoStopAt(startedAt);
+  const endsWithSchedule = Boolean(scheduledEnd && scheduledEnd.getTime() < dayEnd.getTime());
+  return { at: endsWithSchedule ? scheduledEnd! : dayEnd, endsWithSchedule };
+}
+
 /** True from 17:00 Belgian time: no NRD task may run any more that day. */
 export function isAfterNrdDayEnd(now: Date) {
   return now.getTime() >= nrdAutoStopAt(now).getTime();

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { useEffect, useRef, useState } from "react";
+import { useAccess } from "@/components/AccessProvider";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ProcessFeedback from "@/components/ProcessFeedback";
 import { deviceIdsInText } from "@/lib/device-serials";
@@ -20,7 +20,7 @@ type HistoryRow = {
 };
 
 export default function OutboundPage() {
-  const supabase = useMemo(() => createSupabaseBrowserClient(), []);
+  const { user: accessUser } = useAccess();
 
   const [actor, setActor] = useState("unknown");
   const [actorId, setActorId] = useState<string | null>(null);
@@ -51,14 +51,11 @@ const [page, setPage] = useState(1);
       : history.filter((h) => h.source === filter);
 
   // ================= USER =================
+  // The signed-in user is already loaded by AccessProvider.
   useEffect(() => {
-    (async () => {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      if (user?.email) setActor(user.email);
-      if (user?.id) setActorId(user.id);
-    })();
-  }, [supabase]);
+    if (accessUser?.email) setActor(accessUser.email);
+    if (accessUser?.id) setActorId(accessUser.id);
+  }, [accessUser]);
 
   // ================= HISTORY =================
   async function loadHistory() {

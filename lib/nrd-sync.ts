@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   brusselsDate,
   brusselsInstant,
-  nrdAutoStopAt,
+  nrdTaskStopsAt,
   scheduleOccurrence,
   type NrdSchedule,
 } from "./nrd-time";
@@ -79,12 +79,10 @@ export async function closeExpiredNrdLogs(supabase: Client, now: Date, userEmail
   );
 
   for (const log of logs) {
-    const dayEnd = nrdAutoStopAt(new Date(log.started_at));
     const schedule = log.schedule_id ? schedules.get(log.schedule_id) : undefined;
     const scheduledEnd =
       schedule && log.schedule_date ? scheduleOccurrence(schedule, log.schedule_date)?.end : undefined;
-    const endsWithSchedule = Boolean(scheduledEnd && scheduledEnd.getTime() < dayEnd.getTime());
-    const limit = endsWithSchedule ? scheduledEnd! : dayEnd;
+    const { at: limit, endsWithSchedule } = nrdTaskStopsAt(new Date(log.started_at), scheduledEnd);
     if (now.getTime() >= limit.getTime()) {
       await closeLog(supabase, log, limit, !endsWithSchedule);
     }
@@ -175,13 +173,53 @@ export async function syncNrdForEveryone(supabase: Client, now = new Date()) {
   await closeExpiredNrdLogs(supabase, now);
 }
 
-/** Same as syncNrdForUser, but a failure never blocks NRD itself. */
+/** Same as syncNrdForUser, but a failure never blocks NRD itself. Returns false on failure. */
 export async function trySyncNrdForUser(supabase: Client, userEmail: string, now = new Date()) {
   try {
     await syncNrdForUser(supabase, userEmail, now);
+    return true;
   } catch (error) {
     console.error("NRD SYNC FAILED", error);
+    return false;
   }
+}
+
+// Read routes (current task, history, stats) are polled by every open tab.
+// They bring a user's NRD up to date at most once a minute per server
+// instance; starting, stopping, schedules, exports and the cron always sync.
+export const NRD_READ_SYNC_INTERVAL_MS = 60_000;
+const readSyncs = new Map<string, { at: number; done: Promise<boolean> }>();
+
+/**
+ * Sync before a read unless this user was synced less than a minute ago.
+ * Concurrent reads share one sync. `force` syncs anyway (a task is past its
+ * stop time). Returns true when this call ran a sync.
+ */
+export async function syncNrdForReader(
+  supabase: Client,
+  userEmail: string,
+  now = new Date(),
+  options: { force?: boolean } = {}
+) {
+  const key = userEmail.trim().toLowerCase();
+  const previous = readSyncs.get(key);
+  const age = previous ? now.getTime() - previous.at : Infinity;
+  if (previous && !options.force && age >= 0 && age < NRD_READ_SYNC_INTERVAL_MS) {
+    await previous.done;
+    return false;
+  }
+
+  const entry = { at: now.getTime(), done: trySyncNrdForUser(supabase, userEmail, now) };
+  readSyncs.set(key, entry);
+  const ok = await entry.done;
+  // A failed sync is retried by the next read instead of a minute later.
+  if (!ok && readSyncs.get(key) === entry) readSyncs.delete(key);
+  return true;
+}
+
+/** Test helper: forget when users were last synced. */
+export function resetNrdReadSyncs() {
+  readSyncs.clear();
 }
 
 /** Same as syncNrdForEveryone, but a failure never blocks NRD itself. */

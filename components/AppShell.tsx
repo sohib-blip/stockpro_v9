@@ -1,6 +1,7 @@
 "use client";
 
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
+import { nrdTaskStopsAt } from "@/lib/nrd-time";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ReactNode, useEffect, useMemo, useState } from "react";
@@ -118,6 +119,14 @@ const NAVIGATION: PrimaryNav[] = [
   },
 ];
 
+const NRD_POLL_INTERVAL_MS = 30_000;
+
+type NrdBannerTask = {
+  task: string;
+  started_at: string;
+  scheduled_end?: string | null;
+};
+
 function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
@@ -131,10 +140,11 @@ function initialsFor(email: string | null) {
 
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "";
-  const [email, setEmail] = useState<string | null>(null);
-  const [activeNrd, setActiveNrd] = useState<any>(null);
+  const [activeNrd, setActiveNrd] = useState<NrdBannerTask | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { hasPermission } = useAccess();
+  const { user, hasPermission } = useAccess();
+  const email = user?.email ?? null;
+  const canNrd = hasPermission("can_nrd");
   const { t } = usePreferences();
   const supabase = useMemo(() => createSupabaseBrowserClient(), []);
   const router = useRouter();
@@ -161,45 +171,73 @@ export default function AppShell({ children }: { children: ReactNode }) {
     setMobileOpen(false);
   }, [pathname]);
 
+  // NRD banner: the signed-in user comes from AccessProvider. The current task
+  // is checked every 30 s while the tab is visible, right away when the tab
+  // becomes visible again, and when the task reaches its stop time.
   useEffect(() => {
-    async function loadUserAndNrd() {
-      const { data } = await supabase.auth.getUser();
-      const user = data?.user;
-      setEmail(user?.email || null);
+    // Without NRD access the banner is not rendered (see showNrdBanner).
+    if (!email || !canNrd) return;
 
-      if (user?.email && hasPermission("can_nrd")) {
+    let cancelled = false;
+    let stopTimer: ReturnType<typeof setTimeout> | undefined;
+
+    function showActive(active: NrdBannerTask | null) {
+      setActiveNrd(active);
+      clearTimeout(stopTimer);
+      if (!active?.started_at) return;
+      const stopsAt = nrdTaskStopsAt(
+        new Date(active.started_at),
+        active.scheduled_end ? new Date(active.scheduled_end) : null
+      ).at.getTime();
+      // A couple of seconds after the stop time, so the server sees it passed.
+      const delay = Math.max(0, stopsAt - Date.now()) + 2000;
+      if (delay < 24 * 60 * 60 * 1000) stopTimer = setTimeout(loadNrd, delay);
+    }
+
+    async function loadNrd() {
+      if (document.visibilityState === "hidden") return;
+      try {
         const res = await apiFetch(
-          `/api/nrd/current?user_email=${encodeURIComponent(user.email)}&t=${Date.now()}`,
+          `/api/nrd/current?user_email=${encodeURIComponent(email!)}&t=${Date.now()}`,
           { cache: "no-store" }
         );
         const json = await res.json();
-        if (json.ok) setActiveNrd(json.active || null);
-      } else {
-        setActiveNrd(null);
+        if (!cancelled && json.ok) showActive(json.active || null);
+      } catch {
+        // Keep the current banner; the next check tries again.
       }
     }
 
-    loadUserAndNrd();
-    const interval = setInterval(loadUserAndNrd, 5000);
+    void loadNrd();
+    const interval = setInterval(loadNrd, NRD_POLL_INTERVAL_MS);
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") void loadNrd();
+    };
     const handleNrdChanged = (event: Event) => {
-      const detail = (event as CustomEvent<{ active: unknown }>).detail;
+      const detail = (event as CustomEvent<{ active: NrdBannerTask | null }>).detail;
       if (detail && "active" in detail) {
-        setActiveNrd(detail.active || null);
+        showActive(detail.active || null);
         return;
       }
-      loadUserAndNrd();
+      void loadNrd();
     };
+    document.addEventListener("visibilitychange", handleVisibility);
     window.addEventListener("stockpro:nrd-changed", handleNrdChanged);
 
     return () => {
+      cancelled = true;
+      clearTimeout(stopTimer);
       clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
       window.removeEventListener("stockpro:nrd-changed", handleNrdChanged);
     };
-  }, [hasPermission, supabase]);
+  }, [canNrd, email]);
+
+  const showNrdBanner = Boolean(email && canNrd && activeNrd);
 
   return (
     <div className="app-shell">
-      {activeNrd && (
+      {showNrdBanner && activeNrd && (
         <Link href="/nrd" className="nrd-running-banner">
           <span aria-hidden="true">⏱</span>
           <span>

@@ -10,10 +10,23 @@ export type DispatchPreviewTokenPayload = {
   orders: DispatchOrder[];
 };
 
+let warnedAboutFallback = false;
+
+// Dedicated signing secret. Until DISPATCH_PREVIEW_SECRET is set in an
+// environment, previews keep being signed with the service-role key so that
+// nothing breaks; a server log line reminds us to add the dedicated secret.
 function secret() {
-  const value = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!value) throw new Error("Dispatch preview signing secret is unavailable");
-  return value;
+  const dedicated = process.env.DISPATCH_PREVIEW_SECRET;
+  if (dedicated) return dedicated;
+  const fallback = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!fallback) throw new Error("Dispatch preview signing secret is unavailable");
+  if (!warnedAboutFallback) {
+    warnedAboutFallback = true;
+    console.warn(
+      "DISPATCH_PREVIEW_SECRET is not set: dispatch previews are signed with the service-role key"
+    );
+  }
+  return fallback;
 }
 
 export function createDispatchPreviewToken(
@@ -37,7 +50,10 @@ export function verifyDispatchPreviewToken(token: string) {
   const expected = createHmac("sha256", secret()).update(encoded).digest();
   const received = Buffer.from(signature, "base64url");
   if (received.length !== expected.length || !timingSafeEqual(received, expected)) {
-    throw new Error("Invalid dispatch preview");
+    // Also reached by a preview signed before the signing secret changed.
+    throw new Error(
+      "This dispatch preview is invalid or was made before an update. Refresh the preview before confirming."
+    );
   }
 
   const payload = JSON.parse(

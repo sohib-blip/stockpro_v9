@@ -4,7 +4,9 @@ import { describe, expect, it } from "vitest";
 import ExcelJS from "exceljs";
 import {
   createReturnTemplateWorkbook,
+  readAllReturnTemplatePages,
   RETURN_TEMPLATE_HEADERS,
+  RETURN_TEMPLATE_PAGE_SIZE,
 } from "../../lib/return-template-export";
 import {
   RETURN_REASONS,
@@ -246,6 +248,47 @@ describe("complete customer return workflow", () => {
     );
     expect(page).toContain("Download new returns");
     expect(page).toContain("Re-download");
+  });
+
+  it("never builds the new-returns file from the capped claim response", () => {
+    expect(RETURN_TEMPLATE_PAGE_SIZE).toBe(1000);
+    expect(templateExportRoute).toContain('.from("return_template_export_batches")');
+    expect(templateExportRoute).toContain('.eq("template_export_batch_id", batchId)');
+    expect(templateExportRoute).toContain(".range(from, to)");
+    expect(templateExportRoute).toContain("claimedRows.length !== expectedCount");
+    expect(templateExportRoute).not.toContain("(data || []) as ReturnTemplateRow[]");
+    const claimCall = templateExportRoute.indexOf('"claim_return_template_export_batch_v2"');
+    const claimedFlag = templateExportRoute.indexOf("claimed = true", claimCall);
+    const batchRead = templateExportRoute.indexOf('.from("return_template_export_batches")');
+    expect(claimedFlag).toBeGreaterThan(claimCall);
+    expect(claimedFlag).toBeLessThan(batchRead);
+  });
+
+  it("reads every export row page by page, even past the 1,000-row cap", async () => {
+    const source = Array.from({ length: 2500 }, (_, index) => index);
+    const requests: Array<[number, number]> = [];
+    const rows = await readAllReturnTemplatePages(async (from, to) => {
+      requests.push([from, to]);
+      return source.slice(from, Math.min(to + 1, from + 1000));
+    });
+    expect(rows).toEqual(source);
+    expect(requests).toEqual([
+      [0, 999],
+      [1000, 1999],
+      [2000, 2999],
+      [2500, 3499],
+    ]);
+
+    // A server cap smaller than the page size must not truncate the result.
+    const capped = await readAllReturnTemplatePages(async (from, to) =>
+      source.slice(from, Math.min(to + 1, from + 400))
+    );
+    expect(capped).toEqual(source);
+
+    expect(await readAllReturnTemplatePages(async () => null)).toEqual([]);
+    await expect(
+      readAllReturnTemplatePages(async () => [1])
+    ).rejects.toThrow("too many pages");
   });
 
   it("fills the exact multi-device template columns and keeps IMEIs as text", async () => {

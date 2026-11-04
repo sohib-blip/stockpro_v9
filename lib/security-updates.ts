@@ -68,7 +68,7 @@ const advisorySchema = z.object({
   url: z.string().optional().nullable(),
 });
 
-const bulkResponseSchema = z.record(z.array(advisorySchema));
+const bulkResponseSchema = z.record(z.string(), z.array(advisorySchema));
 
 function normalizeSeverity(value: string): SecuritySeverity {
   const lower = value.toLowerCase();

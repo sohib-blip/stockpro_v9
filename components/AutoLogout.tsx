@@ -27,8 +27,6 @@ export default function AutoLogout() {
     const supabase = createSupabaseBrowserClient();
 
     let inactivityTimer: ReturnType<typeof setTimeout>;
-    let sessionChecker: ReturnType<typeof setInterval>;
-    let heartbeat: ReturnType<typeof setInterval>;
     let expired = false;
     let stopping = false;
 
@@ -115,8 +113,8 @@ export default function AutoLogout() {
     checkSession();
     updateHeartbeat();
 
-    sessionChecker = setInterval(checkSession, SESSION_CHECK_INTERVAL);
-    heartbeat = setInterval(updateHeartbeat, HEARTBEAT_INTERVAL);
+    const sessionChecker = setInterval(checkSession, SESSION_CHECK_INTERVAL);
+    const heartbeat = setInterval(updateHeartbeat, HEARTBEAT_INTERVAL);
 
     return () => {
       clearTimeout(inactivityTimer);

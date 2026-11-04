@@ -34,6 +34,7 @@ function discoverProtectedApiOperations() {
     "POST /api/auth/login",
     "PATCH /api/auth/connection-event",
     "GET /api/cron/low-stock",
+    "GET /api/cron/nrd",
   ]);
   const operations: ApiOperation[] = [];
 
@@ -179,7 +180,7 @@ function createDispatchPlanningSpreadsheet(path: string, orderId = `E2E-${run.st
     [
       "E2E-VEHICLE",
       "ATOM",
-      "Teltonika - Atom-E 4G - FMC880",
+      `Teltonika - Atom-E 4G - ${run.dispatchRuleDevice.name}`,
       orderId,
       `LINE-${run.stamp}`,
       "BE",
@@ -1568,15 +1569,15 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByLabel("Accessory line 1").selectOption(run.accessory.id);
     await page.getByLabel("Accessory quantity 1").fill("2");
     await page.getByRole("button", { name: "Preview Outbound" }).click();
-    await expect(
-      page
-        .locator(".accessories-process-grid .accessory-inline-preview")
-        .getByText("Confirm Accessory Outbound")
-    ).toBeVisible();
-    await expect(page.locator(".accessories-process-grid")).toContainText(
-      run.accessory.name
+    const accessoryPreview = page.locator(
+      ".accessories-process-grid .accessory-inline-preview"
     );
-    await page.getByRole("button", { name: "Confirm Outbound" }).click();
+    const confirmAccessoryOutbound = accessoryPreview.getByRole("button", {
+      name: "Confirm & Deduct",
+    });
+    await expect(confirmAccessoryOutbound).toBeVisible();
+    await expect(accessoryPreview).toContainText(run.accessory.name);
+    await confirmAccessoryOutbound.click();
     await expect(page.getByText("Accessory outbound completed")).toBeVisible();
     expect(await readAccessoryStock(run.accessory.id)).toBe(8);
 
@@ -1584,21 +1585,19 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.getByLabel("Accessory shipment reference").fill(`E2E-ACC-XLSX-${run.stamp}`);
     await page.getByLabel("Accessory spreadsheet file").setInputFiles(explicitFile);
     await page.getByRole("button", { name: "Preview Spreadsheet" }).click();
-    await expect(page.getByText("Confirm Accessory Outbound")).toBeVisible();
-    await page.getByRole("button", { name: "Confirm Outbound" }).click();
+    await expect(confirmAccessoryOutbound).toBeVisible();
+    await confirmAccessoryOutbound.click();
     await expect(page.getByText("Accessory outbound completed")).toBeVisible();
     expect(await readAccessoryStock(run.accessory.id)).toBe(7);
 
     await page.getByLabel("Accessory shipment reference").fill(`E2E-ACC-AUTO-${run.stamp}`);
     await page.getByLabel("Accessory spreadsheet file").setInputFiles(automaticFile);
     await page.getByRole("button", { name: "Preview Spreadsheet" }).click();
-    await expect(page.getByText("Confirm Accessory Outbound")).toBeVisible();
+    await expect(confirmAccessoryOutbound).toBeVisible();
     await expect(
-      page.locator(".prototype-preview-content").getByRole("cell", {
-        name: run.accessory.name,
-      })
+      accessoryPreview.getByRole("cell", { name: run.accessory.name })
     ).toBeVisible();
-    await page.getByRole("button", { name: "Confirm Outbound" }).click();
+    await confirmAccessoryOutbound.click();
     await expect(page.getByText("Accessory outbound completed")).toBeVisible();
     expect(await readAccessoryStock(run.accessory.id)).toBe(6);
     await signOut(page);
@@ -1729,7 +1728,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     });
     await expect(stockAlertDialog).toContainText(run.bin.name);
     await expect(stockAlertDialog).toContainText(run.accessory.name);
-    await expect(stockAlertDialog).toContainText("Large Plastic Envelope");
+    await expect(stockAlertDialog).toContainText(run.lowPackaging.name);
     await stockAlertDialog.getByRole("button", { name: "Close" }).click();
     await expect(stockAlertDialog).toBeHidden();
 
@@ -1784,17 +1783,20 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.locator('input[type="file"]').setInputFiles(ecan02Path);
     await page.getByRole("button", { name: "Preview Packaging" }).click();
     await expect(page.getByText("Preview ready — stock unchanged")).toBeVisible();
-    await expect(page.getByText("1 × FMB140", { exact: true })).toBeVisible();
+    await expect(page.locator("strong").filter({ hasText: /^1 × FMB140$/ })).toBeVisible();
     await expect(
-      page.getByText("1 × Teltonika Contactless CAN - ECAN02", {
-        exact: true,
-      })
+      page
+        .locator("strong")
+        .filter({ hasText: /^1 × Teltonika Contactless CAN - ECAN02$/ })
     ).toBeVisible();
     await expect(
       page.getByRole("button", {
         name: "Download vehicle labels for all orders — Word (1)",
       })
     ).toBeVisible();
+    // The planning state reloads just after the preview; wait for it so
+    // Clear Preview asks to end today's planning.
+    await expect(page.locator(".dispatch-plan-banner.is-mine")).toBeVisible();
     await page.getByRole("button", { name: "Clear Preview" }).click();
     await page
       .getByRole("dialog", { name: "Clear the preview and end today's planning?" })
@@ -1807,7 +1809,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(page.getByText("Preview ready — stock unchanged")).toBeVisible();
     await expect(page.getByText("Automatic rule", { exact: true })).toBeVisible();
     await expect(
-      page.getByText("1 × Atom Install Guide", { exact: true })
+      page.locator("strong").filter({ hasText: /^1 × Atom Install Guide$/ })
     ).toBeVisible();
     await expect(
       page.getByLabel(`Package for order E2E-${run.stamp}`)
@@ -1889,6 +1891,9 @@ test.describe.serial("StockPro staging end-to-end", () => {
       page.getByLabel(`Package for order E2E-LEARNED-${run.stamp}`)
     ).toHaveValue(run.dispatchAlternatePackaging.id);
     await expect(page.getByText("Learned from 1 confirmed choice")).toBeVisible();
+    // The planning state reloads just after the preview; wait for it so
+    // Clear Preview asks to end today's planning.
+    await expect(page.locator(".dispatch-plan-banner.is-mine")).toBeVisible();
     await page.getByRole("button", { name: "Clear Preview" }).click();
     await page
       .getByRole("dialog", { name: "Clear the preview and end today's planning?" })
@@ -1899,7 +1904,7 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await page.locator('input[type="file"]').setInputFiles(path);
     await page.getByRole("button", { name: "Preview Packaging" }).click();
     await expect(
-      page.getByText("This workbook has already been confirmed. Packaging stock was not changed.")
+      page.getByText("Nothing new to deduct", { exact: true })
     ).toBeVisible();
     expect(await readPackagingStock(run.dispatchAlternatePackaging.id)).toBe(4);
 

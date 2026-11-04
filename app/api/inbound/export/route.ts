@@ -18,7 +18,7 @@ async function fetchAllMovements(supabase: any, batch_id: string) {
 
   const pageSize = 1000;
   let from = 0;
-  let allRows: any[] = [];
+  const allRows: any[] = [];
 
   while (true) {
 

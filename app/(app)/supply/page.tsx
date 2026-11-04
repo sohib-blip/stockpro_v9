@@ -134,6 +134,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
   loadUser();
   loadSupply();
   loadProducts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load once when the page opens
 }, []);
 
   function officeLabel(code: string) {
@@ -1121,6 +1122,7 @@ async function openDetails(row: any) {
   title="Mark Supply Order as Imported?"
   message="Once marked as imported, this supply order will be locked and can no longer be edited or deleted."
   confirmText={busy ? "Saving…" : "Mark as Imported"}
+  busy={busy}
   cancelText="Cancel"
   onConfirm={() => saveSupply(true)}
   onCancel={() => setConfirmDone(false)}
@@ -1133,6 +1135,7 @@ async function openDetails(row: any) {
     deleteTarget?.order_number || "this supply"
   }? This action cannot be undone.`}
   confirmText={busy ? "Deleting…" : "Delete"}
+  busy={busy}
   cancelText="Cancel"
   danger
   onConfirm={deleteSupply}

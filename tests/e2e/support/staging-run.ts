@@ -17,8 +17,13 @@ export type StagingRun = {
   bin: { id: string; name: string };
   alternateBin: { id: string; name: string };
   accessory: { id: string; name: string };
-  dispatchRuleDevice: { id: string; name: string; owned: boolean };
+  dispatchRuleDevice: { id: string; name: string };
   dispatchRuleAccessory: { id: string; name: string };
+  // Inactive run-owned copies of the dimensionless accessories that staging
+  // rules add to FMB140, so the ECAN02 preview finds trusted dimensions
+  // without changing the staging records themselves.
+  ecanRuleDimensionShadows: Array<{ id: string; name: string }>;
+  lowPackaging: { id: string; code: string; name: string };
   dispatchPackagingLegacyAccessory: { id: string; name: string };
   packaging: { id: string; code: string; name: string };
   dispatchPackaging: { id: string; code: string; name: string };
@@ -45,6 +50,18 @@ function throwOnError(error: { message: string } | null, operation: string) {
   if (error) throw new Error(`${operation}: ${error.message}`);
 }
 
+// Dispatch plans started by E2E accounts (today's planner lock included).
+// planner_id is cleared when the account is deleted, so match the e-mail.
+const E2E_PLANNER_EMAIL_PATTERN = "stockpro.e2e.%@example.com";
+
+async function deleteE2EDispatchPlans(supabase: SupabaseClient) {
+  const { error } = await supabase
+    .from("dispatch_plans")
+    .delete()
+    .like("planner_email", E2E_PLANNER_EMAIL_PATTERN);
+  throwOnError(error, "Delete E2E dispatch plans");
+}
+
 function makeImei(seed: number) {
   return `99${String(seed).padStart(13, "0").slice(-13)}`;
 }
@@ -63,8 +80,17 @@ export async function createStagingRun(): Promise<StagingRun> {
     bin: { id: "", name: `TESTDEVICE${shortNumber}` },
     alternateBin: { id: "", name: `TESTALTERNATE${shortNumber}` },
     accessory: { id: "", name: `E2E Cable ${stamp}` },
-    dispatchRuleDevice: { id: "", name: "FMC880", owned: false },
-    dispatchRuleAccessory: { id: "", name: "Atom Install Guide\tTBD001" },
+    dispatchRuleDevice: { id: "", name: `E2EATOM${shortNumber}` },
+    dispatchRuleAccessory: {
+      id: "",
+      name: `Atom Install Guide\tE2E${shortNumber}`,
+    },
+    ecanRuleDimensionShadows: [],
+    lowPackaging: {
+      id: "",
+      code: `E2E-LOW-${shortNumber}`,
+      name: `E2E Low Packaging ${stamp}`,
+    },
     dispatchPackagingLegacyAccessory: {
       id: "",
       name: `E2E Dispatch Package Legacy ${stamp}`,
@@ -99,6 +125,8 @@ export async function createStagingRun(): Promise<StagingRun> {
   };
 
   try {
+    await deleteE2EDispatchPlans(supabase);
+
     for (const role of ["admin", "operator", "viewer"] as const) {
       const email = `stockpro.e2e.${role}.${stamp}@example.com`;
       const { data, error } = await supabase.auth.admin.createUser({
@@ -184,41 +212,28 @@ export async function createStagingRun(): Promise<StagingRun> {
       });
     throwOnError(templateError, "Create E2E automatic accessory rule");
 
-    const { data: existingDispatchDevices, error: existingDispatchDeviceError } =
+    // A run-owned Atom device keeps the dispatch scenario independent of the
+    // automatic rules staging users add to FMC880.
+    const { data: dispatchRuleDevice, error: dispatchRuleDeviceError } =
       await supabase
         .from("bins")
+        .insert({
+          name: run.dispatchRuleDevice.name,
+          active: true,
+          length_cm: 6,
+          width_cm: 9,
+          height_cm: 1.5,
+        })
         .select("id,name")
-        .eq("name", run.dispatchRuleDevice.name)
-        .eq("active", true)
-        .limit(1);
-    throwOnError(
-      existingDispatchDeviceError,
-      "Read E2E dispatch rule device"
-    );
-    const existingDispatchDevice = existingDispatchDevices?.[0];
-    if (existingDispatchDevice) {
-      run.dispatchRuleDevice = {
-        id: String(existingDispatchDevice.id),
-        name: String(existingDispatchDevice.name),
-        owned: false,
-      };
-    } else {
-      const { data: dispatchRuleDevice, error: dispatchRuleDeviceError } =
-        await supabase
-          .from("bins")
-          .insert({ name: run.dispatchRuleDevice.name, active: true })
-          .select("id,name")
-          .single();
-      throwOnError(dispatchRuleDeviceError, "Create E2E dispatch rule device");
-      if (!dispatchRuleDevice) {
-        throw new Error("Create E2E dispatch rule device: no row returned");
-      }
-      run.dispatchRuleDevice = {
-        id: String(dispatchRuleDevice.id),
-        name: String(dispatchRuleDevice.name),
-        owned: true,
-      };
+        .single();
+    throwOnError(dispatchRuleDeviceError, "Create E2E dispatch rule device");
+    if (!dispatchRuleDevice) {
+      throw new Error("Create E2E dispatch rule device: no row returned");
     }
+    run.dispatchRuleDevice = {
+      id: String(dispatchRuleDevice.id),
+      name: String(dispatchRuleDevice.name),
+    };
 
     const { data: dispatchRuleAccessory, error: dispatchRuleAccessoryError } =
       await supabase
@@ -229,6 +244,9 @@ export async function createStagingRun(): Promise<StagingRun> {
           minimum_stock: 0,
           category: "Items",
           active: true,
+          length_cm: 5.5,
+          width_cm: 8.3,
+          height_cm: 0.1,
         })
         .select("id,name")
         .single();
@@ -253,6 +271,92 @@ export async function createStagingRun(): Promise<StagingRun> {
         per_devices: 1,
       });
     throwOnError(dispatchRuleError, "Create E2E dispatch automatic rule");
+
+    const { data: fmb140Bins, error: fmb140BinsError } = await supabase
+      .from("bins")
+      .select("id")
+      .eq("name", "FMB140");
+    throwOnError(fmb140BinsError, "Read FMB140 device for ECAN02 rules");
+    const fmb140Ids = (fmb140Bins || []).map((row) => String(row.id));
+    if (fmb140Ids.length) {
+      const { data: fmb140Rules, error: fmb140RulesError } = await supabase
+        .from("device_accessory_templates")
+        .select("accessory_bin_id")
+        .in("device_id", fmb140Ids);
+      throwOnError(fmb140RulesError, "Read FMB140 automatic rules");
+      const ruleAccessoryIds = Array.from(
+        new Set((fmb140Rules || []).map((row) => String(row.accessory_bin_id)))
+      );
+      const { data: ruleAccessories, error: ruleAccessoriesError } =
+        ruleAccessoryIds.length
+          ? await supabase
+              .from("accessory_bins")
+              .select("name,category,length_cm,width_cm,height_cm")
+              .eq("active", true)
+              .in("id", ruleAccessoryIds)
+          : { data: [], error: null };
+      throwOnError(ruleAccessoriesError, "Read FMB140 rule accessories");
+      const dimensionless = (ruleAccessories || []).filter(
+        (row) =>
+          String(row.category || "").toLowerCase() !== "packages" &&
+          [row.length_cm, row.width_cm, row.height_cm].some(
+            (value) => value === null
+          )
+      );
+      for (const [index, accessory] of dimensionless.entries()) {
+        const originalName = String(accessory.name);
+        const { data: shadow, error: shadowError } = await supabase
+          .from("accessory_bins")
+          .insert({
+            name: `E2E Dimensions ${index + 1} ${stamp}`,
+            kinesis_names: [originalName],
+            current_stock: 0,
+            minimum_stock: 0,
+            category: "Items",
+            active: false,
+            length_cm: 1,
+            width_cm: 1,
+            height_cm: 1,
+          })
+          .select("id,name")
+          .single();
+        throwOnError(shadowError, "Create E2E ECAN02 rule dimensions");
+        if (!shadow) {
+          throw new Error("Create E2E ECAN02 rule dimensions: no row returned");
+        }
+        run.ecanRuleDimensionShadows.push({
+          id: String(shadow.id),
+          name: String(shadow.name),
+        });
+      }
+    }
+
+    // Low packaging owned by the run, large enough never to be recommended.
+    const { data: lowPackaging, error: lowPackagingError } = await supabase
+      .from("packaging_types")
+      .insert({
+        code: run.lowPackaging.code,
+        name: run.lowPackaging.name,
+        category: "BOX",
+        length_cm: 60,
+        width_cm: 40,
+        height_cm: 40,
+        on_hand_stock: 1,
+        reserved_stock: 0,
+        minimum_stock: 5,
+        active: true,
+        sort_order: 999,
+        source_name: "StockPro E2E low stock alert",
+      })
+      .select("id,code,name")
+      .single();
+    throwOnError(lowPackagingError, "Create E2E low packaging");
+    if (!lowPackaging) throw new Error("Create E2E low packaging: no row returned");
+    run.lowPackaging = {
+      id: String(lowPackaging.id),
+      code: String(lowPackaging.code),
+      name: String(lowPackaging.name),
+    };
 
     const {
       data: dispatchPackagingLegacyAccessory,
@@ -451,6 +555,7 @@ export async function cleanupStagingRun(
   if (userIds.length) {
     await supabase.from("dispatch_batches").delete().in("actor_id", userIds);
   }
+  await deleteE2EDispatchPlans(supabase).catch(() => undefined);
 
   if (run.accessory.id) {
     await supabase
@@ -478,6 +583,10 @@ export async function cleanupStagingRun(
       .eq("id", run.dispatchRuleAccessory.id);
   }
 
+  for (const shadow of run.ecanRuleDimensionShadows) {
+    await supabase.from("accessory_bins").delete().eq("id", shadow.id);
+  }
+
   const { data: packagingTypes } = await supabase
     .from("packaging_types")
     .select("id")
@@ -485,6 +594,7 @@ export async function cleanupStagingRun(
       run.packaging.code,
       run.dispatchPackaging.code,
       run.dispatchAlternatePackaging.code,
+      run.lowPackaging.code,
     ]);
   const packagingTypeIds = (packagingTypes || []).map((row) => row.id);
   if (packagingTypeIds.length) {
@@ -521,7 +631,11 @@ export async function cleanupStagingRun(
   if (run.alternateBin.id) {
     await supabase.from("bins").delete().eq("id", run.alternateBin.id);
   }
-  if (run.dispatchRuleDevice.id && run.dispatchRuleDevice.owned) {
+  if (run.dispatchRuleDevice.id) {
+    await supabase
+      .from("device_accessory_templates")
+      .delete()
+      .eq("device_id", run.dispatchRuleDevice.id);
     await supabase.from("bins").delete().eq("id", run.dispatchRuleDevice.id);
   }
 
@@ -628,6 +742,18 @@ export async function assertStagingRunClean(run: StagingRun) {
       "alternate dispatch packaging type"
     ),
     rowCount(
+      supabase.from("dispatch_plans").select("*", { count: "exact", head: true }).in("planner_email", userEmails),
+      "dispatch plans"
+    ),
+    rowCount(
+      supabase.from("packaging_types").select("*", { count: "exact", head: true }).eq("code", run.lowPackaging.code),
+      "low packaging type"
+    ),
+    rowCount(
+      supabase.from("accessory_bins").select("*", { count: "exact", head: true }).in("id", run.ecanRuleDimensionShadows.map((shadow) => shadow.id)),
+      "ECAN02 rule dimensions"
+    ),
+    rowCount(
       supabase.from("dispatch_batches").select("*", { count: "exact", head: true }).in("actor_id", userIds),
       "dispatch batches"
     ),
@@ -639,7 +765,12 @@ export async function assertStagingRunClean(run: StagingRun) {
       supabase
         .from("bins")
         .select("*", { count: "exact", head: true })
-        .in("name", [run.bin.name, run.alternateBin.name, run.uiBinName]),
+        .in("name", [
+          run.bin.name,
+          run.alternateBin.name,
+          run.uiBinName,
+          run.dispatchRuleDevice.name,
+        ]),
       "bins"
     ),
     rowCount(

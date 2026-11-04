@@ -120,6 +120,7 @@ export default function AccessoriesPage() {
     loadUser();
     loadAccessories();
     loadHistory();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load once when the page opens
   }, []);
 
   function updateLine(index: number, patch: Partial<ManualLine>) {

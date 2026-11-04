@@ -156,12 +156,22 @@ function trustedSource(req: Request) {
   return isIP(candidate) ? candidate : "unknown";
 }
 
+let warnedAboutBudgetFallback = false;
+
+// Dedicated HMAC secret for quota keys. Until WORKLOAD_BUDGET_HASH_SECRET is
+// set, the service-role key keeps being used so admission never stops; a
+// server log line reminds us to add the dedicated secret.
 function budgetSecret() {
-  return (
-    process.env.WORKLOAD_BUDGET_HASH_SECRET ||
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    null
-  );
+  const dedicated = process.env.WORKLOAD_BUDGET_HASH_SECRET;
+  if (dedicated) return dedicated;
+  const fallback = process.env.SUPABASE_SERVICE_ROLE_KEY || null;
+  if (fallback && !warnedAboutBudgetFallback) {
+    warnedAboutBudgetFallback = true;
+    console.warn(
+      "WORKLOAD_BUDGET_HASH_SECRET is not set: quota keys are hashed with the service-role key"
+    );
+  }
+  return fallback;
 }
 
 function digestIdentity(value: string, secret: string) {

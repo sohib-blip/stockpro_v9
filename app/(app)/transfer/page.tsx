@@ -76,6 +76,7 @@ export default function TransferPage() {
   useEffect(() => {
     loadHistory();
     loadBins();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load once when the page opens
   }, []);
 
   async function previewTransfer() {

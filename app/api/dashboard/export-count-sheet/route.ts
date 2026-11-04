@@ -70,7 +70,7 @@ export async function GET(req: Request) {
 
   try {
     const supabase = supabaseService();
-    let allRows: any[] = [];
+    const allRows: any[] = [];
     const pageSize = 1000;
     const requestedRows = MAX_COUNT_SHEET_ROWS + 1;
 
@@ -147,7 +147,7 @@ export async function GET(req: Request) {
     const sheetNameMap: Record<string, string> = {};
 
     for (const device of devices) {
-      let base = safeSheetName(device);
+      const base = safeSheetName(device);
       let finalName = base;
       let counter = 1;
 

@@ -105,6 +105,32 @@ export async function createReturnTemplateWorkbook(
   return new Uint8Array(output as any).slice().buffer;
 }
 
+// Supabase caps every API response (max_rows, 1,000 on StockPro projects), so
+// export rows are always read page by page instead of trusting one response.
+// The next page starts after the rows actually received and reading stops only
+// on an empty page, so a cap lower than the page size cannot truncate a file.
+// fetchPage must use a stable order (created_at, id).
+export const RETURN_TEMPLATE_PAGE_SIZE = 1000;
+const RETURN_TEMPLATE_MAX_PAGES = 1000;
+
+export async function readAllReturnTemplatePages<Row>(
+  fetchPage: (from: number, to: number) => Promise<readonly Row[] | null>,
+  pageSize = RETURN_TEMPLATE_PAGE_SIZE
+) {
+  if (!Number.isInteger(pageSize) || pageSize < 1) {
+    throw new Error("Invalid return export page size");
+  }
+
+  const rows: Row[] = [];
+  for (let pages = 0; pages < RETURN_TEMPLATE_MAX_PAGES; pages += 1) {
+    const from = rows.length;
+    const page = (await fetchPage(from, from + pageSize - 1)) || [];
+    if (page.length === 0) return rows;
+    rows.push(...page);
+  }
+  throw new Error("Return export has too many pages");
+}
+
 export function returnTemplateFilename(suffix: string) {
   const safeSuffix = suffix
     .trim()

@@ -36,7 +36,7 @@ export async function GET(req: Request) {
 
   try {
     const supabase = supabaseService();
-    let allRows: any[] = [];
+    const allRows: any[] = [];
     const pageSize = 1000;
     const requestedRows = MAX_EXPORT_ROWS + 1;
 

@@ -85,6 +85,7 @@ const [page, setPage] = useState(1);
 
   useEffect(() => {
   loadHistory();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when the history page changes
 }, [page]);
 
   // ================= PREVIEW MANUAL =================

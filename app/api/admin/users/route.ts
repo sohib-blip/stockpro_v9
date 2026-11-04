@@ -13,7 +13,7 @@ import {
 } from "@/lib/security-alert-recipients";
 
 const roleSchema = z.enum(ROLE_VALUES);
-const permissionsSchema = z.record(z.boolean()).default({});
+const permissionsSchema = z.record(z.string(), z.boolean()).default({});
 
 const updateSchema = z.object({
   user_id: z.string().uuid(),

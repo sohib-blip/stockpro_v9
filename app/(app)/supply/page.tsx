@@ -134,6 +134,7 @@ function productOptions(type: "DEVICE" | "ACCESSORY") {
   loadUser();
   loadSupply();
   loadProducts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load once when the page opens
 }, []);
 
   function officeLabel(code: string) {

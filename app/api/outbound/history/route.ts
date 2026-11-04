@@ -24,7 +24,7 @@ export async function GET(req: Request) {
     const limit = 50;
     const offset = (page - 1) * limit;
 
-    let allMovements: any[] = [];
+    const allMovements: any[] = [];
     let from = 0;
     const pageSize = 1000;
 

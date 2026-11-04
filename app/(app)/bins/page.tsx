@@ -515,6 +515,7 @@ export default function BinsPage() {
     loadAccessoryBins();
     loadPackagingCount();
     loadRuleCounts();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- load once when the page opens
   }, []);
 
   const totalRules = Object.values(ruleCounts).reduce(

@@ -200,7 +200,6 @@ export default function ReturnsPage() {
 
   useEffect(() => {
     loadTemplateExportStatus();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

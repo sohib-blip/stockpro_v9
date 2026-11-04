@@ -192,6 +192,7 @@ export default function NRDPage() {
       loadHistory(userEmail);
       loadStats(userEmail, periodMonth);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- reload when the user or the month changes
   }, [userEmail, periodMonth]);
 
   // Scheduled tasks start and stop by themselves, and every task stops at 17:00.
@@ -201,6 +202,7 @@ export default function NRDPage() {
       void loadCurrent(userEmail);
     }, 30_000);
     return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- loadCurrent only uses its email argument and state setters
   }, [userEmail]);
 
   useEffect(() => {

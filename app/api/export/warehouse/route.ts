@@ -15,7 +15,7 @@ async function fetchAllItems(supabase: any) {
 
   const pageSize = 5000;
   let from = 0;
-  let allRows: any[] = [];
+  const allRows: any[] = [];
 
   while (true) {
 

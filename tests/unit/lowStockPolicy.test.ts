@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -16,6 +17,29 @@ describe("isCronRequestAuthorized", () => {
     expect(isCronRequestAuthorized(null, undefined)).toBe(false);
     expect(isCronRequestAuthorized("Bearer anything", "")).toBe(false);
     expect(isCronRequestAuthorized("Bearer anything", "   ")).toBe(false);
+  });
+
+  it("rejects near misses of any length", () => {
+    const secret = "test-secret";
+    for (const header of [
+      "",
+      "Bearer",
+      "Bearer ",
+      "bearer test-secret",
+      "Bearer test-secre",
+      "Bearer test-secret ",
+      "Bearer test-secretX",
+      "test-secret",
+      `Bearer ${"x".repeat(5000)}`,
+    ]) {
+      expect(isCronRequestAuthorized(header, secret)).toBe(false);
+    }
+  });
+
+  it("compares the token in constant time", () => {
+    const source = readFileSync("lib/cron/lowStockPolicy.ts", "utf8");
+    expect(source).toContain("timingSafeEqual(");
+    expect(source).not.toMatch(/authorizationHeader\s*===\s*`Bearer/);
   });
 });
 

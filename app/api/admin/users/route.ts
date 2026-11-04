@@ -17,6 +17,7 @@ import {
   readAllPages,
   rowsOrThrow,
 } from "@/lib/supabase/read-all-pages";
+import { siteLink } from "@/lib/site-url";
 
 const roleSchema = z.enum(ROLE_VALUES);
 const permissionsSchema = z.record(z.string(), z.boolean()).default({});
@@ -218,7 +219,7 @@ export async function POST(req: Request) {
   const supabase = supabaseService();
   const { data, error } = await supabase.auth.admin.inviteUserByEmail(
     parsed.data.email.trim().toLowerCase(),
-    { redirectTo: new URL("/set-password", req.url).toString() }
+    { redirectTo: siteLink("/set-password", req.url) }
   );
 
   if (error || !data.user) {

@@ -133,6 +133,7 @@ vi.mock("@/lib/supabase/read-all-pages", () => import("../../lib/supabase/read-a
 vi.mock("@/lib/supply-orders", () => import("../../lib/supply-orders"));
 vi.mock("@/lib/returns", () => import("../../lib/returns"));
 vi.mock("@/lib/access-control", () => import("../../lib/access-control"));
+vi.mock("@/lib/site-url", () => import("../../lib/site-url"));
 vi.mock("@/lib/auth", () => ({
   supabaseService: () => client,
   authorizeApiRequest: async () => ({

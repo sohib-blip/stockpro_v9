@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -26,7 +27,21 @@ describe("E2E staging safety", () => {
   });
 
   it("keeps credentials and generated reports out of Git", () => {
-    expect(gitignore).toContain(".env.e2e.local");
+    const ignored = (path: string) =>
+      spawnSync("git", ["check-ignore", "--no-index", "-q", path]).status === 0;
+    for (const path of [
+      ".env",
+      ".env.local",
+      ".env.e2e.local",
+      ".env.test.local",
+      ".env.production",
+      ".env.staging",
+      ".env.production.local",
+    ]) {
+      expect(ignored(path), path).toBe(true);
+    }
+    expect(ignored(".env.example")).toBe(false);
+    expect(ignored(".env.e2e.example")).toBe(false);
     expect(gitignore).toContain("playwright-report/");
     expect(gitignore).toContain("test-results/");
   });

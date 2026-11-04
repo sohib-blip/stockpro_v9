@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - staging
+      - main
   push:
     branches:
       - staging
@@ -37,7 +38,23 @@ jobs:
           cache: npm
 
       - name: Install dependencies
+        id: install
         run: npm ci
 
       - name: Typecheck, test and build
         run: npm run check
+
+      # Non-blocking while the pre-existing lint problems remain. To block new
+      # problems only, set LINT_MAX_PROBLEMS (e.g. to today's count) on the
+      # summary step and lower it as the code is cleaned up.
+      - name: Lint (non-blocking)
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: |
+          npx eslint . --format json --output-file "$RUNNER_TEMP/eslint-report.json" || true
+          node scripts/lint-report.mjs "$RUNNER_TEMP/eslint-report.json"
+
+      # Fails only on high or critical advisories in the packages shipped with
+      # the site; accepted moderate ones (minimatch via exceljs) do not block.
+      - name: Audit production dependencies
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: npm audit --omit=dev --audit-level=high

@@ -690,7 +690,7 @@ export default function BinsPage() {
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
             <div className="space-y-1">
               <label className="text-xs text-slate-400">Accessory</label>
 

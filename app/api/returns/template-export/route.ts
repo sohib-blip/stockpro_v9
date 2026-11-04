@@ -5,6 +5,7 @@ import { getApiIdentity } from "@/lib/api-identity";
 import { supabaseService } from "@/lib/auth";
 import {
   createReturnTemplateWorkbook,
+  readAllReturnTemplatePages,
   returnTemplateFilename,
   type ReturnTemplateRow,
 } from "@/lib/return-template-export";
@@ -51,13 +52,18 @@ export async function GET(req: Request) {
     }
 
     try {
-      const { data, error } = await service
-        .from("return_records")
-        .select("imei,return_status,return_reason,return_ref,created_at")
-        .eq("operation_id", parsedOperationId.data)
-        .order("created_at", { ascending: true });
-      if (error) throw error;
-      if (!data?.length) {
+      const data = await readAllReturnTemplatePages(async (from, to) => {
+        const { data: page, error } = await service
+          .from("return_records")
+          .select("id,imei,return_status,return_reason,return_ref,created_at")
+          .eq("operation_id", parsedOperationId.data)
+          .order("created_at", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to);
+        if (error) throw error;
+        return page;
+      });
+      if (!data.length) {
         return NextResponse.json(
           { ok: false, error: "Return operation not found" },
           { status: 404 }
@@ -106,15 +112,59 @@ export async function GET(req: Request) {
       }
     );
     if (error) throw error;
+    // From here the batch may hold claimed rows: any failure releases it.
+    claimed = true;
 
-    const rows = (data || []) as ReturnTemplateRow[];
-    if (rows.length === 0) {
+    // The claim response itself is capped by Supabase (max_rows), so the file
+    // is built from the claimed batch read back page by page, and it must hold
+    // exactly the number of rows the claim marked as exported.
+    const { data: batch, error: batchError } = await service
+      .from("return_template_export_batches")
+      .select("row_count")
+      .eq("id", batchId)
+      .maybeSingle();
+    if (batchError) throw batchError;
+
+    if (!batch) {
+      if ((data || []).length > 0) {
+        throw new Error("Return export batch is missing after the claim");
+      }
       return NextResponse.json(
         { ok: false, error: "No new returns are waiting to be exported." },
         { status: 409 }
       );
     }
-    claimed = true;
+
+    const claimedRows = await readAllReturnTemplatePages(async (from, to) => {
+      const { data: page, error: pageError } = await service
+        .from("return_records")
+        .select("id,imei,return_status,return_reason,created_at")
+        .eq("template_export_batch_id", batchId)
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to);
+      if (pageError) throw pageError;
+      return page;
+    });
+
+    const expectedCount = Number(batch.row_count);
+    const uniqueIds = new Set(claimedRows.map((row) => row.id));
+    if (
+      claimedRows.length !== expectedCount ||
+      uniqueIds.size !== claimedRows.length
+    ) {
+      throw new Error(
+        `Return export incomplete: ${claimedRows.length} rows read, ${expectedCount} claimed`
+      );
+    }
+    if (claimedRows.length === 0) {
+      return NextResponse.json(
+        { ok: false, error: "No new returns are waiting to be exported." },
+        { status: 409 }
+      );
+    }
+
+    const rows = claimedRows as ReturnTemplateRow[];
 
     const buffer = await createReturnTemplateWorkbook(rows);
     return workbookResponse(

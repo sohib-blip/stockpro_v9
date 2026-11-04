@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  readAllPages,
+  readInChunks,
+  rowsOrThrow,
+} from "@/lib/supabase/read-all-pages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,16 +23,19 @@ export async function GET() {
   try {
     const supabase = sb();
 
-    // Include the destination floor in transfer history.
-    const { data, error } = await supabase
-      .from("movements")
-      .select("created_at, actor, box_id, to_floor")
-      .eq("type", "TRANSFER")
-      .order("created_at", { ascending: false });
+    // Include the destination floor in transfer history (every transfer).
+    const data = await readAllPages((from, to) =>
+      supabase
+        .from("movements")
+        .select("created_at, actor, box_id, to_floor")
+        .eq("type", "TRANSFER")
+        .order("created_at", { ascending: false })
+        .order("movement_id", { ascending: false })
+        .range(from, to)
+        .then(rowsOrThrow)
+    );
 
-    if (error) throw error;
-
-    if (!data || data.length === 0) {
+    if (data.length === 0) {
       return new NextResponse(
         JSON.stringify({ ok: true, rows: [] }),
         {
@@ -39,15 +47,14 @@ export async function GET() {
       );
     }
 
-    const boxIds = [...new Set(data.map((d) => d.box_id))];
-
-    const { data: boxes } = await supabase
-      .from("boxes")
-      .select("id, box_code")
-      .in("id", boxIds);
+    const boxes = await readInChunks(
+      data.map((d) => d.box_id).filter(Boolean),
+      (ids) =>
+        supabase.from("boxes").select("id, box_code").in("id", ids).then(rowsOrThrow)
+    );
 
     const boxMap = new Map(
-      boxes?.map((b) => [b.id, b]) || []
+      boxes.map((b) => [b.id, b])
     );
 
     const rows = data.map((row) => ({

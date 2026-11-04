@@ -1,6 +1,11 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import {
+  readAllPages,
+  readInChunks,
+  rowsOrThrow,
+} from "@/lib/supabase/read-all-pages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,57 +34,58 @@ export async function GET(req: Request) {
 
     const supabase = sb();
 
-    const { data: movements, error } = await supabase
-      .from("movements")
-      .select(`
-        created_at,
-        actor,
-        shipment_ref,
-        source,
-        operation_id,
-        imei,
-        box_id,
-        device_id
-      `)
-      .eq("operation_id", operationId)
-      .eq("type", "OUT")
-      .order("created_at", { ascending: false });
+    // An End-of-Day outbound can hold thousands of IMEIs: read every page.
+    const movements = await readAllPages((from, to) =>
+      supabase
+        .from("movements")
+        .select(`
+          created_at,
+          actor,
+          shipment_ref,
+          source,
+          operation_id,
+          imei,
+          box_id,
+          device_id
+        `)
+        .eq("operation_id", operationId)
+        .eq("type", "OUT")
+        .order("created_at", { ascending: false })
+        .order("movement_id", { ascending: false })
+        .range(from, to)
+        .then(rowsOrThrow)
+    );
 
-    if (error) throw error;
-
-    if (!movements || movements.length === 0) {
+    if (movements.length === 0) {
       return NextResponse.json(
         { ok: false, error: "No data for this operation" },
         { status: 404 }
       );
     }
 
-    const boxIds = [
-      ...new Set(movements.map((m: any) => m.box_id).filter(Boolean)),
-    ];
-
-    const deviceIds = [
-      ...new Set(movements.map((m: any) => m.device_id).filter(Boolean)),
-    ];
-
-    const [{ data: boxes }, { data: devices }] = await Promise.all([
-      supabase
-        .from("boxes")
-        .select("id, box_code, floor")
-        .in("id", boxIds.length ? boxIds : ["00000000-0000-0000-0000-000000000000"]),
-
-      supabase
-        .from("bins")
-        .select("id, name")
-        .in("id", deviceIds.length ? deviceIds : ["00000000-0000-0000-0000-000000000000"]),
+    const [boxes, devices] = await Promise.all([
+      readInChunks(
+        movements.map((m: any) => m.box_id).filter(Boolean),
+        (ids) =>
+          supabase
+            .from("boxes")
+            .select("id, box_code, floor")
+            .in("id", ids)
+            .then(rowsOrThrow)
+      ),
+      readInChunks(
+        movements.map((m: any) => m.device_id).filter(Boolean),
+        (ids) =>
+          supabase.from("bins").select("id, name").in("id", ids).then(rowsOrThrow)
+      ),
     ]);
 
     const boxMap = Object.fromEntries(
-      (boxes || []).map((b: any) => [b.id, b])
+      boxes.map((b: any) => [b.id, b])
     );
 
     const deviceMap = Object.fromEntries(
-      (devices || []).map((d: any) => [d.id, d])
+      devices.map((d: any) => [d.id, d])
     );
 
     const rows = movements.map((m: any) => ({

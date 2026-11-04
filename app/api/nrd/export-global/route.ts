@@ -3,6 +3,7 @@ import { trySyncNrdForEveryone } from "@/lib/nrd-sync";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import { getApiIdentity } from "@/lib/api-identity";
+import { readAllPages, rowsOrThrow } from "@/lib/supabase/read-all-pages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -75,18 +76,20 @@ export async function GET(req: Request) {
     // Forgotten tasks end at 17:00 and scheduled tasks are recorded first.
     await trySyncNrdForEveryone(supabase);
 
-    const { data, error } = await supabase
-      .from("nrd_time_logs")
-      .select("*")
-      .not("ended_at", "is", null)
-      .gte("started_at", range.start)
-      .lt("started_at", range.end)
-      .order("user_email", { ascending: true })
-      .order("started_at", { ascending: true });
-
-    if (error) throw error;
-
-    const rows = data || [];
+    // Read every finished task of the month, page by page.
+    const rows = await readAllPages((from, to) =>
+      supabase
+        .from("nrd_time_logs")
+        .select("*")
+        .not("ended_at", "is", null)
+        .gte("started_at", range.start)
+        .lt("started_at", range.end)
+        .order("user_email", { ascending: true })
+        .order("started_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to)
+        .then(rowsOrThrow)
+    );
 
     const wb = XLSX.utils.book_new();
 

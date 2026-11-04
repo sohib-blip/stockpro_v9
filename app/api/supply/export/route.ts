@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import { loadSupplyOrdersWithItems } from "@/lib/supply-orders";
+import { errorMessage } from "@/lib/supabase/read-all-pages";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,40 +14,18 @@ const supabase = createClient(
 );
 
 export async function GET() {
-  const { data: supplies, error: suppliesError } = await supabase
-    .from("supplies")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (suppliesError) {
+  let supplies: Awaited<ReturnType<typeof loadSupplyOrdersWithItems>>;
+  try {
+    supplies = await loadSupplyOrdersWithItems(supabase);
+  } catch (error) {
     return NextResponse.json(
-      { ok: false, error: suppliesError.message },
+      { ok: false, error: errorMessage(error, "Supply export failed") },
       { status: 500 }
     );
   }
 
-  const ids = (supplies || []).map((s: any) => s.id);
-
-  let items: any[] = [];
-
-  if (ids.length) {
-    const { data: itemData, error: itemError } = await supabase
-      .from("supply_items")
-      .select("*")
-      .in("supply_id", ids);
-
-    if (itemError) {
-      return NextResponse.json(
-        { ok: false, error: itemError.message },
-        { status: 500 }
-      );
-    }
-
-    items = itemData || [];
-  }
-
-  const rows = (supplies || []).flatMap((s: any) => {
-    const supplyItems = items.filter((i) => i.supply_id === s.id);
+  const rows = supplies.flatMap((s): Record<string, unknown>[] => {
+    const supplyItems = s.supply_items;
 
     if (!supplyItems.length) {
       return [

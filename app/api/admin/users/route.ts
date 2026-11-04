@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { User } from "@supabase/supabase-js";
 import { z } from "zod";
 import {
   AppRole,
@@ -11,6 +12,11 @@ import {
   saveSecurityAlertRecipient,
   securityAlertRecipientIds,
 } from "@/lib/security-alert-recipients";
+import {
+  errorMessage,
+  readAllPages,
+  rowsOrThrow,
+} from "@/lib/supabase/read-all-pages";
 
 const roleSchema = z.enum(ROLE_VALUES);
 const permissionsSchema = z.record(z.string(), z.boolean()).default({});
@@ -55,6 +61,49 @@ async function saveAccess(
   return normalizePermissions(data);
 }
 
+// Supabase Auth lists users one numbered page at a time. Reading stops on an
+// empty page, so a server-side page size below perPage cannot drop users.
+const AUTH_USERS_PER_PAGE = 1000;
+const AUTH_USERS_MAX_PAGES = 100;
+
+async function listAllAuthUsers(supabase: ReturnType<typeof supabaseService>) {
+  const users: User[] = [];
+  for (let page = 1; page <= AUTH_USERS_MAX_PAGES; page += 1) {
+    const { data, error } = await supabase.auth.admin.listUsers({
+      page,
+      perPage: AUTH_USERS_PER_PAGE,
+    });
+    if (error) throw error;
+    if (data.users.length === 0) return users;
+    users.push(...data.users);
+  }
+  throw new Error("Read stopped: too many pages");
+}
+
+// Every account with its role, permissions and IT alert flag, all pages read.
+function loadUserDirectory(supabase: ReturnType<typeof supabaseService>) {
+  return Promise.all([
+    listAllAuthUsers(supabase),
+    readAllPages((from, to) =>
+      supabase
+        .from("user_roles")
+        .select("user_id,role")
+        .order("user_id")
+        .range(from, to)
+        .then(rowsOrThrow)
+    ),
+    readAllPages((from, to) =>
+      supabase
+        .from("user_permissions")
+        .select("*")
+        .order("user_id")
+        .range(from, to)
+        .then(rowsOrThrow)
+    ),
+    securityAlertRecipientIds(supabase).catch(() => null),
+  ]);
+}
+
 export async function GET(req: Request) {
   const admin = await requireAdmin(req);
   if (!admin.ok) {
@@ -65,30 +114,22 @@ export async function GET(req: Request) {
   }
 
   const supabase = supabaseService();
-  const [{ data: authData, error: authError }, roles, permissions, itContacts] =
-    await Promise.all([
-      supabase.auth.admin.listUsers({ page: 1, perPage: 1000 }),
-      supabase.from("user_roles").select("user_id,role"),
-      supabase.from("user_permissions").select("*"),
-      securityAlertRecipientIds(supabase).catch(() => null),
-    ]);
-
-  if (authError || roles.error || permissions.error) {
+  let directory: Awaited<ReturnType<typeof loadUserDirectory>>;
+  try {
+    directory = await loadUserDirectory(supabase);
+  } catch (error) {
     return NextResponse.json(
-      {
-        ok: false,
-        error:
-          authError?.message || roles.error?.message || permissions.error?.message,
-      },
+      { ok: false, error: errorMessage(error, "Unable to load users") },
       { status: 500 }
     );
   }
+  const [users, roles, permissions, itContacts] = directory;
 
   const roleByUser = new Map(
-    (roles.data ?? []).map((row) => [row.user_id, row.role as AppRole])
+    roles.map((row) => [row.user_id, row.role as AppRole])
   );
   const permissionsByUser = new Map(
-    (permissions.data ?? []).map((row) => [
+    permissions.map((row) => [
       row.user_id,
       normalizePermissions(row),
     ])
@@ -97,7 +138,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     current_user_id: admin.user.id,
-    users: authData.users.map((user) => ({
+    users: users.map((user) => ({
       id: user.id,
       email: user.email ?? "",
       created_at: user.created_at,

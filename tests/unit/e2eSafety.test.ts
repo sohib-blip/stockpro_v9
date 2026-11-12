@@ -72,11 +72,9 @@ describe("E2E staging safety", () => {
       'throw new Error("Safety stop: Production and Staging URLs are identical")'
     );
     expect(cloneScript).toContain("staging-backup-before-clear-");
-    expect(cloneScript).toContain("LEGACY_PRODUCTION_SNAPSHOT_TABLES");
-    expect(cloneScript).toContain('"device_stock"');
-    expect(cloneScript).toContain(
-      "[...COPY_ORDER, ...LEGACY_PRODUCTION_SNAPSHOT_TABLES]"
-    );
+    // Production snapshots only hold the pseudonymized copied tables now.
+    expect(cloneScript).not.toContain("LEGACY_PRODUCTION_SNAPSHOT_TABLES");
+    expect(cloneScript).toContain('from "./lib/clone-anonymizer.mjs"');
     expect(cloneScript).toContain('command === "clear-staging"');
     expect(cloneScript).toContain(
       "Staging business and technical data cleared; Production was read-only"

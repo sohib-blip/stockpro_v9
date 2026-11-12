@@ -434,3 +434,48 @@ export function parseEndOfDayWorkbook(
     accessories: accessoryRows,
   };
 }
+
+/**
+ * The report's content, one canonical line per row that has an Item Type:
+ * Item Type, Order Ref, IMEI / ID, Companion Device IMEI and Item Quantity.
+ * Sheet names, row order, formatting and other columns are left out, so the
+ * same report re-saved or re-exported gives the same lines.
+ */
+export function endOfDayReportContentLines(workbook: XLSX.WorkBook): string[] {
+  const lines: string[] = [];
+
+  for (const sheetName of workbook.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets[sheetName], {
+      header: 1,
+      raw: true,
+      defval: "",
+      blankrows: true,
+    });
+    const header = findHeaderRow(rows);
+    if (!header) continue;
+
+    for (let rowIndex = header.rowIndex + 1; rowIndex < rows.length; rowIndex += 1) {
+      const row = rows[rowIndex];
+      const itemType = normalizeText(row[header.itemTypeIndex]);
+      if (!itemType) continue;
+
+      const cell = (index: number) => (index >= 0 ? row[index] : "");
+      const idOrText = (value: unknown) =>
+        parseDeviceId(value) ?? normalizeText(value);
+      const rawQuantity = cell(header.quantityIndex);
+      const quantity = parseItemQuantity(rawQuantity);
+
+      lines.push(
+        [
+          itemType,
+          normalizeText(cell(header.orderRefIndex)),
+          idOrText(row[header.imeiIndex]),
+          idOrText(cell(header.companionIndex)),
+          quantity === null ? `?${normalizeText(rawQuantity)}` : String(quantity),
+        ].join("\u001f")
+      );
+    }
+  }
+
+  return lines.sort();
+}

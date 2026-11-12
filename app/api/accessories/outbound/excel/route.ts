@@ -7,8 +7,14 @@ import {
   DeviceAccessoryTemplate,
   EndOfDayStockItem,
 } from "@/lib/outbound/accessoryEndOfDay";
-import { parseEndOfDayWorkbook } from "@/lib/outbound/endOfDayParser";
-import { accessoryReportOperationId } from "@/lib/outbound/reportFingerprint";
+import {
+  endOfDayReportContentLines,
+  parseEndOfDayWorkbook,
+} from "@/lib/outbound/endOfDayParser";
+import {
+  accessoryReportContentOperationId,
+  accessoryReportOperationId,
+} from "@/lib/outbound/reportFingerprint";
 import {
   inventoryCommandErrorMessage,
   inventoryCommandErrorStatus,
@@ -102,7 +108,13 @@ export async function POST(req: Request) {
     const historyReference = shipmentRef.trim() || fileName;
     const comment = String(form.get("comment") || "");
     const requestedOperationId = String(form.get("operation_id") || "");
-    const operationId = accessoryReportOperationId(buffer);
+    // The key comes from the report's lines, so the same report re-saved or
+    // re-exported is still recognised. The former file-bytes key is checked
+    // too, for reports confirmed before this change.
+    const operationId = accessoryReportContentOperationId(
+      endOfDayReportContentLines(workbook)
+    );
+    const legacyFileOperationId = accessoryReportOperationId(buffer);
     const supabase = supabaseService();
 
     if (shipmentRef.length > 500 || comment.length > 1000) {
@@ -125,7 +137,7 @@ export async function POST(req: Request) {
     const { data: existingReceipts, error: receiptError } = await supabase
       .from("inventory_command_receipts")
       .select("operation_id")
-      .eq("operation_id", operationId)
+      .in("operation_id", [operationId, legacyFileOperationId])
       .limit(1);
     if (receiptError) throw receiptError;
 

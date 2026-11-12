@@ -30,6 +30,16 @@ export async function POST(req: Request) {
       );
     }
 
+    // Saving a rule that already exists for this model and accessory updates it.
+    const { data: existing, error: existingError } = await supabase
+      .from("device_accessory_templates")
+      .select("id")
+      .eq("device_id", device_id)
+      .eq("accessory_bin_id", accessory_bin_id)
+      .limit(1);
+
+    if (existingError) throw existingError;
+
     const { error } = await supabase
       .from("device_accessory_templates")
       .upsert(
@@ -48,7 +58,7 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, updated: (existing || []).length > 0 });
   } catch (e: any) {
     return NextResponse.json(
       {

@@ -26,8 +26,12 @@ describe("accessory End-of-Day spreadsheet safety", () => {
     expect(previewHelpers).toContain("automatic rule");
   });
 
-  it("derives an idempotency key from the file and blocks confirmed reports", () => {
+  it("derives an idempotency key from the report content and blocks confirmed reports", () => {
+    expect(route).toContain("accessoryReportContentOperationId(");
+    expect(route).toContain("endOfDayReportContentLines(workbook)");
+    // Reports confirmed with the former file-bytes key stay blocked.
     expect(route).toContain("accessoryReportOperationId(buffer)");
+    expect(route).toContain(".in(\"operation_id\", [operationId, legacyFileOperationId])");
     expect(route).toContain('.from("inventory_command_receipts")');
     expect(route).toContain("duplicate_report: true");
     expect(route).toContain("No stock was removed again");

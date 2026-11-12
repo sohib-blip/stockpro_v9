@@ -55,6 +55,8 @@ export default function AccessoriesPage() {
   ]);
 
   const [file, setFile] = useState<File | null>(null);
+  // Bumped after a confirm so the file field shows no file again.
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [history, setHistory] = useState<any[]>([]);
   const [search, setSearch] = useState("");
 
@@ -373,6 +375,7 @@ export default function AccessoriesPage() {
       `Spreadsheet outbound completed — ${removedUnits} unit${removedUnits === 1 ? "" : "s"} removed${reference ? ` · ${reference}` : ""}`
     );
     setFile(null);
+    setFileInputKey((key) => key + 1);
     setShipmentRef("");
     setComment("");
 
@@ -550,6 +553,7 @@ export default function AccessoriesPage() {
 
         <div className="flex flex-wrap gap-3 items-center">
           <input
+            key={fileInputKey}
             type="file"
             aria-label="Accessory spreadsheet file"
             accept=".xlsx,.xls"

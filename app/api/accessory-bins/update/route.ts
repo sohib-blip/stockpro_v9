@@ -4,6 +4,11 @@ import {
   accessoryWriteError,
   parseAccessoryBinInput,
 } from "@/lib/accessory-bin-input";
+import { getApiIdentity } from "@/lib/api-identity";
+import {
+  saveAccessoryStockCount,
+  STOCK_COUNT_REASON,
+} from "@/lib/accessory-stock-count";
 import {
   isMissingDispatchColumns,
   loadDispatchInventoryItems,
@@ -45,9 +50,11 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: kinesisNames.error }, { status: 400 });
   }
 
+  const identity = getApiIdentity(req);
+
+  // The stock is saved afterwards with a movement (before -> after).
   const update: Record<string, unknown> = {
     name: input.name,
-    current_stock: input.currentStock,
     minimum_stock: input.minimumStock,
     category: input.category,
   };
@@ -83,6 +90,24 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { ok: false, error: failure.error },
       { status: failure.status }
+    );
+  }
+
+  const { error: stockError } = await saveAccessoryStockCount(supabase, {
+    accessoryBinId: id,
+    stock: input.currentStock,
+    identity,
+    reason: STOCK_COUNT_REASON,
+  });
+
+  if (stockError) {
+    console.error("ACCESSORY STOCK COUNT ERROR", stockError);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "The other changes were saved, but the stock was not. Try again.",
+      },
+      { status: 500 }
     );
   }
 

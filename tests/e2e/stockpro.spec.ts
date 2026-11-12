@@ -1733,12 +1733,12 @@ test.describe.serial("StockPro staging end-to-end", () => {
     await expect(stockAlertDialog).toBeHidden();
 
     await page.getByRole("button", { name: "Packages", exact: true }).click();
-    await page.getByPlaceholder("Search accessory…").fill("Radius Box Medium");
+    await page.getByPlaceholder("Search accessory…").fill(run.okPackaging.name);
     const packageRow = page.locator(".accessory-table tbody tr").filter({
-      hasText: "Radius Box Medium",
+      hasText: run.okPackaging.name,
     });
-    await expect(packageRow).toContainText("TBD008");
-    await expect(packageRow).toContainText("20 × 13 × 5 cm");
+    await expect(packageRow).toContainText(run.okPackaging.code);
+    await expect(packageRow).toContainText("60 × 40 × 40 cm");
     await expect(packageRow).toContainText("500");
     await expect(packageRow).toContainText("200");
     await expect(packageRow).toContainText("OK");

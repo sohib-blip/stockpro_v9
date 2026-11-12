@@ -24,6 +24,7 @@ export type StagingRun = {
   // without changing the staging records themselves.
   ecanRuleDimensionShadows: Array<{ id: string; name: string }>;
   lowPackaging: { id: string; code: string; name: string };
+  okPackaging: { id: string; code: string; name: string };
   dispatchPackagingLegacyAccessory: { id: string; name: string };
   packaging: { id: string; code: string; name: string };
   dispatchPackaging: { id: string; code: string; name: string };
@@ -90,6 +91,11 @@ export async function createStagingRun(): Promise<StagingRun> {
       id: "",
       code: `E2E-LOW-${shortNumber}`,
       name: `E2E Low Packaging ${stamp}`,
+    },
+    okPackaging: {
+      id: "",
+      code: `E2E-OK-${shortNumber}`,
+      name: `E2E OK Packaging ${stamp}`,
     },
     dispatchPackagingLegacyAccessory: {
       id: "",
@@ -358,6 +364,35 @@ export async function createStagingRun(): Promise<StagingRun> {
       name: String(lowPackaging.name),
     };
 
+    // Packaging with healthy stock owned by the run, so the dashboard check
+    // does not depend on staging stock that other tests consume. Same size
+    // as the low packaging: never recommended for a real dispatch.
+    const { data: okPackaging, error: okPackagingError } = await supabase
+      .from("packaging_types")
+      .insert({
+        code: run.okPackaging.code,
+        name: run.okPackaging.name,
+        category: "BOX",
+        length_cm: 60,
+        width_cm: 40,
+        height_cm: 40,
+        on_hand_stock: 500,
+        reserved_stock: 0,
+        minimum_stock: 200,
+        active: true,
+        sort_order: 999,
+        source_name: "StockPro E2E healthy stock",
+      })
+      .select("id,code,name")
+      .single();
+    throwOnError(okPackagingError, "Create E2E OK packaging");
+    if (!okPackaging) throw new Error("Create E2E OK packaging: no row returned");
+    run.okPackaging = {
+      id: String(okPackaging.id),
+      code: String(okPackaging.code),
+      name: String(okPackaging.name),
+    };
+
     const {
       data: dispatchPackagingLegacyAccessory,
       error: dispatchPackagingLegacyAccessoryError,
@@ -595,6 +630,7 @@ export async function cleanupStagingRun(
       run.dispatchPackaging.code,
       run.dispatchAlternatePackaging.code,
       run.lowPackaging.code,
+      run.okPackaging.code,
     ]);
   const packagingTypeIds = (packagingTypes || []).map((row) => row.id);
   if (packagingTypeIds.length) {
@@ -748,6 +784,10 @@ export async function assertStagingRunClean(run: StagingRun) {
     rowCount(
       supabase.from("packaging_types").select("*", { count: "exact", head: true }).eq("code", run.lowPackaging.code),
       "low packaging type"
+    ),
+    rowCount(
+      supabase.from("packaging_types").select("*", { count: "exact", head: true }).eq("code", run.okPackaging.code),
+      "OK packaging type"
     ),
     rowCount(
       supabase.from("accessory_bins").select("*", { count: "exact", head: true }).in("id", run.ecanRuleDimensionShadows.map((shadow) => shadow.id)),

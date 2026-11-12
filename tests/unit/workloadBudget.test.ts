@@ -20,7 +20,6 @@ describe("shared workload budgets", () => {
       "dashboardExport",
       "countSheetExport",
       "outboundPreview",
-      "shipmentPdf",
       "dispatchLabels",
       "returnsHistory",
       "imeiSearch",

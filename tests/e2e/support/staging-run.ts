@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { permissionsForRole, type AppRole } from "../../../lib/access-control";
+import { test } from "@playwright/test";
 import { requireStagingEnvironment } from "./environment";
 
 type TestUser = {
@@ -862,11 +863,24 @@ export async function assertStagingRunClean(run: StagingRun) {
 
 export async function accessTokenFor(user: TestUser) {
   const environment = requireStagingEnvironment();
-  const response = await fetch(`${environment.baseURL}/api/auth/login`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ email: user.email, password: user.password }),
-  });
+  let response: Response;
+  for (let attempt = 1; ; attempt++) {
+    response = await fetch(`${environment.baseURL}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: user.email, password: user.password }),
+    });
+    // 10 sign-ins per account per clock minute: wait for the next window.
+    if (response.status !== 429 || attempt > 2) break;
+    const waitMs =
+      Math.min(65, Math.max(1, Number(response.headers.get("retry-after")) || 5)) * 1000;
+    try {
+      test.info().setTimeout(test.info().timeout + waitMs);
+    } catch {
+      // Called outside a test (setup): no test timeout to extend.
+    }
+    await new Promise((resolve) => setTimeout(resolve, waitMs));
+  }
   const body = await response.json().catch(() => null);
   if (!response.ok || !body?.session?.access_token) {
     throw new Error(

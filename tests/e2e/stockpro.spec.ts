@@ -68,19 +68,37 @@ function discoverProtectedApiOperations() {
   );
 }
 
+const MAX_LOGIN_RETRIES = 2;
+
+async function waitForLoginWindow(retryAfter: string | undefined) {
+  const waitMs = Math.min(65, Math.max(1, Number(retryAfter) || 5)) * 1000;
+  test.info().setTimeout(test.info().timeout + waitMs);
+  await new Promise((resolve) => setTimeout(resolve, waitMs));
+}
+
 async function login(page: Page, role: "admin" | "operator" | "viewer") {
   const user = run.users[role];
   await page.goto("/login");
-  await page.getByLabel("Email").fill(user.email);
-  await page.getByLabel("Password").fill(user.password);
-  const loginResponsePromise = page.waitForResponse(
-    (response) =>
-      response.request().method() === "POST" &&
-      new URL(response.url()).pathname === "/api/auth/login"
-  );
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  const loginResponse = await loginResponsePromise;
-  const loginBody = await loginResponse.json();
+  let loginBody: { requires_takeover?: boolean; session: { access_token: string } };
+  for (let attempt = 1; ; attempt++) {
+    await page.getByLabel("Email").fill(user.email);
+    await page.getByLabel("Password").fill(user.password);
+    const loginResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname === "/api/auth/login"
+    );
+    await page.getByRole("button", { name: "Sign in", exact: true }).click();
+    const loginResponse = await loginResponsePromise;
+    // The suite signs the same test users in many times; the app allows 10
+    // sign-ins per account per clock minute, so wait for the next window.
+    if (loginResponse.status() === 429 && attempt <= MAX_LOGIN_RETRIES) {
+      await waitForLoginWindow(loginResponse.headers()["retry-after"]);
+      continue;
+    }
+    loginBody = await loginResponse.json();
+    break;
+  }
 
   const takeover = page.getByRole("button", { name: "Take over session" });
   if (loginBody.requires_takeover) {

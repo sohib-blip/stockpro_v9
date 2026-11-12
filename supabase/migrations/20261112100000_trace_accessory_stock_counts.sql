@@ -1,15 +1,16 @@
 begin;
 
 -- Accessory stock set at creation or changed by hand in Inventory Setup now
--- leaves a COUNT_ADJUSTMENT movement with the stock before and after, like the
+-- leaves an ADJUSTMENT movement with the stock before and after, like the
 -- packaging stock counts. Existing movements are not changed.
 
 alter table public.accessory_movements
   add column if not exists stock_before integer,
   add column if not exists stock_after integer;
 
--- If a check constraint limits movement_type, let it also accept
--- COUNT_ADJUSTMENT (and every type already stored, so no existing row breaks).
+-- accessory_movements_type_check already accepts IN, OUT and ADJUSTMENT on
+-- staging. If a check constraint limits movement_type without ADJUSTMENT, let
+-- it also accept ADJUSTMENT (and every type already stored, so no row breaks).
 -- A constraint that also checks other columns is not rewritten: stop instead.
 do $$
 declare
@@ -23,7 +24,7 @@ begin
     where con.conrelid = 'public.accessory_movements'::regclass
       and con.contype = 'c'
       and pg_get_constraintdef(con.oid) ilike '%movement_type%'
-      and pg_get_constraintdef(con.oid) not ilike '%COUNT_ADJUSTMENT%'
+      and pg_get_constraintdef(con.oid) not like '%''ADJUSTMENT''%'
   loop
     if v_constraint.definition ~* '\m(qty|source|shipment_ref|order_ref|note|comment|actor|actor_id|operation_id|accessory_bin_id|created_at)\M' then
       raise exception 'accessory_movements constraint % also checks other columns: review it by hand (%)',
@@ -44,7 +45,7 @@ begin
     from (
       select 'IN'::text as movement_type
       union select 'OUT'
-      union select 'COUNT_ADJUSTMENT'
+      union select 'ADJUSTMENT'
       union select distinct movement.movement_type
         from public.accessory_movements movement
         where movement.movement_type is not null
@@ -120,7 +121,7 @@ begin
     values (
       p_accessory_bin_id,
       abs(p_stock - v_before),
-      'COUNT_ADJUSTMENT',
+      'ADJUSTMENT',
       btrim(p_reason),
       btrim(p_actor),
       p_actor_id,

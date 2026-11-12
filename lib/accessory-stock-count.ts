@@ -6,7 +6,7 @@ export const INITIAL_STOCK_REASON = "Initial stock set in Inventory Setup";
 export const STOCK_COUNT_REASON = "Stock count updated in Inventory Setup";
 
 /**
- * Sets an accessory's stock and records a COUNT_ADJUSTMENT movement with the
+ * Sets an accessory's stock and records an ADJUSTMENT movement with the
  * stock before and after (nothing is recorded when the stock does not change).
  */
 export async function saveAccessoryStockCount(

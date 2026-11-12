@@ -189,7 +189,7 @@ describe("accessory stock count migration", () => {
   it("locks the accessory, reads the stock before and records before/after", () => {
     expect(sql).toContain("where bin.id = p_accessory_bin_id for update");
     expect(sql).toContain("if v_before <> p_stock then");
-    expect(sql).toContain("'COUNT_ADJUSTMENT'");
+    expect(sql).toContain("'ADJUSTMENT'");
     expect(sql).toContain("abs(p_stock - v_before)");
     expect(sql).toMatch(/stock_before, stock_after \) values \(.*v_before, p_stock \)/);
   });

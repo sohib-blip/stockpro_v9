@@ -12,7 +12,7 @@ function request(role: string, email = "operator@example.com") {
 }
 
 describe("authenticated API identity", () => {
-  it("uses the trusted identity injected by middleware", () => {
+  it("uses the trusted identity injected by the proxy", () => {
     expect(getApiIdentity(request("operator"))).toEqual({
       userId: "00000000-0000-4000-8000-000000000001",
       email: "operator@example.com",

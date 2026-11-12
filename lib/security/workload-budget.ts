@@ -60,17 +60,6 @@ export const WORKLOAD_POLICIES = {
     globalConcurrency: 12,
     leaseSeconds: 60,
   },
-  shipmentPdf: {
-    routeClass: "outbound.shipment-pdf",
-    windowSeconds: 60,
-    principalLimit: 10,
-    sourceLimit: 20,
-    globalLimit: 50,
-    principalConcurrency: 1,
-    routeConcurrency: 2,
-    globalConcurrency: 8,
-    leaseSeconds: 60,
-  },
   dispatchLabels: {
     routeClass: "dispatch.vehicle-labels",
     windowSeconds: 60,

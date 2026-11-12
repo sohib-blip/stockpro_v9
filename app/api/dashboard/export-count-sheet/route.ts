@@ -9,6 +9,7 @@ import {
   releaseWorkloadLease,
   workloadRejectionResponse,
 } from "@/lib/security/workload-budget";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -514,9 +515,9 @@ return new NextResponse(buffer, {
   },
 });
 
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Export count sheet failed" },
+      { ok: false, error: errorMessage(e, "Export count sheet failed") },
       { status: 500 }
     );
   } finally {

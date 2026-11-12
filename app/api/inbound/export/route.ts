@@ -6,6 +6,7 @@ import {
   readInChunks,
   rowsOrThrow,
 } from "@/lib/supabase/read-all-pages";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -105,10 +106,10 @@ export async function GET(req: Request) {
       },
     });
 
-  } catch (e: any) {
+  } catch (e) {
 
     return NextResponse.json(
-      { ok: false, error: e?.message || "Export failed" },
+      { ok: false, error: errorMessage(e, "Export failed") },
       { status: 500 }
     );
 

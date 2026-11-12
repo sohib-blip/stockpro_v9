@@ -8,7 +8,7 @@ const source = readFileSync(
 );
 
 describe("browser authentication storage", () => {
-  it("lets the Supabase SSR client synchronize auth cookies with middleware", () => {
+  it("lets the Supabase SSR client synchronize auth cookies with the proxy", () => {
     expect(source).toContain("createBrowserClient");
     expect(source).not.toContain("storage:");
     expect(source).not.toContain("window.sessionStorage");

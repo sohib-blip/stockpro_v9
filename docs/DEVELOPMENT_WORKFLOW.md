@@ -66,5 +66,8 @@ banniere n'est pas visible sur l'URL de test, verifier
 
 Toute modification de schema doit etre enregistree dans une migration Supabase
 versionnee. La base de staging doit recevoir la migration avant la production.
+Une fois la migration appliquee sur staging, lancer `npm run db:schema` et
+commiter `supabase/schema/staging-schema.sql` avec elle (voir
+`supabase/schema/README.md`).
 Le jeu de donnees de staging ne doit contenir ni IMEI reels, ni adresses e-mail
 reelles, ni informations confidentielles copiees de la production.

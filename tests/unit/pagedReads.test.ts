@@ -130,6 +130,7 @@ vi.mock("@supabase/supabase-js", () => ({ createClient: () => client }));
 // Vitest has no "@/" alias here: route imports of real modules are pointed at
 // the actual files, the others are replaced by small fakes.
 vi.mock("@/lib/supabase/read-all-pages", () => import("../../lib/supabase/read-all-pages"));
+vi.mock("@/lib/error-message", () => import("../../lib/error-message"));
 vi.mock("@/lib/supply-orders", () => import("../../lib/supply-orders"));
 vi.mock("@/lib/returns", () => import("../../lib/returns"));
 vi.mock("@/lib/access-control", () => import("../../lib/access-control"));

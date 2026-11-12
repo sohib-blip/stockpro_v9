@@ -9,6 +9,7 @@ import {
   releaseWorkloadLease,
   workloadRejectionResponse,
 } from "@/lib/security/workload-budget";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -132,9 +133,9 @@ export async function GET(req: Request) {
         "Cache-Control": "no-store",
       },
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Export failed" },
+      { ok: false, error: errorMessage(e, "Export failed") },
       { status: 500 }
     );
   } finally {

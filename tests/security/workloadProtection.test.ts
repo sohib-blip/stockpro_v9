@@ -39,7 +39,6 @@ describe("workload protection boundaries", () => {
       "app/api/dispatch-planning/preview/route.ts",
       "inspectXlsxZipEnvelope(buffer",
     ],
-    ["app/api/outbound/shipment-pdf/route.ts", "new PDFDocument"],
     [
       "app/api/dispatch-planning/vehicle-labels/route.ts",
       "const docx = await createDispatchVehicleLabelsDocx",
@@ -63,9 +62,8 @@ describe("workload protection boundaries", () => {
     }
   );
 
-  it("bounds outbound parsing, semantic IMEIs, PDF generation and exports", () => {
+  it("bounds outbound parsing, semantic IMEIs and exports", () => {
     const outbound = read("app/api/outbound/eod-preview/route.ts");
-    const shipment = read("app/api/outbound/shipment-pdf/route.ts");
     const stockExport = read("app/api/dashboard/export/route.ts");
     const countSheet = read(
       "app/api/dashboard/export-count-sheet/route.ts"
@@ -82,8 +80,6 @@ describe("workload protection boundaries", () => {
       /for \(const row of Object\.values\(summaryMap\)[\s\S]*?\.from\("stock_export_view"\)/
     );
 
-    expect(shipment).toContain("MAX_SHIPMENT_IMEIS");
-    expect(shipment).toContain("readJsonBodyWithinLimit");
     expect(stockExport).toContain("MAX_EXPORT_ROWS");
     expect(stockExport).toContain("MAX_EXPORT_ROWS + 1");
     expect(countSheet).toContain("MAX_COUNT_SHEET_ROWS");

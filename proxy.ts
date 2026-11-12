@@ -3,7 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { permissionsForApi } from "@/lib/access-control";
 import { authorizeApiRequest } from "@/lib/auth";
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   if (!req.nextUrl.pathname.startsWith("/api/")) {
     const response = NextResponse.next();
     const supabase = createServerClient(

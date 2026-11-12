@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { syncNrdForReader } from "@/lib/nrd-sync";
 import { createClient } from "@supabase/supabase-js";
 import { resolveApiUserEmail } from "@/lib/api-identity";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -64,11 +65,11 @@ export async function GET(req: Request) {
       ok: true,
       rows: data || [],
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
       {
         ok: false,
-        error: e?.message || "History failed",
+        error: errorMessage(e, "History failed"),
       },
       { status: 500 }
     );

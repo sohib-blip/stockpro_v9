@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { loadSupplyOrdersWithItems } from "@/lib/supply-orders";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -29,11 +30,11 @@ export async function GET() {
         },
       }
     );
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
       {
         ok: false,
-        error: e?.message || "Supply list failed",
+        error: errorMessage(e, "Supply list failed"),
       },
       { status: 500 }
     );

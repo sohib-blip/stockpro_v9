@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { syncNrdForReader } from "@/lib/nrd-sync";
 import { createClient } from "@supabase/supabase-js";
 import { resolveApiUserEmail } from "@/lib/api-identity";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -89,9 +90,9 @@ export async function GET(req: Request) {
       tasks_count: rows.length,
       by_task: byTask,
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "NRD stats failed" },
+      { ok: false, error: errorMessage(e, "NRD stats failed") },
       { status: 500 }
     );
   }

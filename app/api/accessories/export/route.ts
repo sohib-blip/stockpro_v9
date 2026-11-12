@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -45,9 +46,9 @@ export async function GET() {
         "Content-Disposition": `attachment; filename="accessories-stock.xlsx"`,
       },
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Export accessories failed" },
+      { ok: false, error: errorMessage(e, "Export accessories failed") },
       { status: 500 }
     );
   }

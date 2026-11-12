@@ -12,6 +12,7 @@ import {
   readInChunks,
   rowsOrThrow,
 } from "@/lib/supabase/read-all-pages";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -142,9 +143,9 @@ export async function GET() {
         "Cache-Control": "no-store",
       },
     });
-  } catch (error: any) {
+  } catch (error) {
     return NextResponse.json(
-      { ok: false, error: error?.message || "Returns export failed" },
+      { ok: false, error: errorMessage(error, "Returns export failed") },
       { status: 500 }
     );
   }

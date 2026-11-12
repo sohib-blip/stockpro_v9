@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -136,9 +137,9 @@ export async function GET(req: Request) {
       rows,
       page,
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "History failed" },
+      { ok: false, error: errorMessage(e, "History failed") },
       { status: 500 }
     );
   }

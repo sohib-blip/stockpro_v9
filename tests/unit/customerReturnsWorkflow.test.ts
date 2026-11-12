@@ -315,7 +315,7 @@ describe("complete customer return workflow", () => {
       },
     ]);
     const workbook = new ExcelJS.Workbook();
-    await workbook.xlsx.load(Buffer.from(buffer) as any);
+    await workbook.xlsx.load(Buffer.from(buffer) as unknown as Parameters<typeof workbook.xlsx.load>[0]);
     const worksheet = workbook.getWorksheet("Sheet1");
 
     expect(worksheet).toBeTruthy();

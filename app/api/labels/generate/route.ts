@@ -2,6 +2,7 @@ import { isDeviceId } from "@/lib/device-serials";
 import { NextResponse } from "next/server";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import QRCode from "qrcode";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 
@@ -118,9 +119,9 @@ export async function POST(req: Request) {
         "Content-Disposition": "attachment; filename=labels.pdf",
       },
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Generation failed" },
+      { ok: false, error: errorMessage(e, "Generation failed") },
       { status: 500 }
     );
   }

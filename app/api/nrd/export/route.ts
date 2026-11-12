@@ -3,6 +3,7 @@ import { trySyncNrdForUser } from "@/lib/nrd-sync";
 import { createClient } from "@supabase/supabase-js";
 import { resolveApiUserEmail } from "@/lib/api-identity";
 import * as XLSX from "xlsx";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -173,9 +174,9 @@ export async function GET(req: Request) {
         "Cache-Control": "no-store",
       },
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "NRD export failed" },
+      { ok: false, error: errorMessage(e, "NRD export failed") },
       { status: 500 }
     );
   }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 
@@ -30,6 +31,16 @@ export async function POST(req: Request) {
       );
     }
 
+    // Saving a rule that already exists for this model and accessory updates it.
+    const { data: existing, error: existingError } = await supabase
+      .from("device_accessory_templates")
+      .select("id")
+      .eq("device_id", device_id)
+      .eq("accessory_bin_id", accessory_bin_id)
+      .limit(1);
+
+    if (existingError) throw existingError;
+
     const { error } = await supabase
       .from("device_accessory_templates")
       .upsert(
@@ -48,12 +59,12 @@ export async function POST(req: Request) {
 
     if (error) throw error;
 
-    return NextResponse.json({ ok: true });
-  } catch (e: any) {
+    return NextResponse.json({ ok: true, updated: (existing || []).length > 0 });
+  } catch (e) {
     return NextResponse.json(
       {
         ok: false,
-        error: e?.message || "Save template failed",
+        error: errorMessage(e, "Save template failed"),
       },
       { status: 500 }
     );

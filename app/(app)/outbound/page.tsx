@@ -28,6 +28,10 @@ export default function OutboundPage() {
   const [shipmentRef, setShipmentRef] = useState("");
   const [imeiInput, setImeiInput] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  // Bumped after a confirm so the file field shows no file again.
+  const [fileInputKey, setFileInputKey] = useState(0);
+  // Name of the previewed report: the history reference when none is typed.
+  const [previewFileName, setPreviewFileName] = useState("");
 
   const [preview, setPreview] = useState<any>(null);
   const [previewSource, setPreviewSource] =
@@ -172,6 +176,7 @@ if (!json.ok) {
 
 setPreview(json);
 setPreviewSource("excel");
+setPreviewFileName(file.name.trim().slice(0, 200));
 operationIdRef.current = crypto.randomUUID();
 setBusy(false);
   }
@@ -191,6 +196,10 @@ if (!actorId) {
     setBusy(true);
     setErrorMsg("");
 
+    // Without a typed reference, the report's file name keeps the history traceable.
+    const reference =
+      shipmentRef.trim() || (previewSource === "excel" ? previewFileName : "");
+
     let json: any;
     try {
       const res = await apiFetch("/api/outbound/eod-confirm", {
@@ -201,7 +210,7 @@ if (!actorId) {
             operationIdRef.current ||
             (operationIdRef.current = crypto.randomUUID()),
           imeis: preview.imeis,
-          shipment_ref: shipmentRef || null,
+          shipment_ref: reference || null,
           actor,
           actor_id: actorId,
           source: previewSource,
@@ -217,7 +226,6 @@ if (!actorId) {
 
     if (json.ok) {
       const imeiCount = Array.isArray(preview.imeis) ? preview.imeis.length : 0;
-      const reference = shipmentRef.trim();
       setSuccessMsg(
         `${imeiCount} device${imeiCount === 1 ? "" : "s"} shipped${reference ? ` · ${reference}` : ""}. Stock and history are up to date.`
       );
@@ -225,6 +233,8 @@ if (!actorId) {
       setShipmentRef("");
       setImeiInput("");
       setFile(null);
+      setFileInputKey((key) => key + 1);
+      setPreviewFileName("");
       operationIdRef.current = null;
       await loadHistory();
     } else {
@@ -331,6 +341,7 @@ if (!actorId) {
       <div className="prototype-input-card">
         <div className="prototype-input-section-title">End-of-Day Report Import</div>
         <input
+          key={fileInputKey}
           type="file"
           aria-label="Outbound spreadsheet file"
           accept=".xlsx,.xls"

@@ -8,6 +8,7 @@ import {
   mergeReturnDeviceOptions,
   returnRequiresCanonicalItem,
 } from "@/lib/returns";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -217,9 +218,9 @@ export async function POST(req: Request) {
           : "no_stock_change",
       breakdown: Object.entries(breakdown).map(([device, qty]) => ({ device, qty })),
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Return preview failed" },
+      { ok: false, error: errorMessage(e, "Return preview failed") },
       { status: 500 }
     );
   }

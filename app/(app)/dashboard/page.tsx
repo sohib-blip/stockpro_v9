@@ -20,6 +20,7 @@ import {
   countDashboardStockAlerts,
 } from "@/lib/dashboard-inventory-rows";
 import type { BoxSearchRow } from "@/lib/box-search";
+import { errorMessage } from "@/lib/error-message";
 
 type KPI = {
   total_bins: number;
@@ -283,11 +284,11 @@ export default function DashboardPage() {
         title: "Export ready",
         message: `${label} download started.`,
       });
-    } catch (error: any) {
+    } catch (error) {
       setFeedback({
         kind: "error",
         title: "Export failed",
-        message: error?.message || `${label} could not be downloaded.`,
+        message: errorMessage(error, `${label} could not be downloaded.`),
       });
     }
   }
@@ -309,9 +310,9 @@ export default function DashboardPage() {
       }
 
       setImeiSearchRows(json.rows || []);
-    } catch (error: any) {
+    } catch (error) {
       setImeiSearchRows([]);
-      setImeiSearchError(error?.message || "IMEI search failed");
+      setImeiSearchError(errorMessage(error, "IMEI search failed"));
     } finally {
       setImeiSearchBusy(false);
     }
@@ -340,9 +341,9 @@ export default function DashboardPage() {
       }
 
       setBoxLookupRows(json.rows || []);
-    } catch (error: any) {
+    } catch (error) {
       setBoxLookupRows([]);
-      setBoxLookupError(error?.message || "Box search failed");
+      setBoxLookupError(errorMessage(error, "Box search failed"));
     } finally {
       setBoxLookupBusy(false);
     }

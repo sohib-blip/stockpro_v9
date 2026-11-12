@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { PDFDocument, StandardFonts } from "pdf-lib";
 import QRCode from "qrcode";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -225,9 +226,9 @@ export async function GET(req: Request) {
         "Cache-Control": "no-store",
       },
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Label generation failed" },
+      { ok: false, error: errorMessage(e, "Label generation failed") },
       { status: 500 }
     );
   }

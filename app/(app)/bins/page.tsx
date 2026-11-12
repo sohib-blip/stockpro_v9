@@ -438,7 +438,11 @@ export default function BinsPage() {
     setTemplatePerOrder(false);
 
     await openTemplate(selectedDevice);
-    showSetupSuccess("Automatic accessory rule created successfully.");
+    showSetupSuccess(
+      json.updated
+        ? "Automatic accessory rule updated successfully."
+        : "Automatic accessory rule created successfully."
+    );
   }
 
   function startEditTemplate(t: any) {
@@ -1137,7 +1141,7 @@ export default function BinsPage() {
                         className={`px-3 py-1 rounded text-xs font-semibold disabled:opacity-40 ${
                           isActive
                             ? "bg-emerald-500/20 text-emerald-400"
-                            : "bg-slate-700 text-slate-300"
+                            : "bg-slate-800 text-slate-300"
                         }`}
                       >
                         {isActive ? "Visible" : "Hidden"}

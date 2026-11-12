@@ -2,6 +2,13 @@ import { randomBytes } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { createClient } from "@supabase/supabase-js";
+import {
+  NEVER_EXPORTED_TABLES,
+  anonymizeSnapshot,
+  assertNoPersonalData,
+  collectKnownIdentities,
+  createPseudonymizer,
+} from "./lib/clone-anonymizer.mjs";
 
 const PRODUCTION_PROJECT_REF = "tqoblbwvvvqmwlsfoxni";
 const STAGING_PROJECT_REF = "enjusebvcfjudrrnvjgl";
@@ -11,23 +18,36 @@ const INSERT_BATCH_SIZE = 500;
 const TABLE_CANDIDATES = [
   "accessory_bins",
   "accessory_movements",
+  "alert_log",
   "alert_subscribers",
   "alerts",
   "app_sessions",
+  "audit_events",
   "bins",
   "boxes",
   "connection_events",
   "device_accessory_templates",
+  "device_inbound_accessories",
+  "device_thresholds",
   "devices",
+  "dispatch_batches",
+  "dispatch_packaging_preferences",
+  "dispatch_plan_assignments",
+  "dispatch_plans",
   "inbound_batches",
   "inventory_command_receipts",
   "items",
   "movements",
+  "nrd_schedules",
   "nrd_time_logs",
+  "packaging_rules",
+  "packaging_stock_movements",
+  "packaging_types",
   "profiles",
   "return_history_entries",
   "return_records",
   "return_template_export_batches",
+  "security_alert_recipients",
   "supplies",
   "supply_items",
   "supply_status_history",
@@ -37,9 +57,14 @@ const TABLE_CANDIDATES = [
   "workload_leases",
 ];
 
+// Parents before children (foreign keys).
 const COPY_ORDER = [
   "bins",
   "accessory_bins",
+  "device_thresholds",
+  "packaging_types",
+  "packaging_rules",
+  "device_inbound_accessories",
   "alert_subscribers",
   "inbound_batches",
   "boxes",
@@ -47,6 +72,7 @@ const COPY_ORDER = [
   "profiles",
   "user_roles",
   "user_permissions",
+  "security_alert_recipients",
   "items",
   "supplies",
   "supply_items",
@@ -54,26 +80,46 @@ const COPY_ORDER = [
   "movements",
   "return_records",
   "accessory_movements",
+  "packaging_stock_movements",
+  "nrd_schedules",
   "nrd_time_logs",
+  "dispatch_batches",
+  "dispatch_packaging_preferences",
 ];
 
-const LEGACY_PRODUCTION_SNAPSHOT_TABLES = [
-  "stock_count_scans",
-  "stock_counts",
-  "inbound_import_boxes",
-  "inbound_import_log_boxes",
-  "inbound_imports_log",
-  "inbound_import_logs",
-  "inbound_imports",
-  "device_aliases",
-  "box_movements",
-  "device_stock",
-  "imeis",
-  "import_batches",
-  "outbound_batches",
+// Inserting a dispatch batch rebuilds its packaging preferences through a
+// database trigger: those rebuilt rows are cleared before the exact
+// Production copy is inserted.
+const REBUILT_BY_TRIGGER = new Set(["dispatch_packaging_preferences"]);
+
+// Cleared on Staging but never copied: technical state, today's dispatch
+// plan (a copied OPEN plan would lock Dispatch Planning; its labels hold
+// vehicle registrations) and legacy tables the app no longer uses.
+const CLEARED_NOT_COPIED = [
+  "alert_log",
+  "audit_events",
+  "connection_events",
+  "dispatch_plan_assignments",
+  "dispatch_plans",
+  "inventory_command_receipts",
+  "return_template_export_batches",
+  "workload_budget_buckets",
+  "workload_leases",
 ];
 
+// Children before parents (foreign keys).
 const DELETE_ORDER = [
+  "dispatch_plan_assignments",
+  "dispatch_plans",
+  "dispatch_packaging_preferences",
+  "dispatch_batches",
+  "packaging_rules",
+  "packaging_stock_movements",
+  "packaging_types",
+  "device_inbound_accessories",
+  "security_alert_recipients",
+  "audit_events",
+  "alert_log",
   "return_records",
   "return_template_export_batches",
   "return_history_entries",
@@ -93,35 +139,50 @@ const DELETE_ORDER = [
   "boxes",
   "inbound_batches",
   "nrd_time_logs",
+  "nrd_schedules",
   "user_permissions",
   "user_roles",
   "profiles",
   "alert_subscribers",
   "accessory_bins",
   "bins",
+  "device_thresholds",
   "devices",
 ];
 
 const PRIMARY_KEYS = {
   accessory_bins: "id",
   accessory_movements: "id",
+  alert_log: "id",
   alert_subscribers: "id",
   alerts: "id",
   app_sessions: "user_id",
+  audit_events: "audit_id",
   bins: "id",
   boxes: "id",
   connection_events: "id",
   device_accessory_templates: "id",
+  device_inbound_accessories: "id",
+  device_thresholds: "device",
   devices: "device_id",
+  dispatch_batches: "id",
+  dispatch_packaging_preferences: "composition_key",
+  dispatch_plan_assignments: "plan_id",
+  dispatch_plans: "id",
   inbound_batches: "batch_id",
   inventory_command_receipts: "operation_id",
   items: "item_id",
   movements: "movement_id",
+  nrd_schedules: "id",
   nrd_time_logs: "id",
+  packaging_rules: "id",
+  packaging_stock_movements: "id",
+  packaging_types: "id",
   profiles: "user_id",
   return_history_entries: "history_key",
   return_records: "id",
   return_template_export_batches: "id",
+  security_alert_recipients: "user_id",
   supplies: "id",
   supply_items: "id",
   supply_status_history: "id",
@@ -129,6 +190,12 @@ const PRIMARY_KEYS = {
   user_roles: "user_id",
   workload_budget_buckets: "route_class",
   workload_leases: "id",
+};
+
+// Second sort key for tables whose primary key has two columns, so paged
+// reads stay stable.
+const SECONDARY_ORDER_KEYS = {
+  dispatch_plan_assignments: "order_id",
 };
 
 const OUTPUT_DIRECTORY = resolve(
@@ -251,6 +318,9 @@ async function readAllRows(supabase, table) {
   for (let from = 0; ; from += PAGE_SIZE) {
     let query = supabase.from(table).select("*");
     if (primaryKey) query = query.order(primaryKey, { ascending: true });
+    if (SECONDARY_ORDER_KEYS[table]) {
+      query = query.order(SECONDARY_ORDER_KEYS[table], { ascending: true });
+    }
     const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
     if (error) throw new Error(`Read ${table}: ${error.message}`);
     rows.push(...(data || []));
@@ -263,21 +333,22 @@ function columnsFor(definitions, table) {
   return Object.keys(definitions[table]?.properties || {}).sort();
 }
 
-function safeAuthUser(user) {
+// Raw auth fields kept in memory only: the email is needed to build the
+// alias, the phone and metadata only to teach the personal-data guard which
+// real identities must never reach Staging or the disk.
+function rawAuthUser(user) {
   return {
     id: user.id,
     email: user.email || null,
     phone: user.phone || null,
-    email_confirmed_at: user.email_confirmed_at || null,
-    phone_confirmed_at: user.phone_confirmed_at || null,
     created_at: user.created_at,
-    updated_at: user.updated_at,
-    last_sign_in_at: user.last_sign_in_at || null,
-    app_metadata: user.app_metadata || {},
     user_metadata: user.user_metadata || {},
-    banned_until: user.banned_until || null,
   };
 }
+
+const EXPORTABLE_TABLES = TABLE_CANDIDATES.filter(
+  (table) => !NEVER_EXPORTED_TABLES.has(table)
+);
 
 async function readSnapshot(
   label,
@@ -292,7 +363,7 @@ async function readSnapshot(
     tableData[table] = await readAllRows(supabase, table);
     console.log(`${label}: read ${tableData[table].length} ${table}`);
   }
-  const users = (await listAuthUsers(supabase)).map(safeAuthUser);
+  const users = (await listAuthUsers(supabase)).map(rawAuthUser);
   const { data: buckets, error: bucketError } =
     await supabase.storage.listBuckets();
   if (bucketError) throw new Error(`${label} storage: ${bucketError.message}`);
@@ -308,7 +379,10 @@ async function readSnapshot(
   };
 }
 
-async function writeArtifact(name, value) {
+// Every local file goes through the personal-data guard first: it refuses any
+// real email address and any identity read from the raw source data.
+async function writeArtifact(name, value, knownIdentities = new Set()) {
+  assertNoPersonalData(value, knownIdentities, name);
   await mkdir(OUTPUT_DIRECTORY, { recursive: true });
   const path = resolve(OUTPUT_DIRECTORY, name);
   await writeFile(path, JSON.stringify(value, null, 2), {
@@ -319,6 +393,44 @@ async function writeArtifact(name, value) {
 
 function stamp() {
   return new Date().toISOString().replace(/[:.]/g, "-");
+}
+
+/**
+ * Reads a project and returns the pseudonymized snapshot plus the real
+ * identities it contained (kept in memory for the guard, never written).
+ */
+async function readAnonymizedSnapshot(
+  label,
+  environment,
+  supabase,
+  definitions,
+  tables,
+  pseudonymizer
+) {
+  const raw = await readSnapshot(label, environment, supabase, definitions, tables);
+  const knownIdentities = collectKnownIdentities(raw);
+  const snapshot = anonymizeSnapshot(raw, pseudonymizer);
+  assertNoPersonalData(snapshot, knownIdentities, label);
+  return { snapshot, knownIdentities };
+}
+
+async function writeStagingBackup(
+  label,
+  fileName,
+  staging,
+  stagingClient,
+  stagingDefinitions
+) {
+  const { snapshot, knownIdentities } = await readAnonymizedSnapshot(
+    label,
+    staging,
+    stagingClient,
+    stagingDefinitions,
+    EXPORTABLE_TABLES,
+    createPseudonymizer()
+  );
+  const outputPath = await writeArtifact(fileName, snapshot, knownIdentities);
+  return { outputPath, snapshot };
 }
 
 async function inventory() {
@@ -384,8 +496,8 @@ async function inventory() {
     productionProjectRef: PRODUCTION_PROJECT_REF,
     stagingProjectRef: STAGING_PROJECT_REF,
     auth: {
-      production: productionUsers.map(safeAuthUser),
-      staging: stagingUsers.map(safeAuthUser),
+      production: { users: productionUsers.length },
+      staging: { users: stagingUsers.length },
     },
     storage: {
       production: productionBuckets.data || [],
@@ -415,36 +527,34 @@ async function inventory() {
 async function backup() {
   const { staging, stagingClient } = await context();
   const stagingDefinitions = await readOpenApi(staging);
-  const snapshot = await readSnapshot(
+  const result = await writeStagingBackup(
     "Staging",
+    `staging-backup-${stamp()}.json`,
     staging,
     stagingClient,
-    stagingDefinitions,
-    TABLE_CANDIDATES
+    stagingDefinitions
   );
-  const outputPath = await writeArtifact(
-    `staging-backup-${stamp()}.json`,
-    snapshot
-  );
-  console.log(`Staging backup written to ${outputPath}`);
-  return { outputPath, snapshot };
+  console.log(`Pseudonymized Staging backup written to ${result.outputPath}`);
+  return result;
 }
 
 async function snapshotProduction() {
   const { production, productionClient } = await context();
   const productionDefinitions = await readOpenApi(production);
-  const snapshot = await readSnapshot(
+  const { snapshot, knownIdentities } = await readAnonymizedSnapshot(
     "Production",
     production,
     productionClient,
     productionDefinitions,
-    [...COPY_ORDER, ...LEGACY_PRODUCTION_SNAPSHOT_TABLES]
+    COPY_ORDER,
+    createPseudonymizer()
   );
   const outputPath = await writeArtifact(
     `production-snapshot-${stamp()}.json`,
-    snapshot
+    snapshot,
+    knownIdentities
   );
-  console.log(`Production snapshot written to ${outputPath}`);
+  console.log(`Pseudonymized Production snapshot written to ${outputPath}`);
   return { outputPath, snapshot };
 }
 
@@ -504,7 +614,7 @@ function transformRows(
   productionRoles
 ) {
   const acceptedColumns = new Set(columnsFor(stagingDefinitions, table));
-  return rows.map((sourceRow) => {
+  const transformed = rows.map((sourceRow) => {
     const row = Object.fromEntries(
       Object.entries(sourceRow).filter(([column]) =>
         acceptedColumns.has(column)
@@ -548,6 +658,9 @@ function transformRows(
       row.actor_id = remapId(row.actor_id, userIdMap);
       row.created_by = remapId(row.created_by, userIdMap);
     }
+    if (table === "items" && "imported_by" in row) {
+      row.imported_by = remapId(row.imported_by, userIdMap);
+    }
     if (table === "return_records") {
       row.actor_id = remapId(row.actor_id, userIdMap);
       // Export bookkeeping is environment-specific. Every cloned return is a
@@ -563,8 +676,28 @@ function transformRows(
     if (table === "supply_status_history") {
       row.changed_by_id = remapId(row.changed_by_id, userIdMap);
     }
+    if (table === "packaging_types") {
+      row.created_by_id = remapId(row.created_by_id, userIdMap);
+      row.updated_by_id = remapId(row.updated_by_id, userIdMap);
+    }
+    if (table === "packaging_stock_movements") {
+      row.actor_id = remapId(row.actor_id, userIdMap);
+    }
+    if (table === "dispatch_batches") {
+      row.actor_id = remapId(row.actor_id, userIdMap);
+      row.undone_by_id = remapId(row.undone_by_id, userIdMap);
+    }
+    if (table === "nrd_schedules" || table === "security_alert_recipients") {
+      row.user_id = remapId(row.user_id, userIdMap);
+    }
     return row;
   });
+  // The IT contact list is keyed by user: a row without a cloned user has
+  // nobody to point to.
+  if (table === "security_alert_recipients") {
+    return transformed.filter((row) => row.user_id);
+  }
+  return transformed;
 }
 
 function buildReturnHistory(movements) {
@@ -598,36 +731,39 @@ function buildReturnHistory(movements) {
   });
 }
 
+// anonymizedUsers come from anonymizeSnapshot: { id, email: alias, created_at }.
+// No phone, name or other metadata is sent to Staging.
 async function createStagingUsers(
   stagingClient,
-  productionUsers,
-  outputStamp
+  anonymizedUsers,
+  outputStamp,
+  knownIdentities
 ) {
   const userIdMap = new Map();
   const credentials = [];
 
-  for (const user of productionUsers) {
+  for (const user of anonymizedUsers) {
     if (!user.email) {
       throw new Error(
         `Cannot clone Production auth user ${user.id}: email is missing`
       );
     }
+    assertNoPersonalData(user, knownIdentities, `auth user ${user.id}`);
     const password = `${randomBytes(24).toString("base64url")}Aa1!`;
     const { data, error } = await stagingClient.auth.admin.createUser({
       email: user.email,
       password,
       email_confirm: true,
-      app_metadata: user.app_metadata || {},
-      user_metadata: user.user_metadata || {},
+      app_metadata: {},
+      user_metadata: {},
     });
     if (error || !data.user) {
       throw new Error(
-        `Create Staging auth user ${user.email}: ${error?.message || "no user returned"}`
+        `Create Staging auth user for Production user ${user.id}: ${error?.message || "no user returned"}`
       );
     }
     userIdMap.set(user.id, data.user.id);
     credentials.push({
-      production_user_id: user.id,
       staging_user_id: data.user.id,
       email: user.email,
       temporary_password: password,
@@ -637,7 +773,8 @@ async function createStagingUsers(
 
   const credentialsPath = await writeArtifact(
     `staging-temporary-credentials-${outputStamp}.json`,
-    credentials
+    credentials,
+    knownIdentities
   );
   return { userIdMap, credentialsPath };
 }
@@ -663,28 +800,29 @@ async function cloneProductionToStaging() {
   }
 
   const outputStamp = stamp();
-  const stagingBackup = await readSnapshot(
+  const { outputPath: stagingBackupPath } = await writeStagingBackup(
     "Staging backup",
+    `staging-backup-${outputStamp}.json`,
     staging,
     stagingClient,
-    stagingDefinitions,
-    TABLE_CANDIDATES
-  );
-  const stagingBackupPath = await writeArtifact(
-    `staging-backup-${outputStamp}.json`,
-    stagingBackup
+    stagingDefinitions
   );
 
-  const productionSnapshot = await readSnapshot(
-    "Production",
-    production,
-    productionClient,
-    productionDefinitions,
-    COPY_ORDER
-  );
+  // From here on only the pseudonymized snapshot is used: the raw Production
+  // rows never reach Staging or the disk.
+  const { snapshot: productionSnapshot, knownIdentities } =
+    await readAnonymizedSnapshot(
+      "Production",
+      production,
+      productionClient,
+      productionDefinitions,
+      COPY_ORDER,
+      createPseudonymizer()
+    );
   const productionSnapshotPath = await writeArtifact(
     `production-snapshot-${outputStamp}.json`,
-    productionSnapshot
+    productionSnapshot,
+    knownIdentities
   );
   console.log(`Staging backup: ${stagingBackupPath}`);
   console.log(`Production snapshot: ${productionSnapshotPath}`);
@@ -708,10 +846,11 @@ async function cloneProductionToStaging() {
   const { userIdMap, credentialsPath } = await createStagingUsers(
     stagingClient,
     productionSnapshot.authUsers,
-    outputStamp
+    outputStamp,
+    knownIdentities
   );
   console.log(
-    `Staging: created ${userIdMap.size} Production users with temporary passwords`
+    `Staging: created ${userIdMap.size} pseudonymized users with temporary passwords`
   );
 
   const productionRoles = new Map(
@@ -730,12 +869,21 @@ async function cloneProductionToStaging() {
       userIdMap,
       productionRoles
     );
+    assertNoPersonalData(transformed, knownIdentities, `Staging ${table}`);
+    if (REBUILT_BY_TRIGGER.has(table)) {
+      await deleteAllRows(stagingClient, stagingDefinitions, table);
+    }
     await insertRows(stagingClient, table, transformed);
     expectedCounts[table] = transformed.length;
   }
 
   const returnHistory = buildReturnHistory(
     productionSnapshot.tables.movements || []
+  );
+  assertNoPersonalData(
+    returnHistory,
+    knownIdentities,
+    "Staging return_history_entries"
   );
   await insertRows(stagingClient, "return_history_entries", returnHistory);
   expectedCounts.return_history_entries = returnHistory.length;
@@ -751,13 +899,7 @@ async function cloneProductionToStaging() {
     verification.push({ table, expected, actual: result.count });
   }
 
-  for (const table of [
-    "connection_events",
-    "inventory_command_receipts",
-    "return_template_export_batches",
-    "workload_budget_buckets",
-    "workload_leases",
-  ]) {
+  for (const table of CLEARED_NOT_COPIED) {
     if (!stagingDefinitions[table]) continue;
     const result = await countRows(stagingClient, table);
     if (result.error || result.count !== 0) {
@@ -782,12 +924,14 @@ async function cloneProductionToStaging() {
       productionProjectRef: PRODUCTION_PROJECT_REF,
       stagingProjectRef: STAGING_PROJECT_REF,
       productionWasReadOnly: true,
+      personalDataPseudonymized: true,
       stagingBackupPath,
       productionSnapshotPath,
       credentialsPath,
       authUsers: clonedUsers.length,
       verification,
-    }
+    },
+    knownIdentities
   );
 
   console.table(verification);
@@ -813,17 +957,14 @@ async function clearAllStagingData() {
   const { staging, stagingClient } = await context();
   const stagingDefinitions = await readOpenApi(staging);
   const outputStamp = stamp();
-  const stagingBackup = await readSnapshot(
-    "Staging backup before full clear",
-    staging,
-    stagingClient,
-    stagingDefinitions,
-    TABLE_CANDIDATES
-  );
-  const stagingBackupPath = await writeArtifact(
-    `staging-backup-before-clear-${outputStamp}.json`,
-    stagingBackup
-  );
+  const { outputPath: stagingBackupPath, snapshot: stagingBackup } =
+    await writeStagingBackup(
+      "Staging backup before full clear",
+      `staging-backup-before-clear-${outputStamp}.json`,
+      staging,
+      stagingClient,
+      stagingDefinitions
+    );
 
   if ((stagingBackup.storageBuckets || []).length > 0) {
     throw new Error(
@@ -1011,7 +1152,7 @@ async function verifyClonedAdmin() {
   }
 
   console.log(
-    "Cloned Production admin login, signed session, RLS and logout verified on Staging"
+    "Cloned (pseudonymized) admin login, signed session, RLS and logout verified on Staging"
   );
 }
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -82,13 +83,13 @@ export async function GET(req: Request) {
         },
       }
     );
-  } catch (e: any) {
+  } catch (e) {
     console.error("SUPPLY HISTORY FAILED:", e);
 
     return NextResponse.json(
       {
         ok: false,
-        error: e?.message || "Supply history failed",
+        error: errorMessage(e, "Supply history failed"),
       },
       {
         status: 500,

@@ -39,7 +39,7 @@ describe("API authentication coverage", () => {
     expect(missingPolicies).toEqual([]);
   });
 
-  it("keeps middleware exceptions protected by their own authentication", () => {
+  it("keeps proxy exceptions protected by their own authentication", () => {
     const cron = readFileSync(
       join(API_ROOT, "cron", "low-stock", "route.ts"),
       "utf8"

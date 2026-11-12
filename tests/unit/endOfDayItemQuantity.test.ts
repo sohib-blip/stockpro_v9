@@ -17,7 +17,7 @@ function report(rows: unknown[][], header = HEADER) {
 const FOB = { id: "fob", name: "FOB\t1", current_stock: 400 };
 const CABLE = { id: "cable", name: "*3M AV Extension Cable PRO900", current_stock: 200 };
 
-function preview(parsed: ReturnType<typeof report>, templates: any[] = []) {
+function preview(parsed: ReturnType<typeof report>, templates: Parameters<typeof buildAccessoryEndOfDayPreview>[0]["templates"] = []) {
   return buildAccessoryEndOfDayPreview({
     report: parsed,
     accessoryBins: [FOB, CABLE],

@@ -187,8 +187,8 @@ export async function PUT(req: Request) {
       role: parsed.data.role,
       permissions,
     });
-  } catch (error: any) {
-    const message = error?.message || "Unable to save access";
+  } catch (error) {
+    const message = errorMessage(error, "Unable to save access");
     return NextResponse.json(
       { ok: false, error: message },
       {
@@ -239,11 +239,11 @@ export async function POST(req: Request) {
       { ok: true, user_id: data.user.id, permissions },
       { status: 201 }
     );
-  } catch (saveError: any) {
+  } catch (saveError) {
     return NextResponse.json(
       {
         ok: false,
-        error: saveError?.message || "User invited but access could not be saved",
+        error: errorMessage(saveError, "User invited but access could not be saved"),
       },
       { status: 500 }
     );

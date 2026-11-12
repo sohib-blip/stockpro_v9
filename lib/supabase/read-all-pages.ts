@@ -59,11 +59,5 @@ export async function readInChunks<Id, Row>(
   return rows;
 }
 
-// Message of a thrown value: Supabase errors are plain objects, not Errors.
-export function errorMessage(error: unknown, fallback: string) {
-  const message =
-    error && typeof error === "object" && "message" in error
-      ? String((error as { message: unknown }).message || "")
-      : "";
-  return message || fallback;
-}
+// Kept here for existing imports; the helper lives in lib/error-message.ts.
+export { errorMessage } from "../error-message";

@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
 import { getApiIdentity } from "@/lib/api-identity";
 import { readAllPages, rowsOrThrow } from "@/lib/supabase/read-all-pages";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -202,9 +203,9 @@ export async function GET(req: Request) {
         "Cache-Control": "no-store",
       },
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Global NRD export failed" },
+      { ok: false, error: errorMessage(e, "Global NRD export failed") },
       { status: 500 }
     );
   }

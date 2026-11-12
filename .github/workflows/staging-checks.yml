@@ -44,11 +44,13 @@ jobs:
       - name: Typecheck, test and build
         run: npm run check
 
-      # Non-blocking while the pre-existing lint problems remain. To block new
-      # problems only, set LINT_MAX_PROBLEMS (e.g. to today's count) on the
-      # summary step and lower it as the code is cleaned up.
-      - name: Lint (non-blocking)
+      # Pre-existing lint problems remain, so the lint does not need to be
+      # clean: it fails only when the total goes above LINT_MAX_PROBLEMS, which
+      # blocks new problems. Lower the ceiling whenever the code is cleaned up.
+      - name: Lint (ceiling)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        env:
+          LINT_MAX_PROBLEMS: "278"
         run: |
           npx eslint . --format json --output-file "$RUNNER_TEMP/eslint-report.json" || true
           node scripts/lint-report.mjs "$RUNNER_TEMP/eslint-report.json"

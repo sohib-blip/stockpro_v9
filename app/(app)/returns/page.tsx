@@ -19,6 +19,7 @@ import {
   returnStockActionLabel,
   type ReturnStatus,
 } from "@/lib/returns";
+import { errorMessage } from "@/lib/error-message";
 
 type PreviewItem = {
   item_id: string | null;
@@ -400,8 +401,8 @@ export default function ReturnsPage() {
         } exported. The next download will contain only later returns.`
       );
       await loadTemplateExportStatus();
-    } catch (error: any) {
-      showReturnError(error?.message || "New returns export failed");
+    } catch (error) {
+      showReturnError(errorMessage(error, "New returns export failed"));
       await loadTemplateExportStatus();
     } finally {
       setTemplateExportBusy(false);
@@ -418,8 +419,8 @@ export default function ReturnsPage() {
         "multi-device-returns-operation.xlsx"
       );
       showReturnInfo("Return operation Excel download started.");
-    } catch (error: any) {
-      showReturnError(error?.message || "Return operation export failed");
+    } catch (error) {
+      showReturnError(errorMessage(error, "Return operation export failed"));
     }
   }
 
@@ -441,9 +442,9 @@ export default function ReturnsPage() {
         throw new Error(json.error || "Return operation details failed");
       }
       setHistoryDetails(json.rows || []);
-    } catch (error: any) {
+    } catch (error) {
       setHistoryDetailsError(
-        error?.message || "Return operation details failed"
+        errorMessage(error, "Return operation details failed")
       );
     } finally {
       setLoadingHistoryDetails(false);
@@ -495,8 +496,8 @@ export default function ReturnsPage() {
       }
       setPreview(json);
       setReviewedFingerprint(formFingerprint());
-    } catch (error: any) {
-      showReturnError(error?.message || "Return preview failed");
+    } catch (error) {
+      showReturnError(errorMessage(error, "Return preview failed"));
     } finally {
       setBusy(false);
     }
@@ -561,8 +562,8 @@ export default function ReturnsPage() {
       setHistoryCursorStack([]);
       setHistoryCursor(null);
       await Promise.all([loadHistory(null), loadTemplateExportStatus()]);
-    } catch (error: any) {
-      showReturnError(error?.message || "Return confirmation failed");
+    } catch (error) {
+      showReturnError(errorMessage(error, "Return confirmation failed"));
     } finally {
       setBusy(false);
     }

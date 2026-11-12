@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { deviceIdMismatch, isDeviceId, noDeviceIdsMessage } from "@/lib/device-serials";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
       duplicate_list: duplicates,
       preview_imeis: newOnes,
     });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message || "Preview failed" }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: errorMessage(e, "Preview failed") }, { status: 500 });
   }
 }

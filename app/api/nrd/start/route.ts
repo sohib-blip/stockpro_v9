@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { getApiIdentity, resolveApiUserEmail } from "@/lib/api-identity";
 import { trySyncNrdForUser } from "@/lib/nrd-sync";
 import { isAfterNrdDayEnd } from "@/lib/nrd-time";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -87,9 +88,9 @@ export async function POST(req: Request) {
       ok: true,
       row: data,
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Start NRD failed" },
+      { ok: false, error: errorMessage(e, "Start NRD failed") },
       { status: 500 }
     );
   }

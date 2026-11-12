@@ -12,6 +12,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local-only folders (other worktrees, private test data, Playwright output).
+    ".claude/**",
+    ".stockpro-local/**",
+    "playwright-report/**",
+    "test-results/**",
   ]),
 ]);
 

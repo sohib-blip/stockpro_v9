@@ -8,6 +8,7 @@ import {
   scheduleOccurrence,
   type NrdSchedule,
 } from "@/lib/nrd-time";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -86,9 +87,9 @@ export async function GET(req: Request) {
       // Every task stops at this time today (17:00 Belgian time).
       day_end: nrdAutoStopAt(now).toISOString(),
     });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Current NRD failed" },
+      { ok: false, error: errorMessage(e, "Current NRD failed") },
       { status: 500 }
     );
   }

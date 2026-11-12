@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getPermissions, requireUserFromBearer, supabaseService } from "@/lib/auth";
+import { errorMessage } from "@/lib/error-message";
 
 function csv(v: any) {
   const s = String(v ?? "");
@@ -84,7 +85,7 @@ export async function GET(req: Request) {
         "Cache-Control": "no-store",
       },
     });
-  } catch (e: any) {
-    return NextResponse.json({ ok: false, error: e?.message ?? "Export failed" }, { status: 500 });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: errorMessage(e, "Export failed") }, { status: 500 });
   }
 }

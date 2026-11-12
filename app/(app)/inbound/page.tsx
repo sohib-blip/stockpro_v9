@@ -10,6 +10,7 @@ import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessF
 import { isDeviceId, isMatrixIqBin, noDeviceIdsMessage } from "@/lib/device-serials";
 import { includedAccessoryLines, type InboundAccessoryRule } from "@/lib/inbound-accessories";
 import IncludedAccessoriesPreview from "@/components/IncludedAccessoriesPreview";
+import { errorMessage } from "@/lib/error-message";
 
 type Vendor = "teltonika" | "quicklink" | "digitalmatter" | "truster";
 type HistoryFilter = "all" | "excel" | "manual";
@@ -367,8 +368,8 @@ useEffect(() => {
       }
 
       setResult(parsed);
-    } catch (e: any) {
-      setErr(e?.message || "Parse failed");
+    } catch (e) {
+      setErr(errorMessage(e, "Parse failed"));
     } finally {
       stopBusy();
     }
@@ -469,8 +470,8 @@ useEffect(() => {
 
       // Refresh history without reloading the page.
       await loadHistory();
-    } catch (e: any) {
-      setErr(e?.message || "Confirm failed");
+    } catch (e) {
+      setErr(errorMessage(e, "Confirm failed"));
     } finally {
       stopBusy();
     }
@@ -550,8 +551,8 @@ setManualPreview(json);
 setSkippedIncluded([]);
 setManualReadyToImport(true);
 setManualMsg("");
-    } catch (e: any) {
-      showManualError(e?.message || "Manual preview failed");
+    } catch (e) {
+      showManualError(errorMessage(e, "Manual preview failed"));
     } finally {
       stopBusy();
     }
@@ -632,8 +633,8 @@ setManualMsg("");
 
       // Refresh history without reloading the page.
       await loadHistory();
-    } catch (e: any) {
-      showManualError(e?.message || "Manual confirmation failed");
+    } catch (e) {
+      showManualError(errorMessage(e, "Manual confirmation failed"));
     } finally {
       stopBusy();
     }

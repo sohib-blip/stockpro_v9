@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import * as XLSX from "xlsx";
+import { errorMessage } from "@/lib/error-message";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const SERVICE_ROLE = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -108,10 +109,10 @@ export async function GET() {
       },
     });
 
-  } catch (e: any) {
+  } catch (e) {
 
     return NextResponse.json(
-      { ok: false, error: e?.message || "Export failed" },
+      { ok: false, error: errorMessage(e, "Export failed") },
       { status: 500 }
     );
 

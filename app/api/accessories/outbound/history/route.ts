@@ -5,6 +5,7 @@ import {
   type AccessoryHistoryBin,
   type AccessoryMovementHistoryRow,
 } from "@/lib/accessory-history";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -67,9 +68,9 @@ export async function GET() {
       { ok: true, rows },
       { headers: { "Cache-Control": "no-store" } }
     );
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "History failed" },
+      { ok: false, error: errorMessage(e, "History failed") },
       { status: 500, headers: { "Cache-Control": "no-store" } }
     );
   }

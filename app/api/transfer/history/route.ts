@@ -5,6 +5,7 @@ import {
   readInChunks,
   rowsOrThrow,
 } from "@/lib/supabase/read-all-pages";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -79,11 +80,11 @@ export async function GET() {
       }
     );
 
-  } catch (e: any) {
+  } catch (e) {
     return new NextResponse(
       JSON.stringify({
         ok: false,
-        error: e.message,
+        error: errorMessage(e, "Transfer history failed"),
       }),
       {
         status: 500,

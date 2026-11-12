@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { errorMessage } from "@/lib/error-message";
 
 export const runtime = "nodejs";
 
@@ -24,9 +25,9 @@ export async function POST(req: Request) {
     if (error) throw error;
 
     return NextResponse.json({ ok: true });
-  } catch (e: any) {
+  } catch (e) {
     return NextResponse.json(
-      { ok: false, error: e?.message || "Delete failed" },
+      { ok: false, error: errorMessage(e, "Delete failed") },
       { status: 500 }
     );
   }

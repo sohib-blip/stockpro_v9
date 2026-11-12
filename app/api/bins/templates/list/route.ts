@@ -72,9 +72,9 @@ export async function GET(req: Request) {
   if (!deviceId) {
     try {
       return NextResponse.json({ ok: true, rule_counts: await loadRuleCounts() });
-    } catch (error: any) {
+    } catch (error) {
       return NextResponse.json(
-        { ok: false, error: error?.message || "Automatic accessory rules could not be loaded" },
+        { ok: false, error: errorMessage(error, "Automatic accessory rules could not be loaded") },
         { status: 500 }
       );
     }

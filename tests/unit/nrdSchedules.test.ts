@@ -20,23 +20,36 @@ const migration = readFileSync(
 ).toLowerCase();
 const vercel = JSON.parse(readFileSync(join(process.cwd(), "vercel.json"), "utf8"));
 
+type Row = Record<string, unknown>;
+type FakeQuery = {
+  select: () => FakeQuery;
+  eq: (column: string, value: unknown) => FakeQuery;
+  is: (column: string, value: unknown) => FakeQuery;
+  in: (column: string, values: unknown[]) => FakeQuery;
+  order: (column: string, options: { ascending: boolean }) => FakeQuery;
+  limit: (value: number) => FakeQuery;
+  update: (value: Row) => FakeQuery;
+  insert: (value: Row) => FakeQuery;
+  then: (resolve: (value: unknown) => void) => void;
+};
+
 // Minimal in-memory stand-in for the Supabase query builder used by nrd-sync.
-function fakeSupabase(tables: Record<string, Array<Record<string, any>>>) {
+function fakeSupabase(tables: Record<string, Row[]>) {
   function builder(table: string) {
-    const filters: Array<(row: Record<string, any>) => boolean> = [];
+    const filters: Array<(row: Row) => boolean> = [];
     let action: "select" | "update" | "insert" = "select";
-    let payload: Record<string, any> = {};
+    let payload: Row = {};
     let order: { column: string; ascending: boolean } | null = null;
     let limit: number | null = null;
-    const api: any = {
+    const api: FakeQuery = {
       select: () => api,
       eq: (column: string, value: unknown) => (filters.push((row) => row[column] === value), api),
       is: (column: string, value: unknown) => (filters.push((row) => (row[column] ?? null) === value), api),
       in: (column: string, values: unknown[]) => (filters.push((row) => values.includes(row[column])), api),
       order: (column: string, options: { ascending: boolean }) => ((order = { column, ascending: options.ascending }), api),
       limit: (value: number) => ((limit = value), api),
-      update: (value: Record<string, any>) => ((action = "update"), (payload = value), api),
-      insert: (value: Record<string, any>) => ((action = "insert"), (payload = value), api),
+      update: (value: Row) => ((action = "update"), (payload = value), api),
+      insert: (value: Row) => ((action = "insert"), (payload = value), api),
       then(resolve: (value: unknown) => void) {
         const rows = tables[table];
         if (action === "insert") {
@@ -50,7 +63,7 @@ function fakeSupabase(tables: Record<string, Array<Record<string, any>>>) {
         }
         if (order) {
           const { column, ascending } = order;
-          matched = [...matched].sort((a, b) => (a[column] < b[column] ? -1 : 1) * (ascending ? 1 : -1));
+          matched = [...matched].sort((a, b) => ((a[column] as string) < (b[column] as string) ? -1 : 1) * (ascending ? 1 : -1));
         }
         if (limit !== null) matched = matched.slice(0, limit);
         return resolve({ data: matched.map((row) => ({ ...row })), error: null });
@@ -58,7 +71,7 @@ function fakeSupabase(tables: Record<string, Array<Record<string, any>>>) {
     };
     return api;
   }
-  return { from: builder } as any;
+  return { from: builder } as unknown as Parameters<typeof syncNrdForUser>[0];
 }
 
 function schedule(overrides: Partial<NrdSchedule & { user_email: string; user_id: string }>) {
@@ -122,7 +135,7 @@ describe("NRD upkeep", () => {
   });
 
   it("starts a scheduled task on time and stops it at its end", async () => {
-    const tables: Record<string, any[]> = {
+    const tables: Record<string, Row[]> = {
       nrd_time_logs: [
         { id: "a", user_id: "user-1", user_email: "a@stockpro.test", task: "Returns", started_at: "2026-10-27T07:00:00.000Z", ended_at: null, schedule_id: null, schedule_date: null },
       ],
@@ -151,7 +164,7 @@ describe("NRD upkeep", () => {
   });
 
   it("lets a missed slot stop the running task instead of the 17:00 rule", async () => {
-    const tables: Record<string, any[]> = {
+    const tables: Record<string, Row[]> = {
       nrd_time_logs: [
         { id: "a", user_id: "user-1", user_email: "a@stockpro.test", task: "Returns", started_at: "2026-10-27T06:00:00.000Z", ended_at: null, schedule_id: null, schedule_date: null },
       ],
@@ -165,7 +178,7 @@ describe("NRD upkeep", () => {
   });
 
   it("runs back-to-back slots in order", async () => {
-    const tables: Record<string, any[]> = {
+    const tables: Record<string, Row[]> = {
       nrd_time_logs: [
         { id: "a", user_id: "user-1", user_email: "a@stockpro.test", task: "Returns", started_at: "2026-10-27T06:00:00.000Z", ended_at: null, schedule_id: null, schedule_date: null },
       ],
@@ -183,7 +196,7 @@ describe("NRD upkeep", () => {
   });
 
   it("records a scheduled task even when nobody opened StockPro", async () => {
-    const tables: Record<string, any[]> = {
+    const tables: Record<string, Row[]> = {
       nrd_time_logs: [],
       nrd_schedules: [schedule({ repeat: "weekly", schedule_date: null, weekday: 2 })],
     };

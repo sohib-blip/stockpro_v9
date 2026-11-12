@@ -349,6 +349,162 @@ describe("personal-data guard", () => {
   });
 });
 
+describe("newer tables (packaging, dispatch, NRD schedules, IT contacts)", () => {
+  const pseudonymizer = () => createPseudonymizer({ secret: Buffer.from("t") });
+
+  function newerSnapshot() {
+    const raw = productionSnapshot();
+    Object.assign(raw.tables, {
+      packaging_types: [
+        {
+          id: "pt-1",
+          code: "BOX-S",
+          name: "Small box",
+          on_hand_stock: 120,
+          created_by_email: REAL_LOOKING.email,
+          updated_by_email: REAL_LOOKING.otherEmail,
+        },
+      ],
+      packaging_rules: [
+        { id: "pr-1", packaging_type_id: "pt-1", quantity: 1, updated_by_email: REAL_LOOKING.email },
+      ],
+      packaging_stock_movements: [
+        { id: "psm-1", on_hand_delta: -1, reason: "Daily dispatch Commandes Garage Lambert Namur.xlsx", actor_email: REAL_LOOKING.email },
+        { id: "psm-2", on_hand_delta: 1, reason: "Undo daily dispatch Commandes Garage Lambert Namur.xlsx", actor_email: REAL_LOOKING.email },
+        { id: "psm-3", on_hand_delta: 5, reason: "Initial stock set in Packaging Inventory", actor_email: REAL_LOOKING.otherEmail },
+        { id: "psm-4", on_hand_delta: -2, reason: `Cassé par ${REAL_LOOKING.otherName}`, actor_email: REAL_LOOKING.otherEmail },
+      ],
+      dispatch_batches: [
+        {
+          id: "db-1",
+          source_filename: "Commandes Garage Lambert Namur.xlsx",
+          actor_email: REAL_LOOKING.email,
+          undone_by_email: null,
+          order_count: 1,
+          orders: [
+            {
+              orderId: "SO-1",
+              companyName: REAL_LOOKING.customer,
+              destinationCountry: "BE",
+              items: [{ name: "FMC880", quantity: 2 }],
+            },
+          ],
+          package_usage: [{ code: "BOX-S", quantity: 1 }],
+        },
+      ],
+      dispatch_packaging_preferences: [
+        { composition_key: "k", package_quantity: 1, last_actor_email: REAL_LOOKING.email },
+      ],
+      dispatch_plans: [
+        {
+          id: "dp-1",
+          planner_email: REAL_LOOKING.email,
+          closed_by_email: REAL_LOOKING.otherEmail,
+          source_filename: "Commandes Garage Lambert Namur.xlsx",
+          orders: [{ orderId: "SO-1", companyName: REAL_LOOKING.customer, deviceCount: 2 }],
+          labels: [{ orderId: "SO-1", deviceModel: "FMC880", registration: "1-ABC-123" }],
+        },
+      ],
+      dispatch_plan_assignments: [
+        { plan_id: "dp-1", order_id: "SO-1", assignee_email: REAL_LOOKING.otherEmail, assigned_by_email: REAL_LOOKING.email },
+      ],
+      nrd_schedules: [
+        { id: "ns-1", user_email: REAL_LOOKING.email, task: REAL_LOOKING.task, start_time: "08:00" },
+      ],
+      security_alert_recipients: [
+        { user_id: "u-2", added_by_email: REAL_LOOKING.email },
+      ],
+      device_inbound_accessories: [{ id: "dia-1", device_id: "b-1", accessory_bin_id: "a-1", quantity: 1 }],
+      device_thresholds: [{ device: "FMC880", min_stock: 5 }],
+      audit_events: [{ audit_id: "ae-1", payload: { by: REAL_LOOKING.email } }],
+      alert_log: [{ id: "al-1", device: "FMC880", sent_to: REAL_LOOKING.otherEmail }],
+    });
+    return raw;
+  }
+
+  function anonymizedNewer() {
+    const raw = newerSnapshot();
+    const knownIdentities = collectKnownIdentities(raw);
+    const snapshot = anonymizeSnapshot(raw, pseudonymizer());
+    return { raw, knownIdentities, snapshot };
+  }
+
+  it("lets no real email, customer, plate or free text through", () => {
+    const { snapshot, knownIdentities } = anonymizedNewer();
+    const output = JSON.stringify(snapshot).toLowerCase();
+    for (const value of [...REAL_STRINGS, "1-abc-123", "garage lambert"]) {
+      expect(output, value).not.toContain(value.toLowerCase());
+    }
+    expect(output).not.toMatch(/@(?!stockpro\.test)[a-z0-9-]+\./);
+    expect(() => assertNoPersonalData(snapshot, knownIdentities, "newer")).not.toThrow();
+  });
+
+  it("uses the same alias and customer code as the older tables", () => {
+    const { snapshot } = anonymizedNewer();
+    const alias = snapshot.authUsers[0].email;
+    const other = snapshot.authUsers[1].email;
+    const t = snapshot.tables;
+    expect(t.packaging_types[0].created_by_email).toBe(alias);
+    expect(t.packaging_types[0].updated_by_email).toBe(other);
+    expect(t.packaging_rules[0].updated_by_email).toBe(alias);
+    expect(t.packaging_stock_movements[0].actor_email).toBe(alias);
+    expect(t.dispatch_batches[0].actor_email).toBe(alias);
+    expect(t.dispatch_batches[0].undone_by_email).toBeNull();
+    expect(t.dispatch_packaging_preferences[0].last_actor_email).toBe(alias);
+    expect(t.dispatch_plans[0].planner_email).toBe(alias);
+    expect(t.dispatch_plans[0].closed_by_email).toBe(other);
+    expect(t.dispatch_plan_assignments[0].assignee_email).toBe(other);
+    expect(t.dispatch_plan_assignments[0].assigned_by_email).toBe(alias);
+    expect(t.nrd_schedules[0].user_email).toBe(alias);
+    expect(t.security_alert_recipients[0].added_by_email).toBe(alias);
+
+    const customer = t.return_records[0].customer;
+    expect(t.dispatch_batches[0].orders[0].companyName).toBe(customer);
+    expect(t.dispatch_plans[0].orders[0].companyName).toBe(customer);
+    expect(t.nrd_schedules[0].task).toBe(t.nrd_time_logs[0].task);
+  });
+
+  it("keeps dispatch and packaging figures readable", () => {
+    const { raw, snapshot } = anonymizedNewer();
+    const rawTables = raw.tables as Record<string, unknown[]>;
+    const t = snapshot.tables;
+    const [order] = t.dispatch_batches[0].orders;
+    expect(order).toMatchObject({
+      orderId: "SO-1",
+      destinationCountry: "BE",
+      items: [{ name: "FMC880", quantity: 2 }],
+    });
+    expect(t.dispatch_batches[0].package_usage).toEqual([{ code: "BOX-S", quantity: 1 }]);
+    expect(t.dispatch_batches[0].order_count).toBe(1);
+    expect(t.packaging_types[0]).toMatchObject({ code: "BOX-S", name: "Small box", on_hand_stock: 120 });
+    expect(t.device_inbound_accessories).toEqual(rawTables.device_inbound_accessories);
+    expect(t.device_thresholds).toEqual(rawTables.device_thresholds);
+    expect(t.dispatch_plans[0].labels[0]).toMatchObject({ orderId: "SO-1", deviceModel: "FMC880" });
+    expect(t.dispatch_plans[0].labels[0].registration).toMatch(/^REG-[0-9a-f]{10}$/);
+    expect(t.nrd_schedules[0].start_time).toBe("08:00");
+  });
+
+  it("keeps the readable part of packaging reasons and codes the file name", () => {
+    const { snapshot } = anonymizedNewer();
+    const t = snapshot.tables;
+    const file = t.dispatch_batches[0].source_filename;
+    expect(file).toMatch(/^Dispatch file [0-9a-f]{10}$/);
+    expect(t.dispatch_plans[0].source_filename).toBe(file);
+    expect(t.packaging_stock_movements.map((row: { reason: string }) => row.reason)).toEqual([
+      `Daily dispatch ${file}`,
+      `Undo daily dispatch ${file}`,
+      "Initial stock set in Packaging Inventory",
+      REDACTED_TEXT,
+    ]);
+  });
+
+  it("never exports the legacy audit and alert tables", () => {
+    const { snapshot } = anonymizedNewer();
+    expect(snapshot.tables).not.toHaveProperty("audit_events");
+    expect(snapshot.tables).not.toHaveProperty("alert_log");
+  });
+});
+
 describe("clone script wiring", () => {
   const script = readFileSync(
     join(process.cwd(), "scripts/clone-production-data-to-staging.mjs"),
@@ -375,5 +531,46 @@ describe("clone script wiring", () => {
     expect(script).not.toContain("LEGACY_PRODUCTION_SNAPSHOT_TABLES");
     expect(script).not.toContain("safeAuthUser");
     expect(script).not.toMatch(/writeArtifact\([^)]*productionUsers/);
+  });
+
+  function listedTables(name: string) {
+    const match = script.match(new RegExp(`const ${name} = \\[([^\\]]*)\\]`));
+    expect(match, name).not.toBeNull();
+    return Array.from(match![1].matchAll(/"([a-z_]+)"/g), (entry) => entry[1]);
+  }
+
+  it("clears every known table and knows how to delete it", () => {
+    const candidates = listedTables("TABLE_CANDIDATES");
+    const deleteOrder = listedTables("DELETE_ORDER");
+    const copyOrder = listedTables("COPY_ORDER");
+    const clearedOnly = listedTables("CLEARED_NOT_COPIED");
+    for (const table of [
+      "packaging_types",
+      "packaging_stock_movements",
+      "packaging_rules",
+      "dispatch_batches",
+      "dispatch_plans",
+      "dispatch_plan_assignments",
+      "dispatch_packaging_preferences",
+      "nrd_schedules",
+      "audit_events",
+      "security_alert_recipients",
+      "device_inbound_accessories",
+      "device_thresholds",
+      "alert_log",
+    ]) {
+      expect(candidates, table).toContain(table);
+    }
+    for (const table of candidates) {
+      expect(deleteOrder, table).toContain(table);
+      expect(script, table).toMatch(new RegExp(`\\n  ${table}: "`));
+    }
+    for (const table of clearedOnly) {
+      expect(copyOrder, table).not.toContain(table);
+    }
+    expect(copyOrder.indexOf("nrd_schedules")).toBeLessThan(copyOrder.indexOf("nrd_time_logs"));
+    expect(copyOrder.indexOf("dispatch_batches")).toBeLessThan(
+      copyOrder.indexOf("dispatch_packaging_preferences")
+    );
   });
 });

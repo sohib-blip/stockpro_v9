@@ -17,13 +17,42 @@ const FICTIONAL_EMAIL_PATTERN = /@stockpro\.test$/i;
 const NON_PERSON_ACTORS = new Set(["", "unknown", "system", "cron", "automation"]);
 
 // Column -> rule. Columns not listed here are business data (stock, IMEI,
-// references, quantities) and are copied unchanged.
+// references, quantities) and are copied unchanged. A rule can also be
+// { each: { key: rule } } for a jsonb array of objects (dispatch orders).
+const DISPATCH_ORDER_RULES = { each: { companyName: "customer" } };
+
 export const PERSONAL_COLUMN_RULES = {
   accessory_movements: { actor: "actor", note: "text", comment: "text" },
+  alert_log: { sent_to: "email" },
   alert_subscribers: { email: "email" },
+  dispatch_batches: {
+    actor_email: "email",
+    undone_by_email: "email",
+    source_filename: "fileName",
+    orders: DISPATCH_ORDER_RULES,
+  },
+  dispatch_packaging_preferences: { last_actor_email: "email" },
+  dispatch_plan_assignments: {
+    assignee_email: "email",
+    assigned_by_email: "email",
+  },
+  dispatch_plans: {
+    planner_email: "email",
+    closed_by_email: "email",
+    source_filename: "fileName",
+    orders: DISPATCH_ORDER_RULES,
+    labels: { each: { registration: "registration" } },
+  },
   inbound_batches: { actor: "actor" },
   movements: { actor: "actor", notes: "text" },
+  nrd_schedules: { user_email: "email", task: "task" },
   nrd_time_logs: { user_email: "email", task: "task" },
+  packaging_rules: { updated_by_email: "email" },
+  packaging_stock_movements: {
+    actor_email: "email",
+    reason: "packagingReason",
+  },
+  packaging_types: { created_by_email: "email", updated_by_email: "email" },
   profiles: { email: "email", full_name: "person" },
   return_history_entries: { actor: "actor" },
   return_records: {
@@ -33,14 +62,29 @@ export const PERSONAL_COLUMN_RULES = {
     template_exported_by_email: "email",
   },
   return_template_export_batches: { actor: "actor" },
+  security_alert_recipients: { added_by_email: "email" },
   supplies: { created_by: "actor", comment: "text", failed_reason: "text" },
   supply_status_history: { changed_by: "actor", failed_reason: "text" },
 };
 
+// Reasons written by the database itself. Anything else in
+// packaging_stock_movements.reason was typed by a person and is redacted.
+const FIXED_PACKAGING_REASONS = new Set([
+  "Initial stock set in Packaging Inventory",
+  "Stock count updated in Packaging Inventory",
+]);
+// "<prefix><dispatch file name>": the prefix stays readable, the file name
+// gets the same code as dispatch_batches.source_filename.
+const PACKAGING_REASON_PREFIXES = ["Undo daily dispatch ", "Daily dispatch "];
+
 // Technical tables holding IP addresses, devices, sessions or hashed quota
 // keys. They are never copied and never written into a local backup.
+// audit_events and alert_log are legacy tables the app no longer uses
+// (audit payloads are unreviewed jsonb): they are only cleared on Staging.
 export const NEVER_EXPORTED_TABLES = new Set([
+  "alert_log",
   "app_sessions",
+  "audit_events",
   "connection_events",
   "inventory_command_receipts",
   "workload_budget_buckets",
@@ -88,10 +132,28 @@ export function createPseudonymizer({ secret = randomBytes(32) } = {}) {
     return person(value);
   };
 
+  const fileName = (value) =>
+    isBlank(value) ? value ?? null : `Dispatch file ${code("file", value)}`;
+
+  const packagingReason = (value) => {
+    if (isBlank(value)) return value ?? null;
+    const reason = String(value).trim();
+    if (FIXED_PACKAGING_REASONS.has(reason)) return reason;
+    const prefix = PACKAGING_REASON_PREFIXES.find((candidate) =>
+      reason.startsWith(candidate)
+    );
+    if (prefix) return `${prefix}${fileName(reason.slice(prefix.length))}`;
+    return REDACTED_TEXT;
+  };
+
   return {
     email,
     person,
     actor,
+    fileName,
+    packagingReason,
+    registration: (value) =>
+      isBlank(value) ? value ?? null : `REG-${code("registration", value)}`,
     customer: (value) =>
       isBlank(value) ? value ?? null : `Customer ${code("customer", value)}`,
     surId: (value) =>
@@ -102,12 +164,28 @@ export function createPseudonymizer({ secret = randomBytes(32) } = {}) {
   };
 }
 
+function applyRule(rule, value, pseudonymizer) {
+  if (typeof rule === "string") return pseudonymizer[rule](value);
+  // { each: { key: rule } }: a jsonb array of objects.
+  if (!Array.isArray(value)) return value;
+  return value.map((entry) => {
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) return entry;
+    const copy = { ...entry };
+    for (const [key, nested] of Object.entries(rule.each)) {
+      if (key in copy) copy[key] = applyRule(nested, copy[key], pseudonymizer);
+    }
+    return copy;
+  });
+}
+
 export function anonymizeRow(table, row, pseudonymizer) {
   const rules = PERSONAL_COLUMN_RULES[table];
   if (!rules) return { ...row };
   const result = { ...row };
   for (const [column, rule] of Object.entries(rules)) {
-    if (column in result) result[column] = pseudonymizer[rule](result[column]);
+    if (column in result) {
+      result[column] = applyRule(rule, result[column], pseudonymizer);
+    }
   }
   return result;
 }

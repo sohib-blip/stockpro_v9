@@ -18,23 +18,36 @@ const INSERT_BATCH_SIZE = 500;
 const TABLE_CANDIDATES = [
   "accessory_bins",
   "accessory_movements",
+  "alert_log",
   "alert_subscribers",
   "alerts",
   "app_sessions",
+  "audit_events",
   "bins",
   "boxes",
   "connection_events",
   "device_accessory_templates",
+  "device_inbound_accessories",
+  "device_thresholds",
   "devices",
+  "dispatch_batches",
+  "dispatch_packaging_preferences",
+  "dispatch_plan_assignments",
+  "dispatch_plans",
   "inbound_batches",
   "inventory_command_receipts",
   "items",
   "movements",
+  "nrd_schedules",
   "nrd_time_logs",
+  "packaging_rules",
+  "packaging_stock_movements",
+  "packaging_types",
   "profiles",
   "return_history_entries",
   "return_records",
   "return_template_export_batches",
+  "security_alert_recipients",
   "supplies",
   "supply_items",
   "supply_status_history",
@@ -44,9 +57,14 @@ const TABLE_CANDIDATES = [
   "workload_leases",
 ];
 
+// Parents before children (foreign keys).
 const COPY_ORDER = [
   "bins",
   "accessory_bins",
+  "device_thresholds",
+  "packaging_types",
+  "packaging_rules",
+  "device_inbound_accessories",
   "alert_subscribers",
   "inbound_batches",
   "boxes",
@@ -54,6 +72,7 @@ const COPY_ORDER = [
   "profiles",
   "user_roles",
   "user_permissions",
+  "security_alert_recipients",
   "items",
   "supplies",
   "supply_items",
@@ -61,10 +80,46 @@ const COPY_ORDER = [
   "movements",
   "return_records",
   "accessory_movements",
+  "packaging_stock_movements",
+  "nrd_schedules",
   "nrd_time_logs",
+  "dispatch_batches",
+  "dispatch_packaging_preferences",
 ];
 
+// Inserting a dispatch batch rebuilds its packaging preferences through a
+// database trigger: those rebuilt rows are cleared before the exact
+// Production copy is inserted.
+const REBUILT_BY_TRIGGER = new Set(["dispatch_packaging_preferences"]);
+
+// Cleared on Staging but never copied: technical state, today's dispatch
+// plan (a copied OPEN plan would lock Dispatch Planning; its labels hold
+// vehicle registrations) and legacy tables the app no longer uses.
+const CLEARED_NOT_COPIED = [
+  "alert_log",
+  "audit_events",
+  "connection_events",
+  "dispatch_plan_assignments",
+  "dispatch_plans",
+  "inventory_command_receipts",
+  "return_template_export_batches",
+  "workload_budget_buckets",
+  "workload_leases",
+];
+
+// Children before parents (foreign keys).
 const DELETE_ORDER = [
+  "dispatch_plan_assignments",
+  "dispatch_plans",
+  "dispatch_packaging_preferences",
+  "dispatch_batches",
+  "packaging_rules",
+  "packaging_stock_movements",
+  "packaging_types",
+  "device_inbound_accessories",
+  "security_alert_recipients",
+  "audit_events",
+  "alert_log",
   "return_records",
   "return_template_export_batches",
   "return_history_entries",
@@ -84,35 +139,50 @@ const DELETE_ORDER = [
   "boxes",
   "inbound_batches",
   "nrd_time_logs",
+  "nrd_schedules",
   "user_permissions",
   "user_roles",
   "profiles",
   "alert_subscribers",
   "accessory_bins",
   "bins",
+  "device_thresholds",
   "devices",
 ];
 
 const PRIMARY_KEYS = {
   accessory_bins: "id",
   accessory_movements: "id",
+  alert_log: "id",
   alert_subscribers: "id",
   alerts: "id",
   app_sessions: "user_id",
+  audit_events: "audit_id",
   bins: "id",
   boxes: "id",
   connection_events: "id",
   device_accessory_templates: "id",
+  device_inbound_accessories: "id",
+  device_thresholds: "device",
   devices: "device_id",
+  dispatch_batches: "id",
+  dispatch_packaging_preferences: "composition_key",
+  dispatch_plan_assignments: "plan_id",
+  dispatch_plans: "id",
   inbound_batches: "batch_id",
   inventory_command_receipts: "operation_id",
   items: "item_id",
   movements: "movement_id",
+  nrd_schedules: "id",
   nrd_time_logs: "id",
+  packaging_rules: "id",
+  packaging_stock_movements: "id",
+  packaging_types: "id",
   profiles: "user_id",
   return_history_entries: "history_key",
   return_records: "id",
   return_template_export_batches: "id",
+  security_alert_recipients: "user_id",
   supplies: "id",
   supply_items: "id",
   supply_status_history: "id",
@@ -120,6 +190,12 @@ const PRIMARY_KEYS = {
   user_roles: "user_id",
   workload_budget_buckets: "route_class",
   workload_leases: "id",
+};
+
+// Second sort key for tables whose primary key has two columns, so paged
+// reads stay stable.
+const SECONDARY_ORDER_KEYS = {
+  dispatch_plan_assignments: "order_id",
 };
 
 const OUTPUT_DIRECTORY = resolve(
@@ -242,6 +318,9 @@ async function readAllRows(supabase, table) {
   for (let from = 0; ; from += PAGE_SIZE) {
     let query = supabase.from(table).select("*");
     if (primaryKey) query = query.order(primaryKey, { ascending: true });
+    if (SECONDARY_ORDER_KEYS[table]) {
+      query = query.order(SECONDARY_ORDER_KEYS[table], { ascending: true });
+    }
     const { data, error } = await query.range(from, from + PAGE_SIZE - 1);
     if (error) throw new Error(`Read ${table}: ${error.message}`);
     rows.push(...(data || []));
@@ -535,7 +614,7 @@ function transformRows(
   productionRoles
 ) {
   const acceptedColumns = new Set(columnsFor(stagingDefinitions, table));
-  return rows.map((sourceRow) => {
+  const transformed = rows.map((sourceRow) => {
     const row = Object.fromEntries(
       Object.entries(sourceRow).filter(([column]) =>
         acceptedColumns.has(column)
@@ -597,8 +676,28 @@ function transformRows(
     if (table === "supply_status_history") {
       row.changed_by_id = remapId(row.changed_by_id, userIdMap);
     }
+    if (table === "packaging_types") {
+      row.created_by_id = remapId(row.created_by_id, userIdMap);
+      row.updated_by_id = remapId(row.updated_by_id, userIdMap);
+    }
+    if (table === "packaging_stock_movements") {
+      row.actor_id = remapId(row.actor_id, userIdMap);
+    }
+    if (table === "dispatch_batches") {
+      row.actor_id = remapId(row.actor_id, userIdMap);
+      row.undone_by_id = remapId(row.undone_by_id, userIdMap);
+    }
+    if (table === "nrd_schedules" || table === "security_alert_recipients") {
+      row.user_id = remapId(row.user_id, userIdMap);
+    }
     return row;
   });
+  // The IT contact list is keyed by user: a row without a cloned user has
+  // nobody to point to.
+  if (table === "security_alert_recipients") {
+    return transformed.filter((row) => row.user_id);
+  }
+  return transformed;
 }
 
 function buildReturnHistory(movements) {
@@ -771,6 +870,9 @@ async function cloneProductionToStaging() {
       productionRoles
     );
     assertNoPersonalData(transformed, knownIdentities, `Staging ${table}`);
+    if (REBUILT_BY_TRIGGER.has(table)) {
+      await deleteAllRows(stagingClient, stagingDefinitions, table);
+    }
     await insertRows(stagingClient, table, transformed);
     expectedCounts[table] = transformed.length;
   }
@@ -797,13 +899,7 @@ async function cloneProductionToStaging() {
     verification.push({ table, expected, actual: result.count });
   }
 
-  for (const table of [
-    "connection_events",
-    "inventory_command_receipts",
-    "return_template_export_batches",
-    "workload_budget_buckets",
-    "workload_leases",
-  ]) {
+  for (const table of CLEARED_NOT_COPIED) {
     if (!stagingDefinitions[table]) continue;
     const result = await countRows(stagingClient, table);
     if (result.error || result.count !== 0) {

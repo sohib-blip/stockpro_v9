@@ -314,6 +314,63 @@ describe("inbound spreadsheet parser integration", () => {
     });
   });
 
+  // A blank header cell (no title above a column) used to crash these parsers.
+  it("reads Quicklink files whose header has a blank cell before the needed columns", () => {
+    const result = parseQuicklinkExcel(
+      workbookBytes([
+        ["Model", null, "IMEI", "Carton"],
+        ["CV200", "1", "223456789012345", "CNHYCV200XEU202500001"],
+      ]),
+      devices
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.labels.map(({ box_no, imeis }) => ({ box_no, imeis }))).toEqual([
+      { box_no: "00001", imeis: ["223456789012345"] },
+    ]);
+  });
+
+  it("reads Digital Matter files whose header has a blank cell before the needed columns", () => {
+    const result = parseDigitalMatterExcel(
+      workbookBytes([
+        ["Product", null, "IMEI", "Box Number"],
+        ["Oyster", "1", "323456789012345", "DM-01"],
+      ]),
+      devices
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.labels).toEqual([
+      expect.objectContaining({
+        device: "Barra GPS",
+        box_no: "DM-01",
+        imeis: ["323456789012345"],
+      }),
+    ]);
+  });
+
+  it("reads Truster files whose header has a blank cell before the needed columns", () => {
+    const result = parseTrustedExcel(
+      workbookBytes([
+        ["Serialnumber", null, "Model", "Groupe"],
+        ["423456789012345", "1", "T7LTE", "POD-001"],
+      ]),
+      devices
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.labels).toEqual([
+      expect.objectContaining({
+        device: "Neon-R T7",
+        box_no: "POD-001",
+        imeis: ["423456789012345"],
+      }),
+    ]);
+  });
+
   it("returns actionable failures for malformed files, missing devices and unknown vendors", () => {
     const missingHeaders = parseTeltonikaExcel(
       workbookBytes([["Something else"], ["value"]]),

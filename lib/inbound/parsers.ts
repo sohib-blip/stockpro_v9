@@ -22,7 +22,9 @@ function sheetToRows(bytes: Uint8Array): unknown[][] {
   const wb = XLSX.read(bytes, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true });
-  return rows || [];
+  // Blank cells come back as holes; fill them with undefined so that
+  // findIndex/map callbacks always receive a value.
+  return (rows || []).map((row) => Array.from(row));
 }
 
 /**

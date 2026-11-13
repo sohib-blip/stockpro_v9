@@ -18,7 +18,7 @@ export type PreviewResult = {
   boxes: { box_no: string; device: string; qty: number }[];
 };
 
-function normHeader(v: any) {
+function normHeader(v: unknown) {
   return String(v ?? "")
     .toLowerCase()
     .trim()
@@ -26,7 +26,7 @@ function normHeader(v: any) {
     .replace(/[^a-z0-9 ]/g, "");
 }
 
-function cleanDigits(v: any): string {
+function cleanDigits(v: unknown): string {
   let s = String(v ?? "").trim();
   if (!s) return "";
   s = s.replace(/\.0$/, "");
@@ -40,7 +40,7 @@ function normalizeDevice(raw: string) {
   return base || s;
 }
 
-function findHeaderRow(rows: any[][]): number {
+function findHeaderRow(rows: unknown[][]): number {
   for (let i = 0; i < Math.min(rows.length, 30); i++) {
     const joined = (rows[i] ?? []).map(normHeader).join(" ");
     if (joined.includes("imei") || joined.includes("serial")) return i;
@@ -49,7 +49,7 @@ function findHeaderRow(rows: any[][]): number {
 }
 
 // Choose the column with the most 15-digit values in the sample rows.
-function pickImeiColByData(rows: any[][], headerRowIdx: number): number {
+function pickImeiColByData(rows: unknown[][], headerRowIdx: number): number {
   const header = rows[headerRowIdx] ?? [];
   const colCount = header.length;
   const sample = rows.slice(headerRowIdx + 1, headerRowIdx + 1 + 60);
@@ -73,7 +73,7 @@ function pickImeiColByData(rows: any[][], headerRowIdx: number): number {
 }
 
 // Box values are usually short, non-empty values such as "025-36" or "22060".
-function pickBoxColByData(rows: any[][], headerRowIdx: number, avoidCols: number[]): number {
+function pickBoxColByData(rows: unknown[][], headerRowIdx: number, avoidCols: number[]): number {
   const header = rows[headerRowIdx] ?? [];
   const colCount = header.length;
   const sample = rows.slice(headerRowIdx + 1, headerRowIdx + 1 + 60);
@@ -114,7 +114,7 @@ function pickBoxColByData(rows: any[][], headerRowIdx: number, avoidCols: number
 }
 
 // Device columns usually contain a model name rather than numeric-only values.
-function pickDeviceColByData(rows: any[][], headerRowIdx: number, avoidCols: number[]): number {
+function pickDeviceColByData(rows: unknown[][], headerRowIdx: number, avoidCols: number[]): number {
   const header = rows[headerRowIdx] ?? [];
   const colCount = header.length;
   const sample = rows.slice(headerRowIdx + 1, headerRowIdx + 1 + 60);
@@ -146,7 +146,7 @@ function pickDeviceColByData(rows: any[][], headerRowIdx: number, avoidCols: num
 export function parseSupplierExcel(buffer: Buffer): PreviewResult {
   const wb = XLSX.read(buffer, { type: "buffer" });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows: any[][] = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false });
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false });
 
   const headerRowIdx = findHeaderRow(rows);
   const header = (rows[headerRowIdx] ?? []).map(normHeader);

@@ -50,7 +50,7 @@ jobs:
       - name: Lint (ceiling)
         if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         env:
-          LINT_MAX_PROBLEMS: "86"
+          LINT_MAX_PROBLEMS: "41"
         run: |
           npx eslint . --format json --output-file "$RUNNER_TEMP/eslint-report.json" || true
           node scripts/lint-report.mjs "$RUNNER_TEMP/eslint-report.json"

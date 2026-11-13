@@ -1,12 +1,21 @@
 import {
   ParseResult,
+  ParsedLabel,
   makeFail,
   makeOk,
   DeviceMatch,
 } from "./vendorParser";
 
+// Older device rows exposed these names; DeviceMatch rows usually do not.
+type LegacyDeviceNames = {
+  device?: string;
+  canonical_name?: string;
+  name?: string;
+  label?: string;
+};
+
 export function parseDigitalMatterExcel(args: {
-  rows: any[][];
+  rows: unknown[][];
   devicesDb: DeviceMatch[];
   location?: string;
 }): ParseResult {
@@ -69,13 +78,13 @@ export function parseDigitalMatterExcel(args: {
     });
   }
 
-  function norm(s: any) {
+  function norm(s: unknown) {
     return String(s ?? "")
       .trim()
       .toLowerCase();
   }
 
-  function cleanImei(value: any) {
+  function cleanImei(value: unknown) {
     const digits = String(value ?? "").replace(/\D/g, "");
     return digits.length === 15 ? digits : "";
   }
@@ -86,7 +95,8 @@ export function parseDigitalMatterExcel(args: {
     if (!raw) return null;
 
     return (
-      devicesDb.find((d: any) => {
+      devicesDb.find((match) => {
+        const d = match as DeviceMatch & LegacyDeviceNames;
         const candidates = [
           d.device,
           d.canonical_name,
@@ -133,10 +143,11 @@ export function parseDigitalMatterExcel(args: {
       continue;
     }
 
+    const matchedNames = matched as DeviceMatch & LegacyDeviceNames;
     const deviceName =
-      (matched as any).canonical_name ||
-      (matched as any).device ||
-      (matched as any).name ||
+      matchedNames.canonical_name ||
+      matchedNames.device ||
+      matchedNames.name ||
       rawDevice;
 
     let boxNo =
@@ -188,13 +199,15 @@ export function parseDigitalMatterExcel(args: {
     });
   }
 
+  // These legacy labels carry no vendor, qty or qr_data; makeOk fills qty
+  // and qr_data from the IMEIs.
   return makeOk(
-  labels as any,
+  labels as unknown as ParsedLabel[],
   {
     vendor: "digitalmatter",
     headers,
     total_boxes: labels.length,
-    total_imeis: labels.reduce((sum: number, l: any) => sum + l.imeis.length, 0),
+    total_imeis: labels.reduce((sum, l) => sum + l.imeis.length, 0),
   },
   []
 );

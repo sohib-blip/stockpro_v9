@@ -6,7 +6,7 @@ import {
 } from "./vendorParser";
 
 export function parseTeltonikaExcel(args: {
-  rows: any[][];
+  rows: unknown[][];
   devicesDb: DeviceMatch[];
   format?: string;
   location?: string;

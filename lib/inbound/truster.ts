@@ -6,7 +6,7 @@ import {
 } from "./vendorParser";
 
 export function parseTrusterExcel(args: {
-  rows: any[][];
+  rows: unknown[][];
   devicesDb: DeviceMatch[];
   location?: string;
 }): ParseResult {

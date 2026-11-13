@@ -2,17 +2,26 @@ import { NextResponse } from "next/server";
 import { getPermissions, requireUserFromBearer, supabaseService } from "@/lib/auth";
 import { errorMessage } from "@/lib/error-message";
 
-function csv(v: any) {
+function csv(v: unknown) {
   const s = String(v ?? "");
   if (s.includes(",") || s.includes("\n") || s.includes('"')) return `"${s.replaceAll('"', '""')}"`;
   return s;
 }
 
+// Columns this route requests. boxes has no box_no or device column in the
+// schema (supabase/schema/staging-schema.sql), so this read currently fails.
+type InStockRow = {
+  imei: string | null;
+  status: string | null;
+  box_id: string | null;
+  boxes: { box_no: string | null; device: string | null } | null;
+};
+
 async function fetchAllInStock() {
   const sb = supabaseService();
   const pageSize = 5000;
   let from = 0;
-  const rows: any[] = [];
+  const rows: InStockRow[] = [];
 
   while (true) {
     const { data, error } = await sb
@@ -24,7 +33,9 @@ async function fetchAllInStock() {
     if (error) throw new Error(error.message);
     if (!data || data.length === 0) break;
 
-    rows.push(...data);
+    // items.box_id references one box, so PostgREST embeds an object; the
+    // untyped client infers an array.
+    rows.push(...(data as unknown as InStockRow[]));
     if (data.length < pageSize) break;
     from += pageSize;
   }
@@ -47,22 +58,22 @@ if (!perms.can_admin) {
 
     const deviceCounts = new Map<string, number>();
     for (const r of rows) {
-      const device = (r as any)?.boxes?.device ?? "";
+      const device = r.boxes?.device ?? "";
       const key = String(device || "UNKNOWN");
       deviceCounts.set(key, (deviceCounts.get(key) ?? 0) + 1);
     }
 
     rows.sort((a, b) => {
-      const da = String((a as any)?.boxes?.device ?? "UNKNOWN");
-      const db = String((b as any)?.boxes?.device ?? "UNKNOWN");
+      const da = String(a.boxes?.device ?? "UNKNOWN");
+      const db = String(b.boxes?.device ?? "UNKNOWN");
       if (da !== db) return da.localeCompare(db);
 
-      const ba = String((a as any)?.boxes?.box_no ?? "");
-      const bb = String((b as any)?.boxes?.box_no ?? "");
+      const ba = String(a.boxes?.box_no ?? "");
+      const bb = String(b.boxes?.box_no ?? "");
       if (ba !== bb) return ba.localeCompare(bb);
 
-      const ia = String((a as any)?.imei ?? "");
-      const ib = String((b as any)?.imei ?? "");
+      const ia = String(a.imei ?? "");
+      const ib = String(b.imei ?? "");
       return ia.localeCompare(ib);
     });
 
@@ -70,7 +81,7 @@ if (!perms.can_admin) {
 
     const body = rows
       .map((r) => {
-        const b = (r as any).boxes;
+        const b = r.boxes;
         const device = String(b?.device ?? "UNKNOWN");
         const qty = deviceCounts.get(device) ?? 0;
         const boxNo = b?.box_no ?? "";

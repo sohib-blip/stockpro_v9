@@ -2,17 +2,33 @@ import { NextResponse } from "next/server";
 import { getPermissions, requireUserFromBearer, supabaseService } from "@/lib/auth";
 import { errorMessage } from "@/lib/error-message";
 
-function csv(v: any) {
+function csv(v: unknown) {
   const s = String(v ?? "");
   if (s.includes(",") || s.includes("\n") || s.includes('"')) return `"${s.replaceAll('"', '""')}"`;
   return s;
 }
 
+// Columns this route requests. boxes has no box_no or device column in the
+// schema (supabase/schema/staging-schema.sql), so this read currently fails.
+type InventoryRow = {
+  imei: string | null;
+  status: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+  box_id: string | null;
+  boxes: {
+    box_no: string | null;
+    device: string | null;
+    status: string | null;
+    created_at: string | null;
+  } | null;
+};
+
 async function fetchAllInventory() {
   const sb = supabaseService();
   const pageSize = 5000;
   let from = 0;
-  const rows: any[] = [];
+  const rows: InventoryRow[] = [];
 
   while (true) {
     const { data, error } = await sb
@@ -23,7 +39,9 @@ async function fetchAllInventory() {
     if (error) throw new Error(error.message);
     if (!data || data.length === 0) break;
 
-    rows.push(...data);
+    // items.box_id references one box, so PostgREST embeds an object; the
+    // untyped client infers an array.
+    rows.push(...(data as unknown as InventoryRow[]));
     if (data.length < pageSize) break;
     from += pageSize;
   }
@@ -56,7 +74,7 @@ export async function GET(req: Request) {
 
     const body = rows
       .map((r) => {
-        const b = (r as any).boxes;
+        const b = r.boxes;
         const device = b?.device ?? "";
         const boxNo = b?.box_no ?? "";
         const boxStatus = b?.status ?? "";

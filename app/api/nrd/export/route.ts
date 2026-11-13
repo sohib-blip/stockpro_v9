@@ -17,6 +17,15 @@ const supabase = createClient(
   }
 );
 
+// Columns of nrd_time_logs this export reads (the query selects them all).
+type NrdLogRow = {
+  user_email: string;
+  task: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_minutes: number | null;
+};
+
 function getMonthRange(periodMonth?: string | null) {
   const now = new Date();
 
@@ -82,9 +91,9 @@ export async function GET(req: Request) {
 
     if (error) throw error;
 
-    const rows = data || [];
+    const rows: NrdLogRow[] = data || [];
 
-    const exportRows = rows.map((row: any) => ({
+    const exportRows = rows.map((row) => ({
       Date: formatDate(row.started_at),
       "Start Time": formatTime(row.started_at),
       "End Time": row.ended_at ? formatTime(row.ended_at) : "",
@@ -94,7 +103,7 @@ export async function GET(req: Request) {
     }));
 
     const totalMinutes = rows.reduce(
-      (sum: number, row: any) => sum + Number(row.duration_minutes || 0),
+      (sum, row) => sum + Number(row.duration_minutes || 0),
       0
     );
 

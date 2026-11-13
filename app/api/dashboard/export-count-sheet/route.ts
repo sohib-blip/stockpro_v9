@@ -46,6 +46,31 @@ function styleHeader(row: ExcelJS.Row) {
   row.alignment = { vertical: "middle", horizontal: "center" };
 }
 
+// ExcelJS gives each conditional-formatting rule a priority itself when none is
+// set, but its typings require one. The rules below rely on that numbering.
+type RuleWithoutPriority<Rule> = Rule extends unknown
+  ? Omit<Rule, "priority"> & { priority?: number }
+  : never;
+
+type ConditionalFormatting = {
+  ref: string;
+  rules: RuleWithoutPriority<ExcelJS.ConditionalFormattingRule>[];
+};
+
+function addConditionalFormatting(
+  ws: ExcelJS.Worksheet,
+  formatting: ConditionalFormatting
+) {
+  ws.addConditionalFormatting(formatting as ExcelJS.ConditionalFormattingOptions);
+}
+
+// Columns read from stock_export_view (items left-joined to boxes and bins).
+type CountSheetRow = {
+  item_id: string;
+  device: string | null;
+  imei: string | null;
+};
+
 function styleSheet(ws: ExcelJS.Worksheet) {
   ws.views = [{ state: "frozen", ySplit: 1 }];
   ws.getRow(1).height = 22;
@@ -71,7 +96,7 @@ export async function GET(req: Request) {
 
   try {
     const supabase = supabaseService();
-    const allRows: any[] = [];
+    const allRows: CountSheetRow[] = [];
     const pageSize = 1000;
     const requestedRows = MAX_COUNT_SHEET_ROWS + 1;
 
@@ -217,7 +242,7 @@ export async function GET(req: Request) {
       fgColor: { argb: "FF1E3A8A" },
     };
 
-    (summary as any).addConditionalFormatting({
+    addConditionalFormatting(summary, {
       ref: `G2:G${totalRow}`,
       rules: [
         {
@@ -280,7 +305,7 @@ export async function GET(req: Request) {
         };
       }
 
-      (ws as any).addConditionalFormatting({
+      addConditionalFormatting(ws, {
         ref: `A2:A${scanRows}`,
         rules: [
           {
@@ -302,7 +327,7 @@ export async function GET(req: Request) {
         ],
       });
 
-      (ws as any).addConditionalFormatting({
+      addConditionalFormatting(ws, {
         ref: `B2:B${scanRows}`,
         rules: [
           {
@@ -324,7 +349,7 @@ export async function GET(req: Request) {
         ],
       });
 
-      (ws as any).addConditionalFormatting({
+      addConditionalFormatting(ws, {
         ref: `C2:D${scanRows}`,
         rules: [
           {
@@ -398,7 +423,7 @@ missing.autoFilter = {
   to: "C1",
 };
 
-(missing as any).addConditionalFormatting({
+addConditionalFormatting(missing, {
   ref: `B2:B${missingRow}`,
   rules: [
     {
@@ -412,7 +437,7 @@ missing.autoFilter = {
   ],
 });
 
-(missing as any).addConditionalFormatting({
+addConditionalFormatting(missing, {
   ref: `C2:C${missingRow}`,
   rules: [
     {
@@ -467,7 +492,7 @@ unexpected.autoFilter = {
   to: "C1",
 };
 
-(unexpected as any).addConditionalFormatting({
+addConditionalFormatting(unexpected, {
   ref: `B2:B${unexpectedRow}`,
   rules: [
     {
@@ -481,7 +506,7 @@ unexpected.autoFilter = {
   ],
 });
 
-(unexpected as any).addConditionalFormatting({
+addConditionalFormatting(unexpected, {
   ref: `C2:C${unexpectedRow}`,
   rules: [
     {

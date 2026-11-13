@@ -12,11 +12,30 @@ function sb() {
   });
 }
 
-async function fetchAllItems(supabase: any) {
+// Columns this route requests. boxes has no box_id or box_no column in the
+// schema (supabase/schema/staging-schema.sql): that read fails, its error is
+// ignored and the workbook comes out empty.
+type ItemRow = { imei: string | null; device_id: string | null; box_id: string | null };
+type DeviceRow = { device_id: string; device: string | null };
+type BoxRow = {
+  box_id: string;
+  box_no: string;
+  device_id: string;
+  floor: string | null;
+};
+type WarehouseSheetRow = {
+  Device: string;
+  Box_ID: string | null;
+  Box_No: string;
+  Floor: string;
+  IMEI: string | null;
+};
+
+async function fetchAllItems(supabase: ReturnType<typeof sb>) {
 
   const pageSize = 5000;
   let from = 0;
-  const allRows: any[] = [];
+  const allRows: ItemRow[] = [];
 
   while (true) {
 
@@ -55,9 +74,9 @@ export async function GET() {
     // Export all matching items.
     const items = await fetchAllItems(supabase);
 
-    const deviceMap: Record<string, string> = {};
-    for (const d of devices || []) {
-      deviceMap[String((d as any).device_id)] = (d as any).device;
+    const deviceMap: Record<string, string | null> = {};
+    for (const d of (devices || []) as DeviceRow[]) {
+      deviceMap[String(d.device_id)] = d.device;
     }
 
     const boxMap: Record<
@@ -65,27 +84,27 @@ export async function GET() {
       { box_no: string; floor: string; device_id: string }
     > = {};
 
-    for (const b of boxes || []) {
-      boxMap[String((b as any).box_id)] = {
-        box_no: (b as any).box_no,
-        floor: (b as any).floor || "",
-        device_id: (b as any).device_id,
+    for (const b of (boxes || []) as BoxRow[]) {
+      boxMap[String(b.box_id)] = {
+        box_no: b.box_no,
+        floor: b.floor || "",
+        device_id: b.device_id,
       };
     }
 
-    const rows: any[] = [];
+    const rows: WarehouseSheetRow[] = [];
 
     for (const it of items || []) {
 
-      const box = boxMap[String((it as any).box_id)];
+      const box = boxMap[String(it.box_id)];
       if (!box) continue;
 
       rows.push({
         Device: deviceMap[String(box.device_id)] || "",
-        Box_ID: (it as any).box_id,
+        Box_ID: it.box_id,
         Box_No: box.box_no,
         Floor: box.floor,
-        IMEI: (it as any).imei,
+        IMEI: it.imei,
       });
 
     }

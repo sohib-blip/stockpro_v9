@@ -18,6 +18,15 @@ export const revalidate = 0;
 const MAX_EXPORT_ROWS = 50_000;
 const MAX_EXPORT_BYTES = 32 * 1024 * 1024;
 
+// Columns read from stock_export_view (items left-joined to boxes and bins).
+type StockExportRow = {
+  item_id: string;
+  floor: string | null;
+  device: string | null;
+  box_code: string | null;
+  imei: string | null;
+};
+
 export async function GET(req: Request) {
   const authorization = await authorizeCapabilityRequest(
     req,
@@ -37,7 +46,7 @@ export async function GET(req: Request) {
 
   try {
     const supabase = supabaseService();
-    const allRows: any[] = [];
+    const allRows: StockExportRow[] = [];
     const pageSize = 1000;
     const requestedRows = MAX_EXPORT_ROWS + 1;
 
@@ -76,7 +85,7 @@ export async function GET(req: Request) {
       );
     }
 
-    const rows = allRows.map((r: any) => ({
+    const rows = allRows.map((r) => ({
       floor: r.floor || "",
       device: r.device || "",
       box_code: r.box_code || "",

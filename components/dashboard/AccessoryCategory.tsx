@@ -2,10 +2,11 @@
 
 import { AnimatePresence, motion } from "motion/react";
 import { ChevronRight } from "lucide-react";
+import type { DashboardInventoryRow } from "@/lib/dashboard-inventory-rows";
 
 type Props = {
   title: string;
-  items: any[];
+  items: DashboardInventoryRow[];
   open: boolean;
   onToggle: () => void;
 };
@@ -70,7 +71,7 @@ export default function AccessoryCategory({
 
               <tbody>
 
-                {items.map((a: any) => (
+                {items.map((a) => (
 
                   <tr
                     key={a.id}

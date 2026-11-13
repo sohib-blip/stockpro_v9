@@ -86,6 +86,35 @@ function getReportingMonths(locale: "en" | "fr" | "nl") {
   });
 }
 
+// An nrd_time_logs row (/api/nrd/history, /api/nrd/start).
+type NrdTimeLog = {
+  id: string;
+  user_id: string | null;
+  user_email: string;
+  task: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_minutes: number | null;
+  period_month: string;
+  created_at: string | null;
+  schedule_id: string | null;
+  schedule_date: string | null;
+  auto_stopped: boolean;
+};
+
+// The running task; /api/nrd/current adds the end of its scheduled slot.
+type ActiveNrdTask = NrdTimeLog & { scheduled_end?: string | null };
+
+// Response of /api/nrd/stats.
+type NrdStats = {
+  ok: boolean;
+  period_month: string;
+  total_minutes: number;
+  total_hours: number;
+  tasks_count: number;
+  by_task: Array<{ task: string; minutes: number }>;
+};
+
 function notifyNrdChanged(active: unknown) {
   window.dispatchEvent(
     new CustomEvent("stockpro:nrd-changed", { detail: { active } })
@@ -101,10 +130,10 @@ export default function NRDPage() {
   const [userId, setUserId] = useState<string | null>(null);
 
   const [task, setTask] = useState(NRD_TASKS[0]);
-  const [active, setActive] = useState<any>(null);
+  const [active, setActive] = useState<ActiveNrdTask | null>(null);
   const [seconds, setSeconds] = useState(0);
-  const [history, setHistory] = useState<any[]>([]);
-  const [stats, setStats] = useState<any>(null);
+  const [history, setHistory] = useState<NrdTimeLog[]>([]);
+  const [stats, setStats] = useState<NrdStats | null>(null);
   const [periodMonth, setPeriodMonth] = useState(getCurrentPeriodMonth());
 
   const [busy, setBusy] = useState(false);
@@ -504,7 +533,7 @@ async function stopTaskWithCorrection() {
             <span>Month summary</span>
           </div>
           <div className="nrd-summary-values"><div><strong>{formatHours(Number(stats?.total_minutes || 0))}</strong><span>total time</span></div><div><strong>{stats?.tasks_count || 0}</strong><span>completed tasks</span></div></div>
-          <div className="nrd-mini-breakdown">{stats?.by_task?.slice(0, 3).map((row: any) => { const width = stats.total_minutes ? Math.round((Number(row.minutes || 0) / Number(stats.total_minutes || 1)) * 100) : 0; return <div key={row.task}><div><span>{row.task}</span><small>{formatHours(Number(row.minutes || 0))}</small></div><i><span style={{ width: `${width}%` }} /></i></div>; })}</div>
+          <div className="nrd-mini-breakdown">{stats?.by_task?.slice(0, 3).map((row) => { const width = stats.total_minutes ? Math.round((Number(row.minutes || 0) / Number(stats.total_minutes || 1)) * 100) : 0; return <div key={row.task}><div><span>{row.task}</span><small>{formatHours(Number(row.minutes || 0))}</small></div><i><span style={{ width: `${width}%` }} /></i></div>; })}</div>
         </section>
       </div>
 
@@ -652,7 +681,7 @@ async function stopTaskWithCorrection() {
 
         <div className="space-y-3">
           {stats?.by_task?.length ? (
-            stats.by_task.map((row: any) => (
+            stats.by_task.map((row) => (
               <div key={row.task}>
                 <div className="flex justify-between text-sm mb-1">
                   <span className="text-cyan-400 font-semibold">

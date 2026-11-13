@@ -19,6 +19,40 @@ type HistoryRow = {
   history_key?: string;
 };
 
+// Response of /api/outbound/eod-preview. The page fills in any missing list
+// right after reading it, so the stored preview always has them.
+type OutboundPreview = {
+  ok?: boolean;
+  error?: string | null;
+  imeis?: string[];
+  unknown_imeis: string[];
+  already_out: Array<{
+    imei: string;
+    device: string | null;
+    box: string | null;
+    floor: string | null;
+    status: string | null;
+  }>;
+  duplicates: Array<{ imei: string; count: number }>;
+  parse_errors: Array<{ sheet: string; row: number; message: string }>;
+  summary: Array<{
+    device: string;
+    box_no: string;
+    floor: string | null;
+    detected: number;
+    remaining: number;
+    percent_after: number | null;
+  }>;
+  ignored_rows?: number;
+  totalDetected?: number;
+};
+
+// Response of /api/outbound/eod-confirm.
+type OutboundConfirmResponse = {
+  ok?: boolean;
+  error?: string;
+};
+
 export default function OutboundPage() {
   const { user: accessUser } = useAccess();
 
@@ -33,7 +67,7 @@ export default function OutboundPage() {
   // Name of the previewed report: the history reference when none is typed.
   const [previewFileName, setPreviewFileName] = useState("");
 
-  const [preview, setPreview] = useState<any>(null);
+  const [preview, setPreview] = useState<OutboundPreview | null>(null);
   const [previewSource, setPreviewSource] =
     useState<"manual" | "excel" | null>(null);
 
@@ -97,7 +131,7 @@ setPreview(null);
 
     const imeis = deviceIdsInText(imeiInput);
 
-    let json: any;
+    let json: OutboundPreview;
     try {
       const res = await apiFetch("/api/outbound/eod-preview", {
         method: "POST",
@@ -148,7 +182,7 @@ setBusy(false);
     const form = new FormData();
     form.append("file", upload);
 
-    let json: any;
+    let json: OutboundPreview;
     try {
       const res = await apiFetch("/api/outbound/eod-preview", {
         method: "POST",
@@ -200,7 +234,7 @@ if (!actorId) {
     const reference =
       shipmentRef.trim() || (previewSource === "excel" ? previewFileName : "");
 
-    let json: any;
+    let json: OutboundConfirmResponse;
     try {
       const res = await apiFetch("/api/outbound/eod-confirm", {
         method: "POST",
@@ -251,10 +285,10 @@ if (!actorId) {
   }
 
   const hasPreviewErrors =
-  preview?.duplicates?.length > 0 ||
-  preview?.parse_errors?.length > 0 ||
-  preview?.already_out?.length > 0 ||
-  preview?.unknown_imeis?.length > 0;
+  (preview?.duplicates?.length ?? 0) > 0 ||
+  (preview?.parse_errors?.length ?? 0) > 0 ||
+  (preview?.already_out?.length ?? 0) > 0 ||
+  (preview?.unknown_imeis?.length ?? 0) > 0;
 
   return (
     <div className="prototype-page prototype-module-page outbound-prototype-page">
@@ -368,7 +402,7 @@ if (!actorId) {
       </div>
       <div>
         {preview.totalDetected ?? 0} device IMEIs
-        {preview.ignored_rows > 0 && (
+        {(preview.ignored_rows ?? 0) > 0 && (
           <span> · {preview.ignored_rows} accessory/service rows ignored</span>
         )}
       </div>
@@ -388,7 +422,7 @@ if (!actorId) {
             </tr>
           </thead>
           <tbody>
-            {preview.parse_errors.map((issue: any, index: number) => (
+            {preview.parse_errors.map((issue, index) => (
               <tr key={`${issue.sheet}-${issue.row}-${index}`}>
                 <td className="p-2">{issue.sheet}</td>
                 <td className="p-2 text-right">{issue.row}</td>
@@ -414,7 +448,7 @@ if (!actorId) {
             </tr>
           </thead>
           <tbody>
-            {preview.duplicates.map((d: any) => (
+            {preview.duplicates.map((d) => (
               <tr key={d.imei}>
                 <td className="p-2">{d.imei}</td>
                 <td className="p-2 text-right font-semibold">{d.count}</td>
@@ -465,7 +499,7 @@ if (!actorId) {
             </tr>
           </thead>
           <tbody>
-            {preview.already_out.map((row: any) => (
+            {preview.already_out.map((row) => (
               <tr key={row.imei}>
                 <td className="p-2">{row.imei}</td>
                 <td className="p-2">{row.device || "-"}</td>
@@ -493,7 +527,7 @@ if (!actorId) {
           </tr>
         </thead>
         <tbody>
-          {preview.summary.map((row: any, idx: number) => (
+          {preview.summary.map((row, idx) => (
             <tr key={idx}>
               <td className="p-2">{row.device}</td>
               <td className="p-2">{row.box_no}</td>

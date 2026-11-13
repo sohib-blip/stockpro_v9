@@ -19,6 +19,26 @@ type BinRow = {
   name: string;
 };
 
+// Response of /api/transfer/preview, plus the request it answered.
+type TransferPreview = {
+  ok: boolean;
+  preview: boolean;
+  boxes: Array<{
+    box_code: string;
+    device: string;
+    current_floor: string | null;
+    imei_count: number;
+  }>;
+  total_boxes: number;
+  total_items: number;
+  target_floor: string;
+  request: {
+    box_codes: string[];
+    source_bin_id: string;
+    target_floor: string;
+  };
+};
+
 export default function TransferPage() {
   const supabase = createSupabaseBrowserClient();
 
@@ -26,7 +46,7 @@ export default function TransferPage() {
   const [targetFloor, setTargetFloor] = useState("00");
   const [bins, setBins] = useState<BinRow[]>([]);
   const [sourceBinId, setSourceBinId] = useState("");
-  const [preview, setPreview] = useState<any>(null);
+  const [preview, setPreview] = useState<TransferPreview | null>(null);
 
   const [history, setHistory] = useState<HistoryRow[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
@@ -297,7 +317,7 @@ export default function TransferPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.boxes.map((b: any, i: number) => (
+                  {preview.boxes.map((b, i) => (
                     <tr key={i} className="hover:bg-slate-950/40">
                       <td className="p-2 font-semibold">{b.box_code}</td>
                       <td className="p-2">{b.device}</td>

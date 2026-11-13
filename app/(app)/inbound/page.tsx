@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 import { useAccess } from "@/components/AccessProvider";
 import { parseVendorExcel } from "@/lib/inbound/parsers";
-import { toDeviceMatchList } from "@/lib/inbound/vendorParser";
+import { toDeviceMatchList, type ParseOk, type ParsedLabel } from "@/lib/inbound/vendorParser";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
 import { isDeviceId, isMatrixIqBin, noDeviceIdsMessage } from "@/lib/device-serials";
@@ -39,6 +39,30 @@ type InboundBatchSummary = {
   accessories?: Array<{ accessory: string; qty: number }>;
 };
 
+// A parsed spreadsheet with the checks this page adds before showing it.
+type ExcelPreview = Omit<ParseOk, "labels"> & {
+  labels: Array<ParsedLabel & { floor?: string }>;
+  devices_found?: string[];
+  unknown_bins_preview?: string[];
+  box_breakdown?: Array<{ box_no: string; imeis: number; device: string }>;
+  stock_check?: { total: number; existing: number; new: number };
+  new_devices_by_bin?: Record<string, number>;
+};
+
+// Response of /api/inbound/manual-preview (stored only when ok).
+type ManualPreview = {
+  ok: boolean;
+  bin_id: string;
+  bin_name: string;
+  box_code: string;
+  floor: string;
+  total_scanned: number;
+  valid_new: number;
+  duplicates: number;
+  duplicate_list: string[];
+  preview_imeis: string[];
+};
+
 // "+10 HARDWIRED Cable for CV200" for each accessory added with the devices.
 function addedAccessoriesText(accessories?: Array<{ accessory: string; qty: number }>) {
   return (accessories || [])
@@ -46,7 +70,7 @@ function addedAccessoriesText(accessories?: Array<{ accessory: string; qty: numb
     .join(", ");
 }
 
-function normName(s: any) {
+function normName(s: unknown) {
   return String(s ?? "").trim().toLowerCase();
 }
 
@@ -63,7 +87,7 @@ export default function InboundPage() {
   const [floor, setFloor] = useState("00");
   const [busy, setBusy] = useState(false);
   const [busyText, setBusyText] = useState<string>("");
-  const [result, setResult] = useState<any>(null);
+  const [result, setResult] = useState<ExcelPreview | null>(null);
   const [err, setErr] = useState("");
 
   // History
@@ -96,7 +120,7 @@ const [page, setPage] = useState(1);
   const [manualFloor, setManualFloor] = useState<string>("00");
   const [manualImeis, setManualImeis] = useState<string>("");
 
-  const [manualPreview, setManualPreview] = useState<any>(null);
+  const [manualPreview, setManualPreview] = useState<ManualPreview | null>(null);
   const [manualReadyToImport, setManualReadyToImport] = useState(false);
   const [manualMsg, setManualMsg] = useState<string>("");
   const [manualMsgKind, setManualMsgKind] =
@@ -167,8 +191,8 @@ const [page, setPage] = useState(1);
       .order("name", { ascending: true });
 
     if (!error) {
-      const list = (data as any) || [];
-      const mapped: DeviceRow[] = list.map((b: any) => ({
+      const list = data || [];
+      const mapped: DeviceRow[] = list.map((b) => ({
         device_id: String(b.id),
         device: String(b.name),
       }));
@@ -246,13 +270,13 @@ useEffect(() => {
 
       // refresh map for Excel confirm
       const map: Record<string, string> = {};
-      for (const b of (bins as any[]) || []) {
+      for (const b of bins || []) {
         map[normName(b.name)] = String(b.id);
       }
       setBinNameToId(map);
 
       // keep parser compatible
-      const fakeDevices = ((bins as any[]) || []).map((b) => ({
+      const fakeDevices = (bins || []).map((b) => ({
         device_id: b.id,
         canonical_name: b.name,
         device: b.name,
@@ -260,13 +284,14 @@ useEffect(() => {
         units_per_imei: 1,
       }));
 
-      const deviceMatches = toDeviceMatchList(fakeDevices as any);
+      const deviceMatches = toDeviceMatchList(fakeDevices);
 
       const bytes = new Uint8Array(await file.arrayBuffer());
       const parsed = parseVendorExcel(vendor, bytes, deviceMatches);
 
       if (parsed?.ok) {
-        parsed.labels = parsed.labels.map((l: any) => ({
+        const preview: ExcelPreview = parsed;
+        parsed.labels = parsed.labels.map((l) => ({
           ...l,
           floor,
         }));
@@ -307,9 +332,9 @@ useEffect(() => {
           if (deviceName && !map[key]) unknownBins.push(deviceName);
         }
 
-        (parsed as any).devices_found = Array.from(devicesFound);
-        (parsed as any).unknown_bins_preview = Array.from(new Set(unknownBins));
-        (parsed as any).box_breakdown = Object.entries(boxAgg)
+        preview.devices_found = Array.from(devicesFound);
+        preview.unknown_bins_preview = Array.from(new Set(unknownBins));
+        preview.box_breakdown = Object.entries(boxAgg)
           .map(([box_no, v]) => ({
             box_no,
             imeis: v.imeis,
@@ -319,7 +344,7 @@ useEffect(() => {
 
         const spreadsheetImeis = Array.from(
           new Set(
-            (parsed.labels || []).flatMap((label: any) =>
+            (parsed.labels || []).flatMap((label) =>
               (label.imeis || [])
                 .map((imei: unknown) => String(imei).replace(/\D/g, ""))
                 .filter((imei: string) => imei.length === 15)
@@ -339,7 +364,7 @@ useEffect(() => {
           }
         }
 
-        (parsed as any).stock_check = {
+        preview.stock_check = {
           total: spreadsheetImeis.length,
           existing: existingImeis.size,
           new: spreadsheetImeis.length - existingImeis.size,
@@ -358,7 +383,7 @@ useEffect(() => {
             newDevicesByBin[binId] = (newDevicesByBin[binId] || 0) + 1;
           }
         }
-        (parsed as any).new_devices_by_bin = newDevicesByBin;
+        preview.new_devices_by_bin = newDevicesByBin;
         setSkippedIncluded([]);
       }
 
@@ -378,7 +403,7 @@ useEffect(() => {
   async function confirmExcelInbound() {
     if (!result?.ok) return;
 
-    if (result.stock_check?.total > 0 && result.stock_check?.new === 0) {
+    if (result.stock_check && result.stock_check.total > 0 && result.stock_check.new === 0) {
       const total = Number(result.stock_check.total);
       setErr(
         `Import blocked: all ${total} ${total === 1 ? "IMEI" : "IMEIs"} from this spreadsheet ${total === 1 ? "is" : "are"} already in stock. Nothing was imported and no history was created.`
@@ -392,7 +417,7 @@ useEffect(() => {
     }
 
     const missingBins: string[] = [];
-    const labelsConverted = (result.labels || []).map((l: any) => {
+    const labelsConverted = (result.labels || []).map((l) => {
       const name = normName(l.device);
       const bin_id = binNameToId[name];
       if (!bin_id) missingBins.push(l.device);
@@ -438,7 +463,8 @@ useEffect(() => {
 
       if (!json.ok) {
         if (json.code === "ALL_IMEIS_ALREADY_IN_STOCK") {
-          setResult((current: any) => ({
+          // The busy overlay blocks every other action, so the preview is still shown.
+          setResult((current) => current && ({
             ...current,
             stock_check: {
               total: json.totals?.skipped_existing_imeis || 0,
@@ -480,14 +506,14 @@ useEffect(() => {
   const excelTotals = result?.ok
     ? {
         boxes: result.labels.length,
-        imeis: result.labels.reduce((a: number, l: any) => a + (l.imeis?.length || 0), 0),
+        imeis: result.labels.reduce((a: number, l) => a + (l.imeis?.length || 0), 0),
       }
     : { boxes: 0, imeis: 0 };
 
   const hasUnknownExcelDevices =
     result?.ok && Array.isArray(result.unknown_devices) && result.unknown_devices.length > 0;
   const allExcelImeisAlreadyInStock =
-    result?.ok && result.stock_check?.total > 0 && result.stock_check?.new === 0;
+    result?.ok && (result.stock_check?.total ?? 0) > 0 && result.stock_check?.new === 0;
 
   // ========== MANUAL FLOW ==========
   function extractManualImeis(text: string): string[] {
@@ -903,20 +929,20 @@ setManualMsg("");
                 )}
               </div>
 
-              {result?.devices_found?.length > 0 && (
+              {result.devices_found && result.devices_found.length > 0 && (
                 <div className="text-xs text-slate-400">
                   <b>Devices detected:</b> {result.devices_found.join(", ")}
                 </div>
               )}
 
-              {result?.unknown_bins_preview?.length > 0 && (
+              {result.unknown_bins_preview && result.unknown_bins_preview.length > 0 && (
                 <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-xs text-rose-200">
                   <div className="font-semibold">Unknown bins detected</div>
                   <div className="mt-1">{result.unknown_bins_preview.join(", ")}</div>
                 </div>
               )}
 
-              {allExcelImeisAlreadyInStock && (
+              {allExcelImeisAlreadyInStock && result.stock_check && (
                 <div className="rounded-xl border border-rose-900/60 bg-rose-950/40 p-3 text-sm text-rose-200">
                   <div className="font-semibold">Import blocked — already in stock</div>
                   <div className="mt-1">
@@ -925,7 +951,7 @@ setManualMsg("");
                 </div>
               )}
 
-              {!allExcelImeisAlreadyInStock && result?.stock_check?.existing > 0 && (
+              {!allExcelImeisAlreadyInStock && result.stock_check && result.stock_check.existing > 0 && (
                 <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-3 text-sm text-amber-200">
                   <div className="font-semibold">Existing stock detected</div>
                   <div className="mt-1">
@@ -943,11 +969,11 @@ setManualMsg("");
                 />
               )}
 
-              {result?.box_breakdown?.length > 0 && (
+              {result.box_breakdown && result.box_breakdown.length > 0 && (
                 <div className="text-xs text-slate-400 space-y-1">
                   <b>Boxes detected:</b>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mt-2">
-                    {result.box_breakdown.map((b: any) => (
+                    {result.box_breakdown.map((b) => (
                       <div
                         key={`${b.box_no}-${b.device}`}
                         className="rounded-lg border border-slate-800 bg-slate-950 px-2 py-1"

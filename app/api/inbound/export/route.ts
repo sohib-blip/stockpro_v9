@@ -20,10 +20,24 @@ function sb() {
   });
 }
 
+type InboundMovementRow = {
+  created_at: string;
+  actor: string | null;
+  imei: string | null;
+  box_id: string;
+};
+type BoxRow = {
+  id: string;
+  box_code: string;
+  floor: string | null;
+  bin_id: string | null;
+};
+type BinRow = { id: string; name: string };
+
 // created_at is shared by a whole batch, so movement_id keeps the page order
 // stable and no row is repeated or skipped between pages.
 function fetchAllMovements(supabase: ReturnType<typeof sb>, batch_id: string) {
-  return readAllPages((from, to) =>
+  return readAllPages<InboundMovementRow>((from, to) =>
     supabase
       .from("movements")
       .select("created_at, actor, imei, box_id")
@@ -54,9 +68,9 @@ export async function GET(req: Request) {
       return NextResponse.json({ ok: false, error: "No movements found" }, { status: 404 });
     }
 
-    const boxIds = movs.map((m: any) => m.box_id).filter(Boolean).map(String);
+    const boxIds = movs.map((m) => m.box_id).filter(Boolean).map(String);
 
-    const boxes = await readInChunks(boxIds, (ids) =>
+    const boxes = await readInChunks<string, BoxRow>(boxIds, (ids) =>
       supabase
         .from("boxes")
         .select("id, box_code, floor, bin_id")
@@ -64,19 +78,19 @@ export async function GET(req: Request) {
         .then(rowsOrThrow)
     );
 
-    const boxMap: Record<string, any> = {};
-    for (const b of boxes) boxMap[String((b as any).id)] = b;
+    const boxMap: Record<string, BoxRow> = {};
+    for (const b of boxes) boxMap[String(b.id)] = b;
 
-    const binIds = boxes.map((b: any) => b.bin_id).filter(Boolean).map(String);
+    const binIds = boxes.map((b) => b.bin_id).filter(Boolean).map(String);
 
-    const bins = await readInChunks(binIds, (ids) =>
+    const bins = await readInChunks<string, BinRow>(binIds, (ids) =>
       supabase.from("bins").select("id, name").in("id", ids).then(rowsOrThrow)
     );
 
     const binMap: Record<string, string> = {};
-    for (const b of bins) binMap[String((b as any).id)] = String((b as any).name);
+    for (const b of bins) binMap[String(b.id)] = String(b.name);
 
-    const rows = movs.map((m: any) => {
+    const rows = movs.map((m) => {
 
       const bx = boxMap[String(m.box_id)];
       const deviceName = bx?.bin_id ? (binMap[String(bx.bin_id)] || "") : "";

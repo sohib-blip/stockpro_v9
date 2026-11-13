@@ -20,6 +20,8 @@ import {
   countDashboardStockAlerts,
 } from "@/lib/dashboard-inventory-rows";
 import type { BoxSearchRow } from "@/lib/box-search";
+import type { DashboardBinRow } from "@/lib/dashboard-bin-rows";
+import type { DashboardInventoryRow } from "@/lib/dashboard-inventory-rows";
 import { errorMessage } from "@/lib/error-message";
 
 type KPI = {
@@ -27,6 +29,42 @@ type KPI = {
   total_boxes: number;
   total_imei: number;
   alerts: number;
+};
+
+// Rows of the dashboard_activity view (/api/dashboard/activity).
+type ActivityRow = {
+  type: string | null;
+  device: string | null;
+  qty: number | null;
+  created_at: string;
+  box_code: string | null;
+  from_floor: string | null;
+  to_floor: string | null;
+};
+
+// Rows of the dashboard_device_flow view (/api/dashboard/device-flow).
+type DeviceFlowRow = {
+  device: string;
+  total_in: number | null;
+  total_out: number | null;
+};
+
+// Rows of the dashboard_sales_month view (/api/dashboard/sales).
+type SalesRow = {
+  device: string;
+  total_out: number | null;
+};
+
+// Rows of the dashboard_drilldown_view view (/api/dashboard/drilldown).
+type DrilldownRow = {
+  device_id: string;
+  device: string;
+  box_id: string;
+  box_code: string | null;
+  floor: string;
+  remaining: number;
+  total_ever: number;
+  percent: number;
 };
 
 type ImeiSearchRow = {
@@ -52,7 +90,7 @@ type AccessoryCategoryFilter = (typeof ACCESSORY_CATEGORIES)[number];
 const CHART_PAGE_SIZE = 10;
 const ACCESSORY_PREVIEW_SIZE = 7;
 
-function stockLevel(row: any) {
+function stockLevel(row: DashboardBinRow) {
   const stock = Number(row.imei_count || 0);
   const minimum = Number(row.min_stock || 0);
   if (stock <= 0) return "critical";
@@ -60,7 +98,7 @@ function stockLevel(row: any) {
   return "ok";
 }
 
-function remainingPercent(row: any) {
+function remainingPercent(row: DashboardBinRow) {
   const stock = Number(row.imei_count || 0);
   const minimum = Number(row.min_stock || 0);
   if (stock <= 0) return 0;
@@ -68,7 +106,7 @@ function remainingPercent(row: any) {
   return Math.min(100, Math.round((stock / (minimum * 5)) * 100));
 }
 
-function activityPresentation(row: any) {
+function activityPresentation(row: ActivityRow) {
   if (row.type === "IN") {
     return {
       label: "Inbound",
@@ -109,13 +147,13 @@ function activityPresentation(row: any) {
 export default function DashboardPage() {
   const { hasPermission } = useAccess();
   const [kpi, setKpi] = useState<KPI | null>(null);
-  const [bins, setBins] = useState<any[]>([]);
-  const [accessories, setAccessories] = useState<any[]>([]);
-  const [activity, setActivity] = useState<any[]>([]);
-  const [drilldown, setDrilldown] = useState<any[]>([]);
-  const [flow, setFlow] = useState<any[]>([]);
+  const [bins, setBins] = useState<DashboardBinRow[]>([]);
+  const [accessories, setAccessories] = useState<DashboardInventoryRow[]>([]);
+  const [activity, setActivity] = useState<ActivityRow[]>([]);
+  const [drilldown, setDrilldown] = useState<DrilldownRow[]>([]);
+  const [flow, setFlow] = useState<DeviceFlowRow[]>([]);
   const [openDevice, setOpenDevice] = useState<string | null>(null);
-  const [topDevices, setTopDevices] = useState<any[]>([]);
+  const [topDevices, setTopDevices] = useState<SalesRow[]>([]);
   const [editingMinStock, setEditingMinStock] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [boxSearch, setBoxSearch] = useState("");
@@ -140,7 +178,7 @@ export default function DashboardPage() {
 
   const filteredBins = useMemo(
     () =>
-      bins.filter((row: any) =>
+      bins.filter((row) =>
         row.device?.toLowerCase().includes(search.toLowerCase())
       ),
     [bins, search]
@@ -148,7 +186,7 @@ export default function DashboardPage() {
 
   const filteredAccessories = useMemo(
     () =>
-      accessories.filter((row: any) => {
+      accessories.filter((row) => {
         const matchesCategory =
           accessoryCategory === "All" || row.category === accessoryCategory;
         const query = accessorySearch.toLowerCase();
@@ -163,8 +201,8 @@ export default function DashboardPage() {
   const allChartData = useMemo(
     () =>
       bins
-        .map((row: any) => {
-          const movement = flow.find((item: any) => item.device === row.device);
+        .map((row) => {
+          const movement = flow.find((item) => item.device === row.device);
           return {
             device: row.device,
             inbound: Number(movement?.total_in || 0),
@@ -211,7 +249,7 @@ export default function DashboardPage() {
     ? filteredAccessories
     : filteredAccessories.slice(0, ACCESSORY_PREVIEW_SIZE);
   const deviceName =
-    bins.find((row: any) => row.device_id === openDevice)?.device || openDevice;
+    bins.find((row) => row.device_id === openDevice)?.device || openDevice;
 
   async function loadAll() {
     const [kpiRes, binsRes, activityRes, flowRes, salesRes, accessoriesRes] =
@@ -1263,8 +1301,8 @@ export default function DashboardPage() {
               </thead>
               <tbody>
                 {drilldown
-                  .filter((row: any) => Number(row.remaining) > 0)
-                  .filter((row: any) =>
+                  .filter((row) => Number(row.remaining) > 0)
+                  .filter((row) =>
                     row.box_code?.toLowerCase().includes(boxSearch.toLowerCase())
                   )
                   .map((row) => (

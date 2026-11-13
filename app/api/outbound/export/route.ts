@@ -21,6 +21,19 @@ function sb() {
   });
 }
 
+type OutboundMovementRow = {
+  created_at: string;
+  actor: string | null;
+  shipment_ref: string | null;
+  source: string | null;
+  operation_id: string | null;
+  imei: string | null;
+  box_id: string;
+  device_id: string;
+};
+type BoxRow = { id: string; box_code: string; floor: string | null };
+type BinRow = { id: string; name: string };
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -36,7 +49,7 @@ export async function GET(req: Request) {
     const supabase = sb();
 
     // An End-of-Day outbound can hold thousands of IMEIs: read every page.
-    const movements = await readAllPages((from, to) =>
+    const movements = await readAllPages<OutboundMovementRow>((from, to) =>
       supabase
         .from("movements")
         .select(`
@@ -65,8 +78,8 @@ export async function GET(req: Request) {
     }
 
     const [boxes, devices] = await Promise.all([
-      readInChunks(
-        movements.map((m: any) => m.box_id).filter(Boolean),
+      readInChunks<string, BoxRow>(
+        movements.map((m) => m.box_id).filter(Boolean),
         (ids) =>
           supabase
             .from("boxes")
@@ -74,22 +87,22 @@ export async function GET(req: Request) {
             .in("id", ids)
             .then(rowsOrThrow)
       ),
-      readInChunks(
-        movements.map((m: any) => m.device_id).filter(Boolean),
+      readInChunks<string, BinRow>(
+        movements.map((m) => m.device_id).filter(Boolean),
         (ids) =>
           supabase.from("bins").select("id, name").in("id", ids).then(rowsOrThrow)
       ),
     ]);
 
     const boxMap = Object.fromEntries(
-      boxes.map((b: any) => [b.id, b])
+      boxes.map((b) => [b.id, b])
     );
 
     const deviceMap = Object.fromEntries(
-      devices.map((d: any) => [d.id, d])
+      devices.map((d) => [d.id, d])
     );
 
-    const rows = movements.map((m: any) => ({
+    const rows = movements.map((m) => ({
       "Date / Time": new Date(m.created_at).toLocaleString(),
       User: m.actor || "",
       "Shipment Ref": m.shipment_ref || "",

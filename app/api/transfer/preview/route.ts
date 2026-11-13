@@ -26,6 +26,15 @@ const previewSchema = z.object({
   target_floor: z.string().trim().min(1).max(50),
 });
 
+// Rows returned by preview_box_transfer (bigint arrives as a number).
+type TransferPreviewBox = {
+  box_id: string;
+  box_code: string;
+  current_floor: string | null;
+  device: string | null;
+  imei_count: number | string | null;
+};
+
 export async function POST(req: Request) {
   let body: unknown;
   try {
@@ -72,7 +81,7 @@ export async function POST(req: Request) {
     );
 
     if (error) throw error;
-    const boxes = data || [];
+    const boxes: TransferPreviewBox[] = data || [];
 
     if (boxes.length !== boxCodes.length) {
       return NextResponse.json(
@@ -103,7 +112,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const result = boxes.map((box: any) => ({
+    const result = boxes.map((box) => ({
       box_code: box.box_code,
       device: box.device || "Unknown",
       current_floor: box.current_floor,
@@ -116,7 +125,7 @@ export async function POST(req: Request) {
       boxes: result,
       total_boxes: result.length,
       total_items: result.reduce(
-        (total: number, box: any) => total + box.imei_count,
+        (total, box) => total + box.imei_count,
         0
       ),
       target_floor: parsed.data.target_floor,

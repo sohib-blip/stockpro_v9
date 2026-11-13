@@ -66,6 +66,15 @@ function safeSheetName(name: string) {
     .slice(0, 31);
 }
 
+// Columns of nrd_time_logs this export reads (the query selects them all).
+type NrdLogRow = {
+  user_email: string;
+  task: string;
+  started_at: string;
+  ended_at: string | null;
+  duration_minutes: number | null;
+};
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -78,7 +87,7 @@ export async function GET(req: Request) {
     await trySyncNrdForEveryone(supabase);
 
     // Read every finished task of the month, page by page.
-    const rows = await readAllPages((from, to) =>
+    const rows = await readAllPages<NrdLogRow>((from, to) =>
       supabase
         .from("nrd_time_logs")
         .select("*")
@@ -95,14 +104,14 @@ export async function GET(req: Request) {
     const wb = XLSX.utils.book_new();
 
     const totalMinutes = rows.reduce(
-      (sum: number, row: any) => sum + Number(row.duration_minutes || 0),
+      (sum, row) => sum + Number(row.duration_minutes || 0),
       0
     );
 
     const globalSummary = [
       { Metric: "Month", Value: range.period_month },
       { Metric: "Exported by", Value: userEmail },
-      { Metric: "Total users", Value: new Set(rows.map((r: any) => r.user_email)).size },
+      { Metric: "Total users", Value: new Set(rows.map((r) => r.user_email)).size },
       { Metric: "Total tasks", Value: rows.length },
       { Metric: "Total minutes", Value: totalMinutes },
       { Metric: "Total time", Value: formatDuration(totalMinutes) },
@@ -112,7 +121,7 @@ export async function GET(req: Request) {
     wsGlobal["!cols"] = [{ wch: 24 }, { wch: 40 }];
     XLSX.utils.book_append_sheet(wb, wsGlobal, "Summary Global");
 
-    const userMap: Record<string, any[]> = {};
+    const userMap: Record<string, NrdLogRow[]> = {};
 
     for (const row of rows) {
       const email = row.user_email || "unknown";
@@ -123,7 +132,7 @@ export async function GET(req: Request) {
     const summaryByUser = Object.entries(userMap)
       .map(([email, userRows]) => {
         const minutes = userRows.reduce(
-          (sum: number, row: any) => sum + Number(row.duration_minutes || 0),
+          (sum, row) => sum + Number(row.duration_minutes || 0),
           0
         );
 
@@ -145,7 +154,7 @@ export async function GET(req: Request) {
     ];
     XLSX.utils.book_append_sheet(wb, wsByUser, "Summary By User");
 
-    const allLogs = rows.map((row: any) => ({
+    const allLogs = rows.map((row) => ({
       User: row.user_email || "",
       Date: formatDate(row.started_at),
       "Start Time": formatTime(row.started_at),
@@ -168,7 +177,7 @@ export async function GET(req: Request) {
     XLSX.utils.book_append_sheet(wb, wsAllLogs, "All Logs");
 
     for (const [email, userRows] of Object.entries(userMap)) {
-      const sheetRows = userRows.map((row: any) => ({
+      const sheetRows = userRows.map((row) => ({
         Date: formatDate(row.started_at),
         "Start Time": formatTime(row.started_at),
         "End Time": row.ended_at ? formatTime(row.ended_at) : "",

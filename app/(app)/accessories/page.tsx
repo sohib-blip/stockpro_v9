@@ -9,6 +9,8 @@ import {
   spreadsheetSource,
 } from "@/lib/accessory-outbound-preview";
 import { NO_SERVER_ANSWER, SPREADSHEET_UNREADABLE, snapshotFile } from "@/lib/outbound-feedback";
+import type { buildAccessoryHistoryRows } from "@/lib/accessory-history";
+import type { AccessoryEndOfDayIssue } from "@/lib/outbound/accessoryEndOfDay";
 
 type Accessory = {
   id: string;
@@ -30,6 +32,18 @@ type PreviewRow = {
   qty: number;
   current_stock: number;
   after_stock: number;
+};
+
+// A row of /api/accessories/outbound/history.
+type HistoryRow = ReturnType<typeof buildAccessoryHistoryRows>[number];
+
+// Response of /api/accessories/outbound/manual and /excel (preview and confirm).
+type AccessoryOutboundResponse = {
+  ok?: boolean;
+  error?: string;
+  rows?: PreviewRow[];
+  issues?: AccessoryEndOfDayIssue[];
+  operation_id: string;
 };
 
 type PreviewCommand = {
@@ -57,7 +71,7 @@ export default function AccessoriesPage() {
   const [file, setFile] = useState<File | null>(null);
   // Bumped after a confirm so the file field shows no file again.
   const [fileInputKey, setFileInputKey] = useState(0);
-  const [history, setHistory] = useState<any[]>([]);
+  const [history, setHistory] = useState<HistoryRow[]>([]);
   const [search, setSearch] = useState("");
 
   const [busy, setBusy] = useState(false);
@@ -159,7 +173,7 @@ export default function AccessoriesPage() {
       return;
     }
 
-    let json: any;
+    let json: AccessoryOutboundResponse;
     try {
       const res = await apiFetch("/api/accessories/outbound/manual", {
         method: "POST",
@@ -209,7 +223,7 @@ export default function AccessoriesPage() {
       return;
     }
 
-    let json: any;
+    let json: AccessoryOutboundResponse;
     try {
       const res = await apiFetch("/api/accessories/outbound/manual", {
         method: "POST",
@@ -273,7 +287,7 @@ export default function AccessoriesPage() {
     form.append("actor_id", actorId || "");
     form.append("preview", "1");
 
-    let json: any;
+    let json: AccessoryOutboundResponse;
     try {
       const res = await apiFetch("/api/accessories/outbound/excel", {
         method: "POST",
@@ -291,7 +305,7 @@ export default function AccessoriesPage() {
       const issueDetails = Array.isArray(json.issues)
         ? json.issues
             .slice(0, 5)
-            .map((issue: any) =>
+            .map((issue) =>
               issue.sheet && issue.row
                 ? `${issue.sheet}, row ${issue.row}: ${issue.message}`
                 : issue.message
@@ -349,7 +363,7 @@ export default function AccessoriesPage() {
     form.append("actor_id", actorId || "");
     form.append("preview", "0");
 
-    let json: any;
+    let json: AccessoryOutboundResponse;
     try {
       const res = await apiFetch("/api/accessories/outbound/excel", {
         method: "POST",

@@ -18,24 +18,26 @@ import {
 /**
  * Helpers lecture XLSX
  */
-function sheetToRows(bytes: Uint8Array): any[][] {
+function sheetToRows(bytes: Uint8Array): unknown[][] {
   const wb = XLSX.read(bytes, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true }) as any[][];
-  return rows || [];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true });
+  // Blank cells come back as holes; fill them with undefined so that
+  // findIndex/map callbacks always receive a value.
+  return (rows || []).map((row) => Array.from(row));
 }
 
 /**
  * Find best IMEI column by scanning rows:
  * returns column index that contains most "IMEI-like" values (14-17 digits).
  */
-function detectImeiColumn(rows: any[][], maxScanRows = 60): number {
+function detectImeiColumn(rows: unknown[][], maxScanRows = 60): number {
   const scanRows = rows.slice(0, Math.min(rows.length, maxScanRows));
   const maxCols = Math.max(...scanRows.map((r) => (r ? r.length : 0)), 0);
 
   const counts = new Array(maxCols).fill(0);
 
-  const looksLikeImei = (v: any) => {
+  const looksLikeImei = (v: unknown) => {
     const digits = String(v ?? "").replace(/\D/g, "");
     return /^\d{14,17}$/.test(digits);
   };
@@ -67,7 +69,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
   const rows = sheetToRows(bytes);
   if (!rows.length) return makeFail("Empty excel file", [], {});
 
-  const debug: Record<string, any> = {};
+  const debug: Record<string, unknown> = {};
   const unknown: string[] = [];
 
   const multOf = (deviceDisplay: string) =>
@@ -136,11 +138,11 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return null;
   }
 
-  function hasLetters(v: any): boolean {
+  function hasLetters(v: unknown): boolean {
     return /[A-Z]/i.test(String(v ?? ""));
   }
 
-  function extractRawDeviceFromCell(v: any): string | null {
+  function extractRawDeviceFromCell(v: unknown): string | null {
     const s = String(v ?? "").trim();
     if (!s) return null;
     if (!hasLetters(s)) return null;
@@ -149,7 +151,7 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return p || null;
   }
 
-  function extractBoxNoFromCell(v: any): string | null {
+  function extractBoxNoFromCell(v: unknown): string | null {
     const s = String(v ?? "").trim();
     if (!s) return null;
 
@@ -173,13 +175,13 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return boxNo;
   }
 
-  function pickDeviceCell(a: any, b: any): any | null {
+  function pickDeviceCell(a: unknown, b: unknown): unknown {
     if (hasLetters(a)) return a;
     if (hasLetters(b)) return b;
     return null;
   }
 
-  function pickBoxCell(a: any, b: any): any | null {
+  function pickBoxCell(a: unknown, b: unknown): unknown {
     const sa = String(a ?? "").trim();
     const sb = String(b ?? "").trim();
 
@@ -235,6 +237,11 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     string,
     { vendor: Vendor; device: string; box_no: string; imeis: string[] }
   >();
+  const boxColumnSelections: Array<{
+    blockStart: number;
+    selected: number;
+    source: "master" | "inner-fallback";
+  }> = [];
 
   for (const b of blocks) {
     const rawAbove = deviceNameAbove(b.start) || "";
@@ -246,14 +253,12 @@ export function parseTeltonikaExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
 
     let currentBoxNo: string | null = null;
     const usePrimaryBoxColumn = shouldUsePrimaryBoxColumn(b);
-    debug.boxColumnSelections = [
-      ...(debug.boxColumnSelections || []),
-      {
-        blockStart: b.start,
-        selected: usePrimaryBoxColumn ? b.boxCol1 : b.boxCol2,
-        source: usePrimaryBoxColumn ? "master" : "inner-fallback",
-      },
-    ];
+    boxColumnSelections.push({
+      blockStart: b.start,
+      selected: usePrimaryBoxColumn ? b.boxCol1 : b.boxCol2,
+      source: usePrimaryBoxColumn ? "master" : "inner-fallback",
+    });
+    debug.boxColumnSelections = boxColumnSelections;
 
     for (let r = headerRowIdx + 1; r < rows.length; r++) {
       const row = rows[r] || [];
@@ -339,10 +344,10 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
   if (idxImei < 0) return makeFail("Quicklink: IMEI column not found", [], { header });
   if (idxCarton < 0) return makeFail("Quicklink: Carton column not found", [], { header });
 
-  const debug: Record<string, any> = { header };
+  const debug: Record<string, unknown> = { header };
   const unknown: string[] = [];
 
-  function extractBoxNo(carton: any): string | null {
+  function extractBoxNo(carton: unknown): string | null {
     const s = String(carton ?? "").trim();
     if (!s) return null;
     const digits = s.replace(/\D/g, "");
@@ -350,7 +355,7 @@ export function parseQuicklinkExcel(bytes: Uint8Array, devices: DeviceMatch[]): 
     return s.slice(-5) || null;
   }
 
-  function guessDeviceRaw(carton: any): string | null {
+  function guessDeviceRaw(carton: unknown): string | null {
     const s = String(carton ?? "").toUpperCase();
     if (!s) return null;
 
@@ -565,7 +570,7 @@ export function parseTrustedExcel(bytes: Uint8Array, devices: DeviceMatch[]): Pa
     );
   }
 
-  const debug: Record<string, any> = {
+  const debug: Record<string, unknown> = {
     headerRowIdx,
     header,
     idxImei,

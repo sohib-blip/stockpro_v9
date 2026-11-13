@@ -52,7 +52,7 @@ export default function LabelsPage() {
         .order("name", { ascending: true });
 
       if (!error) {
-        const list = ((data as any) || []).map((b: any) => ({
+        const list = (data || []).map((b) => ({
           device_id: b.id, // keep same field names for UI
           device: b.name,
         })) as DeviceRow[];

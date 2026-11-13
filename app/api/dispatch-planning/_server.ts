@@ -122,12 +122,22 @@ export async function loadDispatchPackagingOptions(): Promise<PackagingOption[]>
   }));
 }
 
+// Columns read from packaging_rules; max_trigger_count is missing before the
+// rule limit migration.
+type PackagingRuleRow = {
+  trigger_packaging_type_id: string | null;
+  trigger_device_id: string | null;
+  packaging_type_id: string;
+  quantity: number;
+  max_trigger_count?: number | null;
+};
+
 // Rules that remove extra packaging (sleeves, plastics) with a dispatch. Before
 // the packaging rules migration the table is missing: no rules apply then.
 export async function loadDispatchPackagingRules(): Promise<DispatchPackagingRule[]> {
   const service = supabaseService();
   const columns = "trigger_packaging_type_id,trigger_device_id,packaging_type_id,quantity";
-  let result: { data: Array<Record<string, any>> | null; error: { code?: string } | null } =
+  let result: { data: PackagingRuleRow[] | null; error: { code?: string } | null } =
     await service.from("packaging_rules").select(`${columns},max_trigger_count`);
   // Before the rule limit migration the column does not exist yet.
   if (result.error?.code === "42703") {

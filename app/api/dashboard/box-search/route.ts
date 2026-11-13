@@ -23,6 +23,14 @@ export const revalidate = 0;
 
 const MAX_SEARCH_BYTES = 32 * 1024;
 
+// Columns read from boxes with the device (bin) they hold.
+type SearchBoxRow = {
+  id: string;
+  box_code: string;
+  floor: string | null;
+  bins: { name: string } | null;
+};
+
 export async function POST(req: Request) {
   let body: unknown;
   try {
@@ -90,11 +98,13 @@ export async function POST(req: Request) {
           name
         )
       `)
-      .in("box_code", lookupCodes);
+      .in("box_code", lookupCodes)
+      // Typing only: bins is many-to-one, so PostgREST returns an object.
+      .overrideTypes<SearchBoxRow[], { merge: false }>();
 
     if (error) throw error;
 
-    const boxes = (data || []).map((box: any) => ({
+    const boxes = (data || []).map((box) => ({
       id: String(box.id),
       box_code: String(box.box_code),
       floor: box.floor ? String(box.floor) : null,

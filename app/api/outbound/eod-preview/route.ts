@@ -37,6 +37,55 @@ const MAX_LOOKUP_QUERIES = 25;
 
 class InvalidPreviewError extends Error {}
 
+// Columns read from stock_export_view (IN items joined to their box and bin).
+type StockRow = {
+  item_id: string;
+  imei: string | null;
+  box_id: string | null;
+  box_code: string | null;
+  floor: string | null;
+  device: string | null;
+};
+
+// Rows returned by get_latest_outbound_movements.
+type LatestOutboundRow = {
+  imei: string | null;
+  created_at: string | null;
+  shipment_ref: string | null;
+  source: string | null;
+  device: string | null;
+  box_code: string | null;
+  floor: string | null;
+};
+
+// Rows returned by get_outbound_box_stock_counts (bigint arrives as a number).
+type BoxStockCountRow = {
+  box_id: string;
+  stock_count: number | string | null;
+};
+
+type AlreadyOutRow = {
+  imei: string;
+  device: string;
+  box: string;
+  floor: string;
+  status: "OUT";
+  shipment_ref: string;
+  source: string;
+  created_at: string;
+};
+
+type BoxSummaryRow = {
+  device: string;
+  box_no: string;
+  floor: string;
+  box_id: string | null;
+  detected: number;
+  stock_before: number;
+  remaining: number;
+  percent_after: number;
+};
+
 function chunkArray<T>(values: T[], size: number) {
   const chunks: T[][] = [];
   for (let index = 0; index < values.length; index += size) {
@@ -208,7 +257,7 @@ export async function POST(req: Request) {
           .filter(([, count]) => count > 1)
           .map(([imei, count]) => ({ imei, count }));
     const supabase = supabaseService();
-    const stockRows: any[] = [];
+    const stockRows: StockRow[] = [];
 
     for (const chunk of chunkArray(uniqueImeis, LOOKUP_BATCH_SIZE)) {
       const { data, error } = await supabase
@@ -221,10 +270,10 @@ export async function POST(req: Request) {
     }
 
     const stockMap = new Map(
-      stockRows.map((row: any) => [String(row.imei), row])
+      stockRows.map((row) => [String(row.imei), row])
     );
     const missingImeis = uniqueImeis.filter((imei) => !stockMap.has(imei));
-    let outRows: any[] = [];
+    let outRows: LatestOutboundRow[] = [];
 
     if (missingImeis.length > 0) {
       const { data, error } = await supabase.rpc(
@@ -235,13 +284,13 @@ export async function POST(req: Request) {
       outRows = data || [];
     }
 
-    const outMap = new Map<string, any>();
+    const outMap = new Map<string, LatestOutboundRow>();
     for (const row of outRows) {
       outMap.set(String(row.imei), row);
     }
 
-    const valid: any[] = [];
-    const already_out: any[] = [];
+    const valid: StockRow[] = [];
+    const already_out: AlreadyOutRow[] = [];
     const unknown_imeis: string[] = [];
 
     for (const imei of uniqueImeis) {
@@ -268,10 +317,10 @@ export async function POST(req: Request) {
       }
     }
 
-    const summaryMap = new Map<string, any>();
+    const summaryMap = new Map<string, BoxSummaryRow>();
     for (const item of valid) {
       const key = String(item.box_id || item.box_code || item.imei);
-      const current = summaryMap.get(key) || {
+      const current: BoxSummaryRow = summaryMap.get(key) || {
         device: item.device || "",
         box_no: item.box_code || "",
         floor: item.floor || "",
@@ -303,7 +352,7 @@ export async function POST(req: Request) {
       if (error) throw error;
 
       const countMap = new Map<string, number>(
-        (data || []).map((row: any) => [
+        (data || []).map((row: BoxStockCountRow) => [
           String(row.box_id),
           Number(row.stock_count || 0),
         ])

@@ -90,7 +90,7 @@ export async function POST(req: Request) {
       return NextResponse.json({
         ok: true,
         preview: true,
-        rows: (accessories || []).map((item: any) => {
+        rows: (accessories || []).map((item: { id: string; name: string; current_stock: number }) => {
           const qty = grouped.get(item.id) || 0;
 
           return {

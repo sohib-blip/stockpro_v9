@@ -11,7 +11,8 @@ import {
 // daily cron: stop forgotten tasks at 17:00 Belgian time and start/stop
 // scheduled tasks at their planned times. Every step is idempotent.
 
-type Client = SupabaseClient<any, any, any>;
+// The untyped clients the NRD routes create (default generics).
+type Client = SupabaseClient;
 
 type NrdLog = {
   id: string;

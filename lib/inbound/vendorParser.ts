@@ -31,7 +31,7 @@ export type ParseOk = {
   ok: true;
   labels: ParsedLabel[];
   unknown_devices: string[];
-  debug: Record<string, any>;
+  debug: Record<string, unknown>;
   counts: ParseCounts;
 };
 
@@ -39,7 +39,7 @@ export type ParseFail = {
   ok: false;
   error: string;
   unknown_devices: string[];
-  debug: Record<string, any>;
+  debug: Record<string, unknown>;
 };
 
 export type ParseResult = ParseOk | ParseFail;
@@ -58,21 +58,21 @@ export function toDeviceMatchList(rows: DevicesDbRow[]): DeviceMatch[] {
   });
 }
 
-export function norm(v: any): string {
+export function norm(v: unknown): string {
   return String(v ?? "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
 }
 
-export function canonicalize(s: any): string {
+export function canonicalize(s: unknown): string {
   return String(s ?? "")
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
     .trim();
 }
 
-export function isImei(v: any): string | null {
+export function isImei(v: unknown): string | null {
   const s = String(v ?? "").replace(/\D/g, "");
   return s.length === 15 ? s : null;
 }
@@ -143,7 +143,7 @@ export function computeCounts(labels: ParsedLabel[]): ParseCounts {
 export function makeFail(
   error: string,
   unknown_devices: string[],
-  debug: Record<string, any>
+  debug: Record<string, unknown>
 ): ParseFail {
   return {
     ok: false,
@@ -155,13 +155,13 @@ export function makeFail(
 
 export function makeOk(
   labels: ParsedLabel[],
-  debug: Record<string, any>,
+  debug: Record<string, unknown>,
   unknown_devices: string[] = []
 ): ParseOk {
   const cleaned = (labels || [])
     .map((l) => {
       const imeis = uniq(l.imeis || []);
-      const qtyFromInput = Number.isFinite(l.qty as any) ? Number(l.qty) : 0;
+      const qtyFromInput = Number.isFinite(l.qty) ? Number(l.qty) : 0;
       const qty = qtyFromInput > 0 ? qtyFromInput : imeis.length;
 
       return {

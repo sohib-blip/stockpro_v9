@@ -11,6 +11,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
+// Columns read from accessory_bins.
+type AccessoryStockRow = {
+  name: string;
+  current_stock: number;
+  minimum_stock: number;
+  active: boolean;
+};
+
 export async function GET() {
   try {
     const { data, error } = await supabase
@@ -21,7 +29,7 @@ export async function GET() {
 
     if (error) throw error;
 
-    const rows = (data || []).map((a: any) => ({
+    const rows = (data || []).map((a: AccessoryStockRow) => ({
       Accessory: a.name,
       Stock: Number(a.current_stock || 0),
       "Minimum stock": Number(a.minimum_stock || 0),

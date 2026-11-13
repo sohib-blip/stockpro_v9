@@ -5,6 +5,7 @@ import { useAccess } from "@/components/AccessProvider";
 import ConfirmDialog from "@/components/ConfirmDialog";
 import { apiFetch, downloadApiFile } from "@/lib/apiFetch";
 import ProcessFeedback, { type ProcessFeedbackKind } from "@/components/ProcessFeedback";
+import type { DashboardBinRow } from "@/lib/dashboard-bin-rows";
 
 const OFFICES = [
   { code: "BE", label: "🇧🇪 Belgium" },
@@ -33,15 +34,66 @@ type SupplyItem = {
   qty: number;
 };
 
+type SupplyStatus = (typeof STATUS)[number];
+
+// A supply_items row as /api/supply/list returns it (see lib/supply-orders.ts).
+type SupplyOrderItem = {
+  id: string;
+  supply_id: string;
+  product_id: string | null;
+  product_type: "DEVICE" | "ACCESSORY";
+  product_name: string;
+  qty: number;
+};
+
+// A supplies row with its lines, as /api/supply/list returns it. Rows are
+// sorted by any column name, hence the index signature.
+type SupplyOrderRow = {
+  [key: string]: unknown;
+  id: string;
+  order_number: string;
+  from_office: string;
+  to_office: string;
+  tracking_number: string | null;
+  status: SupplyStatus;
+  imported: boolean;
+  imported_date: string | null;
+  comment: string | null;
+  created_by: string | null;
+  created_by_id: string | null;
+  created_at: string;
+  updated_at: string;
+  failed_reason: string | null;
+  supply_items: SupplyOrderItem[];
+};
+
+// A supply_status_history row (/api/supply/history).
+type SupplyStatusHistoryRow = {
+  id: string;
+  supply_id: string;
+  status: SupplyStatus;
+  tracking_number: string | null;
+  failed_reason: string | null;
+  changed_by: string | null;
+  changed_by_id: string | null;
+  created_at: string | null;
+};
+
+// The accessory fields this page reads from /api/accessory-bins/list.
+type AccessoryOption = {
+  id: string;
+  name: string;
+};
+
 export default function SupplyPage() {
   const { user } = useAccess();
 
   const [userEmail, setUserEmail] = useState("unknown");
   const [userId, setUserId] = useState<string | null>(null);
 
-  const [rows, setRows] = useState<any[]>([]);
-  const [devices, setDevices] = useState<any[]>([]);
-  const [accessories, setAccessories] = useState<any[]>([]);
+  const [rows, setRows] = useState<SupplyOrderRow[]>([]);
+  const [devices, setDevices] = useState<DashboardBinRow[]>([]);
+  const [accessories, setAccessories] = useState<AccessoryOption[]>([]);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
 const [sortKey, setSortKey] = useState("created_at");
@@ -50,7 +102,7 @@ const [page, setPage] = useState(1);
 const pageSize = 20;
 
   const [openModal, setOpenModal] = useState(false);
-  const [editing, setEditing] = useState<any | null>(null);
+  const [editing, setEditing] = useState<SupplyOrderRow | null>(null);
 
   const [fromOffice, setFromOffice] = useState("UK");
   const [toOffice, setToOffice] = useState("BE");
@@ -68,10 +120,10 @@ const pageSize = 20;
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState("");
   const [msgKind, setMsgKind] = useState<ProcessFeedbackKind>("error");
-  const [deleteTarget, setDeleteTarget] = useState<any | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<SupplyOrderRow | null>(null);
   const [confirmDone, setConfirmDone] = useState(false);
-  const [detailTarget, setDetailTarget] = useState<any | null>(null);
-  const [statusHistory, setStatusHistory] = useState<any[]>([]);
+  const [detailTarget, setDetailTarget] = useState<SupplyOrderRow | null>(null);
+  const [statusHistory, setStatusHistory] = useState<SupplyStatusHistoryRow[]>([]);
   const supplyOperationIdRef = useRef<string | null>(null);
   const deleteOperationIdRef = useRef<string | null>(null);
 
@@ -124,10 +176,10 @@ async function loadProducts() {
 
 function productOptions(type: "DEVICE" | "ACCESSORY") {
   if (type === "DEVICE") {
-    return devices.map((d: any) => d.device).filter(Boolean);
+    return devices.map((d) => d.device).filter(Boolean);
   }
 
-  return accessories.map((a: any) => a.name).filter(Boolean);
+  return accessories.map((a) => a.name).filter(Boolean);
 }
 
   useEffect(() => {
@@ -184,7 +236,7 @@ function availableStatuses(
       return [...STATUS];
   }
 }
-  function openEdit(row: any) {
+  function openEdit(row: SupplyOrderRow) {
     setMsg("");
     supplyOperationIdRef.current = crypto.randomUUID();
     setEditing(row);
@@ -196,7 +248,7 @@ function availableStatuses(
     setComment(row.comment || "");
     setItems(
       row.supply_items?.length
-        ? row.supply_items.map((i: any) => ({
+        ? row.supply_items.map((i) => ({
             product_id: i.product_id,
             product_type: i.product_type,
             product_name: i.product_name,
@@ -310,7 +362,7 @@ resetForm();
   row.tracking_number?.toLowerCase().includes(q) ||
   row.from_office?.toLowerCase().includes(q) ||
   row.to_office?.toLowerCase().includes(q) ||
-  (row.supply_items || []).some((i: any) =>
+  (row.supply_items || []).some((i) =>
     i.product_name?.toLowerCase().includes(q)
   );
 
@@ -382,14 +434,14 @@ received: rows.filter((r) => r.status === "RECEIVED").length,
     });
   }
 
-  function totalQty(row: any) {
+  function totalQty(row: SupplyOrderRow) {
     return (row.supply_items || []).reduce(
-      (sum: number, item: any) => sum + Number(item.qty || 0),
+      (sum: number, item) => sum + Number(item.qty || 0),
       0
     );
   }
 
-async function openDetails(row: any) {
+async function openDetails(row: SupplyOrderRow) {
   setDetailTarget(row);
   setStatusHistory([]);
   setMsg("");
@@ -633,7 +685,7 @@ async function openDetails(row: any) {
 
           <td>
             <div className="space-y-1">
-              {(row.supply_items || []).slice(0, 2).map((item: any) => (
+              {(row.supply_items || []).slice(0, 2).map((item) => (
                 <div key={item.id}>
                   <span className="font-semibold text-slate-100">
                     {item.product_name}
@@ -1035,7 +1087,7 @@ async function openDetails(row: any) {
           <div className="text-xs text-slate-500 mb-2">Items</div>
 
           <div className="rounded-xl border border-slate-800 overflow-hidden">
-            {(detailTarget.supply_items || []).map((item: any) => (
+            {(detailTarget.supply_items || []).map((item) => (
               <div
                 key={item.id}
                 className="flex justify-between px-4 py-3 border-b border-slate-800 last:border-b-0"
@@ -1069,7 +1121,7 @@ async function openDetails(row: any) {
         No status history yet.
       </div>
     ) : (
-      statusHistory.map((h: any) => (
+      statusHistory.map((h) => (
         <div
           key={h.id}
           className="px-4 py-3 border-b border-slate-800 last:border-b-0"

@@ -1,6 +1,6 @@
 import { isDeviceId } from "@/lib/device-serials";
 import { NextResponse } from "next/server";
-import { PDFDocument, StandardFonts } from "pdf-lib";
+import { PDFDocument, StandardFonts, type PDFFont } from "pdf-lib";
 import QRCode from "qrcode";
 import { errorMessage } from "@/lib/error-message";
 
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
       const qty = imeis.length;
 
       // Centered text helper
-      function drawCentered(text: string, size: number, usedFont: any) {
+      function drawCentered(text: string, size: number, usedFont: PDFFont) {
         const textWidth = usedFont.widthOfTextAtSize(text, size);
         const x = (PAGE_W - textWidth) / 2;
 

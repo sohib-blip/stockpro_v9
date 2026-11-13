@@ -13,16 +13,33 @@ function serviceClient() {
   );
 }
 
+// Columns read from device_inbound_accessories with the accessory they add.
+type IncludedAccessoryRow = {
+  id: string;
+  device_id: string;
+  accessory_bin_id: string;
+  quantity: number;
+  accessory_bins: { name: string; active: boolean } | null;
+};
+
+type ActiveIncludedAccessoryRow = IncludedAccessoryRow & {
+  accessory_bins: { name: string; active: boolean };
+};
+
 // Accessories included with each device model, for the inbound preview.
 export async function GET() {
   try {
     const { data, error } = await serviceClient()
       .from("device_inbound_accessories")
-      .select("id,device_id,accessory_bin_id,quantity,accessory_bins(name,active)");
+      .select("id,device_id,accessory_bin_id,quantity,accessory_bins(name,active)")
+      // Typing only: accessory_bins is many-to-one, so PostgREST returns an object.
+      .overrideTypes<IncludedAccessoryRow[], { merge: false }>();
     if (error) throw error;
     const rules = (data || [])
-      .filter((row: any) => row.accessory_bins?.active)
-      .map((row: any) => ({
+      .filter((row): row is ActiveIncludedAccessoryRow =>
+        Boolean(row.accessory_bins?.active)
+      )
+      .map((row) => ({
         id: row.id,
         device_id: row.device_id,
         accessory_bin_id: row.accessory_bin_id,

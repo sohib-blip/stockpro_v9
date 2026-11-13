@@ -19,6 +19,14 @@ function failure(message: string, status: number) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
+// Columns read from device_inbound_accessories with the accessory they add.
+type IncludedAccessoryRow = {
+  id: string;
+  accessory_bin_id: string;
+  quantity: number;
+  accessory_bins: { name: string; active: boolean } | null;
+};
+
 // Inventory Setup > Included at inbound: accessories delivered with a device
 // model, added to accessory stock when those devices are received.
 export async function GET(req: Request) {
@@ -31,9 +39,11 @@ export async function GET(req: Request) {
       .from("device_inbound_accessories")
       .select("id,accessory_bin_id,quantity,accessory_bins(name,active)")
       .eq("device_id", deviceId)
-      .order("created_at", { ascending: true });
+      .order("created_at", { ascending: true })
+      // Typing only: accessory_bins is many-to-one, so PostgREST returns an object.
+      .overrideTypes<IncludedAccessoryRow[], { merge: false }>();
     if (error) throw error;
-    const rows = (data || []).map((row: any) => ({
+    const rows = (data || []).map((row) => ({
       id: row.id,
       accessory_bin_id: row.accessory_bin_id,
       accessory: row.accessory_bins?.name || "-",

@@ -28,6 +28,24 @@ type Bin = {
   kinesis_names?: string[] | null;
 };
 
+// An active accessory offered for a rule (/api/bins/templates/list).
+type TemplateAccessory = {
+  id: string;
+  name: string;
+};
+
+// A device_accessory_templates row with its accessory (/api/bins/templates/list).
+type AccessoryTemplate = {
+  id: string;
+  device_id: string;
+  accessory_bin_id: string;
+  quantity: number;
+  per_devices: number;
+  per_order: boolean;
+  created_at: string | null;
+  accessory_bins: TemplateAccessory | null;
+};
+
 type DimensionsForm = {
   lengthCm: string;
   widthCm: string;
@@ -115,8 +133,8 @@ export default function BinsPage() {
   useState<AccessoryCategory>("Consumables");
 
   const [selectedDevice, setSelectedDevice] = useState<Bin | null>(null);
-  const [templateAccessories, setTemplateAccessories] = useState<any[]>([]);
-  const [templates, setTemplates] = useState<any[]>([]);
+  const [templateAccessories, setTemplateAccessories] = useState<TemplateAccessory[]>([]);
+  const [templates, setTemplates] = useState<AccessoryTemplate[]>([]);
   const [templateAccessoryId, setTemplateAccessoryId] = useState("");
   const [templateQty, setTemplateQty] = useState(1);
   const [templatePerDevices, setTemplatePerDevices] = useState(1);
@@ -445,7 +463,7 @@ export default function BinsPage() {
     );
   }
 
-  function startEditTemplate(t: any) {
+  function startEditTemplate(t: AccessoryTemplate) {
     setEditingTemplateId(t.id);
     setEditTemplateAccessoryId(t.accessory_bin_id);
     setEditTemplateQty(Number(t.quantity || 1));

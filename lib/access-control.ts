@@ -180,7 +180,6 @@ export function permissionsForApi(
   if (pathname.startsWith("/api/supply")) return ["can_supply"];
   if (pathname.startsWith("/api/nrd/export-global")) return ["can_admin"];
   if (pathname.startsWith("/api/nrd")) return ["can_nrd"];
-  if (pathname.startsWith("/api/export")) return ["can_admin"];
 
   return [];
 }

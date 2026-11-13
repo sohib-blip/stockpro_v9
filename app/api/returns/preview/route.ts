@@ -44,6 +44,33 @@ const returnPreviewSchema = z
     }
   });
 
+// Columns read from items with the box and device (bin) they were last in.
+type ReturnItemRow = {
+  item_id: string;
+  imei: string;
+  status: string;
+  box_id: string | null;
+  device_id: string | null;
+  boxes: {
+    box_code: string;
+    floor: string | null;
+    bins: { name: string } | null;
+  } | null;
+};
+
+type ValidReturn = {
+  item_id: string | null;
+  imei: string;
+  device_id?: string | null;
+  device: string | null | undefined;
+  reported_device: string | null | undefined;
+  previous_box: string;
+  previous_floor: string;
+  return_status: string;
+  stock_action: "added_to_stock" | "no_stock_change";
+  inventory_match: "known" | "unknown";
+};
+
 export async function POST(req: Request) {
   try {
     const parsed = returnPreviewSchema.safeParse(
@@ -133,18 +160,20 @@ export async function POST(req: Request) {
           )
         )
       `)
-      .in("imei", imeis);
+      .in("imei", imeis)
+      // Typing only: boxes and bins are many-to-one, so PostgREST returns objects.
+      .overrideTypes<ReturnItemRow[], { merge: false }>();
 
     if (error) throw error;
 
-    const foundMap = new Map((data || []).map((x: any) => [String(x.imei), x]));
+    const foundMap = new Map((data || []).map((x) => [String(x.imei), x]));
 
-    const valid_returns: any[] = [];
+    const valid_returns: ValidReturn[] = [];
     const already_in_stock: string[] = [];
     const unknown_imeis: string[] = [];
 
     for (const imei of imeis) {
-      const item: any = foundMap.get(imei);
+      const item = foundMap.get(imei);
 
       if (!item) {
         if (returnRequiresCanonicalItem(parsed.data.return_status)) {
@@ -195,7 +224,9 @@ export async function POST(req: Request) {
 
     const breakdown: Record<string, number> = {};
     for (const item of valid_returns) {
-      breakdown[item.device] = (breakdown[item.device] || 0) + 1;
+      // Same key as indexing with the value itself (a missing device counts as "undefined").
+      const key = String(item.device);
+      breakdown[key] = (breakdown[key] || 0) + 1;
     }
 
     const reportedDevices = Array.from(

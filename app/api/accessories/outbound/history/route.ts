@@ -20,6 +20,21 @@ const supabase = createClient(
   }
 );
 
+// Columns of accessory_movements (the query selects them all). performed_by is
+// an older actor column the history still falls back to.
+type AccessoryMovementRow = {
+  id: string;
+  created_at: string;
+  shipment_ref: string | null;
+  note: string | null;
+  qty: number;
+  actor: string | null;
+  performed_by?: string | null;
+  source: string | null;
+  movement_type: string;
+  accessory_bin_id: string | null;
+};
+
 export async function GET() {
   try {
     const { data: movements, error: movementError } = await supabase
@@ -31,7 +46,7 @@ export async function GET() {
 
     if (movementError) throw movementError;
 
-    const typedMovements = (movements || []).map((movement: any) => ({
+    const typedMovements = (movements || []).map((movement: AccessoryMovementRow) => ({
       id: movement.id,
       created_at: movement.created_at,
       shipment_ref: movement.shipment_ref || null,

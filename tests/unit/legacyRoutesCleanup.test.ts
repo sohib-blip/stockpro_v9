@@ -25,4 +25,19 @@ describe("legacy route cleanup", () => {
       expect(accessControl).not.toContain(route);
     }
   });
+
+  it("removes the legacy export endpoints and their access rule", () => {
+    for (const route of ["in-stock", "inventory", "warehouse"]) {
+      expect(
+        existsSync(join(process.cwd(), "app", "api", "export", route, "route.ts"))
+      ).toBe(false);
+    }
+
+    const accessControl = readFileSync(
+      join(process.cwd(), "lib", "access-control.ts"),
+      "utf8"
+    );
+
+    expect(accessControl).not.toContain('"/api/export"');
+  });
 });

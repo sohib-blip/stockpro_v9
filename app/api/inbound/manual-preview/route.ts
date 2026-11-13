@@ -60,7 +60,7 @@ export async function POST(req: Request) {
       .select("imei")
       .in("imei", cleaned);
 
-    const existingSet = new Set((existing || []).map((x: any) => String(x.imei)));
+    const existingSet = new Set((existing || []).map((x: { imei: string }) => String(x.imei)));
 
     const duplicates = cleaned.filter((i) => existingSet.has(i));
     const newOnes = cleaned.filter((i) => !existingSet.has(i));

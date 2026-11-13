@@ -36,6 +36,20 @@ function extractImeis(body: unknown) {
   );
 }
 
+// Columns read from items with the box and device (bin) they are in.
+type SearchItemRow = {
+  item_id: string;
+  imei: string;
+  status: string;
+  box_id: string | null;
+  device_id: string | null;
+  boxes: {
+    box_code: string;
+    floor: string | null;
+    bins: { name: string } | null;
+  } | null;
+};
+
 export async function POST(req: Request) {
   let body: unknown;
   try {
@@ -93,15 +107,17 @@ export async function POST(req: Request) {
           )
         )
       `)
-      .in("imei", imeis);
+      .in("imei", imeis)
+      // Typing only: boxes and bins are many-to-one, so PostgREST returns objects.
+      .overrideTypes<SearchItemRow[], { merge: false }>();
 
     if (error) throw error;
 
     const found = new Map(
-      (data || []).map((item: any) => [String(item.imei), item])
+      (data || []).map((item) => [String(item.imei), item])
     );
     const rows = imeis.map((imei) => {
-      const item: any = found.get(imei);
+      const item = found.get(imei);
       const box = item?.boxes;
 
       return {

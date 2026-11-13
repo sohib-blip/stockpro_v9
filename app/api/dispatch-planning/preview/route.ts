@@ -79,7 +79,7 @@ async function loadLearnedPackaging(
     const stored = Array.isArray(row.packages) ? row.packages : null;
     const packages = (stored ?? [
       { packagingTypeId: row.packaging_type_id, quantity: row.package_quantity },
-    ]).map((item: any) => ({
+    ]).map((item: { packagingTypeId?: unknown; quantity?: unknown }) => ({
       packagingTypeId: String(item.packagingTypeId),
       quantity: Number(item.quantity),
     }));

@@ -16,6 +16,12 @@ const supabase = createClient(
   }
 );
 
+// Columns of nrd_time_logs these stats read (the query selects them all).
+type NrdLogRow = {
+  task: string;
+  duration_minutes: number | null;
+};
+
 function getMonthRange(periodMonth?: string | null) {
   const now = new Date();
 
@@ -61,10 +67,10 @@ export async function GET(req: Request) {
 
     if (error) throw error;
 
-    const rows = data || [];
+    const rows: NrdLogRow[] = data || [];
 
     const totalMinutes = rows.reduce(
-      (sum: number, row: any) => sum + Number(row.duration_minutes || 0),
+      (sum, row) => sum + Number(row.duration_minutes || 0),
       0
     );
 

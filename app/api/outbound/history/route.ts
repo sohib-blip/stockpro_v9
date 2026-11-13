@@ -15,6 +15,33 @@ function sb() {
   });
 }
 
+// Columns read from movements (type OUT) and bins.
+type OutboundMovementRow = {
+  movement_id: string;
+  operation_id: string | null;
+  batch_id: string | null;
+  created_at: string;
+  actor: string | null;
+  shipment_ref: string | null;
+  source: string | null;
+  qty: number;
+  imei: string | null;
+  device_id: string;
+};
+
+type BinRow = { id: string; name: string };
+
+type OutboundHistoryGroup = {
+  history_key: string;
+  operation_id: string;
+  created_at: string;
+  actor: string;
+  shipment_ref: string;
+  source: string;
+  imeisSet: Set<string>;
+  devicesSet: Set<string>;
+};
+
 export async function GET(req: Request) {
   try {
     const supabase = sb();
@@ -25,7 +52,7 @@ export async function GET(req: Request) {
     const limit = 50;
     const offset = (page - 1) * limit;
 
-    const allMovements: any[] = [];
+    const allMovements: OutboundMovementRow[] = [];
     let from = 0;
     const pageSize = 1000;
 
@@ -58,10 +85,10 @@ export async function GET(req: Request) {
     }
 
     const deviceIds = Array.from(
-      new Set(allMovements.map((r: any) => r.device_id).filter(Boolean))
+      new Set(allMovements.map((r) => r.device_id).filter(Boolean))
     );
 
-    let binsData: any[] = [];
+    let binsData: BinRow[] = [];
 
     if (deviceIds.length > 0) {
       const { data, error } = await supabase
@@ -74,10 +101,10 @@ export async function GET(req: Request) {
     }
 
     const binMap = new Map(
-      binsData.map((b: any) => [String(b.id), String(b.name)])
+      binsData.map((b) => [String(b.id), String(b.name)])
     );
 
-    const grouped = new Map<string, any>();
+    const grouped = new Map<string, OutboundHistoryGroup>();
 
     for (const row of allMovements) {
       const realKey =
@@ -88,8 +115,9 @@ export async function GET(req: Request) {
 
       const key = String(realKey);
 
-      if (!grouped.has(key)) {
-        grouped.set(key, {
+      let current = grouped.get(key);
+      if (!current) {
+        current = {
           history_key: key,
           operation_id: row.operation_id || row.batch_id || row.movement_id,
           created_at: row.created_at,
@@ -98,10 +126,9 @@ export async function GET(req: Request) {
           source: row.source || "manual",
           imeisSet: new Set<string>(),
           devicesSet: new Set<string>(),
-        });
+        };
+        grouped.set(key, current);
       }
-
-      const current = grouped.get(key);
 
       if (row.imei) current.imeisSet.add(String(row.imei));
 

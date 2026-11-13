@@ -12,6 +12,38 @@ function safeCell(value: unknown) {
   return /^[=+\-@]/.test(text) ? `'${text}` : text;
 }
 
+// Shapes stored in dispatch_batches.orders and package_usage (jsonb) by the
+// confirm and manual dispatch routes. Fields are read as stored, without
+// assuming their type.
+type StoredPackaging = { name?: unknown; quantity?: unknown };
+
+type StoredDispatchItem = {
+  sourceItem?: unknown;
+  name?: unknown;
+  quantity?: unknown;
+  workbookQuantity?: unknown;
+  automaticQuantity?: unknown;
+  unitVolumeCm3?: unknown;
+  totalVolumeCm3?: unknown;
+};
+
+type StoredDispatchOrder = {
+  orderId?: unknown;
+  destinationCountry?: unknown;
+  companyName?: unknown;
+  items?: unknown;
+  packages?: StoredPackaging[];
+  extras?: StoredPackaging[];
+};
+
+type StoredPackageUsage = {
+  code?: unknown;
+  name?: unknown;
+  quantity?: unknown;
+  onHandStock?: unknown;
+  stockAfter?: unknown;
+};
+
 export async function GET(req: Request) {
   try {
     const parsed = z.string().uuid().safeParse(
@@ -37,9 +69,11 @@ export async function GET(req: Request) {
       );
     }
 
-    const orders = Array.isArray(batch.orders) ? batch.orders : [];
-    const rows = orders.flatMap((order: any) =>
-      (Array.isArray(order.items) ? order.items : []).map((item: any) => ({
+    const orders: StoredDispatchOrder[] = Array.isArray(batch.orders)
+      ? batch.orders
+      : [];
+    const rows = orders.flatMap((order) =>
+      (Array.isArray(order.items) ? order.items : []).map((item: StoredDispatchItem) => ({
         "Order ID": safeCell(order.orderId),
         Country: safeCell(order.destinationCountry),
         Customer: safeCell(order.companyName),
@@ -59,14 +93,15 @@ export async function GET(req: Request) {
         "Total volume (cm3)": Number(item.totalVolumeCm3 || 0),
         Packaging: safeCell(
           [...(order.packages || []), ...(order.extras || [])]
-            .map((packaging: any) => `${packaging.quantity} × ${packaging.name}`)
+            .map((packaging) => `${packaging.quantity} × ${packaging.name}`)
             .join(", ")
         ),
         Status: safeCell(batch.status),
         "Confirmed at": safeCell(batch.confirmed_at),
       }))
     );
-    const summaryRows = (batch.package_usage || []).map((usage: any) => ({
+    const packageUsage: StoredPackageUsage[] = batch.package_usage || [];
+    const summaryRows = packageUsage.map((usage) => ({
       Code: safeCell(usage.code),
       Packaging: safeCell(usage.name),
       "Quantity deducted": Number(usage.quantity || 0),

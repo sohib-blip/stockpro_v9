@@ -49,11 +49,16 @@ export type ReturnTemplateRow = {
   return_reason: string;
 };
 
+type ExcelJsBuffer = Parameters<ExcelJS.Xlsx["load"]>[0];
+
 export async function createReturnTemplateWorkbook(
   rows: readonly ReturnTemplateRow[]
 ) {
   const workbook = new ExcelJS.Workbook();
-  await workbook.xlsx.load((await readFile(TEMPLATE_PATH)) as any);
+  // ExcelJS types its input as its own Buffer interface (an ArrayBuffer); at
+  // runtime it reads the Node Buffer it has always been given here.
+  const template = await readFile(TEMPLATE_PATH);
+  await workbook.xlsx.load(template as unknown as ExcelJsBuffer);
 
   const worksheet = workbook.getWorksheet("Sheet1") || workbook.worksheets[0];
   if (!worksheet) throw new Error("The return template has no worksheet");
@@ -103,7 +108,7 @@ export async function createReturnTemplateWorkbook(
   });
 
   const output = await workbook.xlsx.writeBuffer();
-  return new Uint8Array(output as any).slice().buffer;
+  return new Uint8Array(output).slice().buffer;
 }
 
 // Export rows are read page by page (see lib/supabase/read-all-pages.ts).

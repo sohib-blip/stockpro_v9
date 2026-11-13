@@ -37,6 +37,11 @@ async function qrBuffer(text: string): Promise<Uint8Array> {
   return Uint8Array.from(Buffer.from(base64, "base64"));
 }
 
+// Columns read from items, boxes and bins for the labels of one import.
+type ImportItemRow = { box_id: string | null; imei: string };
+type BoxRow = { id: string; box_code: string; bin_id: string | null };
+type BinRow = { id: string; name: string };
+
 export async function GET(req: Request) {
   try {
     const url = new URL(req.url);
@@ -55,7 +60,7 @@ export async function GET(req: Request) {
     const supabase = sb();
 
     // 1) Get ALL items for this import
-    const allItems: any[] = [];
+    const allItems: ImportItemRow[] = [];
     let page = 0;
     const pageSize = 1000;
 
@@ -123,7 +128,7 @@ export async function GET(req: Request) {
     const boxIds = Object.keys(grouped);
 
     // 3) Fetch boxes
-    const allBoxes: any[] = [];
+    const allBoxes: BoxRow[] = [];
 
     for (const chunk of chunkArray(boxIds, 500)) {
       const { data, error } = await supabase
@@ -135,14 +140,14 @@ export async function GET(req: Request) {
       allBoxes.push(...(data || []));
     }
 
-    const boxMap = new Map(allBoxes.map((b: any) => [String(b.id), b]));
+    const boxMap = new Map(allBoxes.map((b) => [String(b.id), b]));
 
     const binIds = Array.from(
-      new Set(allBoxes.map((b: any) => String(b.bin_id)).filter(Boolean))
+      new Set(allBoxes.map((b) => String(b.bin_id)).filter(Boolean))
     );
 
     // 4) Fetch bins/devices
-    const allBins: any[] = [];
+    const allBins: BinRow[] = [];
 
     for (const chunk of chunkArray(binIds, 500)) {
       const { data, error } = await supabase
@@ -155,7 +160,7 @@ export async function GET(req: Request) {
     }
 
     const binMap = new Map(
-      allBins.map((b: any) => [String(b.id), String(b.name)])
+      allBins.map((b) => [String(b.id), String(b.name)])
     );
 
     // 5) Complete label data

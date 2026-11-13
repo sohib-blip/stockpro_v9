@@ -15,6 +15,21 @@ function sb() {
   });
 }
 
+// Columns of inbound_history_view (the query selects them all). boxes and
+// imeis are older column names the response still falls back to.
+type InboundHistoryRow = {
+  batch_id: string;
+  created_at: string | null;
+  actor: string | null;
+  vendor: string | null;
+  source: string | null;
+  shipment_ref: string | null;
+  qty_boxes: number | null;
+  qty_imeis: number | null;
+  boxes?: number | null;
+  imeis?: number | null;
+};
+
 export async function GET(req: Request) {
   try {
     const supabase = sb();
@@ -34,7 +49,7 @@ export async function GET(req: Request) {
     if (error) throw error;
 
     const rows = (data || [])
-      .map((r: any) => ({
+      .map((r: InboundHistoryRow) => ({
         ...r,
 
         // Keep the response compatible with the inbound history table.
@@ -43,7 +58,7 @@ export async function GET(req: Request) {
       }))
       // Legacy duplicate attempts created zero-item batches. They are not
       // warehouse events and must not appear as downloadable history.
-      .filter((row: any) => Number(row.qty_imeis) > 0);
+      .filter((row) => Number(row.qty_imeis) > 0);
 
     return NextResponse.json({
       ok: true,
